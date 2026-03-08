@@ -6,11 +6,9 @@ import "../src/AgentRegistry.sol";
 
 contract DeployRegistry is Script {
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast();
 
         AgentRegistry registry = new AgentRegistry();
-        console.log("AgentRegistry deployed at:", address(registry));
 
         vm.stopBroadcast();
     }
