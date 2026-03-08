@@ -10,20 +10,22 @@ export const CONTRACT_ADDRESSES = {
 
 export const AGENT_REGISTRY_ABI = [
   {
-    "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }],
-    "name": "balanceOf",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
-    "name": "tokenURI",
-    "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "agents",
+    "outputs": [
+      { "internalType": "string", "name": "name", "type": "string" },
+      { "internalType": "string", "name": "model", "type": "string" },
+      { "internalType": "string", "name": "description", "type": "string" },
+      { "internalType": "string", "name": "metadataUri", "type": "string" },
+      { "internalType": "address", "name": "owner", "type": "address" },
+      { "internalType": "uint256", "name": "registeredAt", "type": "uint256" },
+      { "internalType": "bool", "name": "active", "type": "bool" }
+    ],
     "stateMutability": "view",
     "type": "function"
   }
 ];
+
 
 export const GAME_LOTTERY_ABI = [
   {

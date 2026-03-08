@@ -41,8 +41,23 @@ const ArenaGame = () => {
     const [activeTab, setActiveTab] = useState('chain'); // 'chain', 'social', or 'fame'
     const [leaderboard, setLeaderboard] = useState([]);
 
-    // Mock Agent Identity active state (Registry EIP-8004 not deployed on Celo yet)
-    const agentProfile = { active: true };
+    // Fetch Agent Identity (EIP-8004 Standard) - Real-time Check
+    const { data: agentData } = useReadContract({
+        address: CONTRACT_ADDRESSES.AGENT_REGISTRY,
+        abi: AGENT_REGISTRY_ABI,
+        functionName: 'agents',
+        args: [CONTRACT_ADDRESSES.AI_AGENT]
+    });
+
+    // Map contract response to profile object
+    // agents() returns [name, model, description, metadataUri, owner, registeredAt, active]
+    const agentProfile = agentData ? {
+        name: agentData[0],
+        model: agentData[1],
+        description: agentData[2],
+        active: agentData[6]
+    } : { active: false };
+
 
     const { writeContractAsync: writeArena } = useWriteContract();
 
@@ -560,6 +575,7 @@ const ArenaGame = () => {
                             </span>
                             <div className={`font-bold text-sm font-mono ${agentProfile?.active ? 'text-green-400' : 'text-purple-500'}`}>
                                 {agentProfile?.active ? 'ONLINE' : 'OFFLINE'}
+
                             </div>
                         </div>
                         <a
@@ -587,8 +603,9 @@ const ArenaGame = () => {
                                 </div>
                                 <h2 className="text-xl font-bold text-white mb-2">CHALLENGE_THE_AI</h2>
                                 <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
-                                    {agentProfile?.[2] || "Autonomous agent initialized. Select game type to begin."}
+                                    {agentProfile.description || "Autonomous agent initialized. Select game type to begin."}
                                 </p>
+
                             </div>
 
                             {/* Game Selection */}
@@ -820,6 +837,7 @@ const ArenaGame = () => {
                                                                 <div className="text-[10px] font-bold text-white flex items-center gap-1">
                                                                     {champ.address === address?.toLowerCase() ? 'YOU' : `${champ.address.slice(0, 6)}...${champ.address.slice(-4)}`}
                                                                     {champ.isAi && <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1 rounded">AGENT</span>}
+
                                                                 </div>
                                                                 <div className="text-[9px] text-gray-500 uppercase tracking-tighter">Verified Arena Champion</div>
                                                             </div>
