@@ -37,7 +37,8 @@ function Navigation() {
 
   const navLinks = [
     { path: '/', label: 'Arena' },
-    { path: 'https://nad.fun/tokens/0x2117449eA6630857D4D656D0D2f5e1C689C67777', label: '$ARENA', external: true }
+    { path: 'https://celoscan.io/token/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A', label: 'G$', external: true }
+
   ];
 
   return (

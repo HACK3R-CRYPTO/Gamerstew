@@ -579,13 +579,14 @@ const ArenaGame = () => {
                             </div>
                         </div>
                         <a
-                            href="https://nad.fun/tokens/0x2117449eA6630857D4D656D0D2f5e1C689C67777"
+                            href="https://gooddollar.org"
                             target="_blank"
                             className="bg-purple-900/20 border border-purple-500/30 px-4 py-2 rounded flex flex-col items-center justify-center hover:bg-purple-900/40 transition-colors group"
                         >
-                            <span className="text-[10px] text-purple-300 block uppercase font-bold group-hover:text-white">BUY $ARENA</span>
-                            <span className="text-xs text-purple-400 font-mono">nad.fun</span>
+                            <span className="text-[10px] text-purple-300 block uppercase font-bold group-hover:text-white">GET G$</span>
+                            <span className="text-xs text-purple-400 font-mono">gooddollar.org</span>
                         </a>
+
                     </div>
                 </div>
 
