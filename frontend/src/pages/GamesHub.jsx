@@ -88,6 +88,11 @@ export default function GamesHub() {
   const [mintingPass,   setMintingPass]   = useState(false);
   const [playStreak, setPlayStreak] = useState({ streak: 0, playedToday: false });
 
+  // Fetch streak from backend
+  useEffect(() => {
+    if (address) getPlayStreak(address).then(setPlayStreak);
+  }, [address]);
+
   // Live score notifications
   useEffect(() => {
     const interval = setInterval(() => {
@@ -318,7 +323,18 @@ export default function GamesHub() {
               fontSize: '16px', fontWeight: 900, color: '#fff', flexShrink: 0,
             }}>{username[0].toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: '#fff', fontSize: '13px', fontWeight: 900 }}>{username}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 900 }}>{username}</span>
+                {playStreak.streak >= 1 && (
+                  <span style={{
+                    padding: '1px 6px', borderRadius: '8px', fontSize: '8px', fontWeight: 700,
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+                    color: '#f59e0b',
+                  }}>
+                    🔥 {playStreak.streak}d
+                  </span>
+                )}
+              </div>
               <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '1px' }}>{gBal} G$</div>
             </div>
             {isVerified ? (
