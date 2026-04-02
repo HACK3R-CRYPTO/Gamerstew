@@ -31,7 +31,7 @@ const USER_ADDRESS = '0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d';
 const G_TOKEN_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' as `0x${string}`;
 
 const ERC20_ABI = parseAbi(["function transferAndCall(address to, uint256 value, bytes data) external returns (bool)", "function balanceOf(address account) external view returns (uint256)"]);
-const REGISTRY_ADDRESS = '0x95884fe0d2a817326338735Eb4f24dD04Cf20Ea7';
+const REGISTRY_ADDRESS = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432'; // ERC-8004 on Celo Mainnet
 
 if (!process.env.PRIVATE_KEY) {
     console.error(chalk.red("FATAL: PRIVATE_KEY environment variable is not set."));
@@ -283,7 +283,7 @@ async function startAgent() {
     }
     console.log(chalk.blue.bold('🤖 Arena AI Agent V3 (EIP-8004) Started'));
 
-    const REGISTRY_ADDRESS = '0x34FCEE3eFaA15750B070836F19F3970Ad20fE8d1';
+    const REGISTRY_ADDRESS = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432'; // ERC-8004
     const REGISTRY_ABI = [
         { inputs: [{ internalType: "string", name: "agentURI", type: "string" }], name: "register", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "nonpayable", type: "function" },
         { inputs: [{ internalType: "address", name: "owner", type: "address" }], name: "balanceOf", outputs: [{ internalType: "uint256", name: "", type: "uint256" }], stateMutability: "view", type: "function" }
