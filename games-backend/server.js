@@ -116,16 +116,40 @@ function seasonBounds(n) {
 
 async function registerUser(addr) {
   const lower = addr.toLowerCase();
-  const { data } = await supabase
+  const { data: rows } = await supabase
     .from('users')
-    .select('wallet_address')
+    .select('wallet_address, play_streak, last_play_date')
     .eq('wallet_address', lower)
-    .single();
+    .limit(1);
 
-  if (!data) {
-    await supabase.from('users').insert({ wallet_address: lower });
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+  if (!rows || rows.length === 0) {
+    await supabase.from('users').insert({ wallet_address: lower, play_streak: 1, last_play_date: today });
     console.log(`👤 New user: ${lower}`);
+    return 1;
   }
+
+  const user = rows[0];
+  if (user.last_play_date === today) {
+    return user.play_streak || 1; // already played today
+  }
+
+  let newStreak;
+  if (user.last_play_date === yesterday) {
+    newStreak = (user.play_streak || 0) + 1;
+  } else {
+    newStreak = 1; // streak broken
+  }
+
+  await supabase
+    .from('users')
+    .update({ play_streak: newStreak, last_play_date: today })
+    .eq('wallet_address', lower);
+
+  if (newStreak > 1) console.log(`🔥 ${lower.slice(0,8)}... streak: ${newStreak} days`);
+  return newStreak;
 }
 
 async function getUserCount() {
@@ -137,14 +161,15 @@ async function getUserCount() {
 
 async function saveScore(entry) {
   // Upsert: keep best score per wallet per game
-  const { data: existing } = await supabase
+  const { data: rows } = await supabase
     .from('scores')
     .select('id, score')
     .eq('wallet_address', entry.wallet_address)
     .eq('game', entry.game)
     .order('score', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(1);
+
+  const existing = rows && rows.length > 0 ? rows[0] : null;
 
   if (existing && existing.score >= entry.score) {
     // Existing score is better, still log activity
@@ -158,18 +183,10 @@ async function saveScore(entry) {
   }
 
   if (existing) {
-    // Update existing with better score
-    await supabase
-      .from('scores')
-      .update({
-        score: entry.score,
-        game_time: entry.game_time,
-        wagered: entry.wagered,
-        wager_id: entry.wager_id,
-        tx_hash: entry.tx_hash,
-        season_number: entry.season_number,
-      })
-      .eq('id', existing.id);
+    // Delete old + insert new (avoids RLS update issues)
+    await supabase.from('scores').delete().eq('id', existing.id);
+    await supabase.from('scores').insert(entry);
+    console.log(`📈 Score updated: ${entry.wallet_address.slice(0,8)}... ${existing.score} → ${entry.score}`);
   } else {
     // Insert new
     await supabase.from('scores').insert(entry);
@@ -324,8 +341,8 @@ app.post('/api/submit-score', async (req, res) => {
   const { game, score, gameTime, wagered, wagerId } = scoreData;
   const season = currentSeasonNumber();
 
-  // Track unique user
-  await registerUser(playerAddress);
+  // Track unique user + update streak
+  const streak = await registerUser(playerAddress);
 
   // Resolve wager on-chain if applicable
   let wagerTxHash = null;
@@ -335,13 +352,19 @@ app.post('/api/submit-score', async (req, res) => {
 
   // Record score on-chain via GamePass (get tx hash)
   let scoreTxHash = null;
+  let onChainBest = score;
   if (passContract && passContract.recordScore) {
     const gameType = game === 'rhythm' ? 0 : 1;
     try {
       const tx = await passContract.recordScore(playerAddress, gameType, BigInt(score));
       const receipt = await tx.wait();
       scoreTxHash = receipt.hash;
-      console.log(`⛓️  Score on-chain: ${playerAddress.slice(0, 8)}... → ${score} pts (tx: ${receipt.hash.slice(0, 10)}...)`);
+      // Read back the on-chain best score (source of truth)
+      try {
+        const best = await passContract.bestScore(playerAddress, gameType);
+        onChainBest = Number(best);
+      } catch (_) {}
+      console.log(`⛓️  Score on-chain: ${playerAddress.slice(0, 8)}... → ${score} pts, best: ${onChainBest} (tx: ${receipt.hash.slice(0, 10)}...)`);
     } catch (e) {
       console.warn(`⚠️  On-chain score failed: ${e.message}`);
     }
@@ -349,11 +372,11 @@ app.post('/api/submit-score', async (req, res) => {
 
   const txHash = wagerTxHash || scoreTxHash;
 
-  // Save to Supabase
+  // Save to Supabase using on-chain best score as source of truth
   await saveScore({
     wallet_address: playerAddress.toLowerCase(),
     game,
-    score,
+    score: onChainBest,
     game_time: gameTime,
     season_number: season,
     wagered: wagered || null,
@@ -367,7 +390,7 @@ app.post('/api/submit-score', async (req, res) => {
 
   console.log(`✅ [${game}] ${playerAddress.slice(0, 8)}... → ${score} pts (rank #${rank}) ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
 
-  res.json({ success: true, score, rank, txHash });
+  res.json({ success: true, score, rank, txHash, streak });
 });
 
 // ─── GET /api/leaderboard?game=rhythm|simon ─────────────────────────────────
@@ -577,6 +600,34 @@ app.get('/api/badges/:address', async (req, res) => {
       streakLabel,
     },
   });
+});
+
+// ─── GET /api/streak/:address ────────────────────────────────────────────
+app.get('/api/streak/:address', async (req, res) => {
+  const addr = req.params.address.toLowerCase();
+  const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+  const { data: rows } = await supabase
+    .from('users')
+    .select('play_streak, last_play_date')
+    .eq('wallet_address', addr)
+    .limit(1);
+
+  if (!rows || rows.length === 0) {
+    return res.json({ streak: 0, playedToday: false });
+  }
+
+  const user = rows[0];
+  const playedToday = user.last_play_date === today;
+  let streak = user.play_streak || 0;
+
+  // If last play was before yesterday, streak is broken
+  if (!playedToday && user.last_play_date !== yesterday) {
+    streak = 0;
+  }
+
+  res.json({ streak, playedToday });
 });
 
 // ─── GET /health ────────────────────────────────────────────────────────────

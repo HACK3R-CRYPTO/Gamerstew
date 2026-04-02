@@ -6,6 +6,7 @@ import { parseUnits, formatUnits } from 'viem';
 import { CONTRACT_ADDRESSES, ERC20_ABI, SOLO_WAGER_ABI, SOLO_WAGER_ADDRESS, GAME_PASS_ABI } from '../config/contracts';
 import { useSelfVerification } from '../contexts/SelfVerificationContext';
 import { toast } from 'react-hot-toast';
+import { checkNewHighScores, getPlayStreak } from '../utils/gameUtils';
 
 const BACKEND_URL = import.meta.env.VITE_GAMES_BACKEND_URL || 'http://localhost:3005';
 
@@ -85,6 +86,17 @@ export default function GamesHub() {
   const [pending,     setPending]     = useState(null);
   const [usernameInput, setUsernameInput] = useState('');
   const [mintingPass,   setMintingPass]   = useState(false);
+  const [playStreak, setPlayStreak] = useState({ streak: 0, playedToday: false });
+
+  // Live score notifications
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkNewHighScores(BACKEND_URL, (msg) => {
+        toast(msg, { icon: '🎯', duration: 4000, style: { background: '#1a1a2e', color: '#fff', border: '1px solid rgba(168,85,247,0.3)', fontFamily: 'Orbitron, monospace', fontSize: '11px' } });
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // GamePass reads
   const { data: hasPass, refetch: refetchPass } = useReadContract({
