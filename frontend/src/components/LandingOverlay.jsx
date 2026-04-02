@@ -52,7 +52,15 @@ const LandingOverlay = ({ onEnter }) => {
                             onClick={onEnter}
                             className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white font-bold tracking-widest uppercase transition-all hover:scale-[1.02] shadow-[0_0_20px_rgba(147,51,234,0.3)]"
                         >
-                            [ ENTER_ARENA ]
+                            [ ENTER_ARENA ] — PvP vs AI
+                        </button>
+
+                        <button
+                            onClick={() => { onEnter(); setTimeout(() => window.location.href = '/games', 50); }}
+                            className="w-full py-4 bg-transparent border border-purple-500/40 hover:border-purple-400 text-purple-300 hover:text-purple-200 font-bold tracking-widest uppercase transition-all hover:scale-[1.02]"
+                            style={{ fontFamily: 'Orbitron, monospace' }}
+                        >
+                            [ PLAY_GAMES ] — Rhythm & Memory
                         </button>
 
                         <div className="flex gap-4 justify-center text-xs text-gray-500">

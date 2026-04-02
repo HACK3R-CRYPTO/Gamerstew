@@ -3,7 +3,7 @@ import { useAccount, useReadContract, useWriteContract, usePublicClient, useWatc
 import { injected } from 'wagmi/connectors';
 import { BookOpen } from 'lucide-react';
 import { parseUnits, formatUnits, parseAbiItem, encodeAbiParameters } from 'viem';
-import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, AGENT_REGISTRY_ABI, ERC20_ABI } from '../config/contracts';
+import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC8004_REGISTRY_ABI, ERC20_ABI } from '../config/contracts';
 import { toast } from 'react-hot-toast';
 import { useArenaEvents } from '../hooks/useArenaEvents';
 import { MATCH_STATUS, GAME_TYPES, MOVES, getMoveDisplay } from '../utils/gameLogic';
@@ -37,21 +37,61 @@ const ArenaGame = () => {
     const [activeTab, setActiveTab] = useState('chain'); // 'chain', 'social', or 'fame'
     const [leaderboard, setLeaderboard] = useState([]);
 
-    // Fetch Agent Identity (EIP-8004 Standard) - Real-time Check
-    const { data: agentData } = useReadContract({
-        address: CONTRACT_ADDRESSES.AGENT_REGISTRY,
-        abi: AGENT_REGISTRY_ABI,
-        functionName: 'agents',
-        args: [CONTRACT_ADDRESSES.AI_AGENT]
+    // Fetch Agent Identity — ERC-8004 official Celo Mainnet registry
+    const agentTokenId = CONTRACT_ADDRESSES.AGENT_TOKEN_ID
+        ? BigInt(CONTRACT_ADDRESSES.AGENT_TOKEN_ID)
+        : null;
+
+    const { data: agentTokenURI } = useReadContract({
+        address: CONTRACT_ADDRESSES.ERC8004_REGISTRY,
+        abi: ERC8004_REGISTRY_ABI,
+        functionName: 'tokenURI',
+        args: [agentTokenId],
+        query: { enabled: !!agentTokenId },
     });
 
-    // Map contract response to profile object
-    const agentProfile = agentData ? {
-        name: agentData[0],
-        model: agentData[1],
-        description: agentData[2],
-        active: agentData[6]
-    } : { active: false };
+    const { data: agentWallet } = useReadContract({
+        address: CONTRACT_ADDRESSES.ERC8004_REGISTRY,
+        abi: ERC8004_REGISTRY_ABI,
+        functionName: 'getAgentWallet',
+        args: [agentTokenId],
+        query: { enabled: !!agentTokenId },
+    });
+
+    // Parse tokenURI (data URI or IPFS JSON) into a profile object
+    const [agentProfile, setAgentProfile] = React.useState({ active: false });
+    React.useEffect(() => {
+        if (!agentTokenURI) return;
+        try {
+            let meta;
+            if (agentTokenURI.startsWith('data:application/json;base64,')) {
+                meta = JSON.parse(atob(agentTokenURI.split(',')[1]));
+            } else if (agentTokenURI.startsWith('{')) {
+                meta = JSON.parse(agentTokenURI);
+            } else {
+                // IPFS or HTTP — fetch it
+                fetch(agentTokenURI).then(r => r.json()).then(meta => {
+                    setAgentProfile({
+                        name: meta.name || 'Markov-1',
+                        model: meta.model || 'Celo AI',
+                        description: meta.description || '',
+                        wallet: agentWallet || CONTRACT_ADDRESSES.AI_AGENT,
+                        active: true,
+                    });
+                }).catch(() => {});
+                return;
+            }
+            setAgentProfile({
+                name: meta.name || 'Markov-1',
+                model: meta.model || 'Celo AI',
+                description: meta.description || '',
+                wallet: agentWallet || CONTRACT_ADDRESSES.AI_AGENT,
+                active: true,
+            });
+        } catch (_) {
+            setAgentProfile({ active: !!agentTokenId });
+        }
+    }, [agentTokenURI, agentWallet, agentTokenId]);
 
     const { writeContractAsync: writeArena } = useWriteContract();
 

@@ -36,9 +36,10 @@ function Navigation() {
   };
 
   const navLinks = [
-    { path: '/', label: 'Arena' },
+    { path: '/', label: 'Games' },
+    { path: '/arena', label: 'Arena' },
+    { path: '/leaderboard', label: 'Scores' },
     { path: 'https://celoscan.io/token/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A', label: 'G$', external: true }
-
   ];
 
   return (
@@ -142,17 +143,30 @@ function Navigation() {
         <div className="glass-panel p-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] border border-cyan-500/20">
           <div className="flex flex-col gap-2">
             {navLinks.map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`px-4 py-3 rounded-lg font-cyber text-sm ${isActivePath(link.path)
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
+              link.external ? (
+                <a
+                  key={link.path}
+                  href={link.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-3 rounded-lg font-cyber text-sm text-gray-400 hover:bg-white/5 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`px-4 py-3 rounded-lg font-cyber text-sm ${isActivePath(link.path)
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              )
             ))}
           </div>
 

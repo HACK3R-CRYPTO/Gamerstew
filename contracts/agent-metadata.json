@@ -1,0 +1,15 @@
+{
+  "name": "Markov-1",
+  "model": "Markov Chain v1",
+  "description": "On-chain AI game opponent for GameArena on Celo. Competes in Rock-Paper-Scissors using adaptive Markov chain strategy. Powered by GoodDollar G$ wagers with 2% fees routed to GoodCollective UBI pool.",
+  "image": "https://raw.githubusercontent.com/ogazboiz/GameArenaCelo-/main/frontend/public/markov1.png",
+  "capabilities": ["rock-paper-scissors", "adaptive-strategy", "g$-wagers"],
+  "endpoint": "https://forno.celo.org",
+  "wallet": "0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1",
+  "chain": "celo-mainnet",
+  "chainId": 42220,
+  "platform": "GameArena",
+  "goodDollarIntegration": true,
+  "goodCollectivePool": true,
+  "erc8004": true
+}

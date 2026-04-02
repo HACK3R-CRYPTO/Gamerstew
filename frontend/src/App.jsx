@@ -8,7 +8,12 @@ import { SelfVerificationProvider } from './contexts/SelfVerificationContext';
 
 import Navigation from './components/Navigation';
 import ArenaGame from './pages/ArenaGame';
+import RhythmRush from './pages/RhythmRush';
+import SimonGame from './pages/SimonGame';
+import Leaderboard from './pages/Leaderboard';
+import GamesHub from './pages/GamesHub';
 import LandingOverlay from './components/LandingOverlay';
+import GamePassGate from './components/GamePassGate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,8 +28,8 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  // Default to showing splash screen on first load
-  const [showSplash, setShowSplash] = useState(true);
+  // Show splash only once per session
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('splashSeen'));
 
   return (
     <WagmiProvider config={config}>
@@ -41,7 +46,7 @@ function App() {
 
           {/* Splash Screen Overlay */}
           {showSplash && (
-            <LandingOverlay onEnter={() => setShowSplash(false)} />
+            <LandingOverlay onEnter={() => { sessionStorage.setItem('splashSeen', '1'); setShowSplash(false); }} />
           )}
 
           <Router>
@@ -53,8 +58,12 @@ function App() {
                 {/* Main Content (blur it when splash is active?) */}
                 <div className={`${showSplash ? 'blur-sm opacity-50 grayscale' : 'blur-0 opacity-100 grayscale-0'} transition-all duration-1000`}>
                   <Routes>
-                    <Route path="/" element={<ArenaGame />} />
-                    <Route path="/arena" element={<Navigate to="/" replace />} />
+                    <Route path="/" element={<GamesHub />} />
+                    <Route path="/rhythm" element={<GamePassGate><RhythmRush /></GamePassGate>} />
+                    <Route path="/games" element={<Navigate to="/" replace />} />
+                    <Route path="/simon" element={<GamePassGate><SimonGame /></GamePassGate>} />
+                    <Route path="/leaderboard" element={<Leaderboard />} />
+                    <Route path="/arena" element={<GamePassGate><ArenaGame /></GamePassGate>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </div>
