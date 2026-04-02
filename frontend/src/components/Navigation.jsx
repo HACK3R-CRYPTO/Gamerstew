@@ -48,14 +48,10 @@ function Navigation() {
 
         {/* Logo Area */}
         <Link to="/" className="flex items-center gap-3 group no-underline">
-          <div className="w-8 h-8 flex items-center justify-center rounded bg-purple-900/20 border border-purple-500/30">
-            <span className="text-xl">⚔️</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-mono text-lg font-bold text-white tracking-tight">
-              ARENA_AGENT
-            </span>
-          </div>
+          <img src="/logo.png" alt="GameArena" className="w-8 h-8 rounded" />
+          <span className="font-mono text-lg font-bold text-white tracking-tight">
+            GAMEARENA
+          </span>
         </Link>
 
         <div className="hidden md:flex items-center gap-6">

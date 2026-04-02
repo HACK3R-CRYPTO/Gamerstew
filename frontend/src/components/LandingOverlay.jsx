@@ -44,7 +44,7 @@ const LandingOverlay = ({ onEnter }) => {
 
                 {/* Main content */}
                 <div style={{ transition: 'opacity 0.8s', opacity: showButton ? 1 : 0 }}>
-                    <div style={{ fontSize: '42px', marginBottom: '8px' }}>🎮</div>
+                    <img src="/logo.png" alt="GameArena" style={{ width: '80px', height: '80px', marginBottom: '8px', borderRadius: '16px' }} />
                     <h1 style={{
                         fontSize: '32px', fontWeight: 900, letterSpacing: '3px', margin: '0 0 6px',
                         background: 'linear-gradient(135deg, #fff 0%, #a855f7 100%)',
