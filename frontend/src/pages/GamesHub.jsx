@@ -84,12 +84,11 @@ export default function GamesHub() {
   // wagmiConnected alone can linger after logout due to async cleanup.
   const isConnected = authenticated;
 
-  // Auto-clear stale wagmi sessions not backed by Privy
-  useEffect(() => {
-    if (wagmiConnected && !authenticated) {
-      disconnect();
-    }
-  }, [wagmiConnected, authenticated]);
+  // Note: no need to force-disconnect stale wagmi sessions here.
+  // isConnected = authenticated (Privy), so the UI already ignores any
+  // lingering wagmi state after logout. Calling disconnect() here would
+  // also fire *during* OAuth login (wagmi connects before Privy sets
+  // authenticated=true), which breaks social login flows entirely.
   const publicClient = usePublicClient();
   const { isVerified, isVerifying, verifyIdentity, claimG$, entitlement } = useSelfVerification();
 
