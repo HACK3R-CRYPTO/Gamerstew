@@ -26,10 +26,13 @@ const SOLO_WAGER_ABI = [
   'function totalUsers() external view returns (uint256)',
 ];
 
-const GAME_PASS_ADDR = '0x3C05F9259eB1733EFE57f56807A1066AEA2ef65C';
+const GAME_PASS_ADDR = '0xd184E5CBEbf957624d14fAa0bfe20d6443411453';
 const GAME_PASS_ABI  = [
   'function getUsername(address player) external view returns (string)',
   'function totalSupply() external view returns (uint256)',
+  'function recordScore(address player, uint8 gameType, uint256 score) external',
+  'function totalGamesPlayed() external view returns (uint256)',
+  'function bestScore(address player, uint8 gameType) external view returns (uint256)',
 ];
 
 let provider   = null;
@@ -42,7 +45,7 @@ if (SOLO_WAGER_ADDR && VALIDATOR_KEY) {
     provider      = new ethers.JsonRpcProvider(CELO_RPC);
     validator     = new ethers.Wallet(VALIDATOR_KEY, provider);
     wagerContract = new ethers.Contract(SOLO_WAGER_ADDR, SOLO_WAGER_ABI, validator);
-    passContract  = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, provider);
+    passContract  = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, validator);
     console.log(`🔗 On-chain resolver ready — validator: ${validator.address}`);
   } catch (e) {
     console.warn('⚠️  On-chain resolver not configured:', e.message);
@@ -336,6 +339,15 @@ app.post('/api/submit-score', async (req, res) => {
   // Resolve wager on-chain (non-blocking)
   if (wagerId) {
     resolveOnChain(wagerId, score).catch(() => {});
+  }
+
+  // Record score on-chain via GamePass (non-blocking, backend pays gas)
+  if (passContract && passContract.recordScore) {
+    const gameType = game === 'rhythm' ? 0 : 1;
+    passContract.recordScore(playerAddress, gameType, BigInt(score))
+      .then(tx => tx.wait())
+      .then(r => console.log(`⛓️  Score recorded on-chain: ${playerAddress.slice(0, 8)}... → ${score} pts (tx: ${r.hash.slice(0, 10)}...)`))
+      .catch(e => console.warn(`⚠️  On-chain score recording failed: ${e.message}`));
   }
 
   res.json({ success: true, score, rank });

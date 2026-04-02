@@ -17,11 +17,19 @@ contract GamePass is ERC721, Ownable {
     mapping(string  => bool)   private _usernameTaken;
     mapping(address => bool)   public  hasMinted;
 
+    // ── On-chain score tracking ─────────────────────────────────────────────
+    address public scoreValidator;           // backend address that submits scores
+    uint256 public totalGamesPlayed;
+    mapping(address => uint256) public gamesPlayed;
+    mapping(address => mapping(uint8 => uint256)) public bestScore; // player => gameType => best
+
     event PassMinted(address indexed player, uint256 indexed tokenId, string username);
     event UsernameChanged(address indexed player, string oldName, string newName);
+    event ScoreRecorded(address indexed player, uint8 indexed gameType, uint256 score, uint256 totalGames);
 
     constructor() ERC721("GameArena Pass", "GAPASS") {
         _transferOwnership(msg.sender);
+        scoreValidator = msg.sender;
     }
 
     /**
@@ -72,6 +80,31 @@ contract GamePass is ERC721, Ownable {
      */
     function isUsernameAvailable(string calldata username) external view returns (bool) {
         return _validUsername(username) && !_usernameTaken[_lower(username)];
+    }
+
+    // ── On-chain score recording (called by backend, player pays nothing) ───
+
+    /**
+     * @notice Record a game score on-chain. Called by backend after every game.
+     * @param player   the player's address
+     * @param gameType 0 = RhythmRush, 1 = SimonMemory
+     * @param score    the score achieved
+     */
+    function recordScore(address player, uint8 gameType, uint256 score) external {
+        require(msg.sender == scoreValidator, "Not authorised");
+        require(hasMinted[player], "No game pass");
+
+        totalGamesPlayed++;
+        gamesPlayed[player]++;
+        if (score > bestScore[player][gameType]) {
+            bestScore[player][gameType] = score;
+        }
+
+        emit ScoreRecorded(player, gameType, score, totalGamesPlayed);
+    }
+
+    function setScoreValidator(address _validator) external onlyOwner {
+        scoreValidator = _validator;
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
