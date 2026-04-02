@@ -32,7 +32,7 @@ const DocsModal = ({ isOpen, onClose }) => {
                         </h2>
                         <div className="bg-white/5 p-4 rounded border-l-2 border-green-500">
                             <p className="mb-2">
-                                <strong className="text-white">Arena AI Champion</strong> is a competitive 1v1 wagering platform where you challenge an Autonomous AI Agent on the Monad Blockchain.
+                                <strong className="text-white">Arena AI Champion</strong> is a competitive 1v1 wagering platform where you challenge an Autonomous AI Agent on Celo Mainnet, powered by GoodDollar G$.
                             </p>
                             <ul className="list-disc list-inside space-y-1 text-gray-400 ml-2">
                                 <li>Direct 1v1 against AI (No waiting for opponents)</li>

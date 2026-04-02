@@ -16,9 +16,9 @@ const customCelo = {
 }
 
 const metadata = {
-  name: 'TournamentChain',
-  description: 'Decentralized Gaming Tournament Platform',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://tournamentchain.com',
+  name: 'GameArena',
+  description: 'Competitive Gaming on Celo with GoodDollar',
+  url: typeof window !== 'undefined' ? window.location.origin : 'https://gamearena.xyz',
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 }
 

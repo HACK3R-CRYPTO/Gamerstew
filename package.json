@@ -1,7 +1,7 @@
 {
-  "name": "arena-ai-champion",
+  "name": "gamearena-celo",
   "version": "1.0.0",
-  "description": "Arena AI Champion - Monad AI Agent Platform",
+  "description": "GameArena — Competitive gaming on Celo with GoodDollar G$",
   "main": "index.js",
   "private": true,
   "scripts": {

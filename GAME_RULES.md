@@ -58,7 +58,7 @@ The Arena Platform supports 4 different game types. Each game has specific rules
 
 ## 🤝 Universal Tie-Breaker Rules
 **The Player Always Wins Ties.** 
-In line with our "Player First" philosophy for the Monad Hackathon, any situation that would normally result in a draw is automatically awarded to the human challenger. This includes:
+In line with our "Player First" philosophy, any situation that would normally result in a draw is automatically awarded to the human challenger. This includes:
 - Same moves in RPS
 - Equal dice rolls
 - Identical strategy choices
