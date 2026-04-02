@@ -418,6 +418,59 @@ export default function GamesHub() {
           </div>
         )}
 
+        {/* ── Gas Faucet ──────────────────────────────────────────────── */}
+        {isConnected && !gasReceived && (
+          <div style={{
+            marginBottom: '14px', padding: '12px 16px',
+            background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
+            borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center',
+          }}>
+            <span style={{ fontSize: '18px' }}>⛽</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: '#06b6d4', fontSize: '10px', fontWeight: 700, letterSpacing: '1px' }}>
+                NEED GAS?
+              </div>
+              <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>
+                Get free 0.01 CELO for transactions (one time)
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                setRequestingGas(true);
+                try {
+                  const res = await fetch(`${BACKEND_URL}/api/faucet`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    toast.success('0.01 CELO sent to your wallet!');
+                    setGasReceived(true);
+                  } else {
+                    toast(data.reason || 'Already received', { icon: 'ℹ️' });
+                    setGasReceived(true);
+                  }
+                } catch (_) {
+                  toast.error('Faucet failed');
+                }
+                setRequestingGas(false);
+              }}
+              disabled={requestingGas}
+              className="gb"
+              style={{
+                padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
+                background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)',
+                color: '#06b6d4', fontSize: '10px', fontWeight: 700,
+                fontFamily: 'Orbitron, monospace',
+                opacity: requestingGas ? 0.5 : 1,
+              }}
+            >
+              {requestingGas ? '...' : 'GET GAS'}
+            </button>
+          </div>
+        )}
+
         {/* ── Game Pass Gate ─────────────────────────────────────────── */}
         {isConnected && !hasPass && (
           <div style={{
@@ -489,59 +542,6 @@ export default function GamesHub() {
               background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)',
               color: '#fbbf24', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace',
             }}>{isVerifying ? '...' : 'VERIFY'}</button>
-          </div>
-        )}
-
-        {/* ── Gas Faucet ──────────────────────────────────────────────── */}
-        {isConnected && hasPass && !gasReceived && (
-          <div style={{
-            marginBottom: '14px', padding: '12px 16px',
-            background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
-            borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center',
-          }}>
-            <span style={{ fontSize: '18px' }}>⛽</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#06b6d4', fontSize: '10px', fontWeight: 700, letterSpacing: '1px' }}>
-                NEED GAS?
-              </div>
-              <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>
-                Get free 0.01 CELO for transactions (one time)
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                setRequestingGas(true);
-                try {
-                  const res = await fetch(`${BACKEND_URL}/api/faucet`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address }),
-                  });
-                  const data = await res.json();
-                  if (data.success) {
-                    toast.success('0.01 CELO sent to your wallet!');
-                    setGasReceived(true);
-                  } else {
-                    toast(data.reason || 'Already received', { icon: 'ℹ️' });
-                    setGasReceived(true);
-                  }
-                } catch (_) {
-                  toast.error('Faucet failed');
-                }
-                setRequestingGas(false);
-              }}
-              disabled={requestingGas}
-              className="gb"
-              style={{
-                padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
-                background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)',
-                color: '#06b6d4', fontSize: '10px', fontWeight: 700,
-                fontFamily: 'Orbitron, monospace',
-                opacity: requestingGas ? 0.5 : 1,
-              }}
-            >
-              {requestingGas ? '...' : 'GET GAS'}
-            </button>
           </div>
         )}
 
