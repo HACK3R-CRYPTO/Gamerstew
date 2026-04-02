@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 const LandingOverlay = ({ onEnter }) => {
     const [text, setText] = useState('');
-    const fullText = ">> SYSTEM_INITIALIZING...\n>> CONNECTING_TO_CELO_NETWORK...\n>> ESTABLISHING_SECURE_LINK...\n>> ACCESSING_ARENA_PROTOCOL...";
+    const fullText = ">> INITIALIZING_GAME_ARENA...\n>> CONNECTING_TO_CELO_MAINNET...\n>> LOADING_G$_PROTOCOL...\n>> READY_TO_PLAY...";
     const [showButton, setShowButton] = useState(false);
 
     useEffect(() => {
@@ -14,87 +14,117 @@ const LandingOverlay = ({ onEnter }) => {
                 clearInterval(timer);
                 setShowButton(true);
             }
-        }, 30);
+        }, 25);
         return () => clearInterval(timer);
     }, []);
 
     return (
-        <div className="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center p-4 font-mono text-gray-300">
-            <div className="max-w-2xl w-full border border-white/10 p-8 rounded-lg bg-black/50 backdrop-blur shadow-[0_0_50px_rgba(139,92,246,0.1)]">
-                <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
-                    <span className="text-xs text-gray-600">TERMINAL_V.3.0.1</span>
-                    <div className="flex gap-2">
-                        <div className="w-3 h-3 rounded-full bg-red-500/20"></div>
-                        <div className="w-3 h-3 rounded-full bg-yellow-500/20"></div>
-                        <div className="w-3 h-3 rounded-full bg-green-500/20"></div>
+        <div className="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center p-4" style={{ fontFamily: 'Orbitron, monospace' }}>
+            <div style={{
+                maxWidth: '480px', width: '100%', padding: '32px',
+                background: 'linear-gradient(160deg, rgba(168,85,247,0.06), rgba(6,6,14,0.98))',
+                border: '1px solid rgba(168,85,247,0.15)', borderRadius: '20px',
+                boxShadow: '0 0 60px rgba(168,85,247,0.08)',
+            }}>
+                {/* Terminal header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <span style={{ fontSize: '9px', color: '#374151', letterSpacing: '2px' }}>GAME_ARENA v1.0</span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', opacity: 0.4 }} />
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', opacity: 0.4 }} />
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', opacity: 0.4 }} />
                     </div>
                 </div>
 
-                <div className="min-h-[120px] mb-8 font-bold text-sm md:text-base leading-relaxed whitespace-pre-line text-purple-400">
+                {/* Boot text */}
+                <div style={{ minHeight: '90px', marginBottom: '24px', fontSize: '11px', lineHeight: 1.8, whiteSpace: 'pre-line', color: '#a855f7', fontWeight: 700 }}>
                     {text}
-                    <span className="animate-pulse">_</span>
+                    <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>
                 </div>
 
-                <div className={`transition-opacity duration-1000 ${showButton ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="text-6xl mb-4 animate-bounce">
-                        🦞
-                    </div>
-                    <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">
-                        ARENA_CHAMPION
+                {/* Main content */}
+                <div style={{ transition: 'opacity 0.8s', opacity: showButton ? 1 : 0 }}>
+                    <div style={{ fontSize: '42px', marginBottom: '8px' }}>🎮</div>
+                    <h1 style={{
+                        fontSize: '32px', fontWeight: 900, letterSpacing: '3px', margin: '0 0 6px',
+                        background: 'linear-gradient(135deg, #fff 0%, #a855f7 100%)',
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        lineHeight: 1.1,
+                    }}>
+                        GAME<span style={{ WebkitTextFillColor: '#a855f7' }}>_</span>ARENA
                     </h1>
-                    <p className="text-gray-400 mb-8 max-w-lg">
-                        You are entering a sovereign autonomous zone.
-                        Your mission: Outsmart the Markov-1 AI Agent in high-stakes games.
+                    <p style={{ color: '#6b7280', fontSize: '11px', lineHeight: 1.5, marginBottom: '24px', maxWidth: '360px' }}>
+                        Play skill games, wager G$, compete on weekly leaderboards.
+                        Every wager funds GoodDollar UBI — play to earn, play for good.
                     </p>
 
-                    <div className="flex flex-col gap-4">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* Solo games — primary CTA */}
                         <button
                             onClick={onEnter}
-                            className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white font-bold tracking-widest uppercase transition-all hover:scale-[1.02] shadow-[0_0_20px_rgba(147,51,234,0.3)]"
+                            style={{
+                                width: '100%', padding: '16px',
+                                background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                                border: 'none', borderRadius: '14px',
+                                color: '#fff', fontSize: '13px', fontWeight: 900, letterSpacing: '2px',
+                                cursor: 'pointer', transition: 'all 0.2s',
+                                boxShadow: '0 4px 20px rgba(168,85,247,0.3)',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                         >
-                            [ ENTER_ARENA ] — PvP vs AI
+                            PLAY GAMES
                         </button>
 
+                        {/* AI Arena — secondary */}
                         <button
-                            onClick={() => { onEnter(); setTimeout(() => window.location.href = '/games', 50); }}
-                            className="w-full py-4 bg-transparent border border-purple-500/40 hover:border-purple-400 text-purple-300 hover:text-purple-200 font-bold tracking-widest uppercase transition-all hover:scale-[1.02]"
-                            style={{ fontFamily: 'Orbitron, monospace' }}
+                            onClick={() => { onEnter(); setTimeout(() => window.location.href = '/arena', 50); }}
+                            style={{
+                                width: '100%', padding: '14px',
+                                background: 'transparent',
+                                border: '1px solid rgba(168,85,247,0.3)', borderRadius: '14px',
+                                color: '#a855f7', fontSize: '11px', fontWeight: 700, letterSpacing: '2px',
+                                cursor: 'pointer', transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#a855f7'; e.currentTarget.style.background = 'rgba(168,85,247,0.06)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(168,85,247,0.3)'; e.currentTarget.style.background = 'transparent'; }}
                         >
-                            [ PLAY_GAMES ] — Rhythm & Memory
+                            CHALLENGE AI AGENT
                         </button>
 
-                        <div className="flex gap-4 justify-center text-xs text-gray-500">
-                            <a
-                                href="https://gooddollar.org"
-                                target="_blank"
-                                className="text-purple-400 hover:text-purple-300 underline underline-offset-4 font-bold transition-all"
-                            >
-                                GET_G_TOKEN
-                            </a>
-                            <span>|</span>
-                            <a
-                                href="/ARENA_SKILL.md"
-                                target="_blank"
-                                className="hover:text-purple-400 underline underline-offset-4 decoration-white/20 hover:decoration-purple-400"
-                            >
-                                READ_SKILL_DOCS
-                            </a>
-                            <span>|</span>
-                            <a
-                                href="https://celo.org"
-                                target="_blank"
-                                className="hover:text-purple-400 underline underline-offset-4 decoration-white/20 hover:decoration-purple-400"
-                            >
-                                CELO_NETWORK
-                            </a>
+                        {/* Links */}
+                        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px' }}>
+                            {[
+                                { label: 'GET G$', href: 'https://gooddollar.org' },
+                                { label: 'CELO', href: 'https://celo.org' },
+                                { label: 'LEADERBOARD', href: '/leaderboard', internal: true },
+                            ].map((link, i) => (
+                                <a key={i}
+                                    href={link.href}
+                                    target={link.internal ? undefined : '_blank'}
+                                    rel={link.internal ? undefined : 'noopener noreferrer'}
+                                    onClick={link.internal ? (e) => { e.preventDefault(); onEnter(); setTimeout(() => window.location.href = link.href, 50); } : undefined}
+                                    style={{
+                                        color: '#4b5563', fontSize: '9px', fontWeight: 700, letterSpacing: '1px',
+                                        textDecoration: 'none', transition: 'color 0.2s',
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.color = '#a855f7'}
+                                    onMouseLeave={e => e.currentTarget.style.color = '#4b5563'}
+                                >{link.label}</a>
+                            ))}
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="absolute bottom-8 text-[10px] text-gray-700">
-                SECURE_CONNECTION_ESTABLISHED__ENCRYPTED_V2
+            {/* Footer */}
+            <div style={{ position: 'absolute', bottom: '24px', textAlign: 'center' }}>
+                <div style={{ color: '#1f2937', fontSize: '9px', letterSpacing: '1px' }}>
+                    BUILT ON CELO · POWERED BY GOODDOLLAR G$
+                </div>
             </div>
+
+            <style>{`@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
         </div>
     );
 };

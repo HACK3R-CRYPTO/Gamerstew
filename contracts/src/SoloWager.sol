@@ -36,7 +36,8 @@ contract SoloWager is Ownable, ReentrancyGuard {
     address public backendValidator;          // only this address can resolve wagers
 
     uint256 public wagerCounter;
-    uint256 public platformFeePercent = 2;    // 2% to GoodCollective
+    uint256 public platformFeePercent = 2;    // 2% to GoodCollective UBI pool
+    uint256 public devFeePercent     = 3;    // 3% to platform owner on every wager
     uint256 public payoutMultiplier  = 130;  // 130 = 1.3x payout (divide by 100)
 
     // Score thresholds to WIN for each game type
@@ -81,11 +82,16 @@ contract SoloWager is Ownable, ReentrancyGuard {
 
         gToken.safeTransferFrom(msg.sender, address(this), amount);
 
+        // Take dev fee upfront — goes to owner wallet
+        uint256 devCut = (amount * devFeePercent) / 100;
+        if (devCut > 0) gToken.safeTransfer(owner(), devCut);
+        uint256 netAmount = amount - devCut;
+
         wagerId = ++wagerCounter;
         wagers[wagerId] = Wager({
             id:        wagerId,
             player:    msg.sender,
-            amount:    amount,
+            amount:    netAmount,  // store net amount after dev fee
             gameType:  gameType,
             status:    WagerStatus.Pending,
             createdAt: block.timestamp,
@@ -231,6 +237,11 @@ contract SoloWager is Ownable, ReentrancyGuard {
     function setPayoutMultiplier(uint256 _multiplier) external onlyOwner {
         require(_multiplier >= 100 && _multiplier <= 300, "Must be 100-300 (1x-3x)");
         payoutMultiplier = _multiplier;
+    }
+
+    function setDevFee(uint256 _percent) external onlyOwner {
+        require(_percent <= 10, "Max 10%");
+        devFeePercent = _percent;
     }
 
     // ── Views ─────────────────────────────────────────────────────────────────
