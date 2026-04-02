@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, usePublicClient, useDisconnect } from 'wagmi';
 import { usePrivy } from '@privy-io/react-auth';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACT_ADDRESSES, ERC20_ABI, SOLO_WAGER_ABI, SOLO_WAGER_ADDRESS, GAME_PASS_ABI } from '../config/contracts';
@@ -77,15 +77,17 @@ function timeAgo(ts) {
 export default function GamesHub() {
   const navigate    = useNavigate();
   const { address, isConnected: wagmiConnected } = useAccount();
-  const { login, logout, authenticated, user } = usePrivy();
+  const { disconnect } = useDisconnect();
+  const { login, authenticated, user } = usePrivy();
   const privyAddr = user?.wallet?.address;
-  const isConnected = wagmiConnected || authenticated;
+  // Use authenticated (Privy) as the source of truth — matches the navbar behaviour.
+  // wagmiConnected alone can linger after logout due to async cleanup.
+  const isConnected = authenticated;
 
-  // Auto-logout stale wagmi sessions not backed by Privy
+  // Auto-clear stale wagmi sessions not backed by Privy
   useEffect(() => {
     if (wagmiConnected && !authenticated) {
-      // Old session from before Privy — clear it
-      logout();
+      disconnect();
     }
   }, [wagmiConnected, authenticated]);
   const publicClient = usePublicClient();

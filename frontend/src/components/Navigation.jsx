@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { useAccount } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import AccountModal from './AccountModal';
 
 function Navigation() {
@@ -10,6 +10,12 @@ function Navigation() {
   const [showAccount, setShowAccount] = useState(false);
   const { login, logout, authenticated, user, exportWallet } = usePrivy();
   const { address } = useAccount();
+  const { disconnect } = useDisconnect();
+
+  const handleLogout = () => {
+    logout();
+    disconnect();
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -167,7 +173,7 @@ function Navigation() {
                 </button>
                 <button
                   className="w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 font-mono text-xs uppercase tracking-wider hover:bg-red-500/10 transition-colors"
-                  onClick={() => { logout(); setMobileMenuOpen(false); }}
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
                 >
                   Log Out
                 </button>
