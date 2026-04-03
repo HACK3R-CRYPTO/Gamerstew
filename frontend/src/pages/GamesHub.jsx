@@ -170,6 +170,7 @@ export default function GamesHub() {
         abi: GAME_PASS_ABI,
         functionName: 'mint',
         args: [usernameInput],
+        ...(isMiniPay && { type: 'legacy' }),
       });
       toast.success(`Welcome, ${usernameInput}!`, { id: 'mint-pass' });
       refetchPass();
@@ -275,6 +276,7 @@ export default function GamesHub() {
         abi:     ERC20_ABI,
         functionName: 'approve',
         args:    [SOLO_WAGER_ADDRESS, amountWei],
+        ...(isMiniPay && { type: 'legacy' }),
       });
 
       toast.loading('Locking wager on-chain...', { id: 'wager' });
@@ -283,6 +285,7 @@ export default function GamesHub() {
         abi:     SOLO_WAGER_ABI,
         functionName: 'createWager',
         args:    [amountWei, game.gameType],
+        ...(isMiniPay && { type: 'legacy' }),
       });
 
       let wagerId = null;
