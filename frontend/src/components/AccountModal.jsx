@@ -168,7 +168,7 @@ export default function AccountModal({ isOpen, onClose }) {
               opacity: claiming ? 0.6 : 1,
             }}
           >
-            {claimed ? 'CLAIMED TODAY' : claiming ? 'CLAIMING...' : entitlement ? `CLAIM ${entitlement} G$` : 'CLAIM DAILY G$'}
+            {claimed ? 'CLAIMED TODAY' : claiming ? 'CLAIMING...' : entitlement ? `CLAIM ${parseFloat(formatUnits(entitlement, 18)).toFixed(2)} G$` : 'CLAIM DAILY G$'}
           </button>
 
           {/* Logout */}
