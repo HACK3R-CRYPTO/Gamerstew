@@ -317,6 +317,7 @@ export default function GamesHub() {
         @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
         @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .gc:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 30px rgba(0,0,0,0.3) !important; }
         .gb:hover { filter: brightness(1.15); transform: scale(1.01); }
         .gc, .gb { transition: all 0.25s ease; }
@@ -381,6 +382,20 @@ export default function GamesHub() {
               fontFamily: 'Orbitron, monospace', letterSpacing: '1px',
             }}>CONNECT</button>
           </div>
+        ) : isConnected && !address ? (
+          /* Privy authenticated but wagmi wallet not ready yet (common on mobile/email login) */
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px',
+            padding: '12px 16px', borderRadius: '14px',
+            background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.15)',
+          }}>
+            <div style={{
+              width: '16px', height: '16px', borderRadius: '50%',
+              border: '2px solid #a855f7', borderTopColor: 'transparent',
+              animation: 'spin 0.8s linear infinite', flexShrink: 0,
+            }} />
+            <div style={{ color: '#9ca3af', fontSize: '10px', letterSpacing: '1px' }}>SETTING UP WALLET...</div>
+          </div>
         ) : null}
 
         {/* ── Season Strip ──────────────────────────────────────────── */}
@@ -419,7 +434,7 @@ export default function GamesHub() {
         )}
 
         {/* ── Gas Faucet ──────────────────────────────────────────────── */}
-        {isConnected && !gasReceived && (
+        {isConnected && !!address && !gasReceived && (
           <div style={{
             marginBottom: '14px', padding: '12px 16px',
             background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
@@ -472,7 +487,8 @@ export default function GamesHub() {
         )}
 
         {/* ── Game Pass Gate ─────────────────────────────────────────── */}
-        {isConnected && !hasPass && (
+        {/* Require !!address so wagmi is actually connected before showing mint UI */}
+        {isConnected && !!address && !hasPass && (
           <div style={{
             marginBottom: '20px', padding: '28px 24px',
             background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))',
