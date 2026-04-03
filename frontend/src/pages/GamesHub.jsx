@@ -448,7 +448,7 @@ export default function GamesHub() {
                 NEED GAS?
               </div>
               <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>
-                Get free 0.01 CELO for transactions (one time)
+                Get free 0.025 CELO for transactions (one time)
               </div>
             </div>
             <button
@@ -462,7 +462,7 @@ export default function GamesHub() {
                   });
                   const data = await res.json();
                   if (data.success) {
-                    toast.success('0.01 CELO sent to your wallet!');
+                    toast.success('0.025 CELO sent to your wallet!');
                     setGasReceived(true);
                   } else {
                     toast(data.reason || 'Already received', { icon: 'ℹ️' });
