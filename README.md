@@ -80,11 +80,12 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 - Free play available — no wallet or G$ required
 - Every play recorded on-chain via GamePass contract (verifiable tx hash)
 
-### PvP — Challenge Markov-1
+### Human vs AI — Challenge Markov-1
 - Games: Rock-Paper-Scissors, Dice Roll, Coin Flip
 - Wager any amount of G$ — AI auto-accepts and plays
 - Winner takes 95% of the pot; 5% platform fee
 - AI uses adaptive Markov-chain prediction — it learns your patterns
+- *(Player vs Player coming in a future phase)*
 
 ### Weekly Seasons
 - 7-day competitive seasons with automatic reset
