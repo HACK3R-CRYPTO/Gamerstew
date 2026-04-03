@@ -1,29 +1,36 @@
 import { useState } from 'react';
-import { useAccount, useBalance } from 'wagmi';
+import { useAccount, useBalance, useReadContract } from 'wagmi';
 import { usePrivy } from '@privy-io/react-auth';
 import { useSelfVerification } from '../contexts/SelfVerificationContext';
-import { CONTRACT_ADDRESSES } from '../config/contracts';
+import { CONTRACT_ADDRESSES, ERC20_ABI } from '../config/contracts';
 import { formatUnits } from 'viem';
 
 export default function AccountModal({ isOpen, onClose }) {
-  const { address } = useAccount();
+  const { address: wagmiAddress } = useAccount();
   const { logout, exportWallet, user } = usePrivy();
   const { isVerified, claimG$, entitlement } = useSelfVerification();
   const [copied, setCopied] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(!entitlement);
 
+  // Use wagmi address (active connected wallet) for all balance queries
+  // user?.wallet?.address is the embedded wallet which may differ
+  const address = wagmiAddress || user?.wallet?.address;
+
   const { data: celoBalance } = useBalance({ address });
-  const { data: gBalance } = useBalance({
-    address,
-    token: CONTRACT_ADDRESSES.G_TOKEN,
+  const { data: gRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.G_TOKEN,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
   });
 
   if (!isOpen || !address) return null;
 
   const isEmbedded = user?.wallet?.walletClientType === 'privy';
   const celoVal = celoBalance ? parseFloat(formatUnits(celoBalance.value, 18)).toFixed(3) : '0';
-  const gVal = gBalance ? parseFloat(formatUnits(gBalance.value, 18)).toFixed(2) : '0';
+  const gVal = gRaw != null ? parseFloat(formatUnits(gRaw, 18)).toFixed(2) : '0';
 
   const copyAddress = () => {
     navigator.clipboard.writeText(address);
