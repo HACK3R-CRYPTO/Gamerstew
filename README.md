@@ -257,4 +257,36 @@ GameArena participates in **GoodBuilders** — GoodDollar's grant program for pr
 
 ---
 
+---
+
+## Roadmap — Next Phase
+
+### Phase 2: Player-Signed Transactions (Score Anti-Cheat)
+Currently the backend wallet submits score transactions on-chain (players can't fake scores, but all txs appear from the dev address). The upgrade:
+
+- **Backend** signs the verified game result: `sign(playerAddress + score + gameType + nonce)`
+- **Frontend** passes the signature to `writeContractAsync` — player submits and pays their own gas
+- **Contract** verifies `ecrecover(hash, sig) == trustedSigner` before recording score
+
+Result: every on-chain tx comes from the actual player's wallet. Players pay their own gas. Scores still can't be faked without the backend signature.
+
+> ⚠️ Requires contract redeployment (new address). All on-chain Game Pass NFTs and scores will reset. Supabase leaderboard data is preserved. Schedule before public launch.
+
+### Phase 3: MiniPay Full Integration ✅ (shipped on `feat/minipay`)
+- Auto-connect injected wallet when inside MiniPay
+- Stablecoin balance display (USDm / cUSD) in account modal for MiniPay users
+- Hide CELO gas faucet for MiniPay users (they pay gas in USDm natively)
+
+### Phase 4: On-Chain Weekly Seasons
+Currently weekly leaderboard and season data is stored in Supabase (off-chain). The upgrade moves this fully on-chain:
+
+- **New contract** (`SeasonScores.sol` or extend `GamePass.sol`) stores scores per week/season per player
+- Weekly season ID derived from `block.timestamp / 7 days` — no admin needed to reset
+- Top scores, badges, and season history all readable directly from the chain
+- Eliminates reliance on backend database for competitive integrity — anyone can verify rankings on-chain
+
+> This makes GameArena fully trustless: scores, seasons, and payouts all verifiable without the backend.
+
+---
+
 *Open source. Built on Celo. Powered by GoodDollar G$.*
