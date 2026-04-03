@@ -173,8 +173,11 @@ export default function GamesHub() {
         ...(isMiniPay && { type: 'legacy' }),
       });
       toast.success(`Welcome, ${usernameInput}!`, { id: 'mint-pass' });
-      refetchPass();
-      refetchUsername();
+      // Wait for chain state to update before refetching
+      setTimeout(() => {
+        refetchPass();
+        refetchUsername();
+      }, 3000);
     } catch (err) {
       const msg = err.shortMessage || err.message || 'Mint failed';
       if (msg.includes('Username taken')) toast.error('That username is taken, try another', { id: 'mint-pass' });
