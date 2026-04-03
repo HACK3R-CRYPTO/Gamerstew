@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAccount, useReadContract, useWriteContract, usePublicClient, useDisconnect } from 'wagmi';
-import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACT_ADDRESSES, ERC20_ABI, SOLO_WAGER_ABI, SOLO_WAGER_ADDRESS, GAME_PASS_ABI } from '../config/contracts';
 import { useSelfVerification } from '../contexts/SelfVerificationContext';
@@ -76,22 +76,17 @@ function timeAgo(ts) {
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function GamesHub() {
   const navigate    = useNavigate();
-  const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
+  const { address: wagmiAddress, isConnected: wagmiConnected, isConnecting, isReconnecting } = useAccount();
   const { disconnect } = useDisconnect();
   const { login, authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
   
-  // Per Privy docs: use useWallets() and wallet.isConnected as the ready flag.
-  // The embedded wallet (email/social login) needs time to hydrate into wagmi.
-  const embeddedWallet = wallets.find(w => w.walletClientType === 'privy');
-  const externalWallet = wallets.find(w => w.walletClientType !== 'privy');
-  const activeWallet   = embeddedWallet || externalWallet || wallets[0];
-  // walletReady = the official Privy signal that the wallet connector is live
-  const walletReady    = activeWallet?.isConnected ?? wagmiConnected;
+  // Directly follow the working pattern from Focus_pet:
+  // Wagmi's isConnected determines if the connector is ready for transactions.
+  const walletReady    = wagmiConnected;
 
   const privyAddr = user?.wallet?.address;
-  // Address: prefer wagmi (live connector), fall back to Privy wallet object
-  const address   = wagmiAddress || activeWallet?.address || privyAddr;
+  // Address: prefer wagmi (live connector), fall back to Privy wallet object (for UI display while wagmi loads)
+  const address   = wagmiAddress || privyAddr;
   const isConnected = authenticated;
 
   const { isVerified, isVerifying, verifyIdentity, claimG$, entitlement } = useSelfVerification();
