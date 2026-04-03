@@ -76,13 +76,16 @@ function timeAgo(ts) {
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function GamesHub() {
   const navigate    = useNavigate();
-  const { address, isConnected: wagmiConnected } = useAccount();
+  const { address: wagmiAddress, isConnected: wagmiConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const { login, authenticated, user } = usePrivy();
   const privyAddr = user?.wallet?.address;
-  // Use authenticated (Privy) as the source of truth — matches the navbar behaviour.
-  // wagmiConnected alone can linger after logout due to async cleanup.
+  // Use wagmi address if available, fall back to Privy's wallet address.
+  // For email/embedded wallet users, Privy has the address immediately after
+  // login while wagmi may take a moment to hydrate the connector.
+  const address = wagmiAddress || privyAddr;
   const isConnected = authenticated;
+
 
   // Note: no need to force-disconnect stale wagmi sessions here.
   // isConnected = authenticated (Privy), so the UI already ignores any
