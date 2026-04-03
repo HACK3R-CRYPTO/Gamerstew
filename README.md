@@ -302,6 +302,17 @@ function currentSeason() public view returns (uint256) {
 
 > This makes GameArena fully trustless — competitive integrity enforced by the contract, not the backend.
 
+### Phase 5: Player vs Player (True PvP)
+Currently players can only challenge the Markov-1 AI. The upgrade introduces real human vs human matches:
+
+- Players create a match and stake G$ — another player accepts
+- Smart contract holds escrow, winner takes the pot
+- GoodDollar Identity required for both players — no bots on either side
+- Matchmaking lobby: open challenges, private matches, stake size filtering
+- All match results recorded on-chain
+
+> Turns GameArena into a full esports protocol — same Sybil-resistant, UBI-funding loop but between real humans.
+
 ---
 
 *Open source. Built on Celo. Powered by GoodDollar G$.*
