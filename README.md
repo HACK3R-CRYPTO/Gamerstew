@@ -2,7 +2,7 @@
 
 > Play skill games. Wager G$. Fund global UBI. Every game matters.
 
-GameArena is a competitive gaming platform on **Celo Mainnet** powered by **GoodDollar G$**. Players compete in solo skill games and PvP matches against an adaptive AI agent — with real G$ stakes, weekly seasons, and on-chain proof of every play.
+GameArena is a competitive gaming platform on **Celo Mainnet** powered by **GoodDollar G$**. Players compete in solo skill games and Human vs AI matches against an adaptive AI agent — with real G$ stakes, weekly seasons, and on-chain proof of every play.
 
 Built as part of the **GoodBuilders Program** — expanding real G$ usage through competitive gaming.
 
@@ -12,7 +12,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 
 | Integration | How It Works |
 |---|---|
-| **G$ Wagering (PvP)** | Wager G$ against Markov-1 AI in RPS, Dice & Coin Flip via `ArenaPlatform.sol` |
+| **G$ Wagering (Human vs AI)** | Wager G$ against Markov-1 AI in RPS, Dice & Coin Flip via `ArenaPlatform.sol` |
 | **G$ Wagering (Solo)** | Wager G$ on score targets in Rhythm Rush (350 pts) and Simon Memory (7 sequences) via `SoloWager.sol` — win 1.3x |
 | **GoodDollar Identity** | Face verification via Identity SDK — Sybil-resistant, no bots in wager mode |
 | **UBI Pool Fees** | 2% of every wager routes to [GoodCollective UBI Pool](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) on-chain |
@@ -29,7 +29,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 │                                                              │
 │  ArenaPlatform.sol      SoloWager.sol        GamePass.sol    │
 │  0x5C0eafE7834...       0xc78A8A027e0...     0xd184E5CBE...  │
-│  PvP match escrow       Solo wager escrow    Soulbound NFT   │
+│  HvAI match escrow      Solo wager escrow    Soulbound NFT   │
 │                                              + on-chain scores│
 │  G$ Token               ERC-8004 Registry                    │
 │  0x62B8B11039...        0x8004A169FB4...                     │
@@ -42,10 +42,10 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 │                FRONTEND (React + Vite)                        │
 │                                                              │
 │  GamesHub.jsx    — game selection, wager, GamePass mint      │
-│  ArenaGame.jsx   — PvP vs Markov-1 AI agent                  │
+│  ArenaGame.jsx   — Human vs AI (Markov-1 agent)               │
 │  RhythmRush.jsx  — solo rhythm game with anti-cheat          │
 │  SimonGame.jsx   — solo memory game                          │
-│  Leaderboard.jsx — rankings, seasons, PvP history            │
+│  Leaderboard.jsx — rankings, seasons, match history          │
 └──────────────────────────────────────────────────────────────┘
            ↕ REST API
 ┌──────────────────────────────────────────────────────────────┐
@@ -105,7 +105,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 
 | Contract | Address | Purpose |
 |---|---|---|
-| `ArenaPlatform.sol` | [`0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) | PvP match escrow |
+| `ArenaPlatform.sol` | [`0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) | Human vs AI match escrow |
 | `SoloWager.sol` | [`0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) | Solo wager escrow (3% dev fee, 2% UBI) |
 | `GamePass.sol` | [`0xd184E5CBEbf957624d14fAa0bfe20d6443411453`](https://celoscan.io/address/0xd184E5CBEbf957624d14fAa0bfe20d6443411453) | Soulbound NFT + on-chain scores |
 | GoodDollar G$ | [`0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A) | Wager & payout currency |
@@ -120,8 +120,8 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 |---|---|---|---|
 | Player wins solo wager | 3% dev fee | 2% of payout | Gets 1.3x minus fees |
 | Player loses solo wager | 3% dev fee + treasury keeps wager | 2% | Loses wager |
-| Player wins PvP | 5% platform fee | — | Gets 95% of pot |
-| Player loses PvP | 5% platform fee | — | Loses wager |
+| Player wins vs AI | 5% platform fee | — | Gets 95% of pot |
+| Player loses vs AI | 5% platform fee | — | Loses wager |
 | UBI recipient plays | — | — | Can claim daily G$ in-app |
 
 Every wager contributes to both platform revenue and the GoodDollar UBI pool.
