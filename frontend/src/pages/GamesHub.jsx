@@ -448,11 +448,17 @@ export default function GamesHub() {
                 NEED GAS?
               </div>
               <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>
-                Get free 0.025 CELO for transactions (one time)
+                {isVerified 
+                  ? 'Get free 0.025 CELO for transactions (one time)' 
+                  : 'Verify your humanity to unlock free gas'}
               </div>
             </div>
             <button
               onClick={async () => {
+                if (!isVerified) {
+                  toast('Please verify your humanity first to prevent spam.', { icon: '🛡️' });
+                  return;
+                }
                 setRequestingGas(true);
                 try {
                   const res = await fetch(`${BACKEND_URL}/api/faucet`, {
@@ -477,13 +483,15 @@ export default function GamesHub() {
               className="gb"
               style={{
                 padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
-                background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)',
-                color: '#06b6d4', fontSize: '10px', fontWeight: 700,
+                background: isVerified ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.05)', 
+                border: isVerified ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                color: isVerified ? '#06b6d4' : '#9ca3af', 
+                fontSize: '10px', fontWeight: 700,
                 fontFamily: 'Orbitron, monospace',
                 opacity: requestingGas ? 0.5 : 1,
               }}
             >
-              {requestingGas ? '...' : 'GET GAS'}
+              {requestingGas ? '...' : isVerified ? 'GET GAS' : 'VERIFY TO CLAIM'}
             </button>
           </div>
         )}
