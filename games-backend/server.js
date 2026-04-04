@@ -660,6 +660,12 @@ app.get('/api/streak/:address', async (req, res) => {
   res.json({ streak, playedToday });
 });
 
+// ─── POST /api/dice-roll — server-side randomness (blocks Math.random override) ─
+app.post('/api/dice-roll', async (_, res) => {
+  const { randomInt } = require('crypto');
+  res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
+});
+
 // ─── POST /api/faucet — send 0.01 CELO to new users (once per wallet) ────────
 app.post('/api/faucet', async (req, res) => {
   const { address } = req.body;

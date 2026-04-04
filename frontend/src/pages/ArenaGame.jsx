@@ -12,6 +12,8 @@ import DocsModal from '../components/DocsModal';
 import MoltbookFeed from '../components/MoltbookFeed';
 import { useSelfVerification } from '../contexts/SelfVerificationContext';
 
+const BACKEND_URL = import.meta.env.VITE_GAMES_BACKEND_URL || 'http://localhost:3005';
+
 const ArenaGame = () => {
     const navigate = useNavigate();
     const { address, isConnected, chainId } = useAccount();
@@ -802,7 +804,15 @@ const ArenaGame = () => {
                         {/* Move selection */}
                         <div style={{ padding: '16px 24px 28px' }}>
                             {activeMatch.gameType === 1 ? (
-                                <button onClick={() => handlePlayMove(activeMatch.id, Math.floor(Math.random() * 6) + 1)}
+                                <button onClick={async () => {
+                                    try {
+                                        const r = await fetch(`${BACKEND_URL}/api/dice-roll`, { method: 'POST' });
+                                        const { roll } = await r.json();
+                                        handlePlayMove(activeMatch.id, roll);
+                                    } catch (_) {
+                                        toast.error('Failed to roll dice — try again');
+                                    }
+                                }}
                                     className="hover:scale-[1.02] transition-all"
                                     style={{
                                         width: '100%', padding: '28px', borderRadius: '16px', cursor: 'pointer',
