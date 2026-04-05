@@ -381,7 +381,7 @@ function validateScore({ score, gameTime, game }) {
 }
 
 // ─── POST /api/start-session ───────────────────────────────────────────────
-app.post('/api/start-session', requireSecret, strictLimiter, async (req, res) => {
+app.post('/api/start-session', strictLimiter, async (req, res) => {
   const { playerAddress } = req.body;
   if (!playerAddress) return res.status(400).json({ error: 'Missing playerAddress' });
   if (!validator) return res.status(500).json({ error: 'Validator not ready' });
@@ -754,7 +754,7 @@ app.get('/api/streak/:address', requireSecret, async (req, res) => {
 });
 
 // ─── POST /api/dice-roll — server-side randomness (blocks Math.random override) ─
-app.post('/api/dice-roll', requireSecret, async (_, res) => {
+app.post('/api/dice-roll', standardLimiter, async (_, res) => {
   const { randomInt } = require('crypto');
   res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
 });
