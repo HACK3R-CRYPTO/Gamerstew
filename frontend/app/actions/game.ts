@@ -66,6 +66,32 @@ export async function rollDice(accessToken: string, matchId: number): Promise<nu
   return roll;
 }
 
+// ─── signScore ───────────────────────────────────────────────────────────────
+// Called before the on-chain tx. Backend signs an EIP-712 BackendApproval
+// voucher. Frontend passes that voucher to recordScoreWithBackendSig so the
+// player's wallet submits the tx (player pays gas, shows on their Celoscan).
+export async function signScore(
+  accessToken: string,
+  playerAddress: string,
+  scoreData: { game: 'rhythm' | 'simon'; score: number }
+): Promise<{ success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string }> {
+  const isValid = await verifyUser(accessToken, playerAddress);
+  if (!isValid) return { success: false, error: 'Unauthorized' };
+
+  try {
+    const res = await fetch(`${process.env.BACKEND_URL}/api/sign-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
+      body: JSON.stringify({ playerAddress, game: scoreData.game, score: scoreData.score }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || 'Sign failed' };
+    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
 // ─── submitScore ─────────────────────────────────────────────────────────────
 // Called from game components — runs entirely on the server.
 // Supabase URL, anon key, and Privy app secret never touch the browser.
@@ -78,6 +104,7 @@ export async function submitScore(
     gameTime: number;
     wagered?: string | null;
     wagerId?: string | null;
+    txHash?: string | null;
   }
 ) {
   // 1. Verify the caller actually owns this wallet via Privy

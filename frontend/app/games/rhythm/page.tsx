@@ -3,7 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import { submitScore } from '@/app/actions/game';
+import { useWriteContract } from 'wagmi';
+import { submitScore, signScore } from '@/app/actions/game';
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from '@/lib/contracts';
 
 const BASE_BPM         = 90;
 const MAX_BPM          = 200;
@@ -21,6 +23,7 @@ const BUTTON_COLORS: Record<number, { active: string; glow: string; key: string 
 export default function RhythmRush() {
   const { user, getAccessToken, authenticated } = usePrivy();
   const router = useRouter();
+  const { writeContractAsync } = useWriteContract();
   const address = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
 
   const [score, setScore]                   = useState(0);
@@ -127,10 +130,29 @@ export default function RhythmRush() {
     try {
       const token = await getAccessToken();
       if (!token) return;
+
+      // 1. Get backend signature (EIP-712 BackendApproval voucher)
+      const sig = await signScore(token, address, { game: 'rhythm', score: scoreRef.current });
+
+      // 2. Player submits on-chain — embedded wallet: silent, MetaMask: popup
+      let txHash: string | null = null;
+      if (sig.success) {
+        try {
+          txHash = await writeContractAsync({
+            address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+            abi: GAME_PASS_ABI,
+            functionName: 'recordScoreWithBackendSig',
+            args: [sig.gameType, BigInt(scoreRef.current), BigInt(sig.nonce), sig.signature as `0x${string}`],
+          });
+        } catch (_) { /* wallet rejected or not connected — still save to Supabase */ }
+      }
+
+      // 3. Save to Supabase + get rank/streak
       const result = await submitScore(token, address, {
         game: 'rhythm',
         score: scoreRef.current,
         gameTime: elapsed,
+        txHash,
       });
       if (result.success) {
         if (result.rank) setMyRank(result.rank);

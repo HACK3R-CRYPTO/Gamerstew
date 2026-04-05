@@ -3,7 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import { submitScore } from '@/app/actions/game';
+import { useWriteContract } from 'wagmi';
+import { submitScore, signScore } from '@/app/actions/game';
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from '@/lib/contracts';
 
 const BASE_COLORS = [
   { id: 'red',    hex: '#ef4444', glow: 'rgba(239,68,68,0.8)',   freq: 261.63 },
@@ -25,6 +27,7 @@ type Color = typeof BASE_COLORS[0];
 export default function SimonGame() {
   const { user, getAccessToken, authenticated } = usePrivy();
   const router  = useRouter();
+  const { writeContractAsync } = useWriteContract();
   const address = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
 
   const [gamePattern, setGamePattern]           = useState<string[]>([]);
@@ -117,8 +120,26 @@ export default function SimonGame() {
     try {
       const token = await getAccessToken();
       if (!token) return;
+
+      // 1. Get backend signature (EIP-712 BackendApproval voucher)
+      const sig = await signScore(token, address, { game: 'simon', score: finalScore });
+
+      // 2. Player submits on-chain — embedded wallet: silent, MetaMask: popup
+      let txHash: string | null = null;
+      if (sig.success) {
+        try {
+          txHash = await writeContractAsync({
+            address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+            abi: GAME_PASS_ABI,
+            functionName: 'recordScoreWithBackendSig',
+            args: [sig.gameType, BigInt(finalScore), BigInt(sig.nonce), sig.signature as `0x${string}`],
+          });
+        } catch (_) { /* wallet rejected or not connected — still save to Supabase */ }
+      }
+
+      // 3. Save to Supabase + get rank/streak
       const result = await submitScore(token, address, {
-        game: 'simon', score: finalScore, gameTime,
+        game: 'simon', score: finalScore, gameTime, txHash,
       });
       if (result.success) {
         if (result.rank) setMyRank(result.rank);

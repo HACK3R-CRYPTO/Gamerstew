@@ -65,14 +65,42 @@ const SOLO_WAGER_ABI = [
   'function totalUsers() external view returns (uint256)',
 ];
 
-const GAME_PASS_ADDR = '0xd184E5CBEbf957624d14fAa0bfe20d6443411453';
+const GAME_PASS_ADDR = process.env.GAME_PASS_ADDRESS || '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE';
 const GAME_PASS_ABI  = [
-  'function getUsername(address player) external view returns (string)',
+  // ── Read ──────────────────────────────────────────────────────────────────
   'function totalSupply() external view returns (uint256)',
-  'function recordScore(address player, uint8 gameType, uint256 score) external',
-  'function totalGamesPlayed() external view returns (uint256)',
+  'function hasMinted(address player) external view returns (bool)',
+  'function getUsername(address player) external view returns (string)',
+  'function usernameOf(address player) external view returns (string)',
+  'function isUsernameAvailable(string username) external view returns (bool)',
+  'function currentSeason() external view returns (uint256)',
   'function bestScore(address player, uint8 gameType) external view returns (uint256)',
+  'function weeklyBest(uint256 season, address player, uint8 gameType) external view returns (uint256)',
+  'function gamesPlayed(address player) external view returns (uint256)',
+  'function totalGamesPlayed() external view returns (uint256)',
+  'function nonces(address player) external view returns (uint256)',
+  'function scoreNonces(address player) external view returns (uint256)',
+  // ── Write ─────────────────────────────────────────────────────────────────
+  'function recordScore(address player, uint8 gameType, uint256 score) external',
+  'function recordScoreSigned(address player, uint8 gameType, uint256 score, uint256 nonce, bytes signature) external',
+  'function adminSetScore(address player, uint8 gameType, uint256 score, uint256 season) external',
 ];
+
+// EIP-712 domain for BackendApproval signing
+const BACKEND_APPROVAL_DOMAIN = {
+  name: 'GameArena Pass',
+  version: '3',
+  chainId: 42220,
+  verifyingContract: GAME_PASS_ADDR,
+};
+const BACKEND_APPROVAL_TYPES = {
+  BackendApproval: [
+    { name: 'player',   type: 'address' },
+    { name: 'gameType', type: 'uint8'   },
+    { name: 'score',    type: 'uint256' },
+    { name: 'nonce',    type: 'uint256' },
+  ],
+};
 
 let provider   = null;
 let passContract = null;
@@ -410,6 +438,49 @@ app.post('/api/start-session', strictLimiter, async (req, res) => {
   }
 });
 
+// ─── POST /api/sign-score ────────────────────────────────────────────────────
+// Called by the Next.js server action before the player submits on-chain.
+// Returns an EIP-712 BackendApproval signature + current scoreNonce.
+// The frontend then calls recordScoreWithBackendSig(gameType, score, nonce, sig).
+app.post('/api/sign-score', requireSecret, async (req, res) => {
+  if (!validator || !passContract) {
+    return res.status(503).json({ error: 'Validator not configured' });
+  }
+
+  const { playerAddress, game, score } = req.body;
+  if (!playerAddress || !game || score === undefined) {
+    return res.status(400).json({ error: 'Missing playerAddress, game, or score' });
+  }
+  if (!['rhythm', 'simon'].includes(game)) {
+    return res.status(400).json({ error: 'Unknown game' });
+  }
+  if (typeof score !== 'number' || score < 0 || score > 1_000_000) {
+    return res.status(400).json({ error: 'Score out of range' });
+  }
+
+  const gameType = game === 'rhythm' ? 0 : 1;
+
+  try {
+    const nonce = await passContract.scoreNonces(playerAddress);
+
+    const signature = await validator.signTypedData(
+      BACKEND_APPROVAL_DOMAIN,
+      BACKEND_APPROVAL_TYPES,
+      {
+        player:   playerAddress,
+        gameType,
+        score:    BigInt(score),
+        nonce,
+      },
+    );
+
+    return res.json({ success: true, signature, nonce: nonce.toString(), gameType });
+  } catch (e) {
+    console.error('sign-score error:', e.message);
+    return res.status(500).json({ error: 'Failed to sign score' });
+  }
+});
+
 // ─── POST /api/submit-score ─────────────────────────────────────────────────
 app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => {
   const { playerAddress, scoreData, session } = req.body;
@@ -470,20 +541,9 @@ app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => 
     wagerTxHash = await resolveOnChain(wagerId, score);
   }
 
-  // Record score on-chain via GamePass (get tx hash — stores all-time best)
-  let scoreTxHash = null;
-  if (passContract && passContract.recordScore) {
-    const gameType = game === 'rhythm' ? 0 : 1;
-    try {
-      const tx = await passContract.recordScore(playerAddress, gameType, BigInt(score));
-      const receipt = await tx.wait();
-      scoreTxHash = receipt.hash;
-      console.log(`⛓️  Score on-chain: ${playerAddress.slice(0, 8)}... → ${score} pts (tx: ${receipt.hash.slice(0, 10)}...)`);
-    } catch (e) {
-      console.warn(`⚠️  On-chain score failed: ${e.message}`);
-    }
-  }
-
+  // On-chain tx is now submitted by the player via recordScoreWithBackendSig.
+  // Frontend passes the resulting txHash here after the wallet confirms.
+  const scoreTxHash = scoreData.txHash || null;
   const txHash = wagerTxHash || scoreTxHash;
 
   // Save actual game score to Supabase (per-season, not all-time best)
@@ -846,14 +906,14 @@ async function indexOnChainScores() {
   if (!passContract) return;
   try {
     const iface = new ethers.Interface([
-      'event ScoreRecorded(address indexed player, uint8 indexed gameType, uint256 score, uint256 totalGames)',
+      'event ScoreRecorded(address indexed player, uint8 indexed gameType, uint256 score, uint256 indexed season, uint256 totalGames)',
     ]);
     const rpc = new ethers.JsonRpcProvider(CELO_RPC);
     const currentBlock = await rpc.getBlockNumber();
     const fromBlock = Math.max(0, currentBlock - 200000);
     const logs = await rpc.getLogs({
       address: GAME_PASS_ADDR,
-      topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256)')],
+      topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256,uint256)')],
       fromBlock,
       toBlock: currentBlock,
     });
@@ -897,6 +957,7 @@ async function indexOnChainScores() {
           game_time: 0,
           season_number: currentSeasonNumber(),
           tx_hash: log.transactionHash,
+          created_at: timestamp,
         });
       }
 
