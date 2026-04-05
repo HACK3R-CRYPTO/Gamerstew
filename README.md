@@ -134,7 +134,7 @@ Every wager contributes to both platform revenue and the GoodDollar UBI pool.
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:3000
 ```
 
 ### 2. Games Backend
@@ -164,20 +164,25 @@ forge script script/DeploySoloWager.s.sol \
 
 ## Environment Variables
 
-### Frontend (`frontend/.env`)
+### Frontend (`frontend/.env.local`)
 ```bash
-VITE_WEB3AUTH_CLIENT_ID=<your web3auth client id>
-VITE_REOWN_PROJECT_ID=<your reown project id>
-VITE_RPC_URL=https://forno.celo.org
-VITE_GAMES_BACKEND_URL=http://localhost:3005
-VITE_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
-VITE_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
-VITE_GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
-VITE_AI_AGENT_ADDRESS=0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1
-VITE_ARENA_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
-VITE_ERC8004_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
-VITE_ERC8004_REPUTATION=0x8004BAa17C55a88189AE136b182e5fdA19dE9b63
-VITE_AGENT_TOKEN_ID=6386
+# Privy
+NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
+PRIVY_APP_SECRET=<your privy app secret>
+
+# Backend
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3005
+BACKEND_URL=http://localhost:3005
+INTERNAL_SECRET=<shared secret with backend>
+
+# Contracts (Celo Mainnet)
+NEXT_PUBLIC_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
+NEXT_PUBLIC_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
+NEXT_PUBLIC_GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
+NEXT_PUBLIC_G_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
+NEXT_PUBLIC_AI_AGENT_ADDRESS=0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1
+NEXT_PUBLIC_ERC8004_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+NEXT_PUBLIC_AGENT_TOKEN_ID=6386
 ```
 
 ### Games Backend (`games-backend/.env`)
@@ -186,7 +191,10 @@ PORT=3005
 CELO_RPC_URL=https://forno.celo.org
 SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
 GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
+ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
 VALIDATOR_PRIVATE_KEY=<your validator private key>
+INTERNAL_SECRET=<shared secret with frontend>
+ALLOWED_ORIGINS=http://localhost:3000
 SUPABASE_URL=<your supabase url>
 SUPABASE_ANON_KEY=<your supabase anon key>
 ```
@@ -199,7 +207,7 @@ SUPABASE_ANON_KEY=<your supabase anon key>
 |---|---|
 | Blockchain | Celo Mainnet |
 | Smart Contracts | Solidity, Foundry, OpenZeppelin v4 |
-| Frontend | React, Vite, wagmi, viem |
+| Frontend | Next.js 15 (App Router), wagmi, viem |
 | Backend | Express.js, ethers.js v6 |
 | Database | Supabase (PostgreSQL) |
 | Identity | GoodDollar Identity SDK, ERC-8004 |
