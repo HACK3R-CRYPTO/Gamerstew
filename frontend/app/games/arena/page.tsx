@@ -7,6 +7,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { BookOpen } from 'lucide-react';
 import { parseUnits, formatUnits, encodeAbiParameters } from 'viem';
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC8004_REGISTRY_ABI, ERC20_ABI } from '@/lib/contracts';
+import { rollDice } from '@/app/actions/game';
 import { toast } from 'react-hot-toast';
 import { useArenaEvents } from '@/hooks/useArenaEvents';
 import { MATCH_STATUS, GAME_TYPES, MOVES, getMoveDisplay } from '@/lib/gameLogic';
@@ -88,7 +89,7 @@ export default function ArenaGame() {
           .then(m => {
             setAgentProfile({ name: m.name || 'Markov-1', model: m.model || 'Celo AI', description: m.description || '', wallet: (agentWallet as string) || CONTRACT_ADDRESSES.AI_AGENT, active: true });
           })
-          .catch(() => {});
+          .catch(() => { });
         return;
       }
       setAgentProfile({ name: meta.name || 'Markov-1', model: meta.model || 'Celo AI', description: meta.description || '', wallet: (agentWallet as string) || CONTRACT_ADDRESSES.AI_AGENT, active: true });
@@ -565,7 +566,7 @@ export default function ArenaGame() {
             </div>
             <div style={{ padding: '16px 24px 28px' }}>
               {activeMatch.gameType === 1 ? (
-                <button onClick={() => handlePlayMove(activeMatch.id, Math.floor(Math.random() * 6) + 1)} className="hover:scale-[1.02] transition-all" style={{ width: '100%', padding: '28px', borderRadius: '16px', cursor: 'pointer', background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.05))', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', fontFamily: 'Orbitron, monospace' }}>
+                <button onClick={async () => { const roll = await rollDice(); handlePlayMove(activeMatch.id, roll); }} className="hover:scale-[1.02] transition-all" style={{ width: '100%', padding: '28px', borderRadius: '16px', cursor: 'pointer', background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.05))', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', fontFamily: 'Orbitron, monospace' }}>
                   <span style={{ fontSize: '48px' }}>🎲</span>
                   <span style={{ color: '#c084fc', fontSize: '14px', fontWeight: 900, letterSpacing: '2px' }}>ROLL DICE</span>
                 </button>

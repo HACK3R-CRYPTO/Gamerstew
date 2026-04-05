@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import toast from 'react-hot-toast';
 import { useIdentitySDK, IdentitySDK } from '@goodsdks/identity-sdk';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { ClaimSDK } from '@goodsdks/citizen-sdk';
 type AnyIdentitySDK = any;
 

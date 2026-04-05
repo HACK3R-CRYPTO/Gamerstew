@@ -34,6 +34,14 @@ async function verifyUser(accessToken: string, claimedAddress: string) {
   }
 }
 
+// ─── rollDice ────────────────────────────────────────────────────────────────
+// Generates a cryptographically secure dice roll (1–6) on the server.
+// Client-side Math.random overrides cannot affect this result.
+export async function rollDice(): Promise<number> {
+  const { randomInt } = await import('crypto');
+  return randomInt(1, 7); // 1 to 6 inclusive
+}
+
 // ─── submitScore ─────────────────────────────────────────────────────────────
 // Called from game components — runs entirely on the server.
 // Supabase URL, anon key, and Privy app secret never touch the browser.

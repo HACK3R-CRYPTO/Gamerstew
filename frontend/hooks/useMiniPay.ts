@@ -1,14 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function useIsMiniPay() {
-  const [isMiniPay, setIsMiniPay] = useState(false);
-
-  useEffect(() => {
-    const detected = !!(window.ethereum?.isMiniPay);
-    setIsMiniPay(detected);
-  }, []);
-
+  const [isMiniPay] = useState(() => typeof window !== 'undefined' && !!(window.ethereum?.isMiniPay));
   return isMiniPay;
 }
