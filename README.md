@@ -112,6 +112,14 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 | ERC-8004 Registry | [`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) | Agent identity (Token #6386) |
 | GoodCollective UBI | [`0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) | 2% fee destination |
 
+### GamePass Migration Note
+
+GamePass was migrated from [`0xd184E5CBEbf957624d14fAa0bfe20d6443411453`](https://celoscan.io/address/0xd184E5CBEbf957624d14fAa0bfe20d6443411453) to [`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) (v3).
+
+The reason for the migration was to make score submissions fully trustless. Previously all score transactions were submitted from the dev wallet, meaning every on-chain record appeared to come from the same address. With v3, the backend signs the verified game result using EIP-712 and the player submits the transaction themselves from their own wallet. This means every score on-chain is directly tied to the player's address and verifiable by anyone.
+
+All existing GamePass holders from the old contract were automatically migrated to v3. No action needed from existing players. New players will mint directly on v3 — it is free.
+
 ---
 
 ## G$ Token Economics
