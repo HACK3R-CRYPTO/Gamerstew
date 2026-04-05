@@ -1,23 +1,14 @@
 require('dotenv').config();
-const express  = require('express');
-const cors     = require('cors');
+const express = require('express');
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit = require('express-rate-limit');
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 3005;
 
-// ─── CORS — only the Next.js frontend may call this server ───────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',').map(o => o.trim());
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow server-to-server calls (no origin header) from Next.js server actions
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
-  },
-}));
+// ─── CORS — only allowed origins or trusted server-to-server calls ───────────
+const allowedOrigins = (process.env.ALLOWED_ORIGINS).split(',').map(o => o.trim());
 app.use(express.json());
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
@@ -44,6 +35,29 @@ function requireSecret(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
+// For no-origin requests (Next.js server actions) require INTERNAL_SECRET.
+// Browser requests must come from an allowed origin.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (!origin) {
+    if (req.headers['x-internal-secret'] === INTERNAL_SECRET) return next();
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-internal-secret');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Origin not allowed' });
+});
+
 // ─── Supabase ────────────────────────────────────────────────────────────────
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -52,9 +66,9 @@ const supabase = createClient(
 console.log('📦 Supabase connected');
 
 // ─── On-chain config ────────────────────────────────────────────────────────
-const CELO_RPC          = process.env.CELO_RPC_URL  || 'https://forno.celo.org';
-const SOLO_WAGER_ADDR   = process.env.SOLO_WAGER_ADDRESS || '';
-const VALIDATOR_KEY     = process.env.VALIDATOR_PRIVATE_KEY || '';
+const CELO_RPC = process.env.CELO_RPC_URL || 'https://forno.celo.org';
+const SOLO_WAGER_ADDR = process.env.SOLO_WAGER_ADDRESS || '';
+const VALIDATOR_KEY = process.env.VALIDATOR_PRIVATE_KEY || '';
 
 const SOLO_WAGER_ABI = [
   'function resolveWager(uint256 wagerId, uint256 score) external',
@@ -66,7 +80,7 @@ const SOLO_WAGER_ABI = [
 ];
 
 const GAME_PASS_ADDR = process.env.GAME_PASS_ADDRESS || '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE';
-const GAME_PASS_ABI  = [
+const GAME_PASS_ABI = [
   // ── Read ──────────────────────────────────────────────────────────────────
   'function totalSupply() external view returns (uint256)',
   'function hasMinted(address player) external view returns (bool)',
@@ -95,24 +109,24 @@ const BACKEND_APPROVAL_DOMAIN = {
 };
 const BACKEND_APPROVAL_TYPES = {
   BackendApproval: [
-    { name: 'player',   type: 'address' },
-    { name: 'gameType', type: 'uint8'   },
-    { name: 'score',    type: 'uint256' },
-    { name: 'nonce',    type: 'uint256' },
+    { name: 'player', type: 'address' },
+    { name: 'gameType', type: 'uint8' },
+    { name: 'score', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
   ],
 };
 
-let provider   = null;
+let provider = null;
 let passContract = null;
-let validator  = null;
+let validator = null;
 let wagerContract = null;
 
 if (SOLO_WAGER_ADDR && VALIDATOR_KEY) {
   try {
-    provider      = new ethers.JsonRpcProvider(CELO_RPC);
-    validator     = new ethers.Wallet(VALIDATOR_KEY, provider);
+    provider = new ethers.JsonRpcProvider(CELO_RPC);
+    validator = new ethers.Wallet(VALIDATOR_KEY, provider);
     wagerContract = new ethers.Contract(SOLO_WAGER_ADDR, SOLO_WAGER_ABI, validator);
-    passContract  = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, validator);
+    passContract = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, validator);
     console.log(`🔗 On-chain resolver ready — validator: ${validator.address}`);
   } catch (e) {
     console.warn('⚠️  On-chain resolver not configured:', e.message);
@@ -121,7 +135,7 @@ if (SOLO_WAGER_ADDR && VALIDATOR_KEY) {
   try {
     const p = new ethers.JsonRpcProvider(CELO_RPC);
     passContract = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, p);
-  } catch (_) {}
+  } catch (_) { }
   console.log('ℹ️  SOLO_WAGER_ADDRESS or VALIDATOR_PRIVATE_KEY not set — wager resolution disabled');
 }
 
@@ -141,7 +155,7 @@ async function resolveUsername(addr) {
 async function resolveOnChain(wagerId, score) {
   if (!wagerContract || !wagerId) return null;
   try {
-    const tx      = await wagerContract.resolveWager(BigInt(wagerId), BigInt(score));
+    const tx = await wagerContract.resolveWager(BigInt(wagerId), BigInt(score));
     const receipt = await tx.wait();
     console.log(`✅ resolveWager(${wagerId}, ${score}) — tx: ${receipt.hash}`);
     return receipt.hash;
@@ -161,7 +175,7 @@ async function getTreasuryBalance() {
 
 // ─── Season helpers ─────────────────────────────────────────────────────────
 const SEASON_EPOCH = 1770249600;
-const SEASON_DAYS  = 7;
+const SEASON_DAYS = 7;
 
 function currentSeasonNumber() {
   const elapsed = Math.floor(Date.now() / 1000) - SEASON_EPOCH;
@@ -170,7 +184,7 @@ function currentSeasonNumber() {
 
 function seasonBounds(n) {
   const start = SEASON_EPOCH + (n - 1) * SEASON_DAYS * 86400;
-  const end   = start + SEASON_DAYS * 86400;
+  const end = start + SEASON_DAYS * 86400;
   return { start, end };
 }
 
@@ -210,7 +224,7 @@ async function registerUser(addr) {
     .update({ play_streak: newStreak, last_play_date: today })
     .eq('wallet_address', lower);
 
-  if (newStreak > 1) console.log(`🔥 ${lower.slice(0,8)}... streak: ${newStreak} days`);
+  if (newStreak > 1) console.log(`🔥 ${lower.slice(0, 8)}... streak: ${newStreak} days`);
   return newStreak;
 }
 
@@ -248,7 +262,7 @@ async function saveScore(entry) {
     // Delete old + insert new (avoids RLS update issues)
     await supabase.from('scores').delete().eq('id', existing.id);
     await supabase.from('scores').insert(entry);
-    console.log(`📈 Score updated: ${entry.wallet_address.slice(0,8)}... ${existing.score} → ${entry.score}`);
+    console.log(`📈 Score updated: ${entry.wallet_address.slice(0, 8)}... ${existing.score} → ${entry.score}`);
   } else {
     // Insert new
     await supabase.from('scores').insert(entry);
@@ -333,7 +347,7 @@ async function sealCompletedSeasons() {
 
     // Get scores for this season
     const startDate = new Date(start * 1000).toISOString();
-    const endDate   = new Date(end * 1000).toISOString();
+    const endDate = new Date(end * 1000).toISOString();
 
     const { data: rhythmScores } = await supabase
       .from('scores')
@@ -419,9 +433,9 @@ app.post('/api/start-session', strictLimiter, async (req, res) => {
 
   try {
     const timestamp = Date.now();
-    const nonce     = Math.floor(Math.random() * 1000000);
+    const nonce = Math.floor(Math.random() * 1000000);
     // Create a deterministic payload for signing
-    const payload   = `${playerAddress.toLowerCase()}:${timestamp}:${nonce}`;
+    const payload = `${playerAddress.toLowerCase()}:${timestamp}:${nonce}`;
     const signature = await validator.signMessage(payload);
 
     res.json({
@@ -468,9 +482,9 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       BACKEND_APPROVAL_DOMAIN,
       BACKEND_APPROVAL_TYPES,
       {
-        player:   playerAddress,
+        player: playerAddress,
         gameType,
-        score:    BigInt(score),
+        score: BigInt(score),
         nonce,
       },
     );
@@ -510,7 +524,7 @@ app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => 
       }
 
       const actualElapsed = Date.now() - timestamp;
-      const reportedTime  = scoreData.gameTime || 0;
+      const reportedTime = scoreData.gameTime || 0;
 
       if (actualElapsed < (reportedTime - 2000)) {
         console.warn(`🚨 Anti-cheat: Speed hack detected from ${playerAddress}. Reported ${reportedTime}ms, but only ${actualElapsed}ms elapsed.`);
@@ -574,10 +588,10 @@ app.get('/api/leaderboard', async (req, res) => {
   if (!['rhythm', 'simon'].includes(game)) {
     return res.status(400).json({ error: 'game must be rhythm or simon' });
   }
-  const limit  = Math.min(50, parseInt(req.query.limit) || 20);
+  const limit = Math.min(50, parseInt(req.query.limit) || 20);
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
-  const page   = offset > 0 ? null : Math.max(1, parseInt(req.query.page) || 1);
-  const start  = offset > 0 ? offset : (page - 1) * limit;
+  const page = offset > 0 ? null : Math.max(1, parseInt(req.query.page) || 1);
+  const start = offset > 0 ? offset : (page - 1) * limit;
 
   const all = await getLeaderboard(game);
   const total = all.length;
@@ -656,7 +670,7 @@ app.get('/api/stats', async (_, res) => {
   try {
     const bal = await getTreasuryBalance();
     estimatedPrizePot = (parseFloat(bal) * 0.10).toFixed(2);
-  } catch (_) {}
+  } catch (_) { }
 
   res.json({
     totalUsers,
@@ -730,7 +744,7 @@ app.get('/api/seasons', async (_, res) => {
     currentEndsAt: end,
     live: {
       rhythm: await Promise.all(dedupScores(liveRhythm).map(formatEntry)),
-      simon:  await Promise.all(dedupScores(liveSimon).map(formatEntry)),
+      simon: await Promise.all(dedupScores(liveSimon).map(formatEntry)),
     },
     past: (pastSeasons || []).map(s => ({
       season: s.season_number,
@@ -749,7 +763,7 @@ app.get('/api/badges/:address', async (req, res) => {
   const addr = req.params.address.toLowerCase();
   const badges = await getBadges(addr);
 
-  const goldCount   = badges.filter(b => b.badge === 'gold').length;
+  const goldCount = badges.filter(b => b.badge === 'gold').length;
   const silverCount = badges.filter(b => b.badge === 'silver').length;
   const bronzeCount = badges.filter(b => b.badge === 'bronze').length;
 
@@ -923,16 +937,16 @@ async function indexOnChainScores() {
     let added = 0;
     for (const log of logs) {
       const parsed = iface.parseLog({ topics: log.topics, data: log.data });
-      const player   = parsed.args[0].toLowerCase();
+      const player = parsed.args[0].toLowerCase();
       const gameType = Number(parsed.args[1]);
-      const score    = Number(parsed.args[2]);
-      const game     = gameType === 0 ? 'rhythm' : 'simon';
+      const score = Number(parsed.args[2]);
+      const game = gameType === 0 ? 'rhythm' : 'simon';
 
       let timestamp = new Date().toISOString();
       try {
         const block = await rpc.getBlock(log.blockNumber);
         if (block) timestamp = new Date(Number(block.timestamp) * 1000).toISOString();
-      } catch (_) {}
+      } catch (_) { }
 
       const { data: existing } = await supabase
         .from('scores')

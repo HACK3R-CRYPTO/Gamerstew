@@ -369,9 +369,17 @@ async function startAgent() {
     });
 }
 
+const SUPPORTED_GAME_TYPES = [0, 3]; // RPS (0) and CoinFlip (3) only
+
 async function handleChallenge(matchId: bigint, challenger: string, wager: bigint, gameType: number) {
     if (processingAcceptance.has(matchId.toString())) return;
     processingAcceptance.add(matchId.toString());
+
+    if (!SUPPORTED_GAME_TYPES.includes(gameType)) {
+        console.log(chalk.red(`Match #${matchId} rejected: game type ${GAME_NAMES[gameType] ?? gameType} is not supported`));
+        processingAcceptance.delete(matchId.toString());
+        return;
+    }
 
     console.log(chalk.yellow(`\nMatch Proposed: #${matchId} (${GAME_NAMES[gameType]}) from ${challenger}`));
 

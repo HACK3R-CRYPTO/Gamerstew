@@ -53,6 +53,7 @@ export default function ArenaGame() {
   const [leaderboard, setLeaderboard] = useState<{ address: string; count: number; isAi: boolean }[]>([]);
   const [waitingMatchId, setWaitingMatchId] = useState<number | null>(null);
   const [playedMoveIds, setPlayedMoveIds] = useState<Set<number>>(new Set());
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const agentTokenId = CONTRACT_ADDRESSES.AGENT_TOKEN_ID ? BigInt(CONTRACT_ADDRESSES.AGENT_TOKEN_ID) : null;
 
@@ -345,6 +346,21 @@ export default function ArenaGame() {
     } finally { setLoading(false); }
   };
 
+  const cancelMatch = async (matchId: number) => {
+    if (!publicClient) return;
+    setCancellingId(matchId);
+    const toastId = toast.loading('Cancelling match...');
+    try {
+      const hash = await writeArena({ address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`, abi: ARENA_PLATFORM_ABI, functionName: 'cancelMatch', args: [BigInt(matchId)] });
+      await publicClient.waitForTransactionReceipt({ hash });
+      toast.success('Match cancelled — G$ refunded', { id: toastId });
+      await refetchMatches();
+    } catch (error) {
+      console.error(error);
+      toast.error('Cancel failed', { id: toastId });
+    } finally { setCancellingId(null); }
+  };
+
   return (
     <div className="font-mono text-gray-300 max-w-[560px] mx-auto" style={{ fontFamily: 'Orbitron, monospace' }}>
       {/* Header */}
@@ -498,6 +514,9 @@ export default function ArenaGame() {
                   </div>
                   <div className="text-right">
                     <div style={{ color: '#a855f7', fontSize: '11px', fontWeight: 900 }}>{formatUnits(m.wager, 18)} G$</div>
+                    {m.status === 0 && isChallenger && (
+                      <button onClick={() => cancelMatch(m.id)} disabled={cancellingId === m.id} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace', opacity: cancellingId === m.id ? 0.5 : 1 }}>{cancellingId === m.id ? '...' : 'CANCEL'}</button>
+                    )}
                     {m.status === 1 && !playedMoveIds.has(m.id) && (
                       <button onClick={() => setActiveMatch(m)} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>PLAY</button>
                     )}
