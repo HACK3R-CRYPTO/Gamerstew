@@ -8,7 +8,7 @@ Solidity contracts for GameArena on Celo Mainnet. Built with Foundry and OpenZep
 |---|---|---|
 | `ArenaPlatform.sol` | PvP match escrow — players wager G$ against Markov-1 AI | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) |
 | `SoloWager.sol` | Solo game wager escrow — 1.3x payout, 3% dev fee, 2% UBI | [`0xc78A8A027e0...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) |
-| `GamePass.sol` | Soulbound NFT — username, on-chain score recording | [`0xd184E5CBE...`](https://celoscan.io/address/0xd184E5CBEbf957624d14fAa0bfe20d6443411453) |
+| `GamePass.sol` | Soulbound NFT — username, on-chain score recording | [`0xBB044d678...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) |
 
 ## How They Work
 

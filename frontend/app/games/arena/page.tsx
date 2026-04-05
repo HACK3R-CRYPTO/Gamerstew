@@ -7,7 +7,6 @@ import { usePrivy } from '@privy-io/react-auth';
 import { BookOpen } from 'lucide-react';
 import { parseUnits, formatUnits, encodeAbiParameters } from 'viem';
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC8004_REGISTRY_ABI, ERC20_ABI } from '@/lib/contracts';
-import { rollDice } from '@/app/actions/game';
 import { toast } from 'react-hot-toast';
 import { useArenaEvents } from '@/hooks/useArenaEvents';
 import { MATCH_STATUS, GAME_TYPES, MOVES, getMoveDisplay } from '@/lib/gameLogic';
@@ -41,7 +40,7 @@ export default function ArenaGame() {
     address,
     query: { refetchInterval: false, staleTime: 30000 },
   });
-  const { login, getAccessToken } = usePrivy();
+  const { login } = usePrivy();
   const publicClient = usePublicClient();
 
   const { isVerified, isVerifying, verifyIdentity, cancelVerification, claimG$, entitlement } = useSelfVerification();
@@ -306,7 +305,6 @@ export default function ArenaGame() {
 
       let moveLabel = '';
       if (activeMatch.gameType === 0) moveLabel = ['Rock', 'Paper', 'Scissors'][move];
-      else if (activeMatch.gameType === 1) moveLabel = `Dice ${move}`;
       else if (activeMatch.gameType === 3) moveLabel = ['Heads', 'Tails'][move];
 
       toast.success(`${moveLabel} played! Waiting for result...`, { id: toastId });
@@ -416,9 +414,9 @@ export default function ArenaGame() {
         </div>
       )}
 
-      {/* Game Type Selection — Dice hidden until Phase 2 signed oracle */}
+      {/* Game Type Selection */}
       <div className="grid grid-cols-2 gap-2 mb-4">
-        {GAME_TYPES.filter(g => g.id !== 1).map(g => (
+        {GAME_TYPES.map(g => (
           <button key={g.id} onClick={() => setSelectedGameType(g.id)} className="transition-all hover:scale-[1.02]" style={{ padding: '14px 8px', borderRadius: '14px', cursor: 'pointer', background: selectedGameType === g.id ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.03)', border: `1.5px solid ${selectedGameType === g.id ? '#a855f7' : 'rgba(255,255,255,0.06)'}`, textAlign: 'center', fontFamily: 'Orbitron, monospace' }}>
             <div className="text-2xl mb-1">{g.icon}</div>
             <div style={{ fontSize: '9px', fontWeight: 900, letterSpacing: '1px', color: selectedGameType === g.id ? '#c084fc' : '#4b5563' }}>{g.label}</div>
@@ -565,13 +563,7 @@ export default function ArenaGame() {
               </div>
             </div>
             <div style={{ padding: '16px 24px 28px' }}>
-              {activeMatch.gameType === 1 ? (
-                <button onClick={async () => { const token = await getAccessToken(); const roll = await rollDice(token ?? '', activeMatch.id); if (roll) handlePlayMove(activeMatch.id, roll); }} className="hover:scale-[1.02] transition-all" style={{ width: '100%', padding: '28px', borderRadius: '16px', cursor: 'pointer', background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.05))', border: '1px solid rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', fontFamily: 'Orbitron, monospace' }}>
-                  <span style={{ fontSize: '48px' }}>🎲</span>
-                  <span style={{ color: '#c084fc', fontSize: '14px', fontWeight: 900, letterSpacing: '2px' }}>ROLL DICE</span>
-                </button>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${(activeMatch.gameType === 0 ? MOVES.RPS : MOVES.COIN).length}, 1fr)`, gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${(activeMatch.gameType === 0 ? MOVES.RPS : MOVES.COIN).length}, 1fr)`, gap: '10px' }}>
                   {(activeMatch.gameType === 0 ? MOVES.RPS : MOVES.COIN).map((m) => (
                     <button key={m.id} onClick={() => handlePlayMove(activeMatch.id, m.id)} className="hover:scale-[1.05] transition-all" style={{ padding: '20px 12px', borderRadius: '14px', cursor: 'pointer', background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', fontFamily: 'Orbitron, monospace' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#a855f7'; (e.currentTarget as HTMLElement).style.background = 'rgba(168,85,247,0.1)'; }}
@@ -582,7 +574,6 @@ export default function ArenaGame() {
                     </button>
                   ))}
                 </div>
-              )}
             </div>
           </div>
         </div>
