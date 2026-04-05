@@ -6,7 +6,7 @@ export const CONTRACT_ADDRESSES = {
   ERC8004_REPUTATION: process.env.NEXT_PUBLIC_ERC8004_REPUTATION || '0x8004BAa17C55a88189AE136b182e5fdA19dE9b63',
   AGENT_TOKEN_ID: process.env.NEXT_PUBLIC_AGENT_TOKEN_ID || null,
   G_TOKEN: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A',
-  GAME_PASS: '0xd184E5CBEbf957624d14fAa0bfe20d6443411453',
+  GAME_PASS: '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE',
 };
 
 export const ERC20_ABI = [
@@ -150,6 +150,60 @@ export const GAME_PASS_ABI = [
     name: 'isUsernameAvailable',
     outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
     stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'currentSeason',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'season', type: 'uint256' },
+      { internalType: 'address', name: 'player', type: 'address' },
+      { internalType: 'uint8', name: 'gameType', type: 'uint8' },
+    ],
+    name: 'weeklyBest',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'player', type: 'address' },
+      { internalType: 'uint8', name: 'gameType', type: 'uint8' },
+    ],
+    name: 'bestScore',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'player', type: 'address' }],
+    name: 'gamesPlayed',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: '', type: 'address' }],
+    name: 'scoreNonces',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint8',   name: 'gameType',         type: 'uint8'   },
+      { internalType: 'uint256', name: 'score',            type: 'uint256' },
+      { internalType: 'uint256', name: 'nonce',            type: 'uint256' },
+      { internalType: 'bytes',   name: 'backendSignature', type: 'bytes'   },
+    ],
+    name: 'recordScoreWithBackendSig',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function',
   },
 ] as const;

@@ -39,6 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           ethereum: {
             createOnLogin: 'all-users',
           },
+          showWalletUIs: false,
         },
       }}
     >
