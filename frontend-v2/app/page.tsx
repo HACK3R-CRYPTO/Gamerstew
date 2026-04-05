@@ -75,6 +75,7 @@ export default function GamesHub() {
   const [playStreak, setPlayStreak] = useState({ streak: 0, playedToday: false });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [howToOpen, setHowToOpen] = useState<Record<string, boolean>>({});
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
   useEffect(() => {
     if (address) getPlayStreak(address).then(setPlayStreak);
@@ -502,6 +503,39 @@ export default function GamesHub() {
           </div>
           <button onClick={() => router.push('/leaderboard')} className="gb" style={{ flex: 1, padding: '14px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: '14px', color: '#f59e0b', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>SCORES</button>
         </div>
+
+        {/* FAQ */}
+        {(() => {
+          const FAQS = [
+            { q: 'What is G$ (GoodDollar)?', a: 'G$ is a free digital currency given as Universal Basic Income. Every verified human can claim a small amount weekly — just for being human, on the Celo blockchain.' },
+            { q: 'What do I actually win?', a: 'Wager G$ and hit the win target — get your stake back plus a 1.3× payout. 2% of every wager funds the GoodDollar UBI pool.' },
+            { q: 'What\'s the point of the leaderboard?', a: 'Top players at the end of each weekly season earn a permanent on-chain badge. G$ prizes go to the top 3 when the prize pot is large enough.' },
+            { q: 'What is the Arena?', a: 'PvP mode where you challenge Markov-1, our AI. Both sides lock G$ into a smart contract — whoever scores higher wins the pot. Fully on-chain.' },
+            { q: 'Is it free to play?', a: 'Yes — free play is always available. Wagering requires a verified GoodDollar identity and a G$ balance, which you can claim for free after verifying.' },
+            { q: 'How do I get G$ to wager?', a: 'Verify your identity once via GoodDollar (a quick face scan), then claim your weekly G$ from the home screen. No purchase needed.' },
+            { q: 'What is a Game Pass?', a: 'A free soulbound NFT on Celo that ties a username to your wallet. Mint it once — it\'s your permanent player identity on GameArena.' },
+          ];
+          return (
+            <div style={{ marginTop: '6px', marginBottom: '24px' }}>
+              <div style={{ color: '#374151', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px', paddingLeft: '2px' }}>FAQ</div>
+              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                {FAQS.map((f, i) => (
+                  <div key={i} style={{ borderBottom: i < FAQS.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <button onClick={() => setFaqOpen(faqOpen === i ? null : i)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '13px 14px', background: faqOpen === i ? 'rgba(168,85,247,0.06)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'Orbitron, monospace' }}>
+                      <span style={{ color: faqOpen === i ? '#e2e8f0' : '#6b7280', fontSize: '10px', fontWeight: 700, lineHeight: 1.4 }}>{f.q}</span>
+                      <span style={{ color: faqOpen === i ? '#a855f7' : '#374151', fontSize: '14px', flexShrink: 0, transform: faqOpen === i ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', lineHeight: 1 }}>+</span>
+                    </button>
+                    {faqOpen === i && (
+                      <div style={{ padding: '0 14px 13px' }}>
+                        <p style={{ color: '#6b7280', fontSize: '10px', lineHeight: 1.7, margin: 0 }}>{f.a}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );
