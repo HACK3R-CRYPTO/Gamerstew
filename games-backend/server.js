@@ -35,8 +35,11 @@ const strictLimiter = rateLimit({
 
 // ─── Internal secret — every request from Next.js must include this header ───
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+if (!INTERNAL_SECRET) {
+  console.error('FATAL: INTERNAL_SECRET env var is not set. Refusing to start.');
+  process.exit(1);
+}
 function requireSecret(req, res, next) {
-  if (!INTERNAL_SECRET) return next();
   if (req.headers['x-internal-secret'] === INTERNAL_SECRET) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
