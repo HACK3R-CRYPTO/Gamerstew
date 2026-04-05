@@ -262,7 +262,20 @@ GameArena participates in **GoodBuilders** — GoodDollar's grant program for pr
 
 ## Roadmap — Next Phase
 
-### Phase 2: Player-Signed Transactions (Score Anti-Cheat)
+### Phase 2: Signed Oracle for Dice + Player-Signed Transactions (Anti-Cheat)
+
+#### 2a — Signed Dice Oracle (Arena)
+Currently the server generates the dice roll securely (`crypto.randomInt`) and returns the number to the browser, which then submits it on-chain. A determined attacker could call the server action in a loop, collect rolls until they get a 6, and submit only that result — a "cherry-pick" attack.
+
+The fix is a **signed oracle**: the server signs the dice result so the contract can verify it came from the trusted backend:
+
+- **Server** generates roll and signs it: `sign(playerAddress + matchId + roll + nonce)`
+- **Frontend** passes `(roll, signature)` to `writeContractAsync`
+- **Contract** verifies `ecrecover(hash, sig) == trustedSigner` before accepting the move
+
+Since the signature is bound to a specific `matchId`, a cherry-picked roll cannot be reused across matches. The attacker gets exactly one roll per match, same as an honest player.
+
+#### 2b — Player-Signed Score Transactions (Solo Games)
 Currently the backend wallet submits score transactions on-chain (players can't fake scores, but all txs appear from the dev address). The upgrade:
 
 - **Backend** signs the verified game result: `sign(playerAddress + score + gameType + nonce)`
@@ -271,7 +284,7 @@ Currently the backend wallet submits score transactions on-chain (players can't 
 
 Result: every on-chain tx comes from the actual player's wallet. Players pay their own gas. Scores still can't be faked without the backend signature.
 
-> ⚠️ Requires contract redeployment (new address). All on-chain Game Pass NFTs and scores will reset. Supabase leaderboard data is preserved. Schedule before public launch.
+> ⚠️ Both upgrades require contract redeployment (new address). All on-chain Game Pass NFTs and scores will reset. Supabase leaderboard data is preserved. Schedule before public launch.
 
 ### Phase 3: MiniPay Full Integration ✅ (shipped on `feat/minipay`)
 - Auto-connect injected wallet when inside MiniPay
