@@ -1,102 +1,66 @@
-# GameArena Frontend
+# GameArena — Frontend
 
-React frontend for GameArena. Play skill games, wager G$, compete on weekly leaderboards, challenge an AI agent.
+Next.js 15 app for GameArena — a competitive gaming platform on Celo Mainnet powered by GoodDollar G$.
 
-## What This Does
+## Stack
 
-Connect your wallet. Mint a GamePass NFT with your username. Play Rhythm Rush and Simon Memory for free or wager G$. Challenge Markov-1 AI in Rock-Paper-Scissors, Dice, and Coin Flip. Track your rank on live leaderboards with weekly seasons.
+- **Next.js 15** (App Router, Server Actions)
+- **Privy** — wallet connect + auth
+- **wagmi / viem** — on-chain reads/writes
+- **Supabase** — score data (via server actions only)
+- **GoodDollar Identity SDK** — Sybil-resistant verification
 
-## Prerequisites
-
-- Node.js 18+
-- Browser wallet (MetaMask, Valora, or any WalletConnect wallet)
-- Celo Mainnet for on-chain features
-
-## Installation
+## Quick Start
 
 ```bash
-cd frontend
 npm install
+npm run dev       # http://localhost:3000
 ```
 
-Create `.env` from the example:
-```bash
-cp .env.example .env
-```
+## Environment Variables
 
-## Development
+Create a `.env.local` file:
 
 ```bash
-npm run dev    # http://localhost:5173
+# Privy
+NEXT_PUBLIC_PRIVY_APP_ID=
+PRIVY_APP_SECRET=
+
+# Backend
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3005
+BACKEND_URL=http://localhost:3005
+INTERNAL_SECRET=
+
+# Supabase (fallback only — backend is primary)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+
+# Contracts (Celo Mainnet)
+NEXT_PUBLIC_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
+NEXT_PUBLIC_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
+NEXT_PUBLIC_GAME_PASS_ADDRESS=0xd184E5CBEbf957624d14fAa0bfe20d6443411453
+NEXT_PUBLIC_G_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
 ```
+
+## Pages
+
+| Route | Description |
+|---|---|
+| `/` | Home — game cards, wager, FAQ, onboarding |
+| `/games/rhythm` | Rhythm Rush — tap to the beat |
+| `/games/simon` | Simon Memory — repeat color sequences |
+| `/games/arena` | Arena — challenge Markov-1 AI |
+| `/leaderboard` | Rankings, seasons, PvP history |
+
+## Key Architecture
+
+- **Server Actions** (`app/actions/game.ts`) — score submission runs server-side. `PRIVY_APP_SECRET` and `INTERNAL_SECRET` never reach the browser.
+- **Score flow**: Browser → Next.js Server Action → Express backend → Supabase + on-chain tx
+- **Security**: `INTERNAL_SECRET` header on all backend calls. Backend fails to start if secret is missing.
 
 ## Build
 
 ```bash
 npm run build
-npm run preview
+npm start
 ```
-
-## Pages
-
-| Page | Path | What It Does |
-|---|---|---|
-| `GamesHub.jsx` | `/` | Game selection, GamePass mint, wager setup, player stats |
-| `RhythmRush.jsx` | `/rhythm` | Tap-the-beat rhythm game — score 350+ to win wager |
-| `SimonGame.jsx` | `/simon` | Color sequence memory game — 7+ rounds to win |
-| `ArenaGame.jsx` | `/arena` | PvP vs Markov-1 AI — RPS, Dice, Coin Flip |
-| `Leaderboard.jsx` | `/leaderboard` | Rankings, season history, PvP arena stats |
-
-## Key Features
-
-- **GamePass NFT** — soulbound pass with username, shows on leaderboard
-- **Free Play** — no wallet needed, scores saved to backend
-- **Wager Mode** — lock G$, win 1.3x if you hit the score threshold
-- **Weekly Seasons** — 7-day competitive windows with badge awards
-- **PvP Arena** — wager G$ against adaptive AI agent
-- **GoodDollar Identity** — face verification for wager mode
-- **G$ Claim** — verified users claim daily UBI in-app
-- **Anti-cheat** — cooldown between taps, score validation
-
-## Configuration
-
-Contract addresses in `src/config/contracts.js`:
-
-```javascript
-export const CONTRACT_ADDRESSES = {
-  ARENA_PLATFORM: '0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE',
-  AI_AGENT:       '0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1',
-  ARENA_TOKEN:    '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A',
-};
-
-export const SOLO_WAGER_ADDRESS = '0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb';
-```
-
-## Project Structure
-
-```
-frontend/
-├── src/
-│   ├── pages/
-│   │   ├── GamesHub.jsx          Game hub + GamePass mint
-│   │   ├── ArenaGame.jsx         PvP arena vs AI
-│   │   ├── RhythmRush.jsx        Rhythm game
-│   │   ├── SimonGame.jsx         Memory game
-│   │   └── Leaderboard.jsx       Rankings + seasons + PvP
-│   ├── components/
-│   │   └── LandingOverlay.jsx    Splash screen
-│   ├── contexts/
-│   │   └── SelfVerificationContext.jsx  GoodDollar identity
-│   └── config/
-│       └── contracts.js          Addresses + ABIs
-├── public/
-├── index.html
-└── package.json
-```
-
-## Tech Stack
-
-- React 18 + Vite
-- wagmi + viem (Celo Mainnet)
-- WalletConnect (Reown) + Web3Auth
-- react-hot-toast for notifications

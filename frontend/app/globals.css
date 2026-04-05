@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --background: #05050f;
+  --foreground: #ededed;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-family: Orbitron, monospace;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.15);
+  transform: scale(1.01);
+}
