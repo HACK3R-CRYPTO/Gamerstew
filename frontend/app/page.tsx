@@ -221,7 +221,7 @@ export default function GamesHub() {
 
   const handlePlay = async (game: typeof GAMES[0], forceWager = false) => {
     const isWager = forceWager || wagerMode[game.id];
-    if (!isWager) { router.push(game.path); return; }
+    if (!isWager) { if (!isConnected) { toast('Connect your wallet to play', { icon: '🔗' }); login(); return; } router.push(game.path); return; }
     if (!isConnected) { toast.error('Connect your wallet first'); return; }
     if (!isVerified) { toast.error('Verify your GoodDollar identity to wager'); return; }
     if (!SOLO_WAGER_ADDRESS) { toast('Wager contract not deployed — playing free', { icon: 'ℹ️' }); router.push(game.path); return; }
@@ -370,7 +370,7 @@ export default function GamesHub() {
               <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>{isVerified ? 'Get free 0.025 CELO for transactions (one time)' : 'Verify your humanity to unlock free gas'}</div>
             </div>
             <button onClick={async () => {
-              if (!isVerified) { toast('Please verify your humanity first to prevent spam.', { icon: '🛡️' }); return; }
+              if (!isVerified) { verifyIdentity(); return; }
               setRequestingGas(true);
               try {
                 const res = await fetch(`${BACKEND_URL}/api/faucet`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) });
@@ -452,8 +452,8 @@ export default function GamesHub() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => router.push(game.path)} disabled={loading} className="gb" style={{ flex: 2, padding: '14px', background: `linear-gradient(135deg, ${game.accent}30, ${game.accent}12)`, border: `1px solid ${game.accent}40`, borderRadius: '12px', color: game.accent, fontSize: '12px', fontWeight: 900, letterSpacing: '2px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
-                      {game.id === 'rhythm' ? 'TAP TO PLAY' : 'START GAME'}
+                    <button onClick={() => handlePlay(game)} disabled={loading} className="gb" style={{ flex: 2, padding: '14px', background: isConnected ? `linear-gradient(135deg, ${game.accent}30, ${game.accent}12)` : 'rgba(255,255,255,0.04)', border: `1px solid ${isConnected ? `${game.accent}40` : 'rgba(255,255,255,0.08)'}`, borderRadius: '12px', color: isConnected ? game.accent : '#6b7280', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
+                      {isConnected ? (game.id === 'rhythm' ? 'TAP TO PLAY' : 'START GAME') : '🔒 CONNECT TO PLAY'}
                     </button>
                     {canWager && (
                       <button onClick={() => setWagerMode(p => ({ ...p, [game.id]: !p[game.id] }))} disabled={loading} className="gb" style={{ flex: 1, padding: '14px', background: wagerMode[game.id] ? `${game.accent}30` : `linear-gradient(135deg, ${game.accent}, ${game.accent}aa)`, border: wagerMode[game.id] ? `1px solid ${game.accent}` : 'none', borderRadius: '12px', color: '#fff', fontSize: '10px', fontWeight: 900, letterSpacing: '1px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', boxShadow: `0 4px 15px ${game.accent}25` }}>

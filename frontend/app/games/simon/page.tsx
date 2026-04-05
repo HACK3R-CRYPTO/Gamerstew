@@ -25,12 +25,18 @@ const BASE_SCORE    = 10;
 type Color = typeof BASE_COLORS[0];
 
 export default function SimonGame() {
-  const { user, getAccessToken, authenticated } = usePrivy();
+  const { user, getAccessToken, authenticated, ready } = usePrivy();
   const router  = useRouter();
+
+  useEffect(() => {
+    if (ready && !authenticated) router.replace('/');
+  }, [ready, authenticated, router]);
   const { writeContractAsync } = useWriteContract();
   const address = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
+  const isEmbeddedWallet = user?.linkedAccounts?.some((a: { type: string; walletClientType?: string }) => a.type === 'wallet' && a.walletClientType === 'privy');
 
-  const [gamePattern, setGamePattern]           = useState<string[]>([]);
+
+  const [, setGamePattern]                      = useState<string[]>([]);
   const [score, setScore]                       = useState(0);
   const [sequences, setSequences]               = useState(0);
   const [gameActive, setGameActive]             = useState(false);
@@ -43,7 +49,9 @@ export default function SimonGame() {
   const [bonusUnlocked, setBonusUnlocked]       = useState(false);
   const [countdown, setCountdown]               = useState<number | string | null>(null);
   const [submitting, setSubmitting]             = useState(false);
-  const [streak, setStreak]                     = useState<number | null>(null);
+  const [txError, setTxError]                   = useState<string | null>(null);
+  const [signingOnChain, setSigningOnChain]     = useState(false);
+  const [, setStreak]                           = useState<number | null>(null);
   const [gameTimeMs, setGameTimeMs]             = useState(0);
 
   const audioCtxRef    = useRef<AudioContext | null>(null);
@@ -126,16 +134,31 @@ export default function SimonGame() {
 
       // 2. Player submits on-chain — embedded wallet: silent, MetaMask: popup
       let txHash: string | null = null;
+      let txFailed = false;
       if (sig.success) {
+        setSigningOnChain(true);
         try {
           txHash = await writeContractAsync({
             address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
             abi: GAME_PASS_ABI,
             functionName: 'recordScoreWithBackendSig',
             args: [sig.gameType, BigInt(finalScore), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            ...(isEmbeddedWallet ? { gas: 300000n } : {}),
           });
-        } catch (_) { /* wallet rejected or not connected — still save to Supabase */ }
+        } catch (err: unknown) {
+          txFailed = true;
+          const name = (err as { name?: string })?.name ?? '';
+          const code = (err as { code?: number })?.code ?? 0;
+          if (
+            name === 'InsufficientFundsError' || code === -32603 ||
+            name === 'EstimateGasExecutionError' || code === -32000
+          ) {
+            setTxError('Insufficient CELO balance to cover gas fees');
+          }
+        } finally { setSigningOnChain(false); }
       }
+
+      if (txFailed) return;
 
       // 3. Save to Supabase + get rank/streak
       const result = await submitScore(token, address, {
@@ -203,7 +226,7 @@ export default function SimonGame() {
     setGamePattern([]); setScore(0); setSequences(0);
     setGameOver(false); setGameActive(true);
     setIsShowingSequence(false); setActiveBtn(null);
-    setMyRank(0); setRoundFlash(null); setStreak(null); setGameTimeMs(0);
+    setMyRank(0); setRoundFlash(null); setStreak(null); setGameTimeMs(0); setTxError(null);
     startTimeRef.current = Date.now();
     addNext([]);
   }, [addNext]);
@@ -218,6 +241,8 @@ export default function SimonGame() {
 
   const diffLabel = sequences >= 10 ? 'INSANE' : sequences >= 7 ? 'HARD' : sequences >= 5 ? 'MEDIUM' : sequences >= 3 ? 'WARMING UP' : 'EASY';
   const diffColor = sequences >= 10 ? '#ef4444' : sequences >= 7 ? '#f59e0b' : sequences >= 5 ? '#eab308' : '#10b981';
+
+  if (!ready || !authenticated) return null;
 
   return (
     <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px', maxWidth: '440px', margin: '0 auto' }}>
@@ -329,8 +354,9 @@ export default function SimonGame() {
           const gradeColor: Record<string, string> = { S: '#f59e0b', A: '#10b981', B: '#06b6d4', C: '#a855f7', D: '#6b7280' };
           const gradeLabel: Record<string, string> = { S: 'LEGENDARY', A: 'SKILLED', B: 'SOLID', C: 'DECENT', D: 'KEEP GOING' };
           return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(5,5,15,0.6)', animation: 'fadeIn 0.2s ease' }}>
-              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '32px 24px 40px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)' }}>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(5,5,15,0.6)', animation: 'fadeIn 0.2s ease' }} onClick={() => setGameOver(false)}>
+              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '32px 24px 40px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
 
                 {/* Title */}
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -365,6 +391,12 @@ export default function SimonGame() {
                 {/* Rank + bonus */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', minHeight: '28px', flexWrap: 'wrap' }}>
                   {submitting && <span style={{ color: '#4b5563', fontSize: '11px', letterSpacing: '1px' }}>SAVING...</span>}
+                  {txError && !submitting && (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#ef4444', fontSize: '11px', letterSpacing: '1px', fontWeight: 700 }}>⚠ SCORE NOT SAVED</div>
+                      <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '3px' }}>Insufficient CELO to cover gas — top up and try again</div>
+                    </div>
+                  )}
                   {myRank > 0 && !submitting && (
                     <div style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 20px', background: myRank <= 3 ? `${gradeColor[grade]}15` : 'rgba(255,255,255,0.04)', border: `1px solid ${myRank <= 3 ? gradeColor[grade] : 'rgba(255,255,255,0.08)'}`, borderRadius: '20px' }}>
                       <span style={{ color: myRank <= 3 ? gradeColor[grade] : '#6b7280', fontSize: '13px', fontWeight: 900 }}>
@@ -396,9 +428,31 @@ export default function SimonGame() {
           );
         })()}
       </div>
+      {/* Wallet signing overlay — shown when MetaMask popup is waiting for approval */}
+      {signingOnChain && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(5,5,15,0.85)', backdropFilter: 'blur(8px)', animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ textAlign: 'center', padding: '40px 32px', background: 'rgba(10,10,26,0.95)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '24px', maxWidth: '320px', width: '90%', boxShadow: '0 0 80px rgba(6,182,212,0.15)' }}>
+            <div style={{ fontSize: '56px', marginBottom: '16px', animation: 'walletPulse 1.4s ease-in-out infinite' }}>🦊</div>
+            <div style={{ color: '#06b6d4', fontSize: '11px', fontWeight: 700, letterSpacing: '3px', marginBottom: '8px' }}>ACTION REQUIRED</div>
+            <div style={{ color: '#fff', fontSize: '18px', fontWeight: 900, letterSpacing: '1px', marginBottom: '12px', fontFamily: 'Orbitron, monospace' }}>CHECK YOUR WALLET</div>
+            <div style={{ color: '#9ca3af', fontSize: '12px', lineHeight: 1.6, marginBottom: '24px' }}>
+              Your wallet is asking for approval.<br />Open your wallet app and tap <span style={{ color: '#10b981', fontWeight: 700 }}>Confirm</span> to save your score on-chain.
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#06b6d4', animation: 'dot1 1.4s ease-in-out infinite' }} />
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#06b6d4', animation: 'dot1 1.4s ease-in-out infinite 0.2s' }} />
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#06b6d4', animation: 'dot1 1.4s ease-in-out infinite 0.4s' }} />
+            </div>
+            <div style={{ marginTop: '16px', color: '#374151', fontSize: '10px' }}>Skipping will still save your score to the leaderboard</div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
         @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+        @keyframes walletPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.12);opacity:0.85} }
+        @keyframes dot1 { 0%,80%,100%{transform:scale(0.6);opacity:0.3} 40%{transform:scale(1);opacity:1} }
       `}</style>
     </div>
   );

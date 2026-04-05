@@ -12,7 +12,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 
 | Integration | How It Works |
 |---|---|
-| **G$ Wagering (Human vs AI)** | Wager G$ against Markov-1 AI in RPS, Dice & Coin Flip via `ArenaPlatform.sol` |
+| **G$ Wagering (Human vs AI)** | Wager G$ against Markov-1 AI in RPS & Coin Flip via `ArenaPlatform.sol` |
 | **G$ Wagering (Solo)** | Wager G$ on score targets in Rhythm Rush (350 pts) and Simon Memory (7 sequences) via `SoloWager.sol` — win 1.3x |
 | **GoodDollar Identity** | Face verification via Identity SDK — Sybil-resistant, no bots in wager mode |
 | **UBI Pool Fees** | 2% of every wager routes to [GoodCollective UBI Pool](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) on-chain |
@@ -28,7 +28,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 │                   CELO MAINNET (42220)                        │
 │                                                              │
 │  ArenaPlatform.sol      SoloWager.sol        GamePass.sol    │
-│  0x5C0eafE7834...       0xc78A8A027e0...     0xd184E5CBE...  │
+│  0x5C0eafE7834...       0xc78A8A027e0...     0xBB044d678...  │
 │  HvAI match escrow      Solo wager escrow    Soulbound NFT   │
 │                                              + on-chain scores│
 │  G$ Token               ERC-8004 Registry                    │
@@ -81,7 +81,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 - Every play recorded on-chain via GamePass contract (verifiable tx hash)
 
 ### Human vs AI — Challenge Markov-1
-- Games: Rock-Paper-Scissors, Dice Roll, Coin Flip
+- Games: Rock-Paper-Scissors, Coin Flip
 - Wager any amount of G$ — AI auto-accepts and plays
 - Winner takes 95% of the pot; 5% platform fee
 - AI uses adaptive Markov-chain prediction — it learns your patterns
@@ -107,7 +107,7 @@ Built as part of the **GoodBuilders Program** — expanding real G$ usage throug
 |---|---|---|
 | `ArenaPlatform.sol` | [`0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) | Human vs AI match escrow |
 | `SoloWager.sol` | [`0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) | Solo wager escrow (3% dev fee, 2% UBI) |
-| `GamePass.sol` | [`0xd184E5CBEbf957624d14fAa0bfe20d6443411453`](https://celoscan.io/address/0xd184E5CBEbf957624d14fAa0bfe20d6443411453) | Soulbound NFT + on-chain scores |
+| `GamePass.sol` | [`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) | Soulbound NFT + on-chain scores |
 | GoodDollar G$ | [`0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A) | Wager & payout currency |
 | ERC-8004 Registry | [`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) | Agent identity (Token #6386) |
 | GoodCollective UBI | [`0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) | 2% fee destination |
@@ -172,6 +172,7 @@ VITE_RPC_URL=https://forno.celo.org
 VITE_GAMES_BACKEND_URL=http://localhost:3005
 VITE_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
 VITE_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
+VITE_GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
 VITE_AI_AGENT_ADDRESS=0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1
 VITE_ARENA_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
 VITE_ERC8004_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
@@ -184,6 +185,7 @@ VITE_AGENT_TOKEN_ID=6386
 PORT=3005
 CELO_RPC_URL=https://forno.celo.org
 SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
+GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
 VALIDATOR_PRIVATE_KEY=<your validator private key>
 SUPABASE_URL=<your supabase url>
 SUPABASE_ANON_KEY=<your supabase anon key>
@@ -260,31 +262,23 @@ GameArena participates in **GoodBuilders** — GoodDollar's grant program for pr
 
 ---
 
-## Roadmap — Next Phase
+## Roadmap
 
-### Phase 2: Signed Oracle for Dice + Player-Signed Transactions (Anti-Cheat)
+### Phase 2: Player-Signed Score Transactions (Anti-Cheat) ✅ (shipped — GamePass v3)
 
-#### 2a — Signed Dice Oracle (Arena)
-Currently the server generates the dice roll securely (`crypto.randomInt`) and returns the number to the browser, which then submits it on-chain. A determined attacker could call the server action in a loop, collect rolls until they get a 6, and submit only that result — a "cherry-pick" attack.
+#### 2b — Player-Signed Score Transactions (Solo Games) ✅
+Previously the backend wallet submitted score transactions on-chain (players couldn't fake scores, but all txs appeared from the dev address).
 
-The fix is a **signed oracle**: the server signs the dice result so the contract can verify it came from the trusted backend:
-
-- **Server** generates roll and signs it: `sign(playerAddress + matchId + roll + nonce)`
-- **Frontend** passes `(roll, signature)` to `writeContractAsync`
-- **Contract** verifies `ecrecover(hash, sig) == trustedSigner` before accepting the move
-
-Since the signature is bound to a specific `matchId`, a cherry-picked roll cannot be reused across matches. The attacker gets exactly one roll per match, same as an honest player.
-
-#### 2b — Player-Signed Score Transactions (Solo Games)
-Currently the backend wallet submits score transactions on-chain (players can't fake scores, but all txs appear from the dev address). The upgrade:
-
-- **Backend** signs the verified game result: `sign(playerAddress + score + gameType + nonce)`
-- **Frontend** passes the signature to `writeContractAsync` — player submits and pays their own gas
+**Shipped:**
+- **Backend** signs verified game result via EIP-712: `sign(playerAddress + score + gameType + nonce)`
+- **Frontend** calls `/api/sign-score`, then `writeContractAsync` with `recordScoreWithBackendSig()` — player submits and pays their own gas
 - **Contract** verifies `ecrecover(hash, sig) == trustedSigner` before recording score
+- **GamePass v3** (`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`) deployed with signature verification
 
-Result: every on-chain tx comes from the actual player's wallet. Players pay their own gas. Scores still can't be faked without the backend signature.
+Every on-chain score tx now comes from the actual player's wallet. Scores can't be faked without the backend EIP-712 signature.
 
-> ⚠️ Both upgrades require contract redeployment (new address). All on-chain Game Pass NFTs and scores will reset. Supabase leaderboard data is preserved. Schedule before public launch.
+#### 2a — Signed Dice Oracle (Arena) — dropped
+Dice Roll was removed from Arena (game simplified to RPS + Coin Flip). Dice oracle is no longer needed.
 
 ### Phase 3: MiniPay Full Integration ✅ (shipped on `feat/minipay`)
 - Auto-connect injected wallet when inside MiniPay
