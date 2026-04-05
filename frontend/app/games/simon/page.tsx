@@ -34,7 +34,7 @@ export default function SimonGame() {
   const [isShowingSequence, setIsShowingSequence] = useState(false);
   const [gameOver, setGameOver]                 = useState(false);
   const [activeBtn, setActiveBtn]               = useState<string | null>(null);
-  const [myRank, setMyRank]                     = useState<number | null>(null);
+  const [myRank, setMyRank]                     = useState<number>(0);
   const [roundFlash, setRoundFlash]             = useState<string | null>(null);
   const [availableColors, setAvailableColors]   = useState<Color[]>(BASE_COLORS);
   const [bonusUnlocked, setBonusUnlocked]       = useState(false);
@@ -182,7 +182,7 @@ export default function SimonGame() {
     setGamePattern([]); setScore(0); setSequences(0);
     setGameOver(false); setGameActive(true);
     setIsShowingSequence(false); setActiveBtn(null);
-    setMyRank(null); setRoundFlash(null); setStreak(null); setGameTimeMs(0);
+    setMyRank(0); setRoundFlash(null); setStreak(null); setGameTimeMs(0);
     startTimeRef.current = Date.now();
     addNext([]);
   }, [addNext]);
