@@ -298,26 +298,26 @@ export default function GamesHub() {
             <img src={`https://api.dicebear.com/9.x/pixel-art/svg?seed=${address}`} alt="avatar" style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'linear-gradient(135deg, #a855f7, #06b6d4)', flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#fff', fontSize: '13px', fontWeight: 900 }}>{username as string}</span>
+                <span style={{ color: '#fff', fontSize: '14px', fontWeight: 900 }}>{username as string}</span>
                 {playStreak.streak >= 1 && (
-                  <span style={{ padding: '1px 6px', borderRadius: '8px', fontSize: '8px', fontWeight: 700, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
+                  <span style={{ padding: '2px 7px', borderRadius: '8px', fontSize: '10px', fontWeight: 700, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
                     🔥 {playStreak.streak}d
                   </span>
                 )}
               </div>
-              <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '1px' }}>{gBal} G$</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>{gBal} G$</div>
             </div>
             {isVerified ? (
               canClaim ? (
-                <button onClick={claimG$} className="gb" style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '8px', fontWeight: 700, cursor: 'pointer', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap' }}>
+                <button onClick={claimG$} className="gb" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap' }}>
                   CLAIM {claimable} G$
                 </button>
               ) : (
-                <span title="GoodDollar identity verified" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '8px', fontWeight: 700, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981' }}>✓ UBI</span>
+                <span title="GoodDollar identity verified" style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981' }}>✓ UBI</span>
               )
             ) : (
-              <button onClick={verifyIdentity} disabled={isVerifying} className="gb" title="Verify once to claim weekly G$ UBI" style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '8px', fontWeight: 700, cursor: 'pointer', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24', fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap' }}>
-                {isVerifying ? '...' : '🔓 VERIFY FOR G$'}
+              <button onClick={verifyIdentity} disabled={isVerifying} className="gb" title="Verify once to claim weekly G$ UBI" style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7', fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap' }}>
+                {isVerifying ? '...' : 'VERIFY FOR G$'}
               </button>
             )}
           </div>
@@ -325,7 +325,7 @@ export default function GamesHub() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', padding: '12px 16px', borderRadius: '14px', background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.15)' }}>
             <div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: 900, letterSpacing: '2px' }}>GAME<span style={{ color: '#a855f7' }}>_</span>ARENA</div>
-              <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>Play · Earn G$ · Fund UBI</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>Play · Earn G$ · Fund UBI</div>
             </div>
             <button onClick={() => login()} className="gb" style={{ padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', background: 'linear-gradient(135deg, #a855f7, #7c3aed)', border: 'none', color: '#fff', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace', letterSpacing: '1px' }}>CONNECT</button>
           </div>
@@ -340,8 +340,8 @@ export default function GamesHub() {
         {showOnboarding && (
           <div style={{ marginBottom: '12px', padding: '10px 14px', background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.18)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '16px', flexShrink: 0 }}>💡</span>
-            <span style={{ color: '#9ca3af', fontSize: '9px', flex: 1, lineHeight: 1.5 }}>
-              <span style={{ color: '#a855f7', fontWeight: 700 }}>Verify once</span> → claim free G$ weekly → wager on games to win <span style={{ color: '#10b981', fontWeight: 700 }}>1.3×</span>
+            <span style={{ color: '#9ca3af', fontSize: '11px', flex: 1, lineHeight: 1.5 }}>
+              <span style={{ color: '#a855f7', fontWeight: 700 }}>Verify once</span> → claim free G$ weekly → wager on games to win <span style={{ color: '#9ca3af', fontWeight: 700 }}>1.3×</span>
             </span>
             <button onClick={() => { setShowOnboarding(false); localStorage.setItem('ga_onboarding_seen', '1'); }} style={{ background: 'none', border: 'none', color: '#4b5563', fontSize: '16px', cursor: 'pointer', lineHeight: 1, flexShrink: 0, padding: '0 2px' }}>×</button>
           </div>
@@ -351,14 +351,14 @@ export default function GamesHub() {
         {stats && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '16px', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
             {[
-              { val: totalUsers ? Number(totalUsers) : (stats.totalUsers ?? 0), lab: 'PLAYERS', col: '#10b981' },
-              { val: stats.totalGames ?? 0, lab: 'GAMES', col: '#a855f7' },
-              { val: stats.estimatedPrizePot, lab: 'POT G$', col: '#f59e0b' },
-              { val: countdown || '—', lab: `WK ${stats.currentSeason}`, col: '#06b6d4' },
+              { val: totalUsers ? Number(totalUsers) : (stats.totalUsers ?? 0), lab: 'PLAYERS' },
+              { val: stats.totalGames ?? 0, lab: 'GAMES' },
+              { val: stats.estimatedPrizePot, lab: 'POT G$' },
+              { val: countdown || '—', lab: `WK ${stats.currentSeason}` },
             ].map((s, i) => (
               <div key={s.lab} style={{ flex: 1, textAlign: 'center', padding: '10px 4px', background: 'rgba(0,0,0,0.2)', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <div style={{ color: s.col, fontSize: '15px', fontWeight: 900 }}>{s.val}</div>
-                <div style={{ color: '#2a2a3a', fontSize: '7px', letterSpacing: '0.5px', marginTop: '2px' }}>{s.lab}</div>
+                <div style={{ color: '#fff', fontSize: '15px', fontWeight: 900 }}>{s.val}</div>
+                <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '0.5px', marginTop: '2px' }}>{s.lab}</div>
               </div>
             ))}
           </div>
@@ -376,11 +376,11 @@ export default function GamesHub() {
 
         {/* Gas Faucet */}
         {isConnected && !!wagmiAddress && !gasReceived && (
-          <div style={{ marginBottom: '14px', padding: '12px 16px', background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ marginBottom: '14px', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span style={{ fontSize: '18px' }}>⛽</span>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#06b6d4', fontSize: '10px', fontWeight: 700, letterSpacing: '1px' }}>NEED GAS?</div>
-              <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>{isVerified ? 'Get free 0.025 CELO for transactions (one time)' : 'Verify your humanity to unlock free gas'}</div>
+              <div style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>NEED GAS?</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>{isVerified ? 'Get free 0.025 CELO for transactions (one time)' : 'Verify your humanity to unlock free gas'}</div>
             </div>
             <button onClick={async () => {
               if (!isVerified) { verifyIdentity(); return; }
@@ -392,18 +392,18 @@ export default function GamesHub() {
                 else { toast(data.reason || 'Already received', { icon: 'ℹ️' }); setGasReceived(true); }
               } catch (_) { toast.error('Faucet failed'); }
               setRequestingGas(false);
-            }} disabled={requestingGas} className="gb" style={{ padding: '6px 14px', borderRadius: '10px', cursor: 'pointer', background: isVerified ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.05)', border: isVerified ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(255,255,255,0.1)', color: isVerified ? '#06b6d4' : '#9ca3af', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace', opacity: requestingGas ? 0.5 : 1 }}>
-              {requestingGas ? '...' : isVerified ? 'GET GAS' : 'VERIFY TO CLAIM'}
+            }} disabled={requestingGas} className="gb" style={{ padding: '6px 14px', borderRadius: '10px', cursor: 'pointer', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace', opacity: requestingGas ? 0.5 : 1 }}>
+              {requestingGas ? '...' : isVerified ? 'GET GAS' : 'VERIFY FIRST'}
             </button>
           </div>
         )}
 
         {/* Game Pass Gate */}
         {isConnected && !!wagmiAddress && !hasPass && (
-          <div id="create-player" style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
+          <div id="create-player" style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(168,85,247,0.08), rgba(168,85,247,0.03))', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
             <div style={{ fontSize: '48px', marginBottom: '12px', animation: 'float 3s ease-in-out infinite' }}>🎮</div>
-            <div style={{ color: '#10b981', fontSize: '16px', fontWeight: 900, letterSpacing: '3px', marginBottom: '6px' }}>CREATE YOUR PLAYER</div>
-            <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '12px', lineHeight: 1.5 }}>Pick a username · Mint your free soulbound pass · Start playing</div>
+            <div style={{ color: '#a855f7', fontSize: '16px', fontWeight: 900, letterSpacing: '3px', marginBottom: '6px' }}>CREATE YOUR PLAYER</div>
+            <div style={{ color: '#6b7280', fontSize: '12px', marginBottom: '12px', lineHeight: 1.5 }}>Pick a username · Mint your free soulbound pass · Start playing</div>
             {!hasGasForMint && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '20px', padding: '7px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px' }}>
                 <span style={{ fontSize: '13px' }}>⛽</span>
@@ -416,23 +416,23 @@ export default function GamesHub() {
                 onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16))}
                 onKeyDown={(e) => e.key === 'Enter' && hasGasForMint && mintGamePass()}
                 style={{ flex: 1, padding: '14px 16px', background: 'rgba(0,0,0,0.4)', border: `1px solid ${hasGasForMint ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.2)'}`, borderRadius: '12px', color: '#fff', fontSize: '14px', fontFamily: 'Orbitron, monospace', outline: 'none', textAlign: 'center', letterSpacing: '2px' }} />
-              <button onClick={mintGamePass} disabled={mintingPass || usernameInput.length < 3 || !hasGasForMint} style={{ padding: '14px 24px', borderRadius: '12px', cursor: hasGasForMint && usernameInput.length >= 3 ? 'pointer' : 'not-allowed', background: hasGasForMint && usernameInput.length >= 3 ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 900, fontFamily: 'Orbitron, monospace', letterSpacing: '1px', opacity: mintingPass || usernameInput.length < 3 || !hasGasForMint ? 0.4 : 1 }}>
+              <button onClick={mintGamePass} disabled={mintingPass || usernameInput.length < 3 || !hasGasForMint} style={{ padding: '14px 24px', borderRadius: '12px', cursor: hasGasForMint && usernameInput.length >= 3 ? 'pointer' : 'not-allowed', background: hasGasForMint && usernameInput.length >= 3 ? 'linear-gradient(135deg, #a855f7, #7c3aed)' : 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 900, fontFamily: 'Orbitron, monospace', letterSpacing: '1px', opacity: mintingPass || usernameInput.length < 3 || !hasGasForMint ? 0.4 : 1 }}>
                 {mintingPass ? '...' : 'GO'}
               </button>
             </div>
-            <div style={{ color: '#374151', fontSize: '8px', marginTop: '12px', letterSpacing: '0.5px' }}>3-16 characters · letters, numbers, underscore</div>
+            <div style={{ color: '#4b5563', fontSize: '11px', marginTop: '12px', letterSpacing: '0.5px' }}>3-16 characters · letters, numbers, underscore</div>
           </div>
         )}
 
         {/* Identity Notice */}
         {isConnected && hasPass && !isVerified && (
-          <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.15)', borderRadius: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span style={{ fontSize: '20px' }}>🪙</span>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#fbbf24', fontSize: '10px', fontWeight: 700, letterSpacing: '1px' }}>CLAIM FREE G$ TO WAGER</div>
-              <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>Verify once → claim weekly G$ → use it to wager on games</div>
+              <div style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>CLAIM FREE G$ TO WAGER</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>Verify once → claim weekly G$ → use it to wager on games</div>
             </div>
-            <button onClick={verifyIdentity} disabled={isVerifying} className="gb" style={{ padding: '8px 16px', borderRadius: '10px', cursor: 'pointer', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace' }}>{isVerifying ? '...' : 'VERIFY'}</button>
+            <button onClick={verifyIdentity} disabled={isVerifying} className="gb" style={{ padding: '8px 16px', borderRadius: '10px', cursor: 'pointer', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7', fontSize: '10px', fontWeight: 700, fontFamily: 'Orbitron, monospace' }}>{isVerifying ? '...' : 'VERIFY'}</button>
           </div>
         )}
 
@@ -457,13 +457,13 @@ export default function GamesHub() {
                         {myBest != null && <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '8px', fontWeight: 900, background: `${game.accent}15`, color: game.accent }}>PB {myBest}</span>}
                         <button onClick={() => setHowToOpen(p => ({ ...p, [game.id]: !p[game.id] }))} style={{ marginLeft: 'auto', width: '20px', height: '20px', borderRadius: '50%', background: howToOpen[game.id] ? `${game.accent}30` : 'rgba(255,255,255,0.05)', border: `1px solid ${howToOpen[game.id] ? game.accent : 'rgba(255,255,255,0.1)'}`, color: howToOpen[game.id] ? game.accent : '#6b7280', fontSize: '10px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'Orbitron, monospace' }}>?</button>
                       </div>
-                      <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '3px' }}>{game.desc}</div>
+                      <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '4px' }}>{game.desc}</div>
                       {howToOpen[game.id] && (
                         <div style={{ marginTop: '8px', padding: '10px 12px', background: 'rgba(0,0,0,0.25)', borderRadius: '10px', border: `1px solid ${game.accent}20` }}>
                           {game.howTo.map((tip, ti) => (
                             <div key={ti} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: ti < game.howTo.length - 1 ? '6px' : 0 }}>
                               <span style={{ color: game.accent, fontSize: '9px', fontWeight: 900, minWidth: '14px' }}>{ti + 1}.</span>
-                              <span style={{ color: '#9ca3af', fontSize: '9px', lineHeight: 1.4 }}>{tip}</span>
+                              <span style={{ color: '#9ca3af', fontSize: '11px', lineHeight: 1.4 }}>{tip}</span>
                             </div>
                           ))}
                         </div>
@@ -501,9 +501,9 @@ export default function GamesHub() {
 
                   {!game.noWager && (
                     <div style={{ display: 'flex', gap: '12px', marginTop: '10px', justifyContent: 'center' }}>
-                      <span style={{ color: '#2a2a3a', fontSize: '8px' }}>WIN: <span style={{ color: '#4b5563' }}>{game.winAt}</span></span>
-                      <span style={{ color: '#2a2a3a', fontSize: '8px' }}>PAYOUT: <span style={{ color: '#10b981' }}>{game.payout}</span></span>
-                      <span style={{ color: '#2a2a3a', fontSize: '8px' }}>2% → UBI</span>
+                      <span style={{ color: '#6b7280', fontSize: '10px' }}>WIN: <span style={{ color: '#9ca3af' }}>{game.winAt}</span></span>
+                      <span style={{ color: '#6b7280', fontSize: '10px' }}>PAYOUT: <span style={{ color: '#9ca3af' }}>{game.payout}</span></span>
+                      <span style={{ color: '#6b7280', fontSize: '10px' }}>2% → UBI</span>
                     </div>
                   )}
                 </div>
@@ -518,10 +518,10 @@ export default function GamesHub() {
             <span style={{ fontSize: '22px' }}>🤖</span>
             <div>
               <div style={{ color: '#a855f7', fontSize: '11px', fontWeight: 900, letterSpacing: '1px' }}>CHALLENGE AI</div>
-              <div style={{ color: '#374151', fontSize: '8px', marginTop: '2px' }}>PvP vs Markov-1</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '2px' }}>PvP vs Markov-1</div>
             </div>
           </div>
-          <button onClick={() => router.push('/leaderboard')} className="gb" style={{ flex: 1, padding: '14px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.12)', borderRadius: '14px', color: '#f59e0b', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>SCORES</button>
+          <button onClick={() => router.push('/leaderboard')} className="gb" style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', color: '#9ca3af', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>SCORES</button>
         </div>
 
         {/* FAQ */}
@@ -537,17 +537,17 @@ export default function GamesHub() {
           ];
           return (
             <div style={{ marginTop: '6px', marginBottom: '24px' }}>
-              <div style={{ color: '#374151', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px', paddingLeft: '2px' }}>FAQ</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', letterSpacing: '2px', marginBottom: '8px', paddingLeft: '2px' }}>FAQ</div>
               <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
                 {FAQS.map((f, i) => (
                   <div key={i} style={{ borderBottom: i < FAQS.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
                     <button onClick={() => setFaqOpen(faqOpen === i ? null : i)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '13px 14px', background: faqOpen === i ? 'rgba(168,85,247,0.06)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'Orbitron, monospace' }}>
-                      <span style={{ color: faqOpen === i ? '#e2e8f0' : '#6b7280', fontSize: '10px', fontWeight: 700, lineHeight: 1.4 }}>{f.q}</span>
+                      <span style={{ color: faqOpen === i ? '#e2e8f0' : '#9ca3af', fontSize: '12px', fontWeight: 700, lineHeight: 1.4 }}>{f.q}</span>
                       <span style={{ color: faqOpen === i ? '#a855f7' : '#374151', fontSize: '14px', flexShrink: 0, transform: faqOpen === i ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block', lineHeight: 1 }}>+</span>
                     </button>
                     {faqOpen === i && (
                       <div style={{ padding: '0 14px 13px' }}>
-                        <p style={{ color: '#6b7280', fontSize: '10px', lineHeight: 1.7, margin: 0 }}>{f.a}</p>
+                        <p style={{ color: '#6b7280', fontSize: '11px', lineHeight: 1.7, margin: 0 }}>{f.a}</p>
                       </div>
                     )}
                   </div>
