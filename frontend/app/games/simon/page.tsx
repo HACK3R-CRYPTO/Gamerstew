@@ -262,7 +262,7 @@ export default function SimonGame() {
   if (!ready || !authenticated) return null;
 
   return (
-    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px 16px', maxWidth: '440px', margin: '0 auto' }}>
+    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px 16px', maxWidth: '440px', margin: '0 auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
@@ -281,7 +281,7 @@ export default function SimonGame() {
         </div>
       )}
 
-      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(6,182,212,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: bonusUnlocked ? '20px 12px' : '28px' }}>
+      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(6,182,212,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: bonusUnlocked ? '20px 10px' : '20px', width: '100%', boxSizing: 'border-box' }}>
         {/* Score + round */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ textAlign: 'center' }}>
@@ -320,7 +320,7 @@ export default function SimonGame() {
         )}
 
         {/* Buttons */}
-        <div style={{ display: 'grid', gridTemplateColumns: bonusUnlocked ? '1fr 1fr 1fr' : '1fr 1fr', gap: bonusUnlocked ? '8px' : '14px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: bonusUnlocked ? 'repeat(3, minmax(0, 1fr))' : '1fr 1fr', gap: bonusUnlocked ? '8px' : '14px', marginBottom: '24px' }}>
           {availableColors.map(btn => {
             const isActive = activeBtn === btn.id;
             return (
@@ -332,8 +332,8 @@ export default function SimonGame() {
                   border: `3px solid ${isActive ? btn.hex : 'rgba(255,255,255,0.08)'}`,
                   background: isActive ? `${btn.hex}55` : `${btn.hex}18`,
                   boxShadow: isActive ? `0 0 32px ${btn.glow}` : 'none',
-                  transform: isActive ? 'scale(1.08)' : 'scale(1)',
-                  transition: 'all 0.12s ease', minHeight: '80px',
+                  transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                  transition: 'all 0.12s ease', minHeight: bonusUnlocked ? '70px' : '80px',
                   cursor: gameActive && !isShowingSequence ? 'pointer' : 'default',
                 }}
               />
@@ -372,41 +372,41 @@ export default function SimonGame() {
           const gradeLabel: Record<string, string> = { S: 'LEGENDARY', A: 'SKILLED', B: 'SOLID', C: 'DECENT', D: 'KEEP GOING' };
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(5,5,15,0.6)', animation: 'fadeIn 0.2s ease' }} onClick={() => setGameOver(false)}>
-              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '32px 24px 40px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative' }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '20px 20px 28px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative', maxHeight: '82vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '14px', right: '16px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
 
                 {/* Title */}
-                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
                   <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '3px', marginBottom: '4px' }}>SIMON_MEMORY · RESULT</div>
                   <div style={{ width: '40px', height: '2px', background: gradeColor[grade], margin: '0 auto', borderRadius: '2px' }} />
                 </div>
 
                 {/* Grade + Score */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '28px' }}>
-                  <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: `${gradeColor[grade]}15`, border: `2px solid ${gradeColor[grade]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', fontWeight: 900, color: gradeColor[grade], boxShadow: `0 0 24px ${gradeColor[grade]}40` }}>{grade}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '16px' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: `${gradeColor[grade]}15`, border: `2px solid ${gradeColor[grade]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '30px', fontWeight: 900, color: gradeColor[grade], boxShadow: `0 0 20px ${gradeColor[grade]}40` }}>{grade}</div>
                   <div>
-                    <div style={{ color: '#fff', fontSize: '52px', fontWeight: 900, lineHeight: 1 }}>{score}</div>
+                    <div style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1 }}>{score}</div>
                     <div style={{ color: gradeColor[grade], fontSize: '11px', letterSpacing: '2px', fontWeight: 700, marginTop: '2px' }}>{gradeLabel[grade]}</div>
                     <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '3px' }}>{sequences} rounds · {diffLabel}</div>
                   </div>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                   {[
                     { val: sequences,                      label: 'ROUNDS',  color: '#06b6d4' },
                     { val: bonusUnlocked ? '5' : '4',      label: 'COLORS',  color: '#a855f7' },
                     { val: `${(gameTimeMs/1000).toFixed(1)}s`, label: 'TIME', color: '#10b981' },
                   ].map(s => (
-                    <div key={s.label} style={{ textAlign: 'center', padding: '12px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                      <div style={{ color: s.color, fontSize: '22px', fontWeight: 900 }}>{s.val}</div>
+                    <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                      <div style={{ color: s.color, fontSize: '18px', fontWeight: 900 }}>{s.val}</div>
                       <div style={{ color: '#4b5563', fontSize: '8px', letterSpacing: '1px', marginTop: '2px' }}>{s.label}</div>
                     </div>
                   ))}
                 </div>
 
                 {/* Rank + bonus */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', minHeight: '28px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '14px', minHeight: '28px', flexWrap: 'wrap' }}>
                   {submitting && <span style={{ color: '#4b5563', fontSize: '11px', letterSpacing: '1px' }}>SAVING...</span>}
                   {txError && !submitting && (
                     <div style={{ textAlign: 'center' }}>

@@ -455,50 +455,50 @@ export default function RhythmRush() {
           const rank = myRank ?? 0;
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(5,5,15,0.6)', animation: 'fadeIn 0.2s ease' }} onClick={() => setGameOver(false)}>
-              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '32px 24px 40px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative' }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '20px 20px 28px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative', maxHeight: '82vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '14px', right: '16px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
 
                 {/* Title */}
-                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
                   <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '3px', marginBottom: '4px' }}>RHYTHM_RUSH · RESULT</div>
                   <div style={{ width: '40px', height: '2px', background: gradeColor[grade], margin: '0 auto', borderRadius: '2px' }} />
                 </div>
 
                 {/* Grade + Score */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '28px' }}>
-                  <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: `${gradeColor[grade]}15`, border: `2px solid ${gradeColor[grade]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', fontWeight: 900, color: gradeColor[grade], boxShadow: `0 0 24px ${gradeColor[grade]}40` }}>{grade}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '16px' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: `${gradeColor[grade]}15`, border: `2px solid ${gradeColor[grade]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '30px', fontWeight: 900, color: gradeColor[grade], boxShadow: `0 0 20px ${gradeColor[grade]}40` }}>{grade}</div>
                   <div>
-                    <div style={{ color: '#fff', fontSize: '52px', fontWeight: 900, lineHeight: 1 }}>{score}</div>
+                    <div style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1 }}>{score}</div>
                     <div style={{ color: gradeColor[grade], fontSize: '11px', letterSpacing: '2px', fontWeight: 700, marginTop: '2px' }}>{gradeLabel[grade]}</div>
                   </div>
                 </div>
 
                 {/* Hit breakdown */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                   {[
                     { val: perfectHits, label: 'PERFECT', color: '#10b981' },
                     { val: goodHits,    label: 'GOOD',    color: '#f59e0b' },
                     { val: missHits,    label: 'MISS',    color: '#ef4444' },
                     { val: `${accuracy}%`, label: 'ACC', color: '#06b6d4' },
                   ].map(s => (
-                    <div key={s.label} style={{ textAlign: 'center', padding: '10px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                      <div style={{ color: s.color, fontSize: '20px', fontWeight: 900 }}>{s.val}</div>
+                    <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                      <div style={{ color: s.color, fontSize: '18px', fontWeight: 900 }}>{s.val}</div>
                       <div style={{ color: '#4b5563', fontSize: '8px', letterSpacing: '1px', marginTop: '2px' }}>{s.label}</div>
                     </div>
                   ))}
                 </div>
 
                 {/* Combo / BPM / Time */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', marginBottom: '20px' }}>
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#f59e0b', fontSize: '18px', fontWeight: 900 }}>{maxCombo}x</div><div style={{ color: '#4b5563', fontSize: '8px' }}>COMBO</div></div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', marginBottom: '12px' }}>
+                  <div style={{ textAlign: 'center' }}><div style={{ color: '#f59e0b', fontSize: '16px', fontWeight: 900 }}>{maxCombo}x</div><div style={{ color: '#4b5563', fontSize: '8px' }}>COMBO</div></div>
                   <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#ef4444', fontSize: '18px', fontWeight: 900 }}>{Math.round(bpm)}</div><div style={{ color: '#4b5563', fontSize: '8px' }}>BPM</div></div>
+                  <div style={{ textAlign: 'center' }}><div style={{ color: '#ef4444', fontSize: '16px', fontWeight: 900 }}>{Math.round(bpm)}</div><div style={{ color: '#4b5563', fontSize: '8px' }}>BPM</div></div>
                   <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#a855f7', fontSize: '18px', fontWeight: 900 }}>{(gameTimeMs / 1000).toFixed(1)}s</div><div style={{ color: '#4b5563', fontSize: '8px' }}>TIME</div></div>
+                  <div style={{ textAlign: 'center' }}><div style={{ color: '#a855f7', fontSize: '16px', fontWeight: 900 }}>{(gameTimeMs / 1000).toFixed(1)}s</div><div style={{ color: '#4b5563', fontSize: '8px' }}>TIME</div></div>
                 </div>
 
                 {/* Rank */}
-                <div style={{ textAlign: 'center', marginBottom: '24px', minHeight: '28px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '14px', minHeight: '28px' }}>
                   {submitting && <span style={{ color: '#4b5563', fontSize: '11px', letterSpacing: '1px' }}>SAVING...</span>}
                   {txError && !submitting && (
                     <div style={{ textAlign: 'center' }}>
@@ -516,7 +516,7 @@ export default function RhythmRush() {
                 </div>
 
                 {/* Buttons */}
-                <button onClick={startGame} style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '13px', fontWeight: 700, letterSpacing: '2px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', marginBottom: '10px' }}>
+                <button onClick={startGame} style={{ width: '100%', padding: '13px', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '13px', fontWeight: 700, letterSpacing: '2px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', marginBottom: '8px' }}>
                   PLAY AGAIN
                 </button>
                 <div style={{ display: 'flex', gap: '8px' }}>
