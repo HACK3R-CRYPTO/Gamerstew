@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, usePublicClient, useBalance } from 'wagmi';
 import { usePrivy } from '@privy-io/react-auth';
 import { useIsMiniPay } from '@/hooks/useMiniPay';
 import { parseUnits, formatUnits } from 'viem';
@@ -64,6 +64,10 @@ export default function GamesHub() {
   const isConnected = (ready && authenticated) || (isMiniPay && !!wagmiAddress);
   const privyAddr = user?.wallet?.address;
   const address = wagmiAddress || privyAddr;
+
+  const { data: celoBalance } = useBalance({ address: address as `0x${string}` | undefined });
+  // 0.003 CELO is enough to cover the mint gas — if below this, block mint until they get gas
+  const hasGasForMint = celoBalance ? celoBalance.value >= BigInt('3000000000000000') : false;
 
   const { isVerified, isVerifying, verifyIdentity, claimG$, entitlement } = useSelfVerification();
 
@@ -154,11 +158,19 @@ export default function GamesHub() {
       toast.success(`Welcome, ${usernameInput}!`, { id: 'mint-pass' });
       setTimeout(() => { refetchPass(); refetchUsername(); }, 3000);
     } catch (err: unknown) {
-      const e = err as { shortMessage?: string; message?: string };
-      const msg = e.shortMessage || e.message || 'Mint failed';
-      if (msg.includes('Username taken')) toast.error('That username is taken, try another', { id: 'mint-pass' });
-      else if (msg.includes('Already minted')) toast.error('You already have a Game Pass', { id: 'mint-pass' });
-      else toast.error(msg, { id: 'mint-pass' });
+      const e = err as { name?: string; code?: number; shortMessage?: string; message?: string };
+      const msg = e.shortMessage || e.message || '';
+      if (e.name === 'UserRejectedRequestError' || e.code === 4001) {
+        toast.error('Transaction rejected — no GamePass minted', { id: 'mint-pass' });
+      } else if (e.name === 'InsufficientFundsError' || e.code === -32603 || /insufficient/i.test(msg)) {
+        toast.error('Not enough CELO for gas — top up and try again', { id: 'mint-pass' });
+      } else if (msg.includes('Username taken')) {
+        toast.error('That username is taken, try another', { id: 'mint-pass' });
+      } else if (msg.includes('Already minted')) {
+        toast.error('You already have a Game Pass', { id: 'mint-pass' });
+      } else {
+        toast.error('Mint failed — please try again', { id: 'mint-pass' });
+      }
     } finally { setMintingPass(false); }
   };
 
@@ -221,8 +233,9 @@ export default function GamesHub() {
 
   const handlePlay = async (game: typeof GAMES[0], forceWager = false) => {
     const isWager = forceWager || wagerMode[game.id];
-    if (!isWager) { if (!isConnected) { toast('Connect your wallet to play', { icon: '🔗' }); login(); return; } router.push(game.path); return; }
-    if (!isConnected) { toast.error('Connect your wallet first'); return; }
+    if (!isConnected) { toast('Connect your wallet to play', { icon: '🔗' }); login(); return; }
+    if (!hasPass) { toast('Mint your GamePass first to play', { icon: '🎮' }); document.getElementById('create-player')?.scrollIntoView({ behavior: 'smooth' }); return; }
+    if (!isWager) { router.push(game.path); return; }
     if (!isVerified) { toast.error('Verify your GoodDollar identity to wager'); return; }
     if (!SOLO_WAGER_ADDRESS) { toast('Wager contract not deployed — playing free', { icon: 'ℹ️' }); router.push(game.path); return; }
 
@@ -387,16 +400,23 @@ export default function GamesHub() {
 
         {/* Game Pass Gate */}
         {isConnected && !!wagmiAddress && !hasPass && (
-          <div style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
+          <div id="create-player" style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
             <div style={{ fontSize: '48px', marginBottom: '12px', animation: 'float 3s ease-in-out infinite' }}>🎮</div>
             <div style={{ color: '#10b981', fontSize: '16px', fontWeight: 900, letterSpacing: '3px', marginBottom: '6px' }}>CREATE YOUR PLAYER</div>
-            <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '20px', lineHeight: 1.5 }}>Pick a username · Mint your free soulbound pass · Start playing</div>
+            <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '12px', lineHeight: 1.5 }}>Pick a username · Mint your free soulbound pass · Start playing</div>
+            {!hasGasForMint && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '20px', padding: '7px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '13px' }}>⛽</span>
+                <span style={{ color: '#ef4444', fontSize: '10px', fontWeight: 700 }}>You need CELO for gas to mint.</span>
+                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ background: 'none', border: 'none', padding: 0, color: '#06b6d4', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}>Get free gas ↑</button>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', maxWidth: '340px', margin: '0 auto' }}>
               <input type="text" placeholder="username..." value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16))}
-                onKeyDown={(e) => e.key === 'Enter' && mintGamePass()}
-                style={{ flex: 1, padding: '14px 16px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', color: '#fff', fontSize: '14px', fontFamily: 'Orbitron, monospace', outline: 'none', textAlign: 'center', letterSpacing: '2px' }} />
-              <button onClick={mintGamePass} disabled={mintingPass || usernameInput.length < 3} style={{ padding: '14px 24px', borderRadius: '12px', cursor: 'pointer', background: usernameInput.length >= 3 ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 900, fontFamily: 'Orbitron, monospace', letterSpacing: '1px', opacity: mintingPass || usernameInput.length < 3 ? 0.4 : 1 }}>
+                onKeyDown={(e) => e.key === 'Enter' && hasGasForMint && mintGamePass()}
+                style={{ flex: 1, padding: '14px 16px', background: 'rgba(0,0,0,0.4)', border: `1px solid ${hasGasForMint ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.2)'}`, borderRadius: '12px', color: '#fff', fontSize: '14px', fontFamily: 'Orbitron, monospace', outline: 'none', textAlign: 'center', letterSpacing: '2px' }} />
+              <button onClick={mintGamePass} disabled={mintingPass || usernameInput.length < 3 || !hasGasForMint} style={{ padding: '14px 24px', borderRadius: '12px', cursor: hasGasForMint && usernameInput.length >= 3 ? 'pointer' : 'not-allowed', background: hasGasForMint && usernameInput.length >= 3 ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', fontSize: '12px', fontWeight: 900, fontFamily: 'Orbitron, monospace', letterSpacing: '1px', opacity: mintingPass || usernameInput.length < 3 || !hasGasForMint ? 0.4 : 1 }}>
                 {mintingPass ? '...' : 'GO'}
               </button>
             </div>

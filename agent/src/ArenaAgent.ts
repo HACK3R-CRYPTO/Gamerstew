@@ -525,7 +525,7 @@ async function tryResolveMatch(matchId: bigint, m: any) {
             args: [matchId, winner as `0x${string}`], account
         });
         const hash = await walletClient.writeContract(request);
-        console.log(chalk.green(`✅ Match #${matchId} Resolved! Winner: ${winner === m.challenger ? 'Challenger' : 'Opponent'}`));
+        console.log(chalk.green(`✅ Match #${matchId} Resolved! Winner: ${winner === m.challenger ? 'Challenger' : 'Opponent'} (${winner})`));
 
 
         // Social Update: Match Result
@@ -592,10 +592,10 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
     }
 
     if (isTie) {
-        // Fair Tie-Breaker (50/50)
-        const luckyWinner = Math.random() > 0.5 ? p1 : p2;
-        console.log(chalk.yellow(`🤝 TIE detected! Flipping coin for tie-breaker... Winner: ${luckyWinner === p1 ? 'Challenger' : 'Opponent'}`));
-        return luckyWinner;
+        // On a tie, award the challenger (p1) — the human player initiates challenges,
+        // so this avoids the confusing "you tied but lost" experience.
+        console.log(chalk.yellow(`🤝 TIE detected! Awarding challenger (p1) on tie.`));
+        return p1;
     }
 
     return p1Wins ? p1 : p2;

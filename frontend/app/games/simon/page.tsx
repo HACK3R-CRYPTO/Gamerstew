@@ -147,13 +147,30 @@ export default function SimonGame() {
           });
         } catch (err: unknown) {
           txFailed = true;
-          const name = (err as { name?: string })?.name ?? '';
-          const code = (err as { code?: number })?.code ?? 0;
-          if (
-            name === 'InsufficientFundsError' || code === -32603 ||
-            name === 'EstimateGasExecutionError' || code === -32000
-          ) {
-            setTxError('Insufficient CELO balance to cover gas fees');
+          const e = err as { name?: string; code?: number; message?: string; shortMessage?: string; details?: string; cause?: { name?: string; code?: string; message?: string } };
+          const name      = e?.name ?? '';
+          const code      = e?.code ?? 0;
+          const causeName = e?.cause?.name ?? '';
+          const causeCode = e?.cause?.code ?? '';
+          const msg       = (e?.message ?? e?.shortMessage ?? e?.details ?? e?.cause?.message ?? '').toLowerCase();
+          const isRejected =
+            name === 'UserRejectedRequestError' || code === 4001 || code === -32003 ||
+            causeName === 'UserRejectedRequestError' ||
+            causeCode === 'policy_violation' ||
+            msg.includes('user rejected') ||
+            msg.includes('rejected the request') ||
+            msg.includes('user denied');
+          const isGasOrFunds =
+            name === 'InsufficientFundsError' || name === 'EstimateGasExecutionError' ||
+            code === -32000 || code === -32010 || causeCode === 'insufficient_funds' ||
+            msg.includes('insufficient funds') || msg.includes('insufficient balance') ||
+            msg.includes('gas limit') || msg.includes('exceeds gas');
+          if (isRejected) {
+            setTxError('Transaction rejected — score not saved on-chain');
+          } else if (isGasOrFunds) {
+            setTxError('Insufficient CELO to cover gas — top up and try again');
+          } else {
+            setTxError('Transaction failed — score not saved on-chain');
           }
         } finally { setSigningOnChain(false); }
       }
@@ -245,7 +262,7 @@ export default function SimonGame() {
   if (!ready || !authenticated) return null;
 
   return (
-    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px', maxWidth: '440px', margin: '0 auto' }}>
+    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px 16px', maxWidth: '440px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
@@ -264,7 +281,7 @@ export default function SimonGame() {
         </div>
       )}
 
-      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(6,182,212,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: '28px' }}>
+      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(6,182,212,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: bonusUnlocked ? '20px 12px' : '28px' }}>
         {/* Score + round */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ textAlign: 'center' }}>
@@ -303,7 +320,7 @@ export default function SimonGame() {
         )}
 
         {/* Buttons */}
-        <div style={{ display: 'grid', gridTemplateColumns: bonusUnlocked ? '1fr 1fr 1fr' : '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: bonusUnlocked ? '1fr 1fr 1fr' : '1fr 1fr', gap: bonusUnlocked ? '8px' : '14px', marginBottom: '24px' }}>
           {availableColors.map(btn => {
             const isActive = activeBtn === btn.id;
             return (
