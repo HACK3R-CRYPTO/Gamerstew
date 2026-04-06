@@ -433,7 +433,7 @@ export default function SimonGame() {
                   PLAY AGAIN
                 </button>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => router.push('/leaderboard')} style={{ flex: 1, padding: '13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#9ca3af', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
+                  <button onClick={() => router.push('/leaderboard?game=simon')} style={{ flex: 1, padding: '13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#9ca3af', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
                     SCORES
                   </button>
                   <button onClick={() => { const text = `🧠 GameArena — Simon Memory\n🎯 Score: ${score} | Grade: ${grade} | ${sequences} Rounds\n${bonusUnlocked ? '🟣 5th color unlocked!' : ''}\n\nPlay: ${window.location.origin}`; navigator.clipboard.writeText(text); }} style={{ flex: 1, padding: '13px', background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.25)', borderRadius: '12px', color: '#06b6d4', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>

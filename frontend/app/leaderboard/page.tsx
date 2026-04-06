@@ -78,6 +78,11 @@ export default function Leaderboard() {
   const { address } = useAccount();
   const [activeTab, setActiveTab] = useState('live');
   const [gameTab, setGameTab] = useState('rhythm');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('game') === 'simon') setGameTab('simon');
+  }, []);
   const [podium, setPodium] = useState<Entry[]>([]);
   const [listEntries, setListEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
