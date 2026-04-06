@@ -1,6 +1,7 @@
 'use server';
 
 import { PrivyClient } from '@privy-io/server-auth';
+import { verifyMessage } from 'viem';
 import { supabase } from '@/lib/supabase';
 
 // ─── Privy server-side client ─────────────────────────────────────────────────
@@ -32,6 +33,107 @@ async function verifyUser(accessToken: string, claimedAddress: string) {
   } catch {
     return false;
   }
+}
+
+// ─── MiniPay wallet-signature verification ───────────────────────────────────
+// MiniPay users have no Privy JWT — they sign a short message with their injected wallet.
+// Message format: "GameArena|{game}|{score}|{timestampMs}"
+// We verify (a) the signature recovers to claimedAddress and (b) timestamp is <5 min old.
+async function verifyMiniPaySig(sig: string, message: string, claimedAddress: string): Promise<boolean> {
+  try {
+    const parts = message.split('|');
+    if (parts.length !== 4 || parts[0] !== 'GameArena') return false;
+    const ts = parseInt(parts[3], 10);
+    if (isNaN(ts) || Date.now() - ts > 5 * 60 * 1000) return false; // stale
+    const recovered = await verifyMessage({ address: claimedAddress as `0x${string}`, message, signature: sig as `0x${string}` });
+    return recovered;
+  } catch {
+    return false;
+  }
+}
+
+// ─── signScoreMiniPay ────────────────────────────────────────────────────────
+export async function signScoreMiniPay(
+  playerAddress: string,
+  walletSig: string,
+  signedMessage: string,
+  scoreData: { game: 'rhythm' | 'simon'; score: number }
+): Promise<{ success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string }> {
+  const isValid = await verifyMiniPaySig(walletSig, signedMessage, playerAddress);
+  if (!isValid) return { success: false, error: 'Unauthorized' };
+
+  try {
+    const res = await fetch(`${process.env.BACKEND_URL}/api/sign-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
+      body: JSON.stringify({ playerAddress, game: scoreData.game, score: scoreData.score }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || 'Sign failed' };
+    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+// ─── submitScoreMiniPay ──────────────────────────────────────────────────────
+export async function submitScoreMiniPay(
+  playerAddress: string,
+  walletSig: string,
+  signedMessage: string,
+  scoreData: {
+    game: 'rhythm' | 'simon';
+    score: number;
+    gameTime: number;
+    wagered?: string | null;
+    wagerId?: string | null;
+    txHash?: string | null;
+  }
+) {
+  const isValid = await verifyMiniPaySig(walletSig, signedMessage, playerAddress);
+  if (!isValid) return { success: false, error: 'Unauthorized' };
+
+  const { game, score, gameTime } = scoreData;
+  if (score < 0 || score > 1_000_000) return { success: false, error: 'Score out of range' };
+  if (gameTime < 5000) return { success: false, error: 'Game time too short' };
+
+  const season = currentSeason();
+  const lower  = playerAddress.toLowerCase();
+  const streak = await registerUser(lower);
+
+  let txHash: string | null = scoreData.txHash ?? null;
+  let backendHandled = false;
+  let rank = 0;
+  try {
+    const backendRes = await fetch(`${process.env.BACKEND_URL}/api/submit-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
+      body: JSON.stringify({ playerAddress, scoreData }),
+    });
+    const backendData = await backendRes.json();
+    if (backendRes.ok && backendData.success) {
+      txHash = backendData.txHash || null;
+      rank = backendData.rank || 0;
+      backendHandled = true;
+    }
+  } catch (_) {}
+
+  if (!backendHandled) {
+    await saveScore({
+      wallet_address: lower,
+      game,
+      score,
+      game_time: gameTime,
+      season_number: season,
+      wagered: scoreData.wagered || null,
+      wager_id: scoreData.wagerId || null,
+      tx_hash: txHash,
+    });
+    const leaderboard = await getLeaderboard(game);
+    rank = leaderboard.findIndex(e => e.wallet_address === lower) + 1;
+  }
+
+  return { success: true, score, rank, txHash, streak };
 }
 
 // ─── rollDice ────────────────────────────────────────────────────────────────

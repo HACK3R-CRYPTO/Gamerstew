@@ -3,8 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
-import { useWriteContract } from 'wagmi';
-import { submitScore, signScore } from '@/app/actions/game';
+import { useWriteContract, useAccount, useSignMessage } from 'wagmi';
+import { useIsMiniPay } from '@/hooks/useMiniPay';
+import { submitScore, signScore, signScoreMiniPay, submitScoreMiniPay } from '@/app/actions/game';
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from '@/lib/contracts';
 
 const BASE_BPM         = 90;
@@ -22,13 +23,18 @@ const BUTTON_COLORS: Record<number, { active: string; glow: string; key: string 
 
 export default function RhythmRush() {
   const { user, getAccessToken, authenticated, ready } = usePrivy();
+  const { address: wagmiAddress } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const isMiniPay = useIsMiniPay();
   const router = useRouter();
 
+  // MiniPay users are connected via injected wallet — skip Privy auth redirect
   useEffect(() => {
-    if (ready && !authenticated) router.replace('/');
-  }, [ready, authenticated, router]);
+    if (ready && !authenticated && !isMiniPay) router.replace('/');
+  }, [ready, authenticated, isMiniPay, router]);
   const { writeContractAsync } = useWriteContract();
-  const address = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
+  const privyAddress = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
+  const address = isMiniPay ? wagmiAddress : privyAddress;
   const isEmbeddedWallet = user?.linkedAccounts?.some((a: { type: string; walletClientType?: string }) => a.type === 'wallet' && a.walletClientType === 'privy');
 
 
@@ -140,16 +146,26 @@ export default function RhythmRush() {
     const elapsed = Date.now() - startTimeRef.current;
     setGameTimeMs(elapsed);
 
-    if (!address || !authenticated) return;
+    if (!address || (!authenticated && !isMiniPay)) return;
     setSubmitting(true);
     try {
-      const token = await getAccessToken();
-      if (!token) return;
+      let sig: { success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string };
+      let authToken: string | null = null;
+      let miniPaySig: string | null = null;
+      let miniPayMsg: string | null = null;
 
-      // 1. Get backend signature (EIP-712 BackendApproval voucher)
-      const sig = await signScore(token, address, { game: 'rhythm', score: scoreRef.current });
+      if (isMiniPay) {
+        // MiniPay: verify ownership via wallet signature instead of Privy JWT
+        miniPayMsg = `GameArena|rhythm|${scoreRef.current}|${Date.now()}`;
+        miniPaySig = await signMessageAsync({ message: miniPayMsg });
+        sig = await signScoreMiniPay(address, miniPaySig, miniPayMsg, { game: 'rhythm', score: scoreRef.current });
+      } else {
+        authToken = await getAccessToken();
+        if (!authToken) return;
+        sig = await signScore(authToken, address, { game: 'rhythm', score: scoreRef.current });
+      }
 
-      // 2. Player submits on-chain — embedded wallet: silent, MetaMask: popup
+      // 2. Player submits on-chain — embedded wallet: silent, MiniPay: popup
       let txHash: string | null = null;
       let txFailed = false;
       if (sig.success) {
@@ -189,13 +205,17 @@ export default function RhythmRush() {
       if (txFailed) return;
 
       // 3. Save to Supabase + get rank/streak
-      const result = await submitScore(token, address, {
-        game: 'rhythm',
-        score: scoreRef.current,
-        gameTime: elapsed,
-        txHash,
-      });
-      if (result.success) {
+      let result;
+      if (isMiniPay && miniPaySig && miniPayMsg) {
+        result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, {
+          game: 'rhythm', score: scoreRef.current, gameTime: elapsed, txHash,
+        });
+      } else if (authToken) {
+        result = await submitScore(authToken, address, {
+          game: 'rhythm', score: scoreRef.current, gameTime: elapsed, txHash,
+        });
+      }
+      if (result?.success) {
         if (result.rank) setMyRank(result.rank);
         if (result.streak) setStreak(result.streak);
       }
