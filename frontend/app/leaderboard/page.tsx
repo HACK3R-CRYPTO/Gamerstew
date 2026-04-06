@@ -196,9 +196,21 @@ export default function Leaderboard() {
   }, [activeTab, gameTab, fetchScores]);
 
   const allVisible = [...podium, ...listEntries];
-  const myRank = address ? allVisible.findIndex((e: Entry) => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
+  const myRankInPodium = address ? podium.findIndex((e: Entry) => e.player.toLowerCase() === address.toLowerCase()) : -1;
+  const myRankInList   = address ? listEntries.findIndex((e: Entry) => e.player.toLowerCase() === address.toLowerCase()) : -1;
+  const myRank = myRankInPodium >= 0
+    ? myRankInPodium + 1
+    : myRankInList >= 0
+      ? 3 + (listPage - 1) * LIST_SIZE + myRankInList + 1
+      : 0;
   const myScore = address ? allVisible.find((e: Entry) => e.player.toLowerCase() === address.toLowerCase())?.score : null;
-  const aboveEntry = myRank > 1 ? allVisible[myRank - 2] : null;
+  const aboveEntry = myRank > 1
+    ? myRankInPodium > 0
+      ? podium[myRankInPodium - 1]
+      : myRankInList === 0
+        ? podium[2]
+        : listEntries[myRankInList - 1]
+    : null;
   const gap = aboveEntry && myScore != null ? aboveEntry.score - myScore : null;
   const seasonsData = seasons as { currentSeason: number; currentEndsAt: number; live: Record<string, Entry[]>; past: ({ season: number; startTs: number; endTs: number } & Record<string, Entry[]>)[] } | null;
 

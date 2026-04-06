@@ -147,13 +147,30 @@ export default function SimonGame() {
           });
         } catch (err: unknown) {
           txFailed = true;
-          const name = (err as { name?: string })?.name ?? '';
-          const code = (err as { code?: number })?.code ?? 0;
-          if (
-            name === 'InsufficientFundsError' || code === -32603 ||
-            name === 'EstimateGasExecutionError' || code === -32000
-          ) {
-            setTxError('Insufficient CELO balance to cover gas fees');
+          const e = err as { name?: string; code?: number; message?: string; shortMessage?: string; details?: string; cause?: { name?: string; code?: string; message?: string } };
+          const name      = e?.name ?? '';
+          const code      = e?.code ?? 0;
+          const causeName = e?.cause?.name ?? '';
+          const causeCode = e?.cause?.code ?? '';
+          const msg       = (e?.message ?? e?.shortMessage ?? e?.details ?? e?.cause?.message ?? '').toLowerCase();
+          const isRejected =
+            name === 'UserRejectedRequestError' || code === 4001 || code === -32003 ||
+            causeName === 'UserRejectedRequestError' ||
+            causeCode === 'policy_violation' ||
+            msg.includes('user rejected') ||
+            msg.includes('rejected the request') ||
+            msg.includes('user denied');
+          const isGasOrFunds =
+            name === 'InsufficientFundsError' || name === 'EstimateGasExecutionError' ||
+            code === -32000 || code === -32010 || causeCode === 'insufficient_funds' ||
+            msg.includes('insufficient funds') || msg.includes('insufficient balance') ||
+            msg.includes('gas limit') || msg.includes('exceeds gas');
+          if (isRejected) {
+            setTxError('Transaction rejected — score not saved on-chain');
+          } else if (isGasOrFunds) {
+            setTxError('Insufficient CELO to cover gas — top up and try again');
+          } else {
+            setTxError('Transaction failed — score not saved on-chain');
           }
         } finally { setSigningOnChain(false); }
       }

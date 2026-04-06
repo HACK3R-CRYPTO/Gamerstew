@@ -59,6 +59,7 @@ export default function RhythmRush() {
   const [beatTick, setBeatTick]             = useState(0);
   const beatTickRef                         = useRef(0);
 
+  const gameEndingRef      = useRef(false);
   const gameTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const beatIntervalRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef       = useRef(0);
@@ -130,6 +131,8 @@ export default function RhythmRush() {
   };
 
   const endGame = useCallback(async () => {
+    if (gameEndingRef.current) return;
+    gameEndingRef.current = true;
     setGameActive(false);
     setGameOver(true);
     if (beatIntervalRef.current) clearTimeout(beatIntervalRef.current);
@@ -161,13 +164,24 @@ export default function RhythmRush() {
           });
         } catch (err: unknown) {
           txFailed = true;
-          const name = (err as { name?: string })?.name ?? '';
-          const code = (err as { code?: number })?.code ?? 0;
-          if (
-            name === 'InsufficientFundsError' || code === -32603 ||
-            name === 'EstimateGasExecutionError' || code === -32000
-          ) {
-            setTxError('Insufficient CELO balance to cover gas fees');
+          const e   = err as { name?: string; code?: number; message?: string; cause?: { name?: string; code?: string } };
+          const msg = ((err as Error)?.message ?? '').toLowerCase();
+          const isRejected =
+            e?.name === 'UserRejectedRequestError' || e?.code === 4001 || e?.code === -32003 ||
+            e?.cause?.name === 'UserRejectedRequestError' ||
+            e?.cause?.code === 'policy_violation' ||
+            msg.includes('user rejected') || msg.includes('rejected the request') || msg.includes('user denied');
+          const isGasOrFunds =
+            e?.name === 'InsufficientFundsError' || e?.name === 'EstimateGasExecutionError' ||
+            e?.code === -32000 || e?.code === -32010 || e?.cause?.code === 'insufficient_funds' ||
+            msg.includes('insufficient funds') || msg.includes('insufficient balance') ||
+            msg.includes('gas limit') || msg.includes('exceeds gas');
+          if (isRejected) {
+            setTxError('Transaction rejected — score not saved on-chain');
+          } else if (isGasOrFunds) {
+            setTxError('Insufficient CELO to cover gas — top up and try again');
+          } else {
+            setTxError('Transaction failed — score not saved on-chain');
           }
         } finally { setSigningOnChain(false); }
       }
@@ -206,6 +220,7 @@ export default function RhythmRush() {
     setTimeRemaining(30); setProgress(0);
     setCurrentTarget(1); setFeedback(''); setFeedbackType('');
     setShakeScreen(false); setComboFlash(null); setMyRank(null); setStreak(null); setGameTimeMs(0); setTxError(null);
+    gameEndingRef.current = false;
     startTimeRef.current = Date.now();
     targetStartTimeRef.current = Date.now();
     beatHitRef.current = false;
@@ -292,7 +307,7 @@ export default function RhythmRush() {
   if (!ready || !authenticated) return null;
 
   return (
-    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px', maxWidth: '480px', margin: '0 auto' }}>
+    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px 16px', maxWidth: '480px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
@@ -312,7 +327,7 @@ export default function RhythmRush() {
       )}
 
       {/* Game panel */}
-      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(168,85,247,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: '28px' }}>
+      <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid rgba(168,85,247,${gameActive ? 0.4 : 0.2})`, borderRadius: '12px', padding: '20px 16px' }}>
         {/* Stats row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ textAlign: 'center' }}>
@@ -363,19 +378,19 @@ export default function RhythmRush() {
             to   { transform: scale(1.0); opacity: 0; }
           }
         `}</style>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}>
           {[1, 2, 3, 4].map(btn => {
             const c = BUTTON_COLORS[btn];
             const isTarget = gameActive && btn === currentTarget;
             return (
-              <div key={btn} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div key={btn} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {isTarget && (
                   <div
                     key={`ring-${beatTick}`}
                     style={{
                       position: 'absolute',
-                      width: '72px',
-                      height: '72px',
+                      width: '64px',
+                      height: '64px',
                       borderRadius: '50%',
                       border: `2px solid ${c.active}`,
                       animation: `beatRing ${getBeatInterval(bpm)}ms linear forwards`,
@@ -387,8 +402,8 @@ export default function RhythmRush() {
                   onPointerDown={e => { e.preventDefault(); handleButtonClick(btn); }}
                   disabled={!gameActive || gameOver}
                   style={{
-                    width: '72px',
-                    height: '72px',
+                    width: '64px',
+                    height: '64px',
                     borderRadius: '50%',
                     border: `3px solid ${isTarget ? c.active : 'rgba(255,255,255,0.08)'}`,
                     background: isTarget ? `${c.active}33` : `${c.active}11`,

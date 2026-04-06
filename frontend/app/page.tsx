@@ -154,11 +154,19 @@ export default function GamesHub() {
       toast.success(`Welcome, ${usernameInput}!`, { id: 'mint-pass' });
       setTimeout(() => { refetchPass(); refetchUsername(); }, 3000);
     } catch (err: unknown) {
-      const e = err as { shortMessage?: string; message?: string };
-      const msg = e.shortMessage || e.message || 'Mint failed';
-      if (msg.includes('Username taken')) toast.error('That username is taken, try another', { id: 'mint-pass' });
-      else if (msg.includes('Already minted')) toast.error('You already have a Game Pass', { id: 'mint-pass' });
-      else toast.error(msg, { id: 'mint-pass' });
+      const e = err as { name?: string; code?: number; shortMessage?: string; message?: string };
+      const msg = e.shortMessage || e.message || '';
+      if (e.name === 'UserRejectedRequestError' || e.code === 4001) {
+        toast.error('Transaction rejected — no GamePass minted', { id: 'mint-pass' });
+      } else if (e.name === 'InsufficientFundsError' || e.code === -32603 || /insufficient/i.test(msg)) {
+        toast.error('Not enough CELO for gas — top up and try again', { id: 'mint-pass' });
+      } else if (msg.includes('Username taken')) {
+        toast.error('That username is taken, try another', { id: 'mint-pass' });
+      } else if (msg.includes('Already minted')) {
+        toast.error('You already have a Game Pass', { id: 'mint-pass' });
+      } else {
+        toast.error('Mint failed — please try again', { id: 'mint-pass' });
+      }
     } finally { setMintingPass(false); }
   };
 
@@ -221,8 +229,9 @@ export default function GamesHub() {
 
   const handlePlay = async (game: typeof GAMES[0], forceWager = false) => {
     const isWager = forceWager || wagerMode[game.id];
-    if (!isWager) { if (!isConnected) { toast('Connect your wallet to play', { icon: '🔗' }); login(); return; } router.push(game.path); return; }
-    if (!isConnected) { toast.error('Connect your wallet first'); return; }
+    if (!isConnected) { toast('Connect your wallet to play', { icon: '🔗' }); login(); return; }
+    if (!hasPass) { toast('Mint your GamePass first to play', { icon: '🎮' }); document.getElementById('create-player')?.scrollIntoView({ behavior: 'smooth' }); return; }
+    if (!isWager) { router.push(game.path); return; }
     if (!isVerified) { toast.error('Verify your GoodDollar identity to wager'); return; }
     if (!SOLO_WAGER_ADDRESS) { toast('Wager contract not deployed — playing free', { icon: 'ℹ️' }); router.push(game.path); return; }
 
@@ -387,7 +396,7 @@ export default function GamesHub() {
 
         {/* Game Pass Gate */}
         {isConnected && !!wagmiAddress && !hasPass && (
-          <div style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
+          <div id="create-player" style={{ marginBottom: '20px', padding: '28px 24px', background: 'linear-gradient(160deg, rgba(16,185,129,0.08), rgba(6,182,212,0.04))', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '16px', textAlign: 'center', animation: 'slideUp 0.5s ease-out' }}>
             <div style={{ fontSize: '48px', marginBottom: '12px', animation: 'float 3s ease-in-out infinite' }}>🎮</div>
             <div style={{ color: '#10b981', fontSize: '16px', fontWeight: 900, letterSpacing: '3px', marginBottom: '6px' }}>CREATE YOUR PLAYER</div>
             <div style={{ color: '#6b7280', fontSize: '10px', marginBottom: '20px', lineHeight: 1.5 }}>Pick a username · Mint your free soulbound pass · Start playing</div>
