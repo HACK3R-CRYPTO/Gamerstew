@@ -500,33 +500,50 @@ export default function ArenaGame() {
               const myMove = getMoveDisplay(m.gameType, isChallenger ? m.challengerMove : m.opponentMove);
               const oppMove = getMoveDisplay(m.gameType, isChallenger ? m.opponentMove : m.challengerMove);
 
+              // For completed Coin Flip: deduce oracle flip from winner's move
+              const winnerMove = m.status === 2 && m.gameType === 3
+                ? getMoveDisplay(3, m.winner?.toLowerCase() === m.challenger?.toLowerCase() ? m.challengerMove : m.opponentMove)
+                : null;
+
               return (
-                <div key={m.id} className="flex items-center justify-between p-2.5 rounded-xl transition-all hover:bg-white/[0.03]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{GAME_TYPES.find(g => g.id === m.gameType)?.icon || '❓'}</span>
-                    <div>
-                      <div className="text-xs font-bold text-gray-300 flex items-center gap-2">
-                        #{m.id}
-                        {m.status === 2 && <span style={{ color: '#4b5563', fontSize: '9px' }}>{myMove.icon} vs {oppMove.icon}</span>}
+                <div key={m.id} className="p-2.5 rounded-xl transition-all hover:bg-white/3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{GAME_TYPES.find(g => g.id === m.gameType)?.icon || '❓'}</span>
+                      <div>
+                        <div className="text-xs font-bold text-gray-300 flex items-center gap-2">
+                          #{m.id}
+                          {m.status === 2 && <span style={{ color: '#6b7280', fontSize: '10px' }}>{myMove.icon} vs {oppMove.icon}</span>}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#4b5563' }}>{MATCH_STATUS[m.status]}</div>
                       </div>
-                      <div style={{ fontSize: '9px', color: '#374151' }}>{MATCH_STATUS[m.status]}</div>
+                    </div>
+                    <div className="text-right">
+                      <div style={{ color: '#a855f7', fontSize: '11px', fontWeight: 900 }}>{formatUnits(m.wager, 18)} G$</div>
+                      {m.status === 0 && isChallenger && (
+                        <button onClick={() => cancelMatch(m.id)} disabled={cancellingId === m.id} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace', opacity: cancellingId === m.id ? 0.5 : 1 }}>{cancellingId === m.id ? '...' : 'CANCEL'}</button>
+                      )}
+                      {m.status === 1 && !playedMoveIds.has(m.id) && (
+                        <button onClick={() => setActiveMatch(m)} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>PLAY</button>
+                      )}
+                      {m.status === 1 && playedMoveIds.has(m.id) && (
+                        <span style={{ display: 'inline-block', marginTop: '2px', padding: '2px 8px', borderRadius: '8px', fontSize: '8px', fontWeight: 900, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#f59e0b' }}>PENDING</span>
+                      )}
+                      {m.status === 2 && (
+                        <span style={{ display: 'inline-block', marginTop: '2px', padding: '2px 8px', borderRadius: '8px', fontSize: '8px', fontWeight: 900, background: isWinner ? 'rgba(16,185,129,0.12)' : isLoser ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)', border: `1px solid ${isWinner ? 'rgba(16,185,129,0.3)' : isLoser ? 'rgba(239,68,68,0.3)' : 'rgba(234,179,8,0.3)'}`, color: isWinner ? '#10b981' : isLoser ? '#ef4444' : '#eab308' }}>{isWinner ? 'WON' : isLoser ? 'LOST' : 'TIE'}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div style={{ color: '#a855f7', fontSize: '11px', fontWeight: 900 }}>{formatUnits(m.wager, 18)} G$</div>
-                    {m.status === 0 && isChallenger && (
-                      <button onClick={() => cancelMatch(m.id)} disabled={cancellingId === m.id} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace', opacity: cancellingId === m.id ? 0.5 : 1 }}>{cancellingId === m.id ? '...' : 'CANCEL'}</button>
-                    )}
-                    {m.status === 1 && !playedMoveIds.has(m.id) && (
-                      <button onClick={() => setActiveMatch(m)} style={{ marginTop: '2px', padding: '2px 10px', borderRadius: '8px', background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc', fontSize: '9px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>PLAY</button>
-                    )}
-                    {m.status === 1 && playedMoveIds.has(m.id) && (
-                      <span style={{ display: 'inline-block', marginTop: '2px', padding: '2px 8px', borderRadius: '8px', fontSize: '8px', fontWeight: 900, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#f59e0b' }}>PENDING</span>
-                    )}
-                    {m.status === 2 && (
-                      <span style={{ display: 'inline-block', marginTop: '2px', padding: '2px 8px', borderRadius: '8px', fontSize: '8px', fontWeight: 900, background: isWinner ? 'rgba(16,185,129,0.12)' : isLoser ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)', border: `1px solid ${isWinner ? 'rgba(16,185,129,0.3)' : isLoser ? 'rgba(239,68,68,0.3)' : 'rgba(234,179,8,0.3)'}`, color: isWinner ? '#10b981' : isLoser ? '#ef4444' : '#eab308' }}>{isWinner ? 'WON' : isLoser ? 'LOST' : 'TIE'}</span>
-                    )}
-                  </div>
+                  {/* Coin Flip oracle breakdown */}
+                  {m.status === 2 && m.gameType === 3 && winnerMove && (
+                    <div style={{ marginTop: '6px', padding: '5px 8px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: '10px', color: '#6b7280', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <span>You: <span style={{ color: '#e2e8f0' }}>{myMove.icon} {myMove.label}</span></span>
+                      <span>·</span>
+                      <span>AI: <span style={{ color: '#e2e8f0' }}>{oppMove.icon} {oppMove.label}</span></span>
+                      <span>·</span>
+                      <span>Flip: <span style={{ color: isWinner ? '#10b981' : '#ef4444' }}>{winnerMove.icon} {winnerMove.label}</span></span>
+                    </div>
+                  )}
                 </div>
               );
             })}
