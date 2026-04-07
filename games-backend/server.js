@@ -882,13 +882,13 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
 
     const tx = await validator.sendTransaction({
       to: address,
-      value: ethers.parseEther('0.025'),
+      value: ethers.parseEther('0.1'),
     });
     await tx.wait();
 
     await supabase.from('faucet').insert({ wallet_address: lower });
 
-    console.log(`⛽ Faucet: sent 0.025 CELO to ${lower} (tx: ${tx.hash.slice(0, 10)}...)`);
+    console.log(`⛽ Faucet: sent 0.1 CELO to ${lower} (tx: ${tx.hash.slice(0, 10)}...)`);
     res.json({ success: true, txHash: tx.hash });
   } catch (e) {
     console.error(`⛽ Faucet failed for ${lower}:`, e.message);

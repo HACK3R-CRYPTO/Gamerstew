@@ -380,7 +380,7 @@ export default function GamesHub() {
             <span style={{ fontSize: '18px' }}>⛽</span>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: 700, letterSpacing: '1px' }}>NEED GAS?</div>
-              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>{isVerified ? 'Get free 0.025 CELO for transactions (one time)' : 'Verify your humanity to unlock free gas'}</div>
+              <div style={{ color: '#6b7280', fontSize: '11px', marginTop: '3px' }}>{isVerified ? 'Get free 0.1 CELO for transactions (one time)' : 'Verify your humanity to unlock free gas'}</div>
             </div>
             <button onClick={async () => {
               if (!isVerified) { verifyIdentity(); return; }
@@ -388,7 +388,7 @@ export default function GamesHub() {
               try {
                 const res = await fetch(`${BACKEND_URL}/api/faucet`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) });
                 const data = await res.json();
-                if (data.success) { toast.success('0.025 CELO sent to your wallet!'); setGasReceived(true); }
+                if (data.success) { toast.success('0.1 CELO sent to your wallet!'); setGasReceived(true); }
                 else { toast(data.reason || 'Already received', { icon: 'ℹ️' }); setGasReceived(true); }
               } catch (_) { toast.error('Faucet failed'); }
               setRequestingGas(false);
