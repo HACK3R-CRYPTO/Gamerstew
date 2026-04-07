@@ -185,6 +185,78 @@ export default function SplashScreen() {
             animationDelay: "0.8s",
           }}
         />
+
+{/** Parent Progress Bar Container */}
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "start",
+            alignItems: "start",
+          }}>
+
+            {/** Parent Progress BG */}
+          <div
+          style={{
+            display: "flex",
+              position: "relative"
+          }}
+          >
+        <img src="/components/progress_bg_left.png"
+          style={{
+            height: "80px",
+          }}
+        />
+        <img src="/components/progress_bg_center.png"
+          style={{
+            width: "400px",
+            height: "80px",
+          }}
+        />
+        <img src="/components/progress_bg_right.png"
+          style={{
+            height: "80px",
+          }}
+        />
+
+          </div>
+
+{/** Parent Progress Bar Filler */}
+           <div
+          style={{
+            width: "100%",
+            display: "flex",
+            justifyContent: "start",
+              position: "relative",
+              top: "-80px"
+          }}
+          >
+        <img src="/components/progress_filled_left.png"
+          style={{
+            height: "80px",
+            display: "flex",
+          }}
+        />
+        <img src="/components/progress_filled_center.png"
+          style={{
+            width: "100%",
+            height: "80px",
+            animationName: "progress-bar",
+            animationDuration: "2s",
+            animationTimingFunction: "linear",
+            animationDirection: "normal",
+            animationFillMode: "both",
+            animationDelay: "5s",
+          }}
+        />
+        <img src="/components/progress_filled_right.png"
+          style={{
+            height: "80px",
+          }}
+        />
+
+          </div>
+
+          </div>
       </main>
     </div>
   );

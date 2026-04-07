@@ -27,3 +27,9 @@
   animation: dot-pulse var(--dur, 3.5s) ease-in-out infinite;
   animation-delay: var(--delay, 0s);
 }
+
+@keyframes progress-bar {
+  0% { width: 0px; }
+  100% { width: 100%; }
+
+}
