@@ -1,0 +1,247 @@
+{
+  "timestamp": "2026-04-05T16:55:53.950Z",
+  "oldContract": "0xd184E5CBEbf957624d14fAa0bfe20d6443411453",
+  "hackedScoreThreshold": "9990",
+  "players": [
+    {
+      "address": "0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d",
+      "username": "ogazboiz",
+      "rhythmScore": "0",
+      "simonScore": "97"
+    },
+    {
+      "address": "0xcbA548De848baE1968583b2502f44c46539453A8",
+      "username": "prince",
+      "rhythmScore": "485",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xa43406817b1A2492d5cCFDA81187A16FBd09Ba4d",
+      "username": "lumos",
+      "rhythmScore": "635",
+      "simonScore": "97"
+    },
+    {
+      "address": "0x217138e6DCB52E22FC26529AB31536F4c483Cf0A",
+      "username": "Anamul",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x7294403B1b8dF32c4782eA1204B431835760409F",
+      "username": "Yhuhh",
+      "rhythmScore": "195",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x2DE898F7CFF0724C304271897B04D88242010a63",
+      "username": "nonso",
+      "rhythmScore": "230",
+      "simonScore": "109"
+    },
+    {
+      "address": "0x7571707A5dF03406772508A1858DA3f94AE27C12",
+      "username": "Frontman",
+      "rhythmScore": "310",
+      "simonScore": "61"
+    },
+    {
+      "address": "0x75303DcCC4D8778a2ff06eE32c25B780a08B14B8",
+      "username": "Emeke",
+      "rhythmScore": "150",
+      "simonScore": "121"
+    },
+    {
+      "address": "0xdAc7B442546a6Cb5e8BE0E0c8109E4aA7Eb7b92B",
+      "username": "tony",
+      "rhythmScore": "95",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xE844357Faa75A8613e3375A8857055769549D266",
+      "username": "Devair",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xDf04eFC55eC3c982DaCD38F0a0e8B151Ac1407ce",
+      "username": "Devairmd",
+      "rhythmScore": "610",
+      "simonScore": "144"
+    },
+    {
+      "address": "0xF6c2Bbd393508C680E80C8533122fdAa319Ce0C7",
+      "username": "MEOW",
+      "rhythmScore": "65",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xa0bBeA3b542AdD424DBBc99486C40335F38fF69b",
+      "username": "rokoto",
+      "rhythmScore": "295",
+      "simonScore": "92"
+    },
+    {
+      "address": "0x4f8554b4480FD6d8C3B66C772Cf7651C6B14E708",
+      "username": "dumbdevs",
+      "rhythmScore": "0",
+      "simonScore": "84"
+    },
+    {
+      "address": "0x27DBdb053228c8cf1b30B57A0c5b6a1D00062c0F",
+      "username": "0xelrond",
+      "rhythmScore": "60",
+      "simonScore": "94"
+    },
+    {
+      "address": "0x4CFD88644a1B0e53Dd2CE38DFB93793eb68fD09B",
+      "username": "Isaac",
+      "rhythmScore": "285",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x8aBBa5E08ab33283e02087387B075D71AEeFd4d2",
+      "username": "Solodev",
+      "rhythmScore": "230",
+      "simonScore": "95"
+    },
+    {
+      "address": "0xeB9a4aB91892995cf80C36c39D439C0C318b9347",
+      "username": "Minimie",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xA35D2C518710D3f953Ce4F69CDDEAaFc0c6b156c",
+      "username": "leo",
+      "rhythmScore": "455",
+      "simonScore": "168"
+    },
+    {
+      "address": "0x70027C9205a336Ff02Dc601b1C7a8C0EAb5EFd11",
+      "username": "sshdopey",
+      "rhythmScore": "480",
+      "simonScore": "102"
+    },
+    {
+      "address": "0x4f4084B276470fb2a1ECa16c604FE62a48A122C5",
+      "username": "Marvysmind",
+      "rhythmScore": "515",
+      "simonScore": "90"
+    },
+    {
+      "address": "0x5c7a4505Ae40795ec2Ed11bdB64ecc22D1989cE4",
+      "username": "daveproxy80",
+      "rhythmScore": "175",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x35efE35f9E75b35b567400a539751078A2048F22",
+      "username": "Godbrand",
+      "rhythmScore": "410",
+      "simonScore": "95"
+    },
+    {
+      "address": "0x88f4D3bb88f7D62d84332eAA64505B519677aE7a",
+      "username": "Feyisara",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x5acA0A81D78D88A92bFD880b0b5C28c25d7E4DCA",
+      "username": "ZEUS",
+      "rhythmScore": "165",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x5fD4d9fa4315e7A8FFc6FDe066AF5b3fA81734cc",
+      "username": "Lion",
+      "rhythmScore": "300",
+      "simonScore": "95"
+    },
+    {
+      "address": "0x80a0FeaD59bC7108dceD11e0f2996DEDDcbDa0d3",
+      "username": "Lymarh_19",
+      "rhythmScore": "200",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x87F912e4F5C721807eDD911E606CcB9562F4847f",
+      "username": "zuruonyx",
+      "rhythmScore": "630",
+      "simonScore": "102"
+    },
+    {
+      "address": "0xa985d5F531726Ed017a6Bc2a8825367CbF50D9EC",
+      "username": "Kiyotaka",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xF62F54625048F38780058263B0068d2Bc25DfE06",
+      "username": "death",
+      "rhythmScore": "215",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x8cAF90F814Baa9D75cA4F9125305c866C5b25218",
+      "username": "Mrwicks",
+      "rhythmScore": "255",
+      "simonScore": "96"
+    },
+    {
+      "address": "0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1",
+      "username": "opa",
+      "rhythmScore": "230",
+      "simonScore": "0"
+    },
+    {
+      "address": "0xABf89a4Ae1aBf1690CeEec52Eb4d404586aeDA40",
+      "username": "Robotron",
+      "rhythmScore": "80",
+      "simonScore": "97"
+    },
+    {
+      "address": "0x467b7499fF2ea34B8DE18C11Abf658e502D46f49",
+      "username": "thegreatfeez",
+      "rhythmScore": "180",
+      "simonScore": "99"
+    },
+    {
+      "address": "0x1E44Ef605a48886ACCd8f90bBa5da8Cf27C775FC",
+      "username": "Evangel",
+      "rhythmScore": "245",
+      "simonScore": "70"
+    },
+    {
+      "address": "0xe25bA29BDb3e3ed5f327e54EB5d494b4e363D8De",
+      "username": "Rico",
+      "rhythmScore": "400",
+      "simonScore": "96"
+    },
+    {
+      "address": "0x5fFe99561c72E5D4AC7D83cbCa4aFebe334378a7",
+      "username": "Kheddy",
+      "rhythmScore": "440",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x562D3E9647d53C71494777bB7EBc2C84AC144e0C",
+      "username": "DevAbel",
+      "rhythmScore": "0",
+      "simonScore": "103"
+    },
+    {
+      "address": "0xB2ba07f47Bd884a6da642D0871D45A8358F4e008",
+      "username": "asdfasdf",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    },
+    {
+      "address": "0x871eD2C339E4D1Aea72B477C5f748BFf37461580",
+      "username": "asdfadf",
+      "rhythmScore": "0",
+      "simonScore": "0"
+    }
+  ]
+}
