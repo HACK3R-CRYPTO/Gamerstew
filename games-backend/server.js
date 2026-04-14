@@ -616,6 +616,14 @@ app.get('/api/leaderboard', async (req, res) => {
   const total = all.length;
   const slice = all.slice(start, start + limit);
 
+  // Fetch streaks for all players in this slice in one query
+  const wallets = slice.map(e => e.wallet_address.toLowerCase());
+  const { data: streakRows } = await supabase
+    .from('users')
+    .select('wallet_address, play_streak')
+    .in('wallet_address', wallets);
+  const streakMap = new Map((streakRows || []).map(r => [r.wallet_address.toLowerCase(), r.play_streak || 0]));
+
   const enriched = await Promise.all(slice.map(async (e) => ({
     player: e.wallet_address,
     score: e.score,
@@ -624,6 +632,7 @@ app.get('/api/leaderboard', async (req, res) => {
     timestamp: Math.floor(new Date(e.created_at).getTime() / 1000),
     tx_hash: e.tx_hash,
     username: await resolveUsername(e.wallet_address) || null,
+    streak: streakMap.get(e.wallet_address.toLowerCase()) || 0,
   })));
   const listTotal = Math.max(0, total - (offset > 0 ? offset : 0));
   res.json({ leaderboard: enriched, total, page, limit, pages: Math.ceil(listTotal / limit) });
@@ -883,6 +892,78 @@ app.get('/api/streak/:address', async (req, res) => {
   }
 
   res.json({ streak, playedToday });
+});
+
+// ─── GET /api/competition — 3-week cumulative leaderboard (weeks 11-13) ────────
+// Each player's best score per week is summed. Top 3 win $15/$10/$5.
+const COMPETITION_WEEKS = [11, 12, 13];
+
+app.get('/api/competition', async (_, res) => {
+  const totals = new Map(); // wallet -> { username, rhythm, simon, weeks: { 11: n, 12: n, 13: n } }
+
+  for (const week of COMPETITION_WEEKS) {
+    const { start, end } = seasonBounds(week);
+    const startIso = new Date(start * 1000).toISOString();
+    const endIso   = new Date(end   * 1000).toISOString();
+
+    for (const game of ['rhythm', 'simon']) {
+      const { data: rows } = await supabase
+        .from('activity')
+        .select('wallet_address, score')
+        .eq('game', game)
+        .gte('created_at', startIso)
+        .lt('created_at', endIso)
+        .order('score', { ascending: false })
+        .limit(500);
+
+      // Best score per player this week
+      const weekBest = new Map();
+      for (const row of (rows || [])) {
+        const key = row.wallet_address?.toLowerCase();
+        if (!key) continue;
+        if (!weekBest.has(key) || row.score > weekBest.get(key)) {
+          weekBest.set(key, row.score);
+        }
+      }
+
+      // Add to cumulative totals
+      for (const [wallet, score] of weekBest.entries()) {
+        if (!totals.has(wallet)) totals.set(wallet, { wallet, totalRhythm: 0, totalSimon: 0, weeklyScores: {} });
+        const entry = totals.get(wallet);
+        if (game === 'rhythm') entry.totalRhythm += score;
+        else entry.totalSimon += score;
+        if (!entry.weeklyScores[week]) entry.weeklyScores[week] = {};
+        entry.weeklyScores[week][game] = score;
+      }
+    }
+  }
+
+  // Build final rankings by total (rhythm + simon combined)
+  const rankings = await Promise.all(
+    Array.from(totals.values())
+      .map(e => ({ ...e, total: e.totalRhythm + e.totalSimon }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 20)
+      .map(async e => ({
+        ...e,
+        username: await resolveUsername(e.wallet) || null,
+      }))
+  );
+
+  const current = currentSeasonNumber();
+  const weeksLeft = COMPETITION_WEEKS.filter(w => w > current).length;
+  const { start: compStart } = seasonBounds(COMPETITION_WEEKS[0]);
+  const { end: compEnd }     = seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]);
+
+  res.json({
+    weeks: COMPETITION_WEEKS,
+    prizes: { first: 15, second: 10, third: 5 },
+    compStart,
+    compEnd,
+    weeksLeft,
+    currentWeek: current,
+    rankings,
+  });
 });
 
 // ─── POST /api/dice-roll — disabled until Phase 2 signed oracle ──────────────

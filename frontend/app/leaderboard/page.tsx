@@ -10,6 +10,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:300
 
 const TABS = [
   { id: 'live', label: 'RANKINGS' },
+  { id: 'competition', label: '🏆 3-WEEK' },
   { id: 'history', label: 'SEASONS' },
   { id: 'pvp', label: 'PVP' },
 ];
@@ -20,7 +21,7 @@ const GAME_TABS = [
 const MEDALS = ['🥇', '🥈', '🥉'];
 const GAME_ACCENT: Record<string, string> = { rhythm: '#a855f7', simon: '#06b6d4' };
 
-type Entry = { player: string; username?: string; score: number; timestamp: number; gWon?: number };
+type Entry = { player: string; username?: string; score: number; timestamp: number; gWon?: number; streak?: number };
 function fmt(addr: string, username?: string) {
   if (!addr || addr === 'you') return 'YOU';
   if (username) return username;
@@ -90,6 +91,7 @@ export default function Leaderboard() {
   const [newEntries, setNewEntries] = useState(new Set<string>());
   const [countdown, setCountdown] = useState(15);
   const [seasons, setSeasons] = useState<unknown>(null);
+  const [competition, setCompetition] = useState<{ weeks: number[]; prizes: { first: number; second: number; third: number }; compEnd: number; weeksLeft: number; currentWeek: number; rankings: { wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number; weeklyScores: Record<number, Record<string, number>> }[] } | null>(null);
   const [pvpMatches, setPvpMatches] = useState<{ id: number; challenger: string; opponent: string; wager: bigint; gameType: number; status: number; winner: string }[]>([]);
   const [pvpLeaders, setPvpLeaders] = useState<{ address: string; count: number }[]>([]);
   const [listPage, setListPage] = useState(1);
@@ -147,8 +149,16 @@ export default function Leaderboard() {
     } catch (_) {}
   }, []);
 
+  const fetchCompetition = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/competition`);
+      if (res.ok) setCompetition(await res.json());
+    } catch (_) {}
+  }, []);
+
   useEffect(() => { fetchScores(gameTab); }, [gameTab, fetchScores]);
   useEffect(() => { fetchMeta(); }, [fetchMeta]);
+  useEffect(() => { fetchCompetition(); }, [fetchCompetition]);
 
   useEffect(() => {
     if (activeTab !== 'pvp' || !publicClient) return;
@@ -336,9 +346,16 @@ export default function Leaderboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <span style={{ fontSize: '12px', minWidth: '26px', textAlign: 'center', color: '#6b7280', fontWeight: 700 }}>{`#${globalRank}`}</span>
                         <div>
-                          <div style={{ color: isMe ? tab.accent : '#d1d5db', fontSize: '13px', fontWeight: 700 }}>
-                            {isMe ? 'YOU' : fmt(e.player, e.username)}
-                            {isNew && <span style={{ color: '#10b981', fontSize: '9px', marginLeft: '6px' }}>NEW</span>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: isMe ? tab.accent : '#d1d5db', fontSize: '13px', fontWeight: 700 }}>
+                              {isMe ? 'YOU' : fmt(e.player, e.username)}
+                            </span>
+                            {isNew && <span style={{ color: '#10b981', fontSize: '9px' }}>NEW</span>}
+                            {e.streak && e.streak >= 2 && (
+                              <span style={{ fontSize: '9px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', padding: '1px 5px' }}>
+                                🔥 {e.streak}d
+                              </span>
+                            )}
                           </div>
                           <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '1px' }}>{timeAgo(e.timestamp)}</div>
                         </div>
@@ -360,6 +377,66 @@ export default function Leaderboard() {
               </div>
             )}
           </>
+        )}
+
+        {/* 3-WEEK COMPETITION */}
+        {activeTab === 'competition' && (
+          <div>
+            {!competition ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#4b5563', fontSize: '12px' }}>LOADING...</div>
+            ) : (
+              <>
+                {/* Header */}
+                <div style={{ padding: '14px 16px', borderRadius: '12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', marginBottom: '14px' }}>
+                  <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 900, letterSpacing: '2px', marginBottom: '6px' }}>3-WEEK COMPETITION</div>
+                  <div style={{ color: '#9ca3af', fontSize: '10px', marginBottom: '10px' }}>
+                    Weeks {competition.weeks.join(', ')} — highest total score wins. {competition.weeksLeft > 0 ? `${competition.weeksLeft} week${competition.weeksLeft > 1 ? 's' : ''} left.` : 'Competition ended.'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {[
+                      { label: '1ST', prize: `$${competition.prizes.first}`, color: '#f59e0b' },
+                      { label: '2ND', prize: `$${competition.prizes.second}`, color: '#9ca3af' },
+                      { label: '3RD', prize: `$${competition.prizes.third}`,  color: '#b45309' },
+                    ].map(p => (
+                      <div key={p.label} style={{ flex: 1, textAlign: 'center', padding: '8px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${p.color}30` }}>
+                        <div style={{ color: p.color, fontSize: '13px', fontWeight: 900 }}>{p.prize}</div>
+                        <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '2px' }}>{p.label} PLACE</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rankings */}
+                {competition.rankings.length === 0 ? (
+                  <div style={{ padding: '30px', textAlign: 'center', color: '#374151', fontSize: '11px' }}>No scores yet. Competition starts week {competition.weeks[0]}.</div>
+                ) : (
+                  <div style={{ background: 'rgba(10,10,20,0.8)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '12px', overflow: 'hidden' }}>
+                    {competition.rankings.map((e, i) => {
+                      const isMe = address && e.wallet === address.toLowerCase();
+                      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                      return (
+                        <div key={e.wallet} style={{ padding: '10px 14px', borderBottom: i < competition.rankings.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: isMe ? 'rgba(245,158,11,0.06)' : 'transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '14px', minWidth: '24px', textAlign: 'center' }}>{medal || `#${i + 1}`}</span>
+                              <div>
+                                <div style={{ color: isMe ? '#f59e0b' : '#d1d5db', fontSize: '12px', fontWeight: 700 }}>{isMe ? 'YOU' : (e.username || `${e.wallet.slice(0, 6)}...${e.wallet.slice(-4)}`)}</div>
+                                <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>R: {e.totalRhythm} pts + S: {e.totalSimon} pts</div>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ color: i === 0 ? '#f59e0b' : '#fff', fontSize: '16px', fontWeight: 900 }}>{e.total}</div>
+                              <div style={{ color: '#4b5563', fontSize: '9px' }}>total pts</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
 
         {/* SEASON HISTORY */}
