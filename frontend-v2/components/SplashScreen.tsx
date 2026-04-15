@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -279,6 +280,7 @@ const DOTS: {
 export default function SplashScreen() {
   const [textIndex, setTextIndex] = useState(0);
   const [displayed, setDisplayed] = useState(0);
+  const router = useRouter();
 
   useEffect(() => {
     const current = loadingTexts[textIndex];
@@ -286,14 +288,17 @@ export default function SplashScreen() {
       const t = setTimeout(() => setDisplayed((d) => d + 1), 50);
       return () => clearTimeout(t);
     } else {
-      if (textIndex >= loadingTexts.length - 1) return;
+      if (textIndex >= loadingTexts.length - 1) {
+        const t = setTimeout(() => router.push('/home'), 800);
+        return () => clearTimeout(t);
+      }
       const t = setTimeout(() => {
         setTextIndex((i) => i + 1);
         setDisplayed(0);
       }, LOADING_TEXT_CHANGE_TIME);
       return () => clearTimeout(t);
     }
-  }, [textIndex, displayed]);
+  }, [textIndex, displayed, router]);
 
   return (
     <div
