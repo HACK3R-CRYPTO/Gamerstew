@@ -73,13 +73,15 @@ const TIERS: Tier[] = [
   { name: "DIAMOND",  color: "#a78bfa", ringGrad: "conic-gradient(from 0deg, #c4b5fd, #6d28d9, #ddd6fe, #c4b5fd)" },
   { name: "MASTER",   color: "#f472b6", ringGrad: "conic-gradient(from 0deg, #f9a8d4, #be185d, #fce7f3, #f9a8d4)" },
 ];
+// Tier pyramid (elite tiers stay rare):
+//   #1 = MASTER, #2-3 = DIAMOND, #4-6 = PLATINUM, #7-15 = GOLD, #16-50 = SILVER, #51+ = BRONZE
 function tierFromRank(rank: number): { tier: Tier; division: string } {
   if (rank === 1)   return { tier: TIERS[5], division: "I" };
-  if (rank <= 5)    return { tier: TIERS[4], division: rank === 2 ? "I" : rank === 3 ? "II" : "III" };
-  if (rank <= 15)   return { tier: TIERS[3], division: rank <= 8 ? "I" : rank <= 11 ? "II" : "III" };
-  if (rank <= 50)   return { tier: TIERS[2], division: rank <= 20 ? "I" : rank <= 30 ? "II" : "III" };
-  if (rank <= 200)  return { tier: TIERS[1], division: rank <= 100 ? "I" : "II" };
-  return                   { tier: TIERS[0], division: "I" };
+  if (rank <= 3)    return { tier: TIERS[4], division: rank === 2 ? "I" : "II" };
+  if (rank <= 6)    return { tier: TIERS[3], division: rank === 4 ? "I" : rank === 5 ? "II" : "III" };
+  if (rank <= 15)   return { tier: TIERS[2], division: rank <= 9 ? "I" : rank <= 12 ? "II" : "III" };
+  if (rank <= 50)   return { tier: TIERS[1], division: rank <= 25 ? "I" : rank <= 38 ? "II" : "III" };
+  return                   { tier: TIERS[0], division: rank <= 100 ? "I" : rank <= 200 ? "II" : "III" };
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────────
@@ -112,6 +114,23 @@ const GAME_DISPLAY: Record<string, { name: string; icon: string }> = {
 
 // All achievements use the gold reward color. Locked = grayscale.
 const ACHIEVEMENT_COLOR = "#fbbf24";
+
+// ─── Pet evolution stages ─────────────────────────────────────────────────────
+// Each stage unlocks at a level threshold. Pet image lives on profile hero card +
+// mini chip in sidebar. Evolution moments are huge dopamine hooks (Adopt Me / Tamagotchi pattern).
+type PetStage = { id: string; name: string; src: string; minLevel: number; nextAt: number | null; color: string };
+const PET_STAGES: PetStage[] = [
+  { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  nextAt: 5,  color: "#e2e8f0" },
+  { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  nextAt: 15, color: "#22c55e" },
+  { id: "teen",    name: "Teen Slime",    src: "/pets/stage-3-teen.png",    minLevel: 15, nextAt: 30, color: "#a78bfa" },
+  { id: "crystal", name: "Crystal Slime", src: "/pets/stage-4-crystal.png", minLevel: 30, nextAt: 50, color: "#06b6d4" },
+  { id: "king",    name: "King Slime",    src: "/pets/stage-5-king.png",    minLevel: 50, nextAt: null, color: "#fbbf24" },
+];
+function petForLevel(level: number): PetStage {
+  let stage = PET_STAGES[0];
+  for (const s of PET_STAGES) if (level >= s.minLevel) stage = s;
+  return stage;
+}
 
 type Achievement = {
   id: string; icon: string; name: string; desc: string;
@@ -324,6 +343,301 @@ function SettingsRow({ icon, label, color, children }: { icon: string; label: st
         letterSpacing: "0.06em",
       }}>{label}</div>
       <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>{children}</div>
+    </div>
+  );
+}
+
+// ─── Pet Slot — compact pet display that lives inside the trainer card ────────
+function PetSlot({ pet }: { pet: PetStage }) {
+  const isEgg = pet.id === "egg";
+  const [poking, setPoking] = useState(false);
+  const [bubble, setBubble] = useState<string | null>(null);
+
+  const phrases = isEgg
+    ? ["It's warm.", "Cozy in here.", "Boop!", "I hear tapping!"]
+    : ["Hi!", "Boop!", "Let's play!", "Squish!"];
+
+  const handlePoke = () => {
+    setPoking(false);
+    requestAnimationFrame(() => setPoking(true));
+    setBubble(phrases[Math.floor(Math.random() * phrases.length)]);
+    setTimeout(() => setPoking(false), 600);
+    setTimeout(() => setBubble(null), 1500);
+  };
+
+  const idleClass = poking ? "pet-poke" : (isEgg ? "egg-wobble" : "slime-idle");
+
+  return (
+    <div
+      role="button" tabIndex={0} onClick={handlePoke}
+      style={{
+        flexShrink: 0, width: "108px", height: "118px",
+        position: "relative",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        cursor: "pointer", userSelect: "none",
+      }}
+    >
+      {bubble && (
+        <div className="pet-bubble" style={{
+          position: "absolute", top: "-10px", left: "50%", transform: "translateX(-50%)",
+          padding: "4px 10px", borderRadius: "999px",
+          background: "white",
+          border: `1.5px solid ${pet.color}`,
+          boxShadow: `0 4px 10px rgba(0,0,0,0.5)`,
+          whiteSpace: "nowrap", zIndex: 5,
+        }}>
+          <span style={{ color: "#1a0550", fontSize: "9px", fontWeight: 900 }}>{bubble}</span>
+          <div style={{
+            position: "absolute", bottom: "-4px", left: "50%", transform: "translateX(-50%) rotate(45deg)",
+            width: "7px", height: "7px",
+            background: "white",
+            borderRight: `1.5px solid ${pet.color}`,
+            borderBottom: `1.5px solid ${pet.color}`,
+          }} />
+        </div>
+      )}
+      {/* Soft ground glow */}
+      <div style={{
+        position: "absolute", bottom: "0", left: "50%", transform: "translateX(-50%)",
+        width: "85%", height: "16px",
+        borderRadius: "50%",
+        background: `radial-gradient(ellipse at 50% 50%, ${pet.color}88 0%, transparent 70%)`,
+        filter: "blur(3px)",
+      }} />
+      <div className={idleClass} style={{
+        width: "100%", height: "100%",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        pointerEvents: "none",
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={pet.src} alt={pet.name} draggable={false}
+          style={{
+            width: "100%", height: "100%", objectFit: "contain",
+            filter: `drop-shadow(0 0 12px ${pet.color}aa) drop-shadow(0 6px 8px rgba(0,0,0,0.5))`,
+          }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Combined progress bar — XP fill + pet evolution context ──────────────────
+function CombinedProgressBar({
+  pet, playerLevel, xpCurrent, xpToNext, xpPct,
+}: { pet: PetStage; playerLevel: number; xpCurrent: number; xpToNext: number; xpPct: number }) {
+  const nextStage = pet.nextAt ? PET_STAGES.find(s => s.minLevel === pet.nextAt) : null;
+  const levelsToEvolve = pet.nextAt ? Math.max(0, pet.nextAt - playerLevel) : 0;
+
+  return (
+    <div style={{ width: "100%", marginTop: "16px" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        marginBottom: "5px",
+      }}>
+        <span style={{ color: "rgba(200,180,255,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
+          {nextStage
+            ? (levelsToEvolve === 0 ? `READY! ${pet.name.toUpperCase()} → ${nextStage.name.toUpperCase()}` : `XP TO LV.${playerLevel + 1} · PET EVOLVES AT LV.${pet.nextAt}`)
+            : `XP TO LV.${playerLevel + 1} · ✨ PET MAXED`}
+        </span>
+        <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, textShadow: "0 0 8px rgba(251,191,36,0.6)" }}>
+          {xpCurrent}/{xpToNext}
+        </span>
+      </div>
+      <div style={{
+        height: "12px", borderRadius: "999px",
+        background: "rgba(0,0,0,0.5)",
+        border: "1.5px solid rgba(160,100,255,0.25)",
+        boxShadow: "inset 0 2px 6px rgba(0,0,0,0.6)",
+        overflow: "hidden", position: "relative",
+      }}>
+        <div style={{
+          width: `${xpPct}%`, height: "100%", borderRadius: "999px",
+          background: nextStage
+            ? `linear-gradient(90deg, ${pet.color} 0%, ${nextStage.color} 100%)`
+            : `linear-gradient(90deg, #fbbf24 0%, #f97316 50%, ${pet.color} 100%)`,
+          boxShadow: `0 0 12px ${pet.color}aa, inset 0 2px 4px rgba(255,255,255,0.4)`,
+          transition: "width 0.3s",
+          position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%)",
+            borderRadius: "999px 999px 0 0", pointerEvents: "none",
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── (legacy) Standalone PetCard — kept temporarily, no longer rendered ───────
+function PetCard({ pet, playerLevel }: { pet: PetStage; playerLevel: number }) {
+  const nextStage = pet.nextAt ? PET_STAGES.find(s => s.minLevel === pet.nextAt) : null;
+  const levelsToEvolve = pet.nextAt ? Math.max(0, pet.nextAt - playerLevel) : 0;
+  const stageStart = pet.minLevel;
+  const stageEnd   = pet.nextAt ?? playerLevel;
+  const stagePct   = pet.nextAt
+    ? Math.min(100, Math.round(((playerLevel - stageStart) / (stageEnd - stageStart)) * 100))
+    : 100;
+
+  const isEgg = pet.id === "egg";
+  const [poking, setPoking] = useState(false);
+  const [bubble, setBubble] = useState<string | null>(null);
+
+  const phrases = isEgg
+    ? (levelsToEvolve <= 1 ? ["Something stirs inside…", "It's shaking!", "Almost hatching!"]
+        : levelsToEvolve <= 3 ? ["I hear tapping!", "Soon…", "Keep playing!"]
+        : ["It's warm.", "Cozy in here.", "Play more games!", "Boop!"])
+    : nextStage
+      ? (levelsToEvolve === 0 ? ["Ready to evolve!", "I feel different…", "Big change coming!"]
+          : levelsToEvolve <= 2 ? ["Almost there!", `Just ${levelsToEvolve} more!`, "Don't stop now!"]
+          : ["Hi! Play more!", "Let's level up!", "Boop!", `${levelsToEvolve} levels to go!`])
+      : ["I'm the king! 👑", "Bow before me!", "Maxed out!", "Boop!"];
+
+  const handlePoke = () => {
+    setPoking(false);
+    requestAnimationFrame(() => setPoking(true));
+    setBubble(phrases[Math.floor(Math.random() * phrases.length)]);
+    setTimeout(() => setPoking(false), 600);
+    setTimeout(() => setBubble(null), 1800);
+  };
+
+  const idleClass = poking ? "pet-poke" : (isEgg ? "egg-wobble" : "slime-idle");
+
+  return (
+    <div style={{
+      width: "100%", maxWidth: "640px", flexShrink: 0,
+      borderRadius: "22px", padding: "2.5px",
+      background: `linear-gradient(180deg, ${pet.color} 0%, ${pet.color}55 100%)`,
+      boxShadow: `0 0 24px ${pet.color}55, 0 12px 30px rgba(0,0,0,0.7)`,
+    }}>
+      <div style={{
+        borderRadius: "20px",
+        background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
+        padding: "18px 20px",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        position: "relative",
+      }}>
+        {/* Top label pill */}
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: "5px",
+          padding: "2px 10px", borderRadius: "999px",
+          background: `${pet.color}1a`, border: `1px solid ${pet.color}66`,
+          marginBottom: "10px",
+        }}>
+          <span style={{ color: pet.color, fontSize: "9px", fontWeight: 900, letterSpacing: "0.16em" }}>YOUR PET</span>
+        </div>
+
+        {/* Pet — centered, big, tap to interact */}
+        <div
+          role="button" tabIndex={0} onClick={handlePoke}
+          style={{
+            width: "140px", height: "140px",
+            position: "relative",
+            display: "flex", alignItems: "flex-end", justifyContent: "center",
+            cursor: "pointer", userSelect: "none",
+          }}
+        >
+          {/* Speech bubble on poke */}
+          {bubble && (
+            <div className="pet-bubble" style={{
+              position: "absolute", top: "-12px", left: "50%", transform: "translateX(-50%)",
+              padding: "5px 12px", borderRadius: "999px",
+              background: "white",
+              border: `1.5px solid ${pet.color}`,
+              boxShadow: `0 4px 12px rgba(0,0,0,0.5), 0 0 14px ${pet.color}55`,
+              whiteSpace: "nowrap", zIndex: 5,
+            }}>
+              <span style={{ color: "#1a0550", fontSize: "10px", fontWeight: 900, letterSpacing: "0.04em" }}>{bubble}</span>
+              <div style={{
+                position: "absolute", bottom: "-5px", left: "50%", transform: "translateX(-50%) rotate(45deg)",
+                width: "8px", height: "8px",
+                background: "white",
+                borderRight: `1.5px solid ${pet.color}`,
+                borderBottom: `1.5px solid ${pet.color}`,
+              }} />
+            </div>
+          )}
+
+          {/* Subtle ground glow */}
+          <div style={{
+            position: "absolute", bottom: "-4px", left: "50%", transform: "translateX(-50%)",
+            width: "80%", height: "18px",
+            borderRadius: "50%",
+            background: `radial-gradient(ellipse at 50% 50%, ${pet.color}66 0%, transparent 70%)`,
+            filter: "blur(4px)",
+            zIndex: 0,
+          }} />
+
+          {/* Pet image */}
+          <div className={idleClass} style={{
+            width: "100%", height: "100%", position: "relative", zIndex: 1,
+            display: "flex", alignItems: "flex-end", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={pet.src}
+              alt={pet.name}
+              draggable={false}
+              style={{
+                width: "100%", height: "100%", objectFit: "contain",
+                filter: `drop-shadow(0 0 14px ${pet.color}aa) drop-shadow(0 6px 8px rgba(0,0,0,0.5))`,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Name — centered under pet */}
+        <div style={{
+          color: "white", fontSize: "18px", fontWeight: 900,
+          letterSpacing: "0.04em", textShadow: `0 0 14px ${pet.color}aa`,
+          marginTop: "12px", textAlign: "center",
+        }}>{pet.name}</div>
+
+        <div style={{
+          color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700,
+          letterSpacing: "0.08em", marginTop: "2px",
+        }}>
+          Stage {PET_STAGES.findIndex(s => s.id === pet.id) + 1} of {PET_STAGES.length} · LV.{playerLevel}
+        </div>
+
+        {/* Progress bar — evolution */}
+        {nextStage ? (
+          <div style={{ width: "100%", maxWidth: "320px", marginTop: "12px" }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "baseline",
+              marginBottom: "5px",
+            }}>
+              <span style={{ color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.1em" }}>
+                {levelsToEvolve === 0 ? "READY TO EVOLVE" : `NEXT: ${nextStage.name.toUpperCase()}`}
+              </span>
+              <span style={{ color: pet.color, fontSize: "10px", fontWeight: 900 }}>
+                {levelsToEvolve === 0 ? "✨" : `${levelsToEvolve} LV`}
+              </span>
+            </div>
+            <div style={{
+              height: "8px", borderRadius: "999px",
+              background: "rgba(0,0,0,0.5)",
+              border: "1px solid rgba(167,139,250,0.18)",
+              overflow: "hidden",
+            }}>
+              <div style={{
+                width: `${stagePct}%`, height: "100%", borderRadius: "999px",
+                background: `linear-gradient(90deg, ${pet.color} 0%, ${nextStage.color} 100%)`,
+                boxShadow: `0 0 8px ${pet.color}88`, transition: "width 0.3s",
+              }} />
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            color: "#fbbf24", fontSize: "12px", fontWeight: 900,
+            letterSpacing: "0.14em", marginTop: "12px",
+            textShadow: "0 0 12px rgba(251,191,36,0.7)",
+          }}>
+            ✨ MAX EVOLUTION REACHED
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -558,160 +872,129 @@ export default function ProfilePage() {
                   pointerEvents: "none",
                 }} />
 
-                <div style={{ position: "relative", zIndex: 1, display: "flex", gap: "16px", alignItems: "stretch" }}>
+                {/* ═══ TRAINER CARD: avatar + pet side-by-side, info below ═══ */}
+                <div style={{ position: "relative", zIndex: 1 }}>
 
-                  {/* LEFT — DiceBear avatar with metallic tier ring (Wild Rift / LoL style) */}
-                  <div style={{ flexShrink: 0, position: "relative", width: "138px", display: "flex", justifyContent: "center", alignItems: "center" }}>
-                    {/* Outer metallic tier ring */}
-                    <div style={{
-                      width: "138px", height: "138px", borderRadius: "50%",
-                      padding: "5px",
-                      background: tier.ringGrad,
-                      boxShadow: `0 0 28px ${tier.color}88, 0 0 60px ${tier.color}44, 0 12px 30px rgba(0,0,0,0.7)`,
-                    }}>
-                      {/* Inner dark surround */}
+                  {/* TOP ROW — avatar + center info + pet (Pokémon GO trainer card pattern) */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+
+                    {/* LEFT — DiceBear avatar with metallic tier ring */}
+                    <div style={{ flexShrink: 0, position: "relative", width: "118px" }}>
                       <div style={{
-                        width: "100%", height: "100%", borderRadius: "50%",
-                        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                        width: "118px", height: "118px", borderRadius: "50%",
                         padding: "4px",
-                        boxShadow: "inset 0 0 20px rgba(0,0,0,0.7)",
-                      }}>
-                        {address ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={avatarUrl(address, username)}
-                            alt=""
-                            width={120} height={120}
-                            style={{ width: "100%", height: "100%", borderRadius: "50%", display: "block", objectFit: "cover" }}
-                          />
-                        ) : (
-                          <div style={{
-                            width: "100%", height: "100%", borderRadius: "50%",
-                            background: "linear-gradient(135deg, #4c1d95, #1a0550)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            color: "rgba(200,180,255,0.4)", fontSize: "32px", fontWeight: 900,
-                          }}>?</div>
-                        )}
-                      </div>
-                    </div>
-                    {/* LV badge — bottom center */}
-                    <div style={{
-                      position: "absolute", bottom: "-2px", left: "50%", transform: "translateX(-50%)",
-                      borderRadius: "12px",
-                      background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
-                      border: "2px solid rgba(255,255,255,0.6)",
-                      padding: "3px 14px",
-                      boxShadow: "0 4px 12px rgba(251,191,36,0.6), inset 0 2px 4px rgba(255,255,255,0.5)",
-                      whiteSpace: "nowrap",
-                    }}>
-                      <span style={{ color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
-                        LV.{playerLevel}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* RIGHT — Info */}
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: "9px" }}>
-                    {/* Tier + global rank pill (metallic, matches avatar ring) */}
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: "8px",
-                      padding: "4px 4px 4px 12px", borderRadius: "20px",
-                      background: `linear-gradient(180deg, ${tier.color}33 0%, rgba(20,10,50,0.8) 100%)`,
-                      border: `1.5px solid ${tier.color}`,
-                      boxShadow: `0 0 16px ${tier.color}55`,
-                      alignSelf: "flex-start",
-                    }}>
-                      <span style={{
-                        color: tier.color, fontSize: "10px", fontWeight: 900, letterSpacing: "0.12em",
-                        textShadow: `0 0 8px ${tier.color}aa`,
-                      }}>{tier.name} {division}</span>
-                      <div style={{
-                        padding: "1px 8px", borderRadius: "12px",
-                        background: "rgba(0,0,0,0.5)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                      }}>
-                        <span style={{ color: "rgba(220,200,255,0.8)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.06em" }}>
-                          #{playerRank}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Name */}
-                    <div>
-                      <div style={{
-                        color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
-                        textShadow: "0 0 16px rgba(192,132,252,0.7), 0 2px 6px rgba(0,0,0,0.6)",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>{username.toUpperCase()}</div>
-                      <div style={{
-                        color: "rgba(180,150,255,0.55)", fontSize: "10px", fontWeight: 700,
-                        letterSpacing: "0.06em", marginTop: "3px",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>{shortAddr}</div>
-                    </div>
-
-                    {/* Verified pill */}
-                    {isVerified ? (
-                      <div style={{
-                        display: "inline-flex", alignItems: "center", gap: "5px",
-                        padding: "3px 10px", borderRadius: "20px",
-                        background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.5)",
-                        boxShadow: "0 0 12px rgba(34,197,94,0.3)",
-                        alignSelf: "flex-start",
-                      }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="#22c55e"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                        <span style={{ fontSize: "9px", fontWeight: 800, color: "#22c55e", letterSpacing: "0.1em" }}>VERIFIED</span>
-                      </div>
-                    ) : (
-                      <div role="button" tabIndex={0} onClick={() => router.push("/verify")}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: "5px",
-                          padding: "3px 10px", borderRadius: "20px",
-                          background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.5)",
-                          cursor: "pointer", boxShadow: "0 0 12px rgba(251,191,36,0.3)",
-                          alignSelf: "flex-start",
-                        }}>
-                        <span style={{ fontSize: "9px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.1em" }}>⚠ VERIFY</span>
-                      </div>
-                    )}
-
-                    {/* XP bar */}
-                    <div style={{ width: "100%", marginTop: "2px" }}>
-                      <div style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px",
-                      }}>
-                        <span style={{ color: "rgba(200,180,255,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
-                          XP TO LV.{playerLevel + 1}
-                        </span>
-                        <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, textShadow: "0 0 8px rgba(251,191,36,0.6)" }}>
-                          {xpCurrent}/{xpToNext}
-                        </span>
-                      </div>
-                      <div style={{
-                        height: "12px", borderRadius: "999px",
-                        background: "rgba(0,0,0,0.5)",
-                        border: "1.5px solid rgba(160,100,255,0.25)",
-                        boxShadow: "inset 0 2px 6px rgba(0,0,0,0.6)",
-                        overflow: "hidden", position: "relative",
+                        background: tier.ringGrad,
+                        boxShadow: `0 0 24px ${tier.color}88, 0 0 50px ${tier.color}33, 0 10px 24px rgba(0,0,0,0.6)`,
                       }}>
                         <div style={{
-                          width: `${xpPct}%`, height: "100%", borderRadius: "999px",
-                          background: "linear-gradient(90deg, #fbbf24 0%, #f97316 50%, #c026d3 100%)",
-                          boxShadow: "0 0 14px rgba(251,191,36,0.7), inset 0 2px 4px rgba(255,255,255,0.4)",
-                          position: "relative", overflow: "hidden",
+                          width: "100%", height: "100%", borderRadius: "50%",
+                          background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                          padding: "3px",
+                          boxShadow: "inset 0 0 16px rgba(0,0,0,0.7)",
                         }}>
-                          <div style={{
-                            position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-                            background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%)",
-                            borderRadius: "999px 999px 0 0", pointerEvents: "none",
-                          }} />
+                          {address ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={avatarUrl(address, username)} alt=""
+                              style={{ width: "100%", height: "100%", borderRadius: "50%", display: "block", objectFit: "cover" }} />
+                          ) : (
+                            <div style={{
+                              width: "100%", height: "100%", borderRadius: "50%",
+                              background: "linear-gradient(135deg, #4c1d95, #1a0550)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              color: "rgba(200,180,255,0.4)", fontSize: "30px", fontWeight: 900,
+                            }}>?</div>
+                          )}
                         </div>
                       </div>
+                      {/* LV badge */}
+                      <div style={{
+                        position: "absolute", bottom: "-4px", left: "50%", transform: "translateX(-50%)",
+                        borderRadius: "12px",
+                        background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
+                        border: "2px solid rgba(255,255,255,0.6)",
+                        padding: "3px 12px",
+                        boxShadow: "0 4px 10px rgba(251,191,36,0.55)",
+                        whiteSpace: "nowrap",
+                      }}>
+                        <span style={{ color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+                          LV.{playerLevel}
+                        </span>
+                      </div>
                     </div>
+
+                    {/* CENTER — name + tier + verified */}
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "7px" }}>
+                      <div style={{
+                        display: "inline-flex", alignItems: "center", gap: "8px",
+                        padding: "3px 4px 3px 10px", borderRadius: "18px",
+                        background: `linear-gradient(180deg, ${tier.color}33 0%, rgba(20,10,50,0.8) 100%)`,
+                        border: `1.5px solid ${tier.color}`,
+                        boxShadow: `0 0 14px ${tier.color}55`,
+                        alignSelf: "flex-start",
+                      }}>
+                        <span style={{ color: tier.color, fontSize: "9px", fontWeight: 900, letterSpacing: "0.12em", textShadow: `0 0 8px ${tier.color}aa` }}>
+                          {tier.name} {division}
+                        </span>
+                        <div style={{
+                          padding: "1px 7px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)",
+                        }}>
+                          <span style={{ color: "rgba(220,200,255,0.8)", fontSize: "8px", fontWeight: 800 }}>#{playerRank}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{
+                          color: "white", fontSize: "18px", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
+                          textShadow: "0 0 14px rgba(192,132,252,0.7), 0 2px 6px rgba(0,0,0,0.6)",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>{username.toUpperCase()}</div>
+                        <div style={{
+                          color: "rgba(180,150,255,0.55)", fontSize: "10px", fontWeight: 700,
+                          marginTop: "2px",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>{shortAddr}</div>
+                      </div>
+
+                      {isVerified ? (
+                        <div style={{
+                          display: "inline-flex", alignItems: "center", gap: "5px",
+                          padding: "2px 10px", borderRadius: "999px",
+                          background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.5)",
+                          alignSelf: "flex-start",
+                        }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="#22c55e"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                          <span style={{ fontSize: "8px", fontWeight: 800, color: "#22c55e", letterSpacing: "0.1em" }}>VERIFIED</span>
+                        </div>
+                      ) : (
+                        <div role="button" tabIndex={0} onClick={() => router.push("/verify")}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: "5px",
+                            padding: "2px 10px", borderRadius: "999px",
+                            background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.5)",
+                            cursor: "pointer", alignSelf: "flex-start",
+                          }}>
+                          <span style={{ fontSize: "8px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.1em" }}>⚠ VERIFY</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RIGHT — Pet (compact, your buddy) */}
+                    <PetSlot pet={petForLevel(playerLevel)} />
                   </div>
+
+                  {/* BOTTOM ROW — combined XP / pet evolution bar (full width, dual meaning) */}
+                  <CombinedProgressBar
+                    pet={petForLevel(playerLevel)}
+                    playerLevel={playerLevel}
+                    xpCurrent={xpCurrent}
+                    xpToNext={xpToNext}
+                    xpPct={xpPct}
+                  />
                 </div>
               </div>
             </div>
+
 
             {/* ── PILL TABS ── */}
             <div style={{
