@@ -238,6 +238,153 @@ async function getUserCount() {
   return count || 0;
 }
 
+// ─── XP / Level system ──────────────────────────────────────────────────────
+// Standard triangular curve used by Clash Royale, Pokémon GO, RuneScape variants.
+//   totalXp(N)   = 50 * N * (N + 1)          ← cumulative XP to REACH level N
+//   xpForLevel(N) = 100 * N                  ← XP needed within level N to advance
+//
+//   LV 2  needs 100 cumulative   (+100 from LV 1)
+//   LV 3  needs 300 cumulative   (+200)
+//   LV 5  needs 1,000 cumulative (+400)
+//   LV 10 needs 5,500 cumulative (+1,000)
+//   LV 50 needs 127,500          (+5,000)
+const XP_PLAYED  = 10;  // base XP for finishing a game
+const XP_WIN     = 25;  // bonus when you beat the win threshold
+const XP_NEW_PB  = 25;  // bonus when you set a new personal best
+
+const WIN_THRESHOLD = { rhythm: 350, simon: 7 };
+
+// Cumulative XP required to reach a given level (LV 1 = 0).
+//   LV 1: 0     LV 2: 100    LV 3: 300    LV 4: 600    LV 5: 1,000
+//   LV 10: 4,500   LV 20: 19,000   LV 50: 122,500
+function totalXpForLevel(level) {
+  return 50 * level * (level - 1);
+}
+
+// Returns the highest level fully reached for a given cumulative XP.
+function levelFromXp(xp) {
+  // Solve 50*N*(N+1) - 100 <= xp  →  N = floor((-1 + sqrt(1 + (xp + 100)/12.5)) / 2) + 1
+  // Use a safe iterative approach for clarity
+  let lvl = 1;
+  while (totalXpForLevel(lvl + 1) <= (xp || 0)) lvl++;
+  return Math.max(1, lvl);
+}
+
+// XP within current level + XP required to advance.
+function xpProgress(xp) {
+  const level     = levelFromXp(xp);
+  const xpAtLevel = totalXpForLevel(level);
+  const xpToNext  = 100 * level; // gap between this level and the next
+  const xpInLevel = (xp || 0) - xpAtLevel;
+  return { level, xpInLevel, xpToNext };
+}
+
+// ─── Daily Missions ─────────────────────────────────────────────────────────
+// Templates the daily refresh picks 3 from. Each evaluates `progressDelta` from a played-game event.
+// Reward sizes are tuned so a "perfect day" (all 3 done) gives ~150-200 XP — meaningful but not OP.
+const MISSION_TEMPLATES = [
+  { id: 'play_3_games',     label: 'Play 3 games today',                   target: 3,   reward: 50,  match: () => 1 },
+  { id: 'play_5_games',     label: 'Play 5 games today',                   target: 5,   reward: 80,  match: () => 1 },
+  { id: 'win_1_game',       label: 'Win 1 game today',                     target: 1,   reward: 60,  match: ({ isWin }) => isWin ? 1 : 0 },
+  { id: 'win_3_games',      label: 'Win 3 games today',                    target: 3,   reward: 120, match: ({ isWin }) => isWin ? 1 : 0 },
+  { id: 'rhythm_300',       label: 'Score 300+ in Rhythm Rush',            target: 1,   reward: 70,  match: ({ game, score }) => game === 'rhythm' && score >= 300 ? 1 : 0 },
+  { id: 'rhythm_500',       label: 'Score 500+ in Rhythm Rush',            target: 1,   reward: 100, match: ({ game, score }) => game === 'rhythm' && score >= 500 ? 1 : 0 },
+  { id: 'simon_5',          label: 'Reach round 5 in Simon Memory',        target: 1,   reward: 60,  match: ({ game, score }) => game === 'simon'  && score >= 5   ? 1 : 0 },
+  { id: 'simon_10',         label: 'Reach round 10 in Simon Memory',       target: 1,   reward: 100, match: ({ game, score }) => game === 'simon'  && score >= 10  ? 1 : 0 },
+  { id: 'beat_personal_best', label: 'Beat your personal best',            target: 1,   reward: 80,  match: ({ isNewPb }) => isNewPb ? 1 : 0 },
+  { id: 'play_both_games',  label: 'Play both games today (1 of each)',    target: 2,   reward: 70,  match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+];
+
+// Deterministic 3-mission pick per (wallet, date) so a player gets the SAME 3 missions all day.
+function pickDailyMissions(wallet, date) {
+  // Hash (wallet + date) into a seed
+  let h = 0;
+  const seed = `${wallet}-${date}`;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  const rng = () => { h = Math.imul(48271, h) | 0; return ((h >>> 0) / 0xffffffff); };
+
+  // Always include 1 "easy" play-count mission, 1 "win" mission, 1 random
+  const easy   = MISSION_TEMPLATES.filter(m => m.id.startsWith('play_'));
+  const win    = MISSION_TEMPLATES.filter(m => m.id.startsWith('win_'));
+  const rest   = MISSION_TEMPLATES.filter(m => !m.id.startsWith('play_') && !m.id.startsWith('win_'));
+  const pick   = (arr) => arr[Math.floor(rng() * arr.length)];
+  return [pick(easy), pick(win), pick(rest)];
+}
+
+async function ensureTodayMissions(wallet, today) {
+  // Check if missions already exist for this wallet today
+  const { data: existing } = await supabase
+    .from('daily_missions')
+    .select('mission_id')
+    .eq('wallet', wallet)
+    .eq('date', today);
+  if (existing && existing.length >= 3) return;
+
+  const picks = pickDailyMissions(wallet, today);
+  const rows = picks.map(m => ({
+    wallet,
+    date: today,
+    mission_id: m.id,
+    target: m.target,
+    reward_xp: m.reward,
+  }));
+  await supabase.from('daily_missions').upsert(rows, { onConflict: 'wallet,date,mission_id', ignoreDuplicates: true });
+}
+
+async function updateMissionProgress(wallet, ctx) {
+  const today = new Date().toISOString().split('T')[0];
+  await ensureTodayMissions(wallet, today);
+
+  // Compute "games played today" set (for play_both_games mission). Excludes the current submission.
+  const { data: todays } = await supabase
+    .from('activity')
+    .select('game,created_at')
+    .eq('wallet_address', wallet)
+    .gte('created_at', `${today}T00:00:00.000Z`);
+  const seenGamesToday = new Set((todays || []).map(a => a.game));
+
+  // Pull all of today's missions for this wallet
+  const { data: missions } = await supabase
+    .from('daily_missions')
+    .select('*')
+    .eq('wallet', wallet)
+    .eq('date', today);
+
+  for (const m of missions || []) {
+    if (m.completed) continue;
+    const tpl = MISSION_TEMPLATES.find(t => t.id === m.mission_id);
+    if (!tpl) continue;
+    const delta = tpl.match({ ...ctx, _seenGamesToday: seenGamesToday });
+    if (!delta) continue;
+    const newProgress = Math.min(m.target, m.progress + delta);
+    const completed = newProgress >= m.target;
+    await supabase
+      .from('daily_missions')
+      .update({ progress: newProgress, completed })
+      .eq('id', m.id);
+    if (completed) console.log(`🎯 ${wallet.slice(0, 8)}... completed: ${tpl.label}`);
+  }
+}
+
+async function awardXp(addr, amount, reason = '') {
+  if (!amount) return null;
+  const lower = addr.toLowerCase();
+  const { data: rows } = await supabase
+    .from('users')
+    .select('xp')
+    .eq('wallet_address', lower)
+    .limit(1);
+  const before = rows && rows.length > 0 ? (rows[0].xp || 0) : 0;
+  const after  = before + amount;
+  const beforeLevel = levelFromXp(before);
+  const afterLevel  = levelFromXp(after);
+  await supabase.from('users').update({ xp: after }).eq('wallet_address', lower);
+  if (afterLevel > beforeLevel) {
+    console.log(`✨ ${lower.slice(0, 8)}... LV ${beforeLevel} → ${afterLevel} (+${amount} XP ${reason})`);
+  }
+  return { xp: after, level: afterLevel, leveledUp: afterLevel > beforeLevel };
+}
+
 async function saveScore(entry) {
   // Upsert: keep best score per wallet per game
   const { data: rows } = await supabase
@@ -580,9 +727,20 @@ app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => 
   const scoreTxHash = scoreData.txHash || null;
   const txHash = wagerTxHash || scoreTxHash;
 
+  // Read previous best for this game so we can detect a new personal best after saving
+  const lower = playerAddress.toLowerCase();
+  const { data: prevRows } = await supabase
+    .from('scores')
+    .select('score')
+    .eq('wallet_address', lower)
+    .eq('game', game)
+    .order('score', { ascending: false })
+    .limit(1);
+  const prevBest = (prevRows && prevRows.length > 0) ? (prevRows[0].score || 0) : 0;
+
   // Save actual game score to Supabase (per-season, not all-time best)
   await saveScore({
-    wallet_address: playerAddress.toLowerCase(),
+    wallet_address: lower,
     game,
     score,
     game_time: gameTime,
@@ -592,13 +750,31 @@ app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => 
     tx_hash: txHash,
   });
 
+  // Award XP — base for playing + bonuses for win and new personal best
+  const winThreshold = WIN_THRESHOLD[game] || Infinity;
+  const isWin    = score >= winThreshold;
+  const isNewPb  = score > prevBest;
+  const xpEarned = XP_PLAYED + (isWin ? XP_WIN : 0) + (isNewPb ? XP_NEW_PB : 0);
+  const xpResult = await awardXp(lower, xpEarned, [
+    'played',
+    isWin   && 'win',
+    isNewPb && 'new PB',
+  ].filter(Boolean).join(' + '));
+
+  // Update today's mission progress for this player
+  try {
+    await updateMissionProgress(lower, { game, score, isWin, isNewPb });
+  } catch (e) {
+    console.warn('mission progress update failed:', e.message);
+  }
+
   // Get rank
   const leaderboard = await getLeaderboard(game);
-  const rank = leaderboard.findIndex(e => e.wallet_address === playerAddress.toLowerCase()) + 1;
+  const rank = leaderboard.findIndex(e => e.wallet_address === lower) + 1;
 
-  console.log(`✅ [${game}] ${playerAddress.slice(0, 8)}... → ${score} pts (rank #${rank}) ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
+  console.log(`✅ [${game}] ${lower.slice(0, 8)}... → ${score} pts (rank #${rank}) +${xpEarned} XP ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
 
-  res.json({ success: true, score, rank, txHash, streak });
+  res.json({ success: true, score, rank, txHash, streak, xpEarned, xp: xpResult?.xp, level: xpResult?.level, leveledUp: !!xpResult?.leveledUp });
 });
 
 // ─── GET /api/leaderboard?game=rhythm|simon ─────────────────────────────────
@@ -870,6 +1046,105 @@ app.get('/api/badges/:address', async (req, res) => {
       totalBronze: bronzeCount,
       streakLabel,
     },
+  });
+});
+
+// ─── GET /api/missions/today/:address — today's 3 missions for this player ─
+app.get('/api/missions/today/:address', async (req, res) => {
+  const addr = req.params.address.toLowerCase();
+  const today = new Date().toISOString().split('T')[0];
+
+  // Make sure today's missions exist
+  await ensureTodayMissions(addr, today);
+
+  const { data: rows } = await supabase
+    .from('daily_missions')
+    .select('*')
+    .eq('wallet', addr)
+    .eq('date', today)
+    .order('id', { ascending: true });
+
+  // Seconds until midnight UTC for the countdown
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const secondsUntilReset = Math.max(0, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
+
+  const missions = (rows || []).map(r => {
+    const tpl = MISSION_TEMPLATES.find(t => t.id === r.mission_id);
+    return {
+      id: r.id,
+      missionId: r.mission_id,
+      label: tpl ? tpl.label : r.mission_id,
+      progress: r.progress,
+      target: r.target,
+      completed: r.completed,
+      claimed: r.claimed,
+      rewardXp: r.reward_xp,
+    };
+  });
+
+  res.json({ address: addr, date: today, secondsUntilReset, missions });
+});
+
+// ─── POST /api/missions/claim — claim XP for a completed mission ────────────
+// Origin-restricted via CORS. Mission lookup enforces wallet ownership (wallet eq check),
+// so the worst a malicious caller can do is claim someone else's completed mission FOR them
+// (no benefit to themselves). For Phase 4 we'll add signature-based wallet proof.
+app.post('/api/missions/claim', async (req, res) => {
+  const { wallet, missionId } = req.body || {};
+  if (!wallet || missionId == null) return res.status(400).json({ error: 'Missing wallet or missionId' });
+  const addr = wallet.toLowerCase();
+
+  // Look up the row, must belong to this player and be completed-but-not-claimed
+  const { data: rows } = await supabase
+    .from('daily_missions')
+    .select('*')
+    .eq('id', missionId)
+    .eq('wallet', addr)
+    .limit(1);
+  if (!rows || rows.length === 0) return res.status(404).json({ error: 'Mission not found' });
+
+  const m = rows[0];
+  if (!m.completed) return res.status(400).json({ error: 'Mission not yet completed' });
+  if (m.claimed)   return res.status(400).json({ error: 'Already claimed' });
+
+  // Mark claimed first to prevent double-claim, then award XP
+  await supabase.from('daily_missions').update({ claimed: true }).eq('id', m.id);
+  const xpResult = await awardXp(addr, m.reward_xp, `mission ${m.mission_id}`);
+
+  res.json({ success: true, xpAwarded: m.reward_xp, xp: xpResult?.xp, level: xpResult?.level, leveledUp: !!xpResult?.leveledUp });
+});
+
+// ─── GET /api/user/:address — XP / level / streak in one shot ───────────────
+app.get('/api/user/:address', async (req, res) => {
+  const addr = req.params.address.toLowerCase();
+  const { data: rows } = await supabase
+    .from('users')
+    .select('xp, play_streak, last_play_date')
+    .eq('wallet_address', addr)
+    .limit(1);
+
+  if (!rows || rows.length === 0) {
+    const p = xpProgress(0);
+    return res.json({
+      address: addr,
+      xp: 0, level: p.level, xpInLevel: p.xpInLevel, xpToNext: p.xpToNext,
+      streak: 0, playedToday: false,
+    });
+  }
+
+  const u = rows[0];
+  const xp = u.xp || 0;
+  const p = xpProgress(xp);
+  const today = new Date().toISOString().split('T')[0];
+  res.json({
+    address: addr,
+    xp,
+    level: p.level,
+    xpInLevel: p.xpInLevel,
+    xpToNext: p.xpToNext,
+    streak: u.play_streak || 0,
+    playedToday: u.last_play_date === today,
   });
 });
 
