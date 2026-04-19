@@ -210,6 +210,41 @@ export default function GamesPage() {
       .catch(() => setStreak(null));
   }, [address]);
 
+  // Daily missions
+  type Mission = { id: number; missionId: string; label: string; progress: number; target: number; completed: boolean; claimed: boolean; rewardXp: number };
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [missionResetSec, setMissionResetSec] = useState(0);
+  const refetchMissions = () => {
+    if (!address) { setMissions([]); return; }
+    fetch(`${BACKEND_URL}/api/missions/today/${address}`)
+      .then(r => r.json())
+      .then(d => { setMissions(d.missions || []); setMissionResetSec(d.secondsUntilReset || 0); })
+      .catch(() => setMissions([]));
+  };
+  useEffect(() => { refetchMissions(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [address]);
+  useEffect(() => {
+    if (missionResetSec <= 0) return;
+    const t = setInterval(() => setMissionResetSec(s => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [missionResetSec]);
+  function fmtCountdown(s: number) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+  async function claimMission(id: number) {
+    if (!address) return;
+    try {
+      await fetch(`${BACKEND_URL}/api/missions/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, missionId: id }),
+      });
+    } catch {}
+    refetchMissions();
+  }
+
   return (
     <div style={{
       position: "fixed", inset: 0,
@@ -393,6 +428,90 @@ export default function GamesPage() {
               flexShrink: 0,
             }}
           />
+
+          {/* Daily Missions widget — only when connected */}
+          {address && missions.length > 0 && (
+            <div style={{ width: "100%", maxWidth: "680px", flexShrink: 0 }}>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                marginBottom: "8px", padding: "0 4px",
+              }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "14px" }}>🎯</span>
+                  <span style={{ color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em", textShadow: "0 0 10px rgba(167,139,250,0.6)" }}>DAILY MISSIONS</span>
+                </div>
+                <div style={{
+                  display: "inline-flex", alignItems: "center", gap: "5px",
+                  padding: "3px 9px", borderRadius: "999px",
+                  background: "rgba(0,0,0,0.4)",
+                  border: "1px solid rgba(167,139,250,0.3)",
+                }}>
+                  <span style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>RESETS IN</span>
+                  <span style={{ color: "#a78bfa", fontSize: "10px", fontWeight: 900, fontFamily: "monospace" }}>{fmtCountdown(missionResetSec)}</span>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+                {missions.map(m => {
+                  const pct = Math.round((m.progress / m.target) * 100);
+                  const ready = m.completed && !m.claimed;
+                  const done  = m.claimed;
+                  return (
+                    <div key={m.id} style={{
+                      borderRadius: "14px",
+                      background: done
+                        ? "linear-gradient(180deg, rgba(34,197,94,0.1) 0%, rgba(20,10,50,0.6) 100%)"
+                        : ready
+                          ? "linear-gradient(180deg, rgba(251,191,36,0.18) 0%, rgba(20,10,50,0.7) 100%)"
+                          : "rgba(20,10,50,0.7)",
+                      border: `1.5px solid ${done ? "rgba(34,197,94,0.5)" : ready ? "#fbbf24" : "rgba(167,139,250,0.25)"}`,
+                      boxShadow: ready ? "0 0 14px rgba(251,191,36,0.45)" : "0 4px 12px rgba(0,0,0,0.4)",
+                      padding: "10px 12px",
+                      display: "flex", flexDirection: "column", gap: "8px",
+                      opacity: done ? 0.6 : 1,
+                    }}>
+                      <div style={{ color: "white", fontSize: "11px", fontWeight: 800, lineHeight: 1.3, minHeight: "30px" }}>
+                        {m.label}
+                      </div>
+                      {/* Progress bar */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
+                          <span style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 700 }}>{m.progress} / {m.target}</span>
+                          <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900 }}>+{m.rewardXp} XP</span>
+                        </div>
+                        <div style={{ height: "6px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: "1px solid rgba(167,139,250,0.15)" }}>
+                          <div style={{
+                            width: `${pct}%`, height: "100%", borderRadius: "999px",
+                            background: done ? "#22c55e" : ready ? "#fbbf24" : "#a78bfa",
+                            boxShadow: done ? "0 0 6px #22c55e" : ready ? "0 0 8px rgba(251,191,36,0.7)" : "0 0 6px rgba(167,139,250,0.5)",
+                            transition: "width 0.3s",
+                          }} />
+                        </div>
+                      </div>
+                      {/* Action */}
+                      {done ? (
+                        <div style={{ textAlign: "center", color: "#22c55e", fontSize: "10px", fontWeight: 900, letterSpacing: "0.1em" }}>✓ CLAIMED</div>
+                      ) : ready ? (
+                        <div role="button" tabIndex={0} onClick={() => claimMission(m.id)}
+                          style={{ cursor: "pointer", userSelect: "none" }}>
+                          <div style={{
+                            borderRadius: "10px",
+                            background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
+                            padding: "6px", textAlign: "center",
+                            border: "1.5px solid rgba(255,255,255,0.45)",
+                            boxShadow: "inset 0 4px 8px rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.3)",
+                          }}>
+                            <span style={{ color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>CLAIM</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em" }}>IN PROGRESS</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Game cards row */}
           <div style={{
