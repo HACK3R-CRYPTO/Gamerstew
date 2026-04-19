@@ -484,6 +484,21 @@ export default function RhythmGamePage() {
   const encoreLoopAtRef    = useRef(0);                  // next audio loop reschedule time
   const [encoreLives, setEncoreLives] = useState(3);     // UI display
 
+  // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
+  // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
+  type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
+  const [stars, setStars] = useState<Star[]>([]);
+  useEffect(() => {
+    setStars(Array.from({ length: 44 }, () => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() * 1.6 + 0.6,
+      delay: Math.random() * 4,
+      dur: Math.random() * 3 + 2.5,
+      alpha: Math.random() * 0.5 + 0.4,
+    })));
+  }, []);
+
   // Snapshot of hit counters at the moment the main 45s track ends. Encore
   // misses/goods shouldn't disqualify FC/AP — those achievements reward
   // completing the chart cleanly, not surviving encore perfectly.
@@ -944,12 +959,32 @@ export default function RhythmGamePage() {
   return (
     <div style={{
       position: "fixed", inset: 0,
-      background: "radial-gradient(ellipse 80% 60% at 50% 20%, #6a18c8 0%, #3b0a9e 30%, #1a044a 60%, #0a0120 100%)",
+      // Deep cosmic void — falling tiles read as bright lights against darkness,
+      // matching the Simon chamber aesthetic for brand-wide visual consistency.
+      background: "radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
       overflow: "hidden",
       fontFamily: "inherit",
       touchAction: "manipulation",
     }}>
-      {/* Floating bg icons — ambient layer */}
+      {/* Starfield — 44 twinkling points, ambient depth behind the game */}
+      {stars.map((s, i) => (
+        <div key={i} className="dot-pulse" style={{
+          position: "absolute",
+          top: `${s.y}%`,
+          left: `${s.x}%`,
+          width: `${s.size}px`,
+          height: `${s.size}px`,
+          borderRadius: "50%",
+          background: "white",
+          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
+          ["--dur" as string]: `${s.dur}s`,
+          ["--delay" as string]: `${s.delay}s`,
+          opacity: s.alpha,
+          pointerEvents: "none", zIndex: 1,
+        }} />
+      ))}
+
+      {/* Splash icons — kept as ambient texture at low opacity */}
       {BG_ICONS.map((ic, i) => (
         <div key={i} className="icon-float" style={{
           position: "absolute",
@@ -957,19 +992,19 @@ export default function RhythmGamePage() {
           ...("left" in ic ? { left: ic.left } : { right: ic.right }),
           width: ic.size, height: ic.size,
           transform: `rotate(${ic.rotate}deg)`,
-          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.6))",
+          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
           ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          opacity: 0.6, pointerEvents: "none", zIndex: 0,
+          opacity: 0.22, pointerEvents: "none", zIndex: 0,
         }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
         </div>
       ))}
 
-      {/* Magenta tint wash — intensifies as the track progresses */}
+      {/* Magenta tint wash — intensifies as the track progresses, adds tension */}
       <div style={{
         position: "absolute", inset: 0,
-        background: `radial-gradient(ellipse at 50% 50%, rgba(232,121,249,${Math.min(0.22, (TRACK_DURATION - timeLeft) / TRACK_DURATION * 0.3)}) 0%, transparent 70%)`,
+        background: `radial-gradient(ellipse 45% 35% at 50% 55%, rgba(232,121,249,${Math.min(0.28, 0.08 + (TRACK_DURATION - timeLeft) / TRACK_DURATION * 0.25)}) 0%, transparent 70%)`,
         pointerEvents: "none", zIndex: 1,
       }} />
 
@@ -1137,28 +1172,46 @@ function PetCenter({
   combo: number;
   feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number } | null;
 }) {
-  // reaction state driven by feedback timestamp
+  // Reaction state driven by feedback timestamp. Wilt holds longer than jump
+  // so misses actually register visually — previously 420ms was too brief for
+  // players focused on the tiles to notice.
   const [reaction, setReaction] = useState<"idle" | "jump" | "wilt">("idle");
+  const [bubble, setBubble] = useState<string | null>(null);
+
   useEffect(() => {
     if (!feedback) return;
     if (feedback.type === "perfect") {
       setReaction("jump");
-      const t = setTimeout(() => setReaction("idle"), 420);
+      const t = setTimeout(() => setReaction("idle"), 550);
       return () => clearTimeout(t);
-    } else if (feedback.type === "miss") {
+    }
+    if (feedback.type === "miss") {
       setReaction("wilt");
-      const t = setTimeout(() => setReaction("idle"), 420);
-      return () => clearTimeout(t);
+      setBubble("💔");
+      const t1 = setTimeout(() => setReaction("idle"), 900);
+      const t2 = setTimeout(() => setBubble(null), 900);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
   }, [feedback?.ts, feedback?.type]);
 
-  // Combo-driven aura
+  // Combo milestone speech bubbles — pet cheers on every 10-streak.
+  // Different emoji per tier so the ceiling feels earned.
+  useEffect(() => {
+    if (combo > 0 && combo % 10 === 0) {
+      const emoji = combo >= 40 ? "👑" : combo >= 30 ? "🔥" : combo >= 20 ? "⭐" : "✨";
+      setBubble(emoji);
+      const t = setTimeout(() => setBubble(null), 1100);
+      return () => clearTimeout(t);
+    }
+  }, [combo]);
+
+  // Combo-driven aura + pulse — more dramatic progression than before so the
+  // pet visibly grows and glows as you chain streaks. Max at 1.3x scale.
   const showAura   = combo >= 10;
   const bigAura    = combo >= 25;
   const celebrate  = combo > 0 && combo % 10 === 0 && combo >= 10;
-  const pulseScale = 1 + Math.min(combo, 30) * 0.004; // grows subtly with combo
+  const pulseScale = 1 + Math.min(combo, 40) * 0.0075; // 1.0 → 1.30 across 0→40 combo
 
-  // Animation class: jump = pet-poke (big squash/bounce), wilt = quick darkened dip, idle = slime-idle
   const animClass = reaction === "jump" ? "pet-poke" : "slime-idle";
 
   return (
@@ -1170,7 +1223,7 @@ function PetCenter({
     }}>
       <div style={{
         position: "relative",
-        width: "68px", height: "68px",
+        width: "84px", height: "84px",
         display: "flex", alignItems: "flex-end", justifyContent: "center",
         transform: `scale(${pulseScale})`,
         transition: "transform 0.2s",
@@ -1178,36 +1231,37 @@ function PetCenter({
         {/* Outer tier-style aura at combo 10+ */}
         {showAura && (
           <div style={{
-            position: "absolute", inset: "-8px",
+            position: "absolute", inset: "-10px",
             borderRadius: "50%",
             background: bigAura
               ? "conic-gradient(from 0deg, #fbbf24, #f97316, #c026d3, #06b6d4, #fbbf24)"
               : `conic-gradient(from 0deg, ${pet.color}, ${pet.color}88, ${pet.color})`,
-            opacity: 0.75,
-            filter: "blur(2px)",
+            opacity: 0.85,
+            filter: "blur(3px)",
             animation: "bounce-scale-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
           }} />
         )}
-        {/* Soft ground glow */}
+        {/* Soft ground glow — intensifies with combo */}
         <div style={{
           position: "absolute", bottom: "-4px", left: "50%", transform: "translateX(-50%)",
-          width: "82%", height: "16px",
+          width: "82%", height: "18px",
           borderRadius: "50%",
-          background: `radial-gradient(ellipse at 50% 50%, ${pet.color}aa 0%, transparent 70%)`,
+          background: `radial-gradient(ellipse at 50% 50%, ${pet.color}cc 0%, transparent 70%)`,
           filter: "blur(3px)",
+          opacity: 0.6 + Math.min(combo, 20) * 0.02,
         }} />
-        {/* Celebration sparkles burst on every 10th combo */}
+        {/* Celebration sparkles burst on every 10th combo — now 8 sparkles, wider */}
         {celebrate && (
           <>
-            {[...Array(6)].map((_, i) => {
-              const angle = (i / 6) * Math.PI * 2;
+            {[...Array(8)].map((_, i) => {
+              const angle = (i / 8) * Math.PI * 2;
               return (
                 <span key={`${combo}-${i}`} style={{
                   position: "absolute", top: "50%", left: "50%",
-                  color: "#fbbf24", fontSize: "12px",
-                  filter: "drop-shadow(0 0 6px rgba(251,191,36,0.8))",
-                  transform: `translate(${Math.cos(angle) * 26 - 50}%, ${Math.sin(angle) * 26 - 50}%)`,
-                  animation: `pet-sparkle 0.8s ease-out both`,
+                  color: "#fbbf24", fontSize: "14px",
+                  filter: "drop-shadow(0 0 8px rgba(251,191,36,0.95))",
+                  transform: `translate(${Math.cos(angle) * 34 - 50}%, ${Math.sin(angle) * 34 - 50}%)`,
+                  animation: `pet-sparkle 0.9s ease-out both`,
                 }}>✦</span>
               );
             })}
@@ -1219,17 +1273,30 @@ function PetCenter({
           display: "flex", alignItems: "flex-end", justifyContent: "center",
           transformOrigin: "50% 100%",
           filter: reaction === "wilt"
-            ? "grayscale(0.7) brightness(0.6) saturate(0.5)"
+            ? "grayscale(0.85) brightness(0.5) saturate(0.4)"
             : "none",
-          transition: "filter 0.15s",
+          transition: "filter 0.2s",
         }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={pet.src} alt="" draggable={false}
             style={{
               width: "100%", height: "100%", objectFit: "contain",
-              filter: `drop-shadow(0 0 10px ${pet.color}aa) drop-shadow(0 4px 6px rgba(0,0,0,0.5))`,
+              filter: `drop-shadow(0 0 12px ${pet.color}cc) drop-shadow(0 4px 6px rgba(0,0,0,0.5))`,
             }} />
         </div>
+        {/* Speech bubble — floats above on misses + combo milestones */}
+        {bubble && (
+          <div key={bubble + (feedback?.ts ?? combo)} style={{
+            position: "absolute",
+            top: "-22px", left: "50%", transform: "translateX(-50%)",
+            fontSize: "22px",
+            filter: "drop-shadow(0 0 10px rgba(255,255,255,0.6))",
+            animation: "bubble-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            zIndex: 3,
+          }}>{bubble}</div>
+        )}
       </div>
     </div>
   );
