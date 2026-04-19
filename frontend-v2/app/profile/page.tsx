@@ -112,16 +112,12 @@ const GAME_DISPLAY: Record<string, { name: string; icon: string }> = {
 
 // All achievements use the gold reward color. Locked = grayscale.
 const ACHIEVEMENT_COLOR = "#fbbf24";
-const ACHIEVEMENTS = [
-  { icon: "🥇", label: "First Win", desc: "Win your first game", unlocked: true },
-  { icon: "🔥", label: "5 Game Streak", desc: "Win 5 in a row", unlocked: true },
-  { icon: "💎", label: "Top 10 Player", desc: "Reach top 10 leaderboard", unlocked: true },
-  { icon: "🥁", label: "Drum Master", desc: "Score 500+ in Rhythm Rush", unlocked: true },
-  { icon: "🧠", label: "Memory Genius", desc: "Complete 10 Simon levels", unlocked: false },
-  { icon: "🤖", label: "AI Slayer", desc: "Beat the AI 5 times", unlocked: false },
-  { icon: "👑", label: "Weekly Champion", desc: "Win a weekly competition", unlocked: false },
-  { icon: "🌟", label: "100 Games", desc: "Play 100 total games", unlocked: false },
-];
+
+type Achievement = {
+  id: string; icon: string; name: string; desc: string;
+  unlocked: boolean; unlockedAt: number | null;
+  nftTokenId: number | null; txHash: string | null;
+};
 
 // ─── Juicy Button ─────────────────────────────────────────────────────────────
 function JuicyBtn({
@@ -413,6 +409,16 @@ export default function ProfilePage() {
       .then(r => r.json())
       .then(data => setBadgeData({ badges: data.badges || [], summary: data.summary || {} }))
       .catch(() => setBadgeData(null));
+  }, [address]);
+
+  // Fetch milestone achievements (off-chain for now; NFT minting comes later)
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  useEffect(() => {
+    if (!address) { setAchievements([]); return; }
+    fetch(`${BACKEND_URL}/api/achievements/${address}`)
+      .then(r => r.json())
+      .then(d => setAchievements(d.achievements || []))
+      .catch(() => setAchievements([]));
   }, [address]);
 
   // Fetch streak (for sidebar chip)
@@ -967,20 +973,22 @@ export default function ProfilePage() {
                     )}
                   </div>
 
-                  {/* MILESTONE ACHIEVEMENTS (coming soon — will mint as NFTs) */}
+                  {/* MILESTONE ACHIEVEMENTS — real unlock state, NFT mint upgrade coming later */}
                   <div>
                     <div style={{
                       fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
                       color: "rgba(200,180,255,0.8)", textAlign: "center",
-                      textShadow: "0 0 14px rgba(160,100,255,0.8)", marginBottom: "10px",
+                      textShadow: "0 0 14px rgba(160,100,255,0.8)", marginBottom: "6px",
                     }}>── MILESTONE ACHIEVEMENTS ──</div>
                     <div style={{
-                      textAlign: "center", padding: "8px",
+                      textAlign: "center", padding: "4px 8px 10px",
                       color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700,
-                      letterSpacing: "0.12em", marginBottom: "8px",
-                    }}>NFT BADGES — COMING SOON</div>
+                      letterSpacing: "0.12em",
+                    }}>
+                      {achievements.filter(a => a.unlocked).length} / {achievements.length} UNLOCKED
+                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-                  {ACHIEVEMENTS.map((a, i) => (
+                  {achievements.map((a, i) => (
                     <div key={i} style={{
                       borderRadius: "16px",
                       padding: "14px 12px",
@@ -1016,7 +1024,7 @@ export default function ProfilePage() {
                           letterSpacing: "0.04em",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                           textShadow: a.unlocked ? `0 0 10px ${ACHIEVEMENT_COLOR}cc` : "none",
-                        }}>{a.label}</div>
+                        }}>{a.name}</div>
                         <div style={{
                           color: a.unlocked ? "rgba(200,180,255,0.7)" : "rgba(180,150,255,0.35)",
                           fontSize: "9px", fontWeight: 700, marginTop: "2px",

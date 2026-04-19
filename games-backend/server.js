@@ -366,6 +366,77 @@ async function updateMissionProgress(wallet, ctx) {
   }
 }
 
+// ─── Achievements (off-chain for now; NFT mint later) ──────────────────────
+// Each entry has a check fn that returns true if the player qualifies.
+// Catalog is the source of truth — adding a new one = one new entry here.
+const ACHIEVEMENT_CATALOG = [
+  { id: 'first_win',    icon: '🥇', name: 'First Win',          desc: 'Win your first game',
+    check: async ({ isWin }) => isWin },
+  { id: 'streak_3',     icon: '🔥', name: '3-Day Streak',       desc: 'Play 3 days in a row',
+    check: async ({ playStreak }) => playStreak >= 3 },
+  { id: 'streak_7',     icon: '🔥', name: 'Week Warrior',       desc: 'Play 7 days in a row',
+    check: async ({ playStreak }) => playStreak >= 7 },
+  { id: 'streak_30',    icon: '🔥', name: 'Month Master',       desc: 'Play 30 days in a row',
+    check: async ({ playStreak }) => playStreak >= 30 },
+  { id: 'games_5',      icon: '🎮', name: 'Getting Started',    desc: 'Play 5 games total',
+    check: async ({ totalGames }) => totalGames >= 5 },
+  { id: 'games_25',     icon: '🎮', name: 'Regular Player',     desc: 'Play 25 games total',
+    check: async ({ totalGames }) => totalGames >= 25 },
+  { id: 'games_100',    icon: '💎', name: 'Veteran',            desc: 'Play 100 games total',
+    check: async ({ totalGames }) => totalGames >= 100 },
+  { id: 'rhythm_300',   icon: '🥁', name: 'Drum Apprentice',    desc: 'Score 300+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 300 },
+  { id: 'rhythm_500',   icon: '🥁', name: 'Rhythm Master',      desc: 'Score 500+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 500 },
+  { id: 'rhythm_700',   icon: '👑', name: 'Rhythm Legend',      desc: 'Score 700+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 700 },
+  { id: 'simon_5',      icon: '🧠', name: 'Memory Apprentice',  desc: 'Reach round 5 in Simon Memory',
+    check: async ({ game, score }) => game === 'simon' && score >= 5 },
+  { id: 'simon_10',     icon: '🧠', name: 'Memory Master',      desc: 'Reach round 10 in Simon Memory',
+    check: async ({ game, score }) => game === 'simon' && score >= 10 },
+  { id: 'simon_15',     icon: '👑', name: 'Memory Legend',      desc: 'Reach round 15 in Simon Memory',
+    check: async ({ game, score }) => game === 'simon' && score >= 15 },
+];
+
+async function checkAndUnlockAchievements(wallet, ctx) {
+  const { data: existing } = await supabase
+    .from('achievements_unlocked')
+    .select('achievement_id')
+    .eq('wallet', wallet);
+  const unlockedSet = new Set((existing || []).map(r => r.achievement_id));
+
+  let totalGames = 0;
+  if (passContract) {
+    try { totalGames = Number(await passContract.gamesPlayed(wallet)); } catch (_) {}
+  }
+
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('play_streak')
+    .eq('wallet_address', wallet)
+    .limit(1);
+  const playStreak = userRow?.[0]?.play_streak || 0;
+
+  const fullCtx = { ...ctx, totalGames, playStreak };
+  const newlyUnlocked = [];
+
+  for (const ach of ACHIEVEMENT_CATALOG) {
+    if (unlockedSet.has(ach.id)) continue;
+    if (!await ach.check(fullCtx)) continue;
+    const { error } = await supabase.from('achievements_unlocked').insert({
+      wallet,
+      achievement_id: ach.id,
+      trigger_score: ctx.score || null,
+      trigger_game: ctx.game || null,
+    });
+    if (!error) {
+      newlyUnlocked.push(ach.id);
+      console.log(`🏅 ${wallet.slice(0, 8)}... unlocked: ${ach.name}`);
+    }
+  }
+  return newlyUnlocked;
+}
+
 async function awardXp(addr, amount, reason = '') {
   if (!amount) return null;
   const lower = addr.toLowerCase();
@@ -768,13 +839,21 @@ app.post('/api/submit-score', requireSecret, strictLimiter, async (req, res) => 
     console.warn('mission progress update failed:', e.message);
   }
 
+  // Check + unlock any new achievements for this player
+  let newAchievements = [];
+  try {
+    newAchievements = await checkAndUnlockAchievements(lower, { game, score, isWin, isNewPb });
+  } catch (e) {
+    console.warn('achievement check failed:', e.message);
+  }
+
   // Get rank
   const leaderboard = await getLeaderboard(game);
   const rank = leaderboard.findIndex(e => e.wallet_address === lower) + 1;
 
   console.log(`✅ [${game}] ${lower.slice(0, 8)}... → ${score} pts (rank #${rank}) +${xpEarned} XP ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
 
-  res.json({ success: true, score, rank, txHash, streak, xpEarned, xp: xpResult?.xp, level: xpResult?.level, leveledUp: !!xpResult?.leveledUp });
+  res.json({ success: true, score, rank, txHash, streak, xpEarned, xp: xpResult?.xp, level: xpResult?.level, leveledUp: !!xpResult?.leveledUp, newAchievements });
 });
 
 // ─── GET /api/leaderboard?game=rhythm|simon ─────────────────────────────────
@@ -1047,6 +1126,35 @@ app.get('/api/badges/:address', async (req, res) => {
       streakLabel,
     },
   });
+});
+
+// ─── GET /api/achievements/:address ─────────────────────────────────────────
+// Returns the full achievement catalog with `unlocked` flag per achievement
+// for this player, so the frontend can render unlocked + locked together.
+app.get('/api/achievements/:address', async (req, res) => {
+  const addr = req.params.address.toLowerCase();
+  const { data: rows } = await supabase
+    .from('achievements_unlocked')
+    .select('achievement_id, unlocked_at, nft_token_id, tx_hash')
+    .eq('wallet', addr);
+  const unlockedMap = new Map((rows || []).map(r => [r.achievement_id, r]));
+
+  const achievements = ACHIEVEMENT_CATALOG.map(ach => {
+    const u = unlockedMap.get(ach.id);
+    return {
+      id: ach.id,
+      icon: ach.icon,
+      name: ach.name,
+      desc: ach.desc,
+      unlocked: !!u,
+      unlockedAt: u ? Math.floor(new Date(u.unlocked_at).getTime() / 1000) : null,
+      nftTokenId: u?.nft_token_id || null,
+      txHash: u?.tx_hash || null,
+    };
+  });
+
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
+  res.json({ address: addr, total: achievements.length, unlockedCount, achievements });
 });
 
 // ─── GET /api/missions/today/:address — today's 3 missions for this player ─
