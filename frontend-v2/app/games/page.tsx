@@ -377,13 +377,13 @@ export default function GamesPage() {
               display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
               padding: "7px 6px", borderRadius: "12px",
               background: streak.playedToday
-                ? "linear-gradient(180deg, rgba(249,115,22,0.25) 0%, rgba(249,115,22,0.1) 100%)"
-                : "linear-gradient(180deg, rgba(107,114,128,0.2) 0%, rgba(31,41,55,0.1) 100%)",
-              border: `1.5px solid ${streak.playedToday ? "#f97316" : "rgba(107,114,128,0.5)"}`,
+                ? "linear-gradient(180deg, #7c2d00 0%, #3f1300 100%)"
+                : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
+              border: `2px solid ${streak.playedToday ? "#f97316" : "#4b5563"}`,
               boxShadow: streak.playedToday
-                ? "0 0 16px rgba(249,115,22,0.6), 0 0 30px rgba(249,115,22,0.25)"
-                : "none",
-              minWidth: "44px",
+                ? "0 0 14px rgba(249,115,22,0.7), 0 0 28px rgba(249,115,22,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
+                : "inset 0 1px 0 rgba(255,255,255,0.08)",
+              minWidth: "46px",
               cursor: "default",
             }}>
               <span style={{
