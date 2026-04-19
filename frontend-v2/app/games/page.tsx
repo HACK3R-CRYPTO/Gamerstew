@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -97,12 +98,6 @@ const GAMES = [
   },
 ];
 
-const TOURNAMENTS = [
-  { rank: 1, name: "Rhythm Tourney", winner: "Alex W.", color: "#fbbf24" },
-  { rank: 2, name: "Memory Masters", winner: "0x44f…", color: "#e2e8f0" },
-  { rank: 3, name: "AI Challenge Cup", winner: "Maria K.", color: "#f97316" },
-];
-
 // ─── Nav sidebar icons ─────────────────────────────────────────────────────────
 const NAV_ITEMS = [
   {
@@ -144,41 +139,19 @@ const NAV_ITEMS = [
 ];
 
 // ─── Stats data ────────────────────────────────────────────────────────────────
-const STATS = [
-  {
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-      </svg>
-    ),
-    label: "PLAYERS",
-    value: "1.2M+",
-    borderColor: "#a78bfa",
-    textColor: "#c4b5fd",
-  },
-  {
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M21 6H3a1 1 0 00-1 1v10a1 1 0 001 1h18a1 1 0 001-1V7a1 1 0 00-1-1zm-10 7H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 1a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-3a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/>
-      </svg>
-    ),
-    label: "GAMES",
-    value: "500K+",
-    borderColor: "#a78bfa",
-    textColor: "#c4b5fd",
-  },
-  {
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/>
-      </svg>
-    ),
-    label: "POT",
-    value: "$250K",
-    borderColor: "#fbbf24",
-    textColor: "#fde68a",
-  },
-];
+// Stat pill icons + colors. Values come from /api/stats at runtime.
+const STAT_ICONS = {
+  players: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
+  games:   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 00-1 1v10a1 1 0 001 1h18a1 1 0 001-1V7a1 1 0 00-1-1zm-10 7H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 1a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-3a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/></svg>,
+  pot:     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/></svg>,
+};
+
+function fmtNumber(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 10_000)    return `${Math.round(n / 1000)}K`;
+  if (n >= 1_000)     return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export default function GamesPage() {
@@ -218,6 +191,105 @@ export default function GamesPage() {
     const sec = s % 60;
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   }
+
+  // GoodDollar daily claim entitlement (for the EVENTS section)
+  const { isVerified, entitlement, claimG$ } = useSelfVerification();
+  const claimableG = entitlement && Number(entitlement) > 0;
+
+  // Global stats for the top pills (PLAYERS / GAMES / POT)
+  const [stats, setStats] = useState<{ totalUsers: number; totalGames: number; estimatedPrizePot: string }>({
+    totalUsers: 0, totalGames: 0, estimatedPrizePot: "0",
+  });
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/stats`)
+      .then(r => r.json())
+      .then(d => setStats({
+        totalUsers: d.totalUsers || 0,
+        totalGames: d.totalGames || 0,
+        estimatedPrizePot: d.estimatedPrizePot || "0",
+      }))
+      .catch(() => {});
+  }, []);
+
+  // EVENTS data — real season countdown + 3-week competition state
+  type EventCard = { icon: string; color: string; title: string; subtitle: string; onClick?: () => void };
+  const [seasonInfo, setSeasonInfo] = useState<{ season: number; endsAt: number } | null>(null);
+  const [compInfo, setCompInfo] = useState<{ weeksLeft: number; total: number } | null>(null);
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/seasons`)
+      .then(r => r.json())
+      .then(d => setSeasonInfo({ season: d.currentSeason || 0, endsAt: d.currentEndsAt || 0 }))
+      .catch(() => {});
+    fetch(`${BACKEND_URL}/api/competition`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.weeksLeft > 0) {
+          const total = (d.prizes?.first || 0) + (d.prizes?.second || 0) + (d.prizes?.third || 0);
+          setCompInfo({ weeksLeft: d.weeksLeft, total });
+        }
+      })
+      .catch(() => {});
+  }, []);
+  // Real-time countdown to season end (re-renders every minute, not every second to save CPU)
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60000);
+    return () => clearInterval(t);
+  }, []);
+  function fmtShortCountdown(secondsLeft: number) {
+    if (secondsLeft <= 0) return "ended";
+    const d = Math.floor(secondsLeft / 86400);
+    const h = Math.floor((secondsLeft % 86400) / 3600);
+    if (d > 0) return `${d}d ${h}h`;
+    const m = Math.floor((secondsLeft % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+
+  // SMART NEWS — curated highlights from real backend data:
+  //   - This week's leaders (rhythm + simon)
+  //   - Most recent championship winner
+  //   - 3-week competition leader
+  type NewsItem = { icon: string; color: string; title: string; subtitle: string };
+  const [news, setNews] = useState<NewsItem[]>([]);
+  useEffect(() => {
+    const shortName = (addr: string, name?: string | null) =>
+      name || `${addr.slice(0, 4)}...${addr.slice(-3)}`;
+
+    Promise.all([
+      fetch(`${BACKEND_URL}/api/leaderboard?game=rhythm&offset=0&limit=1`).then(r => r.json()).catch(() => null),
+      fetch(`${BACKEND_URL}/api/leaderboard?game=simon&offset=0&limit=1`).then(r => r.json()).catch(() => null),
+      fetch(`${BACKEND_URL}/api/seasons`).then(r => r.json()).catch(() => null),
+      fetch(`${BACKEND_URL}/api/competition`).then(r => r.json()).catch(() => null),
+    ]).then(([rhythmLb, simonLb, seasons, comp]) => {
+      const items: NewsItem[] = [];
+      const rLeader = rhythmLb?.leaderboard?.[0];
+      const sLeader = simonLb?.leaderboard?.[0];
+      if (rLeader) items.push({
+        icon: "🥁", color: "#c026d3",
+        title: `${shortName(rLeader.player, rLeader.username)} leads Rhythm Rush`,
+        subtitle: `${rLeader.score} pts this week`,
+      });
+      if (sLeader) items.push({
+        icon: "🧠", color: "#06b6d4",
+        title: `${shortName(sLeader.player, sLeader.username)} tops Simon Memory`,
+        subtitle: `${sLeader.score} pts this week`,
+      });
+      const lastChamp = seasons?.past?.[0];
+      const champWinner = lastChamp?.rhythm?.[0] || lastChamp?.simon?.[0];
+      if (lastChamp && champWinner) items.push({
+        icon: "👑", color: "#fbbf24",
+        title: `${shortName(champWinner.player, champWinner.username)} won Season ${lastChamp.season}`,
+        subtitle: `${lastChamp.totalPlayers || 0} players competed`,
+      });
+      const compLeader = comp?.rankings?.[0];
+      if (compLeader && comp?.weeksLeft > 0) items.push({
+        icon: "🏆", color: "#fbbf24",
+        title: `${shortName(compLeader.wallet, compLeader.username)} leads 3-Week Cup`,
+        subtitle: `${compLeader.total} pts · ${comp.weeksLeft} weeks left`,
+      });
+      setNews(items.slice(0, 4));
+    });
+  }, []);
   async function claimMission(id: number) {
     if (!address) return;
     try {
@@ -386,7 +458,11 @@ export default function GamesPage() {
             display: "flex", alignItems: "center", justifyContent: "center",
             gap: "10px", flexWrap: "wrap", flexShrink: 0,
           }}>
-            {STATS.map((s, i) => (
+            {[
+              { icon: STAT_ICONS.players, label: "PLAYERS", value: fmtNumber(stats.totalUsers), borderColor: "#a78bfa", textColor: "#c4b5fd" },
+              { icon: STAT_ICONS.games,   label: "GAMES",   value: fmtNumber(stats.totalGames), borderColor: "#a78bfa", textColor: "#c4b5fd" },
+              { icon: STAT_ICONS.pot,     label: "POT",     value: `${Number(stats.estimatedPrizePot).toFixed(2)} G$`, borderColor: "#fbbf24", textColor: "#fde68a" },
+            ].map((s, i) => (
               <div key={i} style={{
                 display: "flex", alignItems: "center", gap: "7px",
                 padding: "7px 16px",
@@ -544,31 +620,143 @@ export default function GamesPage() {
                 })
               )}
 
-              {/* EVENTS — secondary content (3-week competition + tournaments teaser) */}
+              {/* EVENTS — real-time countdowns + actionable reminders */}
               <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>
                 EVENTS
               </div>
-              {TOURNAMENTS.slice(0, 2).map((t, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: "10px",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  padding: "7px 9px",
-                }}>
+              {(() => {
+                const events: EventCard[] = [];
+                if (seasonInfo && seasonInfo.endsAt > 0) {
+                  const left = seasonInfo.endsAt - now;
+                  events.push({
+                    icon: "🗓️", color: "#a78bfa",
+                    title: `Season ${seasonInfo.season} — ends in ${fmtShortCountdown(left)}`,
+                    subtitle: "50 G$ pool · Top 3 win · View →",
+                    onClick: () => router.push("/leaderboard"),
+                  });
+                }
+                if (compInfo) {
+                  events.push({
+                    icon: "🏆", color: "#fbbf24",
+                    title: `3-Week Cup — ${compInfo.weeksLeft} week${compInfo.weeksLeft !== 1 ? "s" : ""} left`,
+                    subtitle: `$${compInfo.total} pool · Cumulative · View →`,
+                    onClick: () => router.push("/leaderboard"),
+                  });
+                }
+                if (isVerified && claimableG) {
+                  events.push({
+                    icon: "💰", color: "#22c55e",
+                    title: "Daily G$ ready to claim",
+                    subtitle: `${(Number(entitlement) / 1e18).toFixed(2)} G$ · Tap to claim`,
+                    onClick: () => claimG$(),
+                  });
+                }
+                if (events.length === 0) {
+                  return (
+                    <div style={{ padding: "10px 4px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "9px", fontWeight: 700 }}>
+                      No active events
+                    </div>
+                  );
+                }
+                return events.map((e, i) => {
+                  const interactive = !!e.onClick;
+                  return (
+                    <div key={i}
+                      role={interactive ? "button" : undefined}
+                      tabIndex={interactive ? 0 : undefined}
+                      onClick={e.onClick}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "8px",
+                        background: "rgba(255,255,255,0.04)",
+                        borderRadius: "10px",
+                        border: `1px solid ${e.color}33`,
+                        padding: "7px 9px",
+                        cursor: interactive ? "pointer" : "default",
+                        userSelect: "none",
+                        transition: "transform 0.15s, border-color 0.15s, background 0.15s",
+                      }}
+                      onMouseEnter={el => {
+                        if (!interactive) return;
+                        const t = el.currentTarget as HTMLDivElement;
+                        t.style.transform = "translateY(-1px)";
+                        t.style.background = "rgba(255,255,255,0.07)";
+                        t.style.borderColor = `${e.color}88`;
+                      }}
+                      onMouseLeave={el => {
+                        const t = el.currentTarget as HTMLDivElement;
+                        t.style.transform = "";
+                        t.style.background = "rgba(255,255,255,0.04)";
+                        t.style.borderColor = `${e.color}33`;
+                      }}
+                    >
+                      <div style={{
+                        width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
+                        background: `radial-gradient(circle at 35% 30%, ${e.color}cc, ${e.color}44)`,
+                        border: `1px solid ${e.color}66`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "14px", boxShadow: `0 0 8px ${e.color}33`,
+                      }}>{e.icon}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: "white", fontSize: "10px", fontWeight: 700, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.title}
+                        </div>
+                        <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "8px", fontWeight: 700, marginTop: "1px" }}>
+                          {e.subtitle}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+
+              {/* HIGHLIGHTS — curated news from real backend data */}
+              <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>
+                HIGHLIGHTS
+              </div>
+              {news.length === 0 ? (
+                <div style={{ padding: "10px 4px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "9px", fontWeight: 700 }}>
+                  Loading highlights...
+                </div>
+              ) : news.map((n, i) => (
+                <div key={i}
+                  role="button" tabIndex={0}
+                  onClick={() => router.push("/leaderboard")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "8px",
+                    background: "rgba(255,255,255,0.04)",
+                    borderRadius: "10px",
+                    border: `1px solid ${n.color}33`,
+                    padding: "7px 9px",
+                    cursor: "pointer", userSelect: "none",
+                    transition: "transform 0.15s, border-color 0.15s, background 0.15s",
+                  }}
+                  onMouseEnter={el => {
+                    const t = el.currentTarget as HTMLDivElement;
+                    t.style.transform = "translateY(-1px)";
+                    t.style.background = "rgba(255,255,255,0.07)";
+                    t.style.borderColor = `${n.color}88`;
+                  }}
+                  onMouseLeave={el => {
+                    const t = el.currentTarget as HTMLDivElement;
+                    t.style.transform = "";
+                    t.style.background = "rgba(255,255,255,0.04)";
+                    t.style.borderColor = `${n.color}33`;
+                  }}
+                >
                   <div style={{
                     width: "28px", height: "28px", borderRadius: "8px", flexShrink: 0,
-                    background: `linear-gradient(135deg, ${t.color}dd 0%, ${t.color}66 100%)`,
+                    background: `radial-gradient(circle at 35% 30%, ${n.color}cc, ${n.color}44)`,
+                    border: `1px solid ${n.color}66`,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: `0 0 8px ${t.color}55`,
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                      <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2z"/>
-                    </svg>
-                  </div>
+                    fontSize: "14px", boxShadow: `0 0 8px ${n.color}33`,
+                  }}>{n.icon}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: "white", fontSize: "10px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                    <div style={{ color: t.color, fontSize: "8px", fontWeight: 700, marginTop: "1px" }}>Winner {t.rank} · {t.winner}</div>
+                    <div style={{ color: "white", fontSize: "10px", fontWeight: 700, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {n.title}
+                    </div>
+                    <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "8px", fontWeight: 700, marginTop: "1px" }}>
+                      {n.subtitle}
+                    </div>
                   </div>
                 </div>
               ))}
