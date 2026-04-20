@@ -48,13 +48,17 @@ function read(): AudioSettings {
   }
 }
 
+// Same-tab sync uses this event name. Every mounted hook instance listens
+// for it, so a toggle in Profile reaches useAppAudio in the layout immediately.
+const SAME_TAB_EVENT = "gamesettings:changed";
+
 export function useAudioSettings() {
   const [settings, setSettings] = useState<AudioSettings>(DEFAULTS);
 
   // Hydrate from localStorage on first mount — avoids SSR hydration mismatch.
   useEffect(() => { setSettings(read()); }, []);
 
-  // Cross-tab sync: if another tab changes the settings, pick up the update.
+  // Cross-tab sync: the native "storage" event only fires in OTHER tabs.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== KEY) return;
@@ -64,10 +68,28 @@ export function useAudioSettings() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
+  // Same-tab sync: every hook instance (Profile page, useAppAudio in layout,
+  // any game page, etc.) holds its own useState — they don't share. Without
+  // this, toggling App Audio in Profile leaves the layout's copy stale and
+  // the ambient pad keeps playing. The custom event fans every update out
+  // to all instances in the same tab.
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const next = (e as CustomEvent<AudioSettings>).detail;
+      if (next) setSettings(next);
+    };
+    window.addEventListener(SAME_TAB_EVENT, onChange);
+    return () => window.removeEventListener(SAME_TAB_EVENT, onChange);
+  }, []);
+
   const update = useCallback((patch: Partial<AudioSettings>) => {
     setSettings(prev => {
       const next = { ...prev, ...patch };
       try { window.localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
+      // Broadcast to sibling hook instances in the same tab
+      try {
+        window.dispatchEvent(new CustomEvent<AudioSettings>(SAME_TAB_EVENT, { detail: next }));
+      } catch {}
       return next;
     });
   }, []);

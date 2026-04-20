@@ -511,29 +511,38 @@ export default function LeaderboardPage() {
         {/* Sidebar */}
         <div style={{
           width: "68px", flexShrink: 0, alignSelf: "stretch",
-          background: "rgba(4,1,18,0.7)", borderRight: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(4,1,18,0.95)", borderRight: "1px solid rgba(255,255,255,0.06)",
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "16px 0", gap: "6px",
         }}>
-          {/* Streak chip */}
+          {/* Streak chip — played today warm orange, not played today FROZEN
+              (blue flame via hue-rotate + cyan glow). Same chip across
+              profile / games / leaderboard. */}
           {address && streak && streak.streak > 0 && (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
               padding: "7px 6px", borderRadius: "12px",
               background: streak.playedToday
                 ? "linear-gradient(180deg, #7c2d00 0%, #3f1300 100%)"
-                : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
-              border: `2px solid ${streak.playedToday ? "#f97316" : "#4b5563"}`,
+                : "linear-gradient(180deg, #0c2742 0%, #041022 100%)",
+              border: `2px solid ${streak.playedToday ? "#f97316" : "#38bdf8"}`,
               boxShadow: streak.playedToday
                 ? "0 0 14px rgba(249,115,22,0.7), 0 0 28px rgba(249,115,22,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "inset 0 1px 0 rgba(255,255,255,0.08)",
+                : "0 0 10px rgba(56,189,248,0.45), 0 0 22px rgba(56,189,248,0.15), inset 0 1px 0 rgba(186,230,253,0.15)",
               minWidth: "46px",
             }}>
-              <span style={{ fontSize: "16px", lineHeight: 1, filter: streak.playedToday ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))" : "grayscale(0.5)" }}>🔥</span>
               <span style={{
-                color: streak.playedToday ? "#fbbf24" : "rgba(200,180,255,0.5)",
+                fontSize: "16px", lineHeight: 1,
+                filter: streak.playedToday
+                  ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))"
+                  : "hue-rotate(190deg) saturate(1.3) brightness(0.95) drop-shadow(0 0 4px rgba(56,189,248,0.7))",
+              }}>🔥</span>
+              <span style={{
+                color: streak.playedToday ? "#fbbf24" : "#bae6fd",
                 fontSize: "13px", fontWeight: 900, lineHeight: 1.1,
-                textShadow: streak.playedToday ? "0 0 8px rgba(251,191,36,0.7)" : "none",
+                textShadow: streak.playedToday
+                  ? "0 0 8px rgba(251,191,36,0.7)"
+                  : "0 0 6px rgba(56,189,248,0.6)",
               }}>{streak.streak}</span>
             </div>
           )}
@@ -546,13 +555,13 @@ export default function LeaderboardPage() {
               <button key={item.path} onClick={() => router.push(item.path)} style={{
                 width: "54px", borderRadius: "12px", padding: "8px 4px 6px",
                 background: active ? "rgba(255,255,255,0.18)" : "transparent", border: "none",
-                color: active ? "white" : "rgba(255,255,255,0.38)",
+                color: active ? "white" : "rgba(255,255,255,0.55)",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
                 cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
                 boxShadow: active ? "0 0 0 1px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.4)" : "none",
               }}
                 onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.38)"; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)"; }}
               >
                 {item.icon}
                 <span style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "0.04em" }}>{item.label.toUpperCase()}</span>

@@ -13,11 +13,11 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 // GamePass NFT — source of truth for username, games played, best score
 const GAME_PASS_ADDRESS = (process.env.NEXT_PUBLIC_GAME_PASS || "0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE") as `0x${string}`;
 const GAME_PASS_ABI = [
-  { name: "getUsername",  inputs: [{ type: "address" }], outputs: [{ type: "string"  }], stateMutability: "view", type: "function" },
-  { name: "gamesPlayed",  inputs: [{ type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
-  { name: "bestScore",    inputs: [{ type: "address" }, { type: "uint8" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
-  { name: "weeklyBest",   inputs: [{ type: "address" }, { type: "uint8" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
-  { name: "hasMinted",    inputs: [{ type: "address" }], outputs: [{ type: "bool"    }], stateMutability: "view", type: "function" },
+  { name: "getUsername", inputs: [{ type: "address" }], outputs: [{ type: "string" }], stateMutability: "view", type: "function" },
+  { name: "gamesPlayed", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+  { name: "bestScore", inputs: [{ type: "address" }, { type: "uint8" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+  { name: "weeklyBest", inputs: [{ type: "address" }, { type: "uint8" }], outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+  { name: "hasMinted", inputs: [{ type: "address" }], outputs: [{ type: "bool" }], stateMutability: "view", type: "function" },
 ] as const;
 
 // Badge from backend /api/badges/:address
@@ -68,22 +68,22 @@ function avatarUrl(address: string, username?: string | null) {
 // Rank tier system — Clash Royale / LoL inspired metallic tiers
 type Tier = { name: string; color: string; ringGrad: string };
 const TIERS: Tier[] = [
-  { name: "BRONZE",   color: "#cd7f32", ringGrad: "conic-gradient(from 0deg, #cd7f32, #8b4513, #f0a060, #cd7f32)" },
-  { name: "SILVER",   color: "#c0c0c0", ringGrad: "conic-gradient(from 0deg, #f1f5f9, #94a3b8, #e2e8f0, #f1f5f9)" },
-  { name: "GOLD",     color: "#fbbf24", ringGrad: "conic-gradient(from 0deg, #fde68a, #d97706, #fef3c7, #fde68a)" },
+  { name: "BRONZE", color: "#cd7f32", ringGrad: "conic-gradient(from 0deg, #cd7f32, #8b4513, #f0a060, #cd7f32)" },
+  { name: "SILVER", color: "#c0c0c0", ringGrad: "conic-gradient(from 0deg, #f1f5f9, #94a3b8, #e2e8f0, #f1f5f9)" },
+  { name: "GOLD", color: "#fbbf24", ringGrad: "conic-gradient(from 0deg, #fde68a, #d97706, #fef3c7, #fde68a)" },
   { name: "PLATINUM", color: "#67e8f9", ringGrad: "conic-gradient(from 0deg, #a5f3fc, #0e7490, #cffafe, #a5f3fc)" },
-  { name: "DIAMOND",  color: "#a78bfa", ringGrad: "conic-gradient(from 0deg, #c4b5fd, #6d28d9, #ddd6fe, #c4b5fd)" },
-  { name: "MASTER",   color: "#f472b6", ringGrad: "conic-gradient(from 0deg, #f9a8d4, #be185d, #fce7f3, #f9a8d4)" },
+  { name: "DIAMOND", color: "#a78bfa", ringGrad: "conic-gradient(from 0deg, #c4b5fd, #6d28d9, #ddd6fe, #c4b5fd)" },
+  { name: "MASTER", color: "#f472b6", ringGrad: "conic-gradient(from 0deg, #f9a8d4, #be185d, #fce7f3, #f9a8d4)" },
 ];
 // Tier pyramid (elite tiers stay rare):
 //   #1 = MASTER, #2-3 = DIAMOND, #4-6 = PLATINUM, #7-15 = GOLD, #16-50 = SILVER, #51+ = BRONZE
 function tierFromRank(rank: number): { tier: Tier; division: string } {
-  if (rank === 1)   return { tier: TIERS[5], division: "I" };
-  if (rank <= 3)    return { tier: TIERS[4], division: rank === 2 ? "I" : "II" };
-  if (rank <= 6)    return { tier: TIERS[3], division: rank === 4 ? "I" : rank === 5 ? "II" : "III" };
-  if (rank <= 15)   return { tier: TIERS[2], division: rank <= 9 ? "I" : rank <= 12 ? "II" : "III" };
-  if (rank <= 50)   return { tier: TIERS[1], division: rank <= 25 ? "I" : rank <= 38 ? "II" : "III" };
-  return                   { tier: TIERS[0], division: rank <= 100 ? "I" : rank <= 200 ? "II" : "III" };
+  if (rank === 1) return { tier: TIERS[5], division: "I" };
+  if (rank <= 3) return { tier: TIERS[4], division: rank === 2 ? "I" : "II" };
+  if (rank <= 6) return { tier: TIERS[3], division: rank === 4 ? "I" : rank === 5 ? "II" : "III" };
+  if (rank <= 15) return { tier: TIERS[2], division: rank <= 9 ? "I" : rank <= 12 ? "II" : "III" };
+  if (rank <= 50) return { tier: TIERS[1], division: rank <= 25 ? "I" : rank <= 38 ? "II" : "III" };
+  return { tier: TIERS[0], division: rank <= 100 ? "I" : rank <= 200 ? "II" : "III" };
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────────
@@ -103,15 +103,15 @@ const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7 };
 
 function timeAgo(ts: number) {
   const diff = Date.now() / 1000 - ts;
-  if (diff < 60)    return "just now";
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
 const GAME_DISPLAY: Record<string, { name: string; icon: string }> = {
-  rhythm: { name: "Rhythm Rush",  icon: "🥁" },
-  simon:  { name: "Simon Memory", icon: "🧠" },
+  rhythm: { name: "Rhythm Rush", icon: "🥁" },
+  simon: { name: "Simon Memory", icon: "🧠" },
 };
 
 // All achievements use the gold reward color. Locked = grayscale.
@@ -122,11 +122,11 @@ const ACHIEVEMENT_COLOR = "#fbbf24";
 // mini chip in sidebar. Evolution moments are huge dopamine hooks (Adopt Me / Tamagotchi pattern).
 type PetStage = { id: string; name: string; src: string; minLevel: number; nextAt: number | null; color: string };
 const PET_STAGES: PetStage[] = [
-  { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  nextAt: 5,  color: "#e2e8f0" },
-  { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  nextAt: 15, color: "#22c55e" },
-  { id: "teen",    name: "Teen Slime",    src: "/pets/stage-3-teen.png",    minLevel: 15, nextAt: 30, color: "#a78bfa" },
+  { id: "egg", name: "Mystery Egg", src: "/pets/stage-1-egg.png", minLevel: 1, nextAt: 5, color: "#e2e8f0" },
+  { id: "baby", name: "Baby Slime", src: "/pets/stage-2-baby.png", minLevel: 5, nextAt: 15, color: "#22c55e" },
+  { id: "teen", name: "Teen Slime", src: "/pets/stage-3-teen.png", minLevel: 15, nextAt: 30, color: "#a78bfa" },
   { id: "crystal", name: "Crystal Slime", src: "/pets/stage-4-crystal.png", minLevel: 30, nextAt: 50, color: "#06b6d4" },
-  { id: "king",    name: "King Slime",    src: "/pets/stage-5-king.png",    minLevel: 50, nextAt: null, color: "#fbbf24" },
+  { id: "king", name: "King Slime", src: "/pets/stage-5-king.png", minLevel: 50, nextAt: null, color: "#fbbf24" },
 ];
 function petForLevel(level: number): PetStage {
   let stage = PET_STAGES[0];
@@ -479,8 +479,8 @@ function PetCard({ pet, playerLevel }: { pet: PetStage; playerLevel: number }) {
   const nextStage = pet.nextAt ? PET_STAGES.find(s => s.minLevel === pet.nextAt) : null;
   const levelsToEvolve = pet.nextAt ? Math.max(0, pet.nextAt - playerLevel) : 0;
   const stageStart = pet.minLevel;
-  const stageEnd   = pet.nextAt ?? playerLevel;
-  const stagePct   = pet.nextAt
+  const stageEnd = pet.nextAt ?? playerLevel;
+  const stagePct = pet.nextAt
     ? Math.min(100, Math.round(((playerLevel - stageStart) / (stageEnd - stageStart)) * 100))
     : 100;
 
@@ -490,11 +490,11 @@ function PetCard({ pet, playerLevel }: { pet: PetStage; playerLevel: number }) {
 
   const phrases = isEgg
     ? (levelsToEvolve <= 1 ? ["Something stirs inside…", "It's shaking!", "Almost hatching!"]
-        : levelsToEvolve <= 3 ? ["I hear tapping!", "Soon…", "Keep playing!"]
+      : levelsToEvolve <= 3 ? ["I hear tapping!", "Soon…", "Keep playing!"]
         : ["It's warm.", "Cozy in here.", "Play more games!", "Boop!"])
     : nextStage
       ? (levelsToEvolve === 0 ? ["Ready to evolve!", "I feel different…", "Big change coming!"]
-          : levelsToEvolve <= 2 ? ["Almost there!", `Just ${levelsToEvolve} more!`, "Don't stop now!"]
+        : levelsToEvolve <= 2 ? ["Almost there!", `Just ${levelsToEvolve} more!`, "Don't stop now!"]
           : ["Hi! Play more!", "Let's level up!", "Boop!", `${levelsToEvolve} levels to go!`])
       : ["I'm the king! 👑", "Bow before me!", "Maxed out!", "Boop!"];
 
@@ -660,14 +660,14 @@ export default function ProfilePage() {
   // Every game on the platform reads from the same source, so changes here
   // take effect immediately the next time the player starts a round.
   const { musicOn, sfxOn, appAudioOn, musicVol, sfxVol, appAudioVol, notifOn, hapticsOn, update: updateSettings } = useAudioSettings();
-  const setMusicOn    = (v: boolean) => updateSettings({ musicOn: v });
-  const setSfxOn      = (v: boolean) => updateSettings({ sfxOn: v });
+  const setMusicOn = (v: boolean) => updateSettings({ musicOn: v });
+  const setSfxOn = (v: boolean) => updateSettings({ sfxOn: v });
   const setAppAudioOn = (v: boolean) => updateSettings({ appAudioOn: v });
-  const setMusicVol     = (v: number)  => updateSettings({ musicVol: v });
-  const setSfxVol       = (v: number)  => updateSettings({ sfxVol: v });
-  const setAppAudioVol  = (v: number)  => updateSettings({ appAudioVol: v });
-  const setNotifOn      = (v: boolean) => updateSettings({ notifOn: v });
-  const setHapticsOn    = (v: boolean) => updateSettings({ hapticsOn: v });
+  const setMusicVol = (v: number) => updateSettings({ musicVol: v });
+  const setSfxVol = (v: number) => updateSettings({ sfxVol: v });
+  const setAppAudioVol = (v: number) => updateSettings({ appAudioVol: v });
+  const setNotifOn = (v: boolean) => updateSettings({ notifOn: v });
+  const setHapticsOn = (v: boolean) => updateSettings({ hapticsOn: v });
 
   const shortAddr = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
 
@@ -811,29 +811,46 @@ export default function ProfilePage() {
         {/* Sidebar */}
         <div style={{
           width: "68px", flexShrink: 0, alignSelf: "stretch",
-          background: "rgba(4,1,18,0.7)", borderRight: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(4,1,18,0.95)", borderRight: "1px solid rgba(255,255,255,0.06)",
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "16px 0", gap: "6px",
         }}>
-          {/* Streak chip */}
+          {/* Streak chip — two clear states with universal game-language signals:
+              • PLAYED TODAY: warm orange flame, gold number, full glow. Alive.
+              • NOT PLAYED: FROZEN. hue-rotate turns the 🔥 glyph cool blue,
+                icy cyan border + ice-blue number + subtle blue glow. Reads as
+                "your streak is on ice — play today to thaw it". Duolingo's
+                streak freeze uses the same warm-vs-cold visual contrast —
+                universally readable. Number stays equally visible so the
+                player never loses sight of their count. */}
           {address && streak && streak.streak > 0 && (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
               padding: "7px 6px", borderRadius: "12px",
               background: streak.playedToday
                 ? "linear-gradient(180deg, #7c2d00 0%, #3f1300 100%)"
-                : "linear-gradient(180deg, #1f2937 0%, #111827 100%)",
-              border: `2px solid ${streak.playedToday ? "#f97316" : "#4b5563"}`,
+                : "linear-gradient(180deg, #0c2742 0%, #041022 100%)",
+              border: `2px solid ${streak.playedToday ? "#f97316" : "#38bdf8"}`,
               boxShadow: streak.playedToday
                 ? "0 0 14px rgba(249,115,22,0.7), 0 0 28px rgba(249,115,22,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "inset 0 1px 0 rgba(255,255,255,0.08)",
+                : "0 0 10px rgba(56,189,248,0.45), 0 0 22px rgba(56,189,248,0.15), inset 0 1px 0 rgba(186,230,253,0.15)",
               minWidth: "46px",
             }}>
-              <span style={{ fontSize: "16px", lineHeight: 1, filter: streak.playedToday ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))" : "grayscale(0.5)" }}>🔥</span>
               <span style={{
-                color: streak.playedToday ? "#fbbf24" : "rgba(200,180,255,0.5)",
+                fontSize: "16px", lineHeight: 1,
+                // hue-rotate 190deg turns the orange 🔥 glyph into cool blue —
+                // the "frozen flame" trope. Classic game language for "your
+                // streak is paused, not dead".
+                filter: streak.playedToday
+                  ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))"
+                  : "hue-rotate(190deg) saturate(1.3) brightness(0.95) drop-shadow(0 0 4px rgba(56,189,248,0.7))",
+              }}>🔥</span>
+              <span style={{
+                color: streak.playedToday ? "#fbbf24" : "#bae6fd",
                 fontSize: "13px", fontWeight: 900, lineHeight: 1.1,
-                textShadow: streak.playedToday ? "0 0 8px rgba(251,191,36,0.7)" : "none",
+                textShadow: streak.playedToday
+                  ? "0 0 8px rgba(251,191,36,0.7)"
+                  : "0 0 6px rgba(56,189,248,0.6)",
               }}>{streak.streak}</span>
             </div>
           )}
@@ -846,7 +863,7 @@ export default function ProfilePage() {
               <button key={item.path} onClick={() => router.push(item.path)} style={{
                 width: "54px", borderRadius: "12px", padding: "8px 4px 6px",
                 background: active ? "rgba(255,255,255,0.18)" : "transparent", border: "none",
-                color: active ? "white" : "rgba(255,255,255,0.38)",
+                color: active ? "white" : "rgba(255,255,255,0.55)",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
                 cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
                 boxShadow: active ? "0 0 0 1px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.4)" : "none",
@@ -1031,10 +1048,10 @@ export default function ProfilePage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                   {/* Stat gems */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-                    <StatGem value={String(totalGames)}                            label="GAMES"      color="#a78bfa" wall="#1a0550" />
+                    <StatGem value={String(totalGames)} label="GAMES" color="#a78bfa" wall="#1a0550" />
                     <StatGem value={String(Math.max(Number(rhythmBest || 0), Number(simonBest || 0)))} label="BEST SCORE" color="#a78bfa" wall="#1a0550" />
                     <StatGem value={badgeData ? String(badgeData.summary.totalGold + badgeData.summary.totalSilver + badgeData.summary.totalBronze) : "0"} label="BADGES" color="#fbbf24" wall="#2a1800" />
-                    <StatGem value={`LV.${playerLevel}`}                          label="LEVEL"      color="#fbbf24" wall="#2a1800" />
+                    <StatGem value={`LV.${playerLevel}`} label="LEVEL" color="#fbbf24" wall="#2a1800" />
                   </div>
 
                   {/* G$ Claim */}
@@ -1068,8 +1085,8 @@ export default function ProfilePage() {
                   {/* Game stats cards — best score per game from on-chain GamePass */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
                     {[
-                      { name: "RHYTHM RUSH",  best: Number(rhythmBest || 0), color: "#c026d3", grad: "linear-gradient(160deg,#7e22ce 0%,#a21caf 100%)", icon: "🥁" },
-                      { name: "SIMON MEMORY", best: Number(simonBest || 0),  color: "#06b6d4", grad: "linear-gradient(160deg,#0e4f6b 0%,#075985 100%)", icon: "🧠" },
+                      { name: "RHYTHM RUSH", best: Number(rhythmBest || 0), color: "#c026d3", grad: "linear-gradient(160deg,#7e22ce 0%,#a21caf 100%)", icon: "🥁" },
+                      { name: "SIMON MEMORY", best: Number(simonBest || 0), color: "#06b6d4", grad: "linear-gradient(160deg,#0e4f6b 0%,#075985 100%)", icon: "🧠" },
                     ].map((g, i) => (
                       <div key={i} style={{
                         borderRadius: "18px", padding: "2.5px",
@@ -1288,54 +1305,54 @@ export default function ProfilePage() {
                       {achievements.filter(a => a.unlocked).length} / {achievements.length} UNLOCKED
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-                  {achievements.map((a, i) => (
-                    <div key={i} style={{
-                      borderRadius: "16px",
-                      padding: "14px 12px",
-                      background: a.unlocked
-                        ? `linear-gradient(180deg, ${ACHIEVEMENT_COLOR}22 0%, rgba(20,10,50,0.7) 100%)`
-                        : "rgba(20,10,50,0.5)",
-                      border: `1.5px solid ${a.unlocked ? ACHIEVEMENT_COLOR + "77" : "rgba(255,255,255,0.06)"}`,
-                      boxShadow: a.unlocked ? `0 0 16px ${ACHIEVEMENT_COLOR}44, 0 6px 16px rgba(0,0,0,0.6)` : "none",
-                      display: "flex", gap: "12px", alignItems: "center",
-                      opacity: a.unlocked ? 1 : 0.5,
-                      position: "relative", overflow: "hidden",
-                    }}>
-                      {a.unlocked && (
-                        <div style={{
-                          position: "absolute", top: 0, left: 0, right: 0, height: "40%",
-                          background: `linear-gradient(180deg, ${ACHIEVEMENT_COLOR}22 0%, transparent 100%)`,
-                          pointerEvents: "none",
-                        }} />
-                      )}
-                      <div style={{
-                        width: "44px", height: "44px", borderRadius: "12px", flexShrink: 0,
-                        background: a.unlocked ? `radial-gradient(circle at 35% 30%, ${ACHIEVEMENT_COLOR}cc, ${ACHIEVEMENT_COLOR}55)` : "rgba(255,255,255,0.05)",
-                        border: `1.5px solid ${a.unlocked ? ACHIEVEMENT_COLOR + "aa" : "rgba(255,255,255,0.1)"}`,
-                        boxShadow: a.unlocked ? `0 0 12px ${ACHIEVEMENT_COLOR}77` : "none",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "22px", position: "relative", zIndex: 1,
-                        filter: a.unlocked ? "none" : "grayscale(1)",
-                      }}>{a.icon}</div>
-                      <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
-                        <div style={{
-                          color: a.unlocked ? "white" : "rgba(255,255,255,0.4)",
-                          fontSize: "12px", fontWeight: 900,
-                          letterSpacing: "0.04em",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          textShadow: a.unlocked ? `0 0 10px ${ACHIEVEMENT_COLOR}cc` : "none",
-                        }}>{a.name}</div>
-                        <div style={{
-                          color: a.unlocked ? "rgba(200,180,255,0.7)" : "rgba(180,150,255,0.35)",
-                          fontSize: "9px", fontWeight: 700, marginTop: "2px",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>{a.desc}</div>
-                      </div>
-                      {a.unlocked && (
-                        <svg style={{ flexShrink: 0, position: "relative", zIndex: 1 }} width="14" height="14" viewBox="0 0 24 24" fill={ACHIEVEMENT_COLOR}><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                      )}
-                    </div>
-                  ))}
+                      {achievements.map((a, i) => (
+                        <div key={i} style={{
+                          borderRadius: "16px",
+                          padding: "14px 12px",
+                          background: a.unlocked
+                            ? `linear-gradient(180deg, ${ACHIEVEMENT_COLOR}22 0%, rgba(20,10,50,0.7) 100%)`
+                            : "rgba(20,10,50,0.5)",
+                          border: `1.5px solid ${a.unlocked ? ACHIEVEMENT_COLOR + "77" : "rgba(255,255,255,0.06)"}`,
+                          boxShadow: a.unlocked ? `0 0 16px ${ACHIEVEMENT_COLOR}44, 0 6px 16px rgba(0,0,0,0.6)` : "none",
+                          display: "flex", gap: "12px", alignItems: "center",
+                          opacity: a.unlocked ? 1 : 0.5,
+                          position: "relative", overflow: "hidden",
+                        }}>
+                          {a.unlocked && (
+                            <div style={{
+                              position: "absolute", top: 0, left: 0, right: 0, height: "40%",
+                              background: `linear-gradient(180deg, ${ACHIEVEMENT_COLOR}22 0%, transparent 100%)`,
+                              pointerEvents: "none",
+                            }} />
+                          )}
+                          <div style={{
+                            width: "44px", height: "44px", borderRadius: "12px", flexShrink: 0,
+                            background: a.unlocked ? `radial-gradient(circle at 35% 30%, ${ACHIEVEMENT_COLOR}cc, ${ACHIEVEMENT_COLOR}55)` : "rgba(255,255,255,0.05)",
+                            border: `1.5px solid ${a.unlocked ? ACHIEVEMENT_COLOR + "aa" : "rgba(255,255,255,0.1)"}`,
+                            boxShadow: a.unlocked ? `0 0 12px ${ACHIEVEMENT_COLOR}77` : "none",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: "22px", position: "relative", zIndex: 1,
+                            filter: a.unlocked ? "none" : "grayscale(1)",
+                          }}>{a.icon}</div>
+                          <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
+                            <div style={{
+                              color: a.unlocked ? "white" : "rgba(255,255,255,0.4)",
+                              fontSize: "12px", fontWeight: 900,
+                              letterSpacing: "0.04em",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              textShadow: a.unlocked ? `0 0 10px ${ACHIEVEMENT_COLOR}cc` : "none",
+                            }}>{a.name}</div>
+                            <div style={{
+                              color: a.unlocked ? "rgba(200,180,255,0.7)" : "rgba(180,150,255,0.35)",
+                              fontSize: "9px", fontWeight: 700, marginTop: "2px",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>{a.desc}</div>
+                          </div>
+                          {a.unlocked && (
+                            <svg style={{ flexShrink: 0, position: "relative", zIndex: 1 }} width="14" height="14" viewBox="0 0 24 24" fill={ACHIEVEMENT_COLOR}><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
