@@ -11,10 +11,12 @@ import { useCallback, useEffect, useState } from "react";
 // 0–1 by dividing by 100 before feeding into Web Audio gain nodes.
 
 export type AudioSettings = {
-  musicOn: boolean;
-  sfxOn: boolean;
-  musicVol: number;   // 0–100
-  sfxVol: number;     // 0–100
+  musicOn: boolean;       // in-game music (rhythm/simon: bass, hats, lead)
+  sfxOn: boolean;         // in-game sfx (rhythm/simon: tap bells, miss buzz)
+  appAudioOn: boolean;    // EVERYTHING app-wide: ambient pad + UI clicks + stings + chimes + coin + tab switch
+  musicVol: number;       // 0–100
+  sfxVol: number;         // 0–100
+  appAudioVol: number;    // 0–100
   notifOn: boolean;
   hapticsOn: boolean;
 };
@@ -24,8 +26,10 @@ const KEY = "gameSettings";
 const DEFAULTS: AudioSettings = {
   musicOn: true,
   sfxOn: true,
+  appAudioOn: true,
   musicVol: 70,
   sfxVol: 85,
+  appAudioVol: 60,
   notifOn: true,
   hapticsOn: true,
 };
@@ -71,11 +75,13 @@ export function useAudioSettings() {
   return { ...settings, update };
 }
 
-// Helper for games: returns the effective gain multipliers (0–1) accounting
-// for both the master toggle and the slider. Use these when scheduling audio.
+// Helper for games + app-wide audio: returns the effective gain multipliers
+// (0–1) accounting for both the master toggle and the slider. Use these when
+// scheduling audio. Games use .music / .sfx, the menu system uses .appAudio.
 export function effectiveGains(s: AudioSettings) {
   return {
-    music: s.musicOn ? s.musicVol / 100 : 0,
-    sfx:   s.sfxOn   ? s.sfxVol   / 100 : 0,
+    music:    s.musicOn    ? s.musicVol    / 100 : 0,
+    sfx:      s.sfxOn      ? s.sfxVol      / 100 : 0,
+    appAudio: s.appAudioOn ? s.appAudioVol / 100 : 0,
   };
 }

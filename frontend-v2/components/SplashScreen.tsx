@@ -287,17 +287,19 @@ export default function SplashScreen() {
     if (displayed < current.length) {
       const t = setTimeout(() => setDisplayed((d) => d + 1), 50);
       return () => clearTimeout(t);
-    } else {
-      if (textIndex >= loadingTexts.length - 1) {
-        const t = setTimeout(() => router.push('/home'), 800);
-        return () => clearTimeout(t);
-      }
-      const t = setTimeout(() => {
-        setTextIndex((i) => i + 1);
-        setDisplayed(0);
-      }, LOADING_TEXT_CHANGE_TIME);
+    }
+    // All text typed — auto-advance to /home. Web Audio stays locked until
+    // the user's first click on /home (browser autoplay policy); the global
+    // pointerdown listener in useAppAudio catches that and unlocks everything.
+    if (textIndex >= loadingTexts.length - 1) {
+      const t = setTimeout(() => router.push('/home'), 800);
       return () => clearTimeout(t);
     }
+    const t = setTimeout(() => {
+      setTextIndex((i) => i + 1);
+      setDisplayed(0);
+    }, LOADING_TEXT_CHANGE_TIME);
+    return () => clearTimeout(t);
   }, [textIndex, displayed, router]);
 
   return (

@@ -6,6 +6,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useReadContract } from "wagmi";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { playCoin, playTabSwitch } from "@/hooks/useAppAudio";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -178,6 +179,9 @@ function JuicyBtn({
 function PillTab({ label, icon, active, onClick }: { label: string; icon: string; active: boolean; onClick: () => void }) {
   return (
     <div role="button" tabIndex={0} onClick={onClick}
+      // Opt out of global UI click blip — the tab-switch tick fires from the
+      // onClick handler instead (only on actual tab change, not same-tab taps)
+      data-no-click-sound="true"
       style={{ cursor: "pointer", userSelect: "none", flex: "0 0 auto", transition: "transform 0.15s" }}
       onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.95) translateY(2px)"; }}
       onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
@@ -655,13 +659,15 @@ export default function ProfilePage() {
   // Settings — persisted in localStorage via useAudioSettings hook.
   // Every game on the platform reads from the same source, so changes here
   // take effect immediately the next time the player starts a round.
-  const { musicOn, sfxOn, musicVol, sfxVol, notifOn, hapticsOn, update: updateSettings } = useAudioSettings();
-  const setMusicOn   = (v: boolean) => updateSettings({ musicOn: v });
-  const setSfxOn     = (v: boolean) => updateSettings({ sfxOn: v });
-  const setMusicVol  = (v: number)  => updateSettings({ musicVol: v });
-  const setSfxVol    = (v: number)  => updateSettings({ sfxVol: v });
-  const setNotifOn   = (v: boolean) => updateSettings({ notifOn: v });
-  const setHapticsOn = (v: boolean) => updateSettings({ hapticsOn: v });
+  const { musicOn, sfxOn, appAudioOn, musicVol, sfxVol, appAudioVol, notifOn, hapticsOn, update: updateSettings } = useAudioSettings();
+  const setMusicOn    = (v: boolean) => updateSettings({ musicOn: v });
+  const setSfxOn      = (v: boolean) => updateSettings({ sfxOn: v });
+  const setAppAudioOn = (v: boolean) => updateSettings({ appAudioOn: v });
+  const setMusicVol     = (v: number)  => updateSettings({ musicVol: v });
+  const setSfxVol       = (v: number)  => updateSettings({ sfxVol: v });
+  const setAppAudioVol  = (v: number)  => updateSettings({ appAudioVol: v });
+  const setNotifOn      = (v: boolean) => updateSettings({ notifOn: v });
+  const setHapticsOn    = (v: boolean) => updateSettings({ hapticsOn: v });
 
   const shortAddr = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
 
@@ -1012,7 +1018,8 @@ export default function ProfilePage() {
               flexWrap: "wrap", justifyContent: "center",
             }}>
               {TABS.map(t => (
-                <PillTab key={t.id} label={t.label} icon={t.icon} active={activeTab === t.id} onClick={() => setActiveTab(t.id)} />
+                <PillTab key={t.id} label={t.label} icon={t.icon} active={activeTab === t.id}
+                  onClick={() => { if (activeTab !== t.id) playTabSwitch(); setActiveTab(t.id); }} />
               ))}
             </div>
 
@@ -1052,7 +1059,7 @@ export default function ProfilePage() {
                           </div>
                         </div>
                         <div style={{ position: "relative", zIndex: 1 }}>
-                          <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={() => claimG$()} />
+                          <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={() => { playCoin(); claimG$(); }} />
                         </div>
                       </div>
                     </div>
@@ -1354,6 +1361,12 @@ export default function ProfilePage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "180px" }}>
                       <ToggleSwitch on={sfxOn} color="#a78bfa" onChange={() => setSfxOn(!sfxOn)} />
                       <VolumeSlider value={sfxOn ? sfxVol : 0} color="#a78bfa" onChange={setSfxVol} />
+                    </div>
+                  </SettingsRow>
+                  <SettingsRow icon="✨" label="App Audio" color="#a78bfa">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "180px" }}>
+                      <ToggleSwitch on={appAudioOn} color="#a78bfa" onChange={() => setAppAudioOn(!appAudioOn)} />
+                      <VolumeSlider value={appAudioOn ? appAudioVol : 0} color="#a78bfa" onChange={setAppAudioVol} />
                     </div>
                   </SettingsRow>
 

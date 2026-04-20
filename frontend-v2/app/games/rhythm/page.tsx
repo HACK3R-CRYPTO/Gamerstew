@@ -6,6 +6,7 @@ import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
+import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 
@@ -1663,6 +1664,9 @@ function TapButton({ theme, laneIdx, isFlashing, onPress }: { theme: LaneTheme; 
   return (
     <div
       role="button" tabIndex={0}
+      // Opt out of the global UI click blip — tapping a lane plays the bell
+      // at the tile's pitch (melodic). A UI tick on top would muddle it.
+      data-no-click-sound="true"
       onPointerDown={e => { e.preventDefault(); onPress(); }}
       style={{
         cursor: "pointer", userSelect: "none",
@@ -1964,12 +1968,69 @@ function RewardPanel({
   if (!result) return null;
 
   const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
-  // "You beat your best by X" only makes sense when the player HAS a previous
-  // score to beat (prevBest > 0) and the server flagged this run as a PB. A
-  // fresh player's first PB gets a different callout so the number isn't just
-  // "+whateverYouScored from 0", which is confusing.
   const showPbDelta  = isNewPb && typeof prevBest === "number" && prevBest > 0;
   const showFirstPb  = isNewPb && !showPbDelta;
+
+  return (
+    <RewardContent
+      rank={rank}
+      xpEarned={xpEarned}
+      level={level}
+      leveledUp={leveledUp}
+      isNewPb={isNewPb}
+      showPbDelta={showPbDelta}
+      showFirstPb={showFirstPb}
+      prevBest={prevBest}
+      newAchievements={newAchievements}
+      score={score}
+    />
+  );
+}
+
+// ─── RewardContent — separated so we can fire stings when callouts mount ────
+// Each callout has its own short useEffect that plays its specific chime the
+// first time the card renders. Order-sequenced with setTimeout so you hear
+// PB -> level up -> achievement as stacked events instead of one blurry mush.
+type RewardContentProps = {
+  rank: number | undefined;
+  xpEarned: number | undefined;
+  level: number | undefined;
+  leveledUp: boolean | undefined;
+  isNewPb: boolean | undefined;
+  showPbDelta: boolean | undefined;
+  showFirstPb: boolean | undefined;
+  prevBest: number | undefined;
+  newAchievements: { id: string; name: string; icon?: string; desc?: string }[];
+  score: number;
+};
+
+function RewardContent({
+  rank, xpEarned, level, leveledUp, isNewPb, showPbDelta, showFirstPb, prevBest, newAchievements, score,
+}: RewardContentProps) {
+  // Stagger the stings so each one is individually audible. Rank hits first
+  // (it's always there), PB second (if earned), level-up third, achievements
+  // last. Each has its own chime — layered, they read as a celebration build.
+  useEffect(() => {
+    if (rank) playRankReveal();
+  }, [rank]);
+  useEffect(() => {
+    if (isNewPb) {
+      const t = setTimeout(() => playSaveSuccess(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [isNewPb]);
+  useEffect(() => {
+    if (leveledUp) {
+      const t = setTimeout(() => playLevelUp(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [leveledUp]);
+  useEffect(() => {
+    if (newAchievements.length > 0) {
+      const t = setTimeout(() => playAchievementChime(), 900);
+      return () => clearTimeout(t);
+    }
+  }, [newAchievements.length]);
 
   return (
     <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>

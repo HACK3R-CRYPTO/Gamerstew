@@ -6,6 +6,7 @@ import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
+import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 
@@ -1101,6 +1102,9 @@ function Slice({ pos, theme, active, disabled, onTap }: {
   return (
     <button
       aria-label={`${theme.id} button`}
+      // Opts out of the app-wide UI click blip. Simon's bell tone carries
+      // the color info; a UI tick on top would muddle that audio cue.
+      data-no-click-sound="true"
       onPointerDown={(e) => { if (!disabled) { e.preventDefault(); onTap(); } }}
       disabled={disabled}
       style={{
@@ -1148,6 +1152,7 @@ function CenterDome({
   return (
     <button
       aria-label={bonusUnlocked ? "Purple bonus button" : "Round display"}
+      data-no-click-sound="true"
       onPointerDown={(e) => { if (tappable) { e.preventDefault(); onTap?.(); } }}
       disabled={!tappable}
       style={{
@@ -1493,6 +1498,51 @@ function RewardPanel({
   const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
   const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
   const showFirstPb = isNewPb && !showPbDelta;
+
+  // Stagger reward-screen stings so each lands individually (rank → PB →
+  // level-up → achievement). Each plays once when its callout mounts.
+  return (
+    <RewardContent
+      rank={rank}
+      xpEarned={xpEarned}
+      level={level}
+      leveledUp={leveledUp}
+      isNewPb={isNewPb}
+      showPbDelta={showPbDelta}
+      showFirstPb={showFirstPb}
+      prevBest={prevBest}
+      newAchievements={newAchievements}
+      score={score}
+    />
+  );
+}
+
+type RewardContentProps = {
+  rank: number | undefined;
+  xpEarned: number | undefined;
+  level: number | undefined;
+  leveledUp: boolean | undefined;
+  isNewPb: boolean | undefined;
+  showPbDelta: boolean | undefined;
+  showFirstPb: boolean | undefined;
+  prevBest: number | undefined;
+  newAchievements: { id: string; name: string; icon?: string; desc?: string }[];
+  score: number;
+};
+
+function RewardContent({
+  rank, xpEarned, level, leveledUp, isNewPb, showPbDelta, showFirstPb, prevBest, newAchievements, score,
+}: RewardContentProps) {
+  useEffect(() => { if (rank) playRankReveal(); }, [rank]);
+  useEffect(() => {
+    if (isNewPb) { const t = setTimeout(() => playSaveSuccess(), 250); return () => clearTimeout(t); }
+  }, [isNewPb]);
+  useEffect(() => {
+    if (leveledUp) { const t = setTimeout(() => playLevelUp(), 500); return () => clearTimeout(t); }
+  }, [leveledUp]);
+  useEffect(() => {
+    if (newAchievements.length > 0) { const t = setTimeout(() => playAchievementChime(), 900); return () => clearTimeout(t); }
+  }, [newAchievements.length]);
 
   return (
     <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
