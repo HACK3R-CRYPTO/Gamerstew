@@ -1,589 +1,2201 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useRouter } from 'next/navigation';
-import { useWriteContract, useAccount, useSignMessage } from 'wagmi';
-import { useIsMiniPay } from '@/hooks/useMiniPay';
-import { submitScore, signScore, signScoreMiniPay, submitScoreMiniPay } from '@/app/actions/game';
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from '@/lib/contracts';
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useAccount, useSignMessage, useWriteContract } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
+import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
+import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 
-const BASE_BPM         = 90;
-const MAX_BPM          = 200;
-const BPM_RAMP_PER_HIT = 2;
-const GAME_DURATION    = 30000;
-const COMBO_THRESHOLDS = [5, 10, 15, 25];
+// Only used for browser-safe READ endpoints (user level lookup). Write paths
+// go through server actions so the games-backend URL is never sent to the client.
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
-const BUTTON_COLORS: Record<number, { active: string; glow: string; key: string }> = {
-  1: { active: '#a855f7', glow: 'rgba(168,85,247,0.8)', key: '1 / ←' },
-  2: { active: '#06b6d4', glow: 'rgba(6,182,212,0.8)',  key: '2 / ↑' },
-  3: { active: '#10b981', glow: 'rgba(16,185,129,0.8)', key: '3 / →' },
-  4: { active: '#f59e0b', glow: 'rgba(245,158,11,0.8)', key: '4 / ↓' },
-};
+// ─── Pet stages (same data as profile — pet evolves with your level) ──────────
+type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
+const PET_STAGES: PetStage[] = [
+  { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  color: "#e2e8f0" },
+  { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  color: "#22c55e" },
+  { id: "teen",    name: "Teen Slime",    src: "/pets/stage-3-teen.png",    minLevel: 15, color: "#a78bfa" },
+  { id: "crystal", name: "Crystal Slime", src: "/pets/stage-4-crystal.png", minLevel: 30, color: "#06b6d4" },
+  { id: "king",    name: "King Slime",    src: "/pets/stage-5-king.png",    minLevel: 50, color: "#fbbf24" },
+];
+function petForLevel(level: number): PetStage {
+  let stage = PET_STAGES[0];
+  for (const s of PET_STAGES) if (level >= s.minLevel) stage = s;
+  return stage;
+}
 
-export default function RhythmRush() {
-  const { user, getAccessToken, authenticated, ready } = usePrivy();
-  const { address: wagmiAddress } = useAccount();
-  const { signMessageAsync } = useSignMessage();
-  const isMiniPay = useIsMiniPay();
+// ─── Game constants ───────────────────────────────────────────────────────────
+const TRACK_DURATION = 45;        // seconds — gives space for verse/hook to repeat
+const PERFECT_WINDOW = 0.12;      // ±120ms (slightly forgiving — better feel)
+const GOOD_WINDOW    = 0.28;      // ±280ms
+const BPM            = 120;       // 120 BPM → 0.5s per beat (readable)
+const BEAT           = 60 / BPM;
+
+// Travel time PER SECTION — tuned for Magic Tiles / DJMAX readability.
+// Longer = more time to see the tile coming. Never drop below 1.3s (too stressful).
+const TRAVEL_INTRO = 2.5;   // slow — teach the mechanic
+const TRAVEL_VERSE = 2.1;   // medium
+const TRAVEL_BUILD = 1.7;   // faster — building tension
+const TRAVEL_DROP  = 1.4;   // fastest — but still readable
+
+// ─── V2 splash icons — ambient background ─────────────────────────────────────
+const D = "/splash_screen_icons/dice.png";
+const G = "/splash_screen_icons/gamepad.png";
+const J = "/splash_screen_icons/joystick.png";
+const M = "/splash_screen_icons/golden_music.png";
+
+const BG_ICONS = [
+  { src: M, top: "5%",  left: "-18px", size: 100, dur: 4.0, delay: 0,   rotate: -12 },
+  { src: D, top: "18%", right: "20px", size: 80,  dur: 5.2, delay: 0.5, rotate: 15  },
+  { src: M, top: "42%", left: "22px",  size: 70,  dur: 4.6, delay: 1.1, rotate: -8  },
+  { src: G, top: "60%", right: "-10px",size: 95,  dur: 5.8, delay: 0.3, rotate: 10  },
+  { src: J, top: "76%", left: "-14px", size: 88,  dur: 5.0, delay: 1.7, rotate: -18 },
+  { src: M, top: "88%", right: "30px", size: 72,  dur: 4.2, delay: 0.9, rotate: 20  },
+];
+
+// ─── Lane palette (V2 discipline: magenta world + 3 supporting game colors) ──
+type LaneTheme = { wall: string; face: string; glow: string; accent: string };
+const LANES: LaneTheme[] = [
+  { wall: "#7c1d5a", face: "linear-gradient(160deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)", glow: "rgba(232,121,249,0.8)", accent: "#e879f9" },
+  { wall: "#083a6b", face: "linear-gradient(160deg, #93c5fd 0%, #3b82f6 50%, #1d4ed8 100%)", glow: "rgba(59,130,246,0.8)",  accent: "#3b82f6" },
+  { wall: "#7c2d00", face: "linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #b45309 100%)", glow: "rgba(251,191,36,0.85)", accent: "#fbbf24" },
+  { wall: "#003a00", face: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)", glow: "rgba(34,197,94,0.8)",   accent: "#22c55e" },
+];
+
+// ─── Note chart — each tile carries its own melody pitch ─────────────────────
+// Piano Tiles principle: the sequence of taps IS the melody of the song.
+// Every tile has a lane (visual) AND a freq (the note it plays when tapped).
+// Lane is chosen by pitch — low notes on the left, high notes on the right —
+// so tapping left-to-right feels like walking up a piano keyboard.
+type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number };
+
+// C minor scale pitches used across the melody
+const P_C5 = 523.25, P_Eb5 = 622.25, P_F5 = 698.46,
+      P_G5 = 783.99, P_Bb5 = 932.33, P_C6 = 1046.50;
+
+function buildChart(): NoteDef[] {
+  const notes: NoteDef[] = [];
+  let id = 0;
+  const push = (lane: number, time: number, travel: number, freq: number) =>
+    notes.push({ id: id++, lane, time, travel, freq });
+
+  // ═══ INTRO (4.0s → 7.5s): ascending C-Eb-G-Bb arpeggio, twice
+  // Teaches the pitch-to-lane map: lane 0 = low, lane 3 = high
+  const intro: [number, number][] = [
+    [0, P_C5], [1, P_Eb5], [2, P_G5], [3, P_Bb5],
+    [0, P_C5], [1, P_Eb5], [2, P_G5], [3, P_Bb5],
+  ];
+  intro.forEach(([lane, f], i) => push(lane, 4.0 + i * BEAT, TRAVEL_INTRO, f));
+
+  // ═══ VERSE (9.0s → 13.5s): main hook — G-Bb-C6-Bb descending-then-rising
+  const verse: [number, number, number][] = [
+    [9.0,  2, P_G5],  [9.5,  3, P_Bb5], [10.0, 2, P_C6],  [10.5, 3, P_Bb5],
+    [11.0, 1, P_G5],  [11.5, 0, P_F5],  [12.0, 1, P_Eb5], [12.5, 2, P_F5],
+    [13.0, 3, P_G5],  [13.5, 2, P_Bb5],
+  ];
+  verse.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
+
+  // ═══ BUILD (15.0s → 19.25s): ascending arpeggios + eighth-note run into drop
+  const build: [number, number, number][] = [
+    [15.0, 0, P_C5],  [15.5, 1, P_Eb5], [16.0, 2, P_G5], [16.5, 3, P_Bb5],
+    [17.0, 1, P_C5],  [17.5, 2, P_Eb5],
+    // Eighth burst: ascending sweep into the drop
+    [18.5,  0, P_Eb5], [18.75, 1, P_G5], [19.0,  2, P_Bb5], [19.25, 3, P_C6],
+  ];
+  build.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
+
+  // ═══ DROP 1 (21.0s → 28.5s): main hook at peak energy
+  const drop: [number, number, number][] = [
+    [21.0, 3, P_C6],  [21.5, 2, P_G5],  [22.0, 3, P_Bb5], [22.5, 1, P_G5],
+    [23.5, 1, P_Eb5], [23.75, 2, P_G5], [24.5, 0, P_F5],
+    [25.0, 3, P_C6],  [25.25, 2, P_G5], [25.5, 1, P_Eb5], [25.75, 0, P_C5],
+    [26.5, 0, P_C5],  [27.0, 1, P_Eb5], [27.5, 2, P_G5],  [28.0, 1, P_Eb5], [28.5, 0, P_C5],
+  ];
+  drop.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
+
+  // → 1.5 beat breakdown silence — breath before the reprise hits
+
+  // ═══ VERSE 2 (30.0s → 34.5s): same hook, so it sticks in your head (the earworm)
+  const verse2: [number, number, number][] = [
+    [30.0, 2, P_G5],  [30.5, 3, P_Bb5], [31.0, 2, P_C6],  [31.5, 3, P_Bb5],
+    [32.0, 1, P_G5],  [32.5, 0, P_F5],  [33.0, 1, P_Eb5], [33.5, 2, P_F5],
+    [34.0, 3, P_G5],  [34.5, 2, P_Bb5],
+  ];
+  verse2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
+
+  // ═══ RE-BUILD (35.5s → 36.25s): short eighth-note ramp into the final drop
+  const rebuild: [number, number, number][] = [
+    [35.5,  0, P_Eb5], [35.75, 1, P_G5], [36.0, 2, P_Bb5], [36.25, 3, P_C6],
+  ];
+  rebuild.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
+
+  // ═══ FINAL DROP (37.5s → 43.0s): bigger, more aggressive ending
+  const drop2: [number, number, number][] = [
+    // Phrase A: punchy downbeats
+    [37.5, 3, P_C6],  [38.0, 2, P_G5],  [38.5, 3, P_Bb5], [39.0, 1, P_G5],
+    // Phrase B: eighth pair accent
+    [39.5, 1, P_Eb5], [39.75, 2, P_G5], [40.0, 3, P_Bb5], [40.25, 2, P_G5],
+    // Phrase C: full descending cascade — the dramatic sweep
+    [41.0, 3, P_C6],  [41.25, 2, P_G5], [41.5, 1, P_Eb5], [41.75, 0, P_C5],
+    // Phrase D: resolve on the tonic (C) with one emphatic final note
+    [42.5, 0, P_C5],  [43.0, 0, P_C5],
+  ];
+  drop2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
+
+  return notes.sort((a, b) => a.time - b.time);
+}
+
+// ─── Grades ────────────────────────────────────────────────────────────────────
+function gradeFor(score: number, total: number) {
+  const pct = total === 0 ? 0 : score / total;
+  if (pct >= 0.92) return { letter: "S", color: "#fbbf24", desc: "PERFECTION" };
+  if (pct >= 0.78) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
+  if (pct >= 0.60) return { letter: "B", color: "#67e8f9", desc: "GREAT" };
+  if (pct >= 0.40) return { letter: "C", color: "#22c55e", desc: "GOOD" };
+  return { letter: "D", color: "#f97316", desc: "KEEP GOING" };
+}
+
+// ─── Particle burst — spawned on every hit ───────────────────────────────────
+type Burst = { id: number; x: number; y: number; color: string; born: number };
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
+
+// Encore pool — the melody keeps looping during encore, pulling from these pitches.
+// Paired with lane position for the familiar low-left → high-right feel.
+const ENCORE_POOL: [number, number][] = [
+  [0, P_C5],  [1, P_Eb5], [2, P_G5],  [3, P_Bb5], [3, P_C6],
+  [2, P_G5],  [1, P_F5],  [0, P_C5],  [1, P_Eb5], [2, P_G5],
+  [3, P_Bb5], [2, P_G5],  [1, P_Eb5], [0, P_C5],
+];
+
+export default function RhythmGamePage() {
   const router = useRouter();
+  const { address } = useAccount();
+  const [phase, setPhase] = useState<Phase>("idle");
 
-  // MiniPay users are connected via injected wallet — skip Privy auth redirect
+  // User audio preferences from profile — persisted in localStorage.
+  // We pull this into a ref so audio callbacks can read the latest value
+  // without being re-created (which would break useCallback stability).
+  const audioSettings = useAudioSettings();
+  const gainsRef = useRef(effectiveGains(audioSettings));
+  useEffect(() => { gainsRef.current = effectiveGains(audioSettings); }, [audioSettings]);
+
+  // Fetch user level so the pet shown matches the player's actual pet stage
+  const [playerLevel, setPlayerLevel] = useState(1);
   useEffect(() => {
-    if (ready && !authenticated && !isMiniPay) router.replace('/');
-  }, [ready, authenticated, isMiniPay, router]);
-  const { writeContractAsync } = useWriteContract();
-  const privyAddress = (user?.linkedAccounts?.find((a: { type: string }) => a.type === 'wallet') as { type: string; address: string } | undefined)?.address;
-  const address = isMiniPay ? wagmiAddress : privyAddress;
-  const isEmbeddedWallet = user?.linkedAccounts?.some((a: { type: string; walletClientType?: string }) => a.type === 'wallet' && a.walletClientType === 'privy');
+    if (!address) return;
+    fetch(`${BACKEND_URL}/api/user/${address}`)
+      .then(r => r.json())
+      .then(d => setPlayerLevel(d.level || 1))
+      .catch(() => {});
+  }, [address]);
+  const pet = petForLevel(playerLevel);
 
+  // ═══ Audio: Web Audio API drum synth + hit SFX (no external files — guaranteed sync) ═══
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  // Track scheduled drum nodes so we can cut them off if the player exits early
+  const scheduledNodesRef = useRef<AudioScheduledSourceNode[]>([]);
 
-  const [score, setScore]                   = useState(0);
-  const [gameActive, setGameActive]         = useState(false);
-  const [timeRemaining, setTimeRemaining]   = useState(30);
-  const [progress, setProgress]             = useState(0);
-  const [currentTarget, setCurrentTarget]   = useState(1);
-  const [feedback, setFeedback]             = useState('');
-  const [feedbackType, setFeedbackType]     = useState('');
-  const [gameOver, setGameOver]             = useState(false);
-  const [myRank, setMyRank]                 = useState<number | null>(null);
-  const [combo, setCombo]                   = useState(0);
-  const [maxCombo, setMaxCombo]             = useState(0);
-  const [comboMultiplier, setComboMultiplier] = useState(1);
-  const [bpm, setBpm]                       = useState(BASE_BPM);
-  const [shakeScreen, setShakeScreen]       = useState(false);
-  const [comboFlash, setComboFlash]         = useState<string | null>(null);
-  const [countdown, setCountdown]           = useState<number | string | null>(null);
-  const [perfectHits, setPerfectHits]       = useState(0);
-  const [goodHits, setGoodHits]             = useState(0);
-  const [missHits, setMissHits]             = useState(0);
-  const [submitting, setSubmitting]         = useState(false);
-  const [txError, setTxError]               = useState<string | null>(null);
-  const [signingOnChain, setSigningOnChain] = useState(false);
-  const [, setStreak]                       = useState<number | null>(null);
-  const [gameTimeMs, setGameTimeMs]         = useState(0);
-  const [beatTick, setBeatTick]             = useState(0);
-  const beatTickRef                         = useRef(0);
-
-  const gameEndingRef      = useRef(false);
-  const gameTimerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const beatIntervalRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startTimeRef       = useRef(0);
-  const targetStartTimeRef = useRef(0);
-  const scoreRef           = useRef(0);
-  const comboRef           = useRef(0);
-  const maxComboRef        = useRef(0);
-  const perfectRef         = useRef(0);
-  const goodRef            = useRef(0);
-  const missRef            = useRef(0);
-  const bpmRef             = useRef(BASE_BPM);
-  const beatHitRef         = useRef(false);
-  const audioCtxRef        = useRef<AudioContext | null>(null);
-  const tonesRef           = useRef<Record<string, () => void>>({});
-
-  const getBeatInterval = (b: number) => Math.round(60000 / b);
-
-  // Audio setup
-  useEffect(() => {
-    const frequencies: Record<number, number> = { 1: 440, 2: 523.25, 3: 659.25, 4: 783.99 };
-    const makeTone = (freq: number, dur = 0.12) => () => {
-      try {
-        if (!audioCtxRef.current)
-          audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-        const ctx  = audioCtxRef.current;
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = freq; osc.type = 'sine';
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
-        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
-      } catch (_) {}
-    };
-    [1, 2, 3, 4].forEach(b => { tonesRef.current[`tone${b}`] = makeTone(frequencies[b]); });
-    tonesRef.current['perfect'] = makeTone(1046.5, 0.15);
-    tonesRef.current['combo']   = makeTone(1318.5, 0.2);
-    tonesRef.current['miss']    = makeTone(220, 0.1);
-  }, []);
-
-  const playTone = (name: string) => tonesRef.current[name]?.();
-
-  const scheduleNextBeat = useCallback(() => {
-    if (beatIntervalRef.current) clearTimeout(beatIntervalRef.current);
-    beatIntervalRef.current = setTimeout(() => {
-      beatHitRef.current = false;
-      beatTickRef.current += 1;
-      setBeatTick(beatTickRef.current);
-      setCurrentTarget(prev => {
-        let next: number;
-        do { next = Math.floor(Math.random() * 4) + 1; } while (next === prev);
-        targetStartTimeRef.current = Date.now();
-        playTone(`tone${next}`);
-        return next;
-      });
-      scheduleNextBeat();
-    }, getBeatInterval(bpmRef.current));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const triggerComboMilestone = (c: number) => {
-    const label = c >= 25 ? 'UNSTOPPABLE!' : c >= 15 ? 'ON FIRE!' : c >= 10 ? 'COMBO x3!' : c >= 5 ? 'COMBO x2!' : null;
-    if (label) {
-      playTone('combo');
-      setComboFlash(label); setShakeScreen(true);
-      setTimeout(() => setComboFlash(null), 1200);
-      setTimeout(() => setShakeScreen(false), 300);
+  // Initialize WebAudio context lazily (needs user gesture)
+  const getAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (Ctx) audioCtxRef.current = new Ctx();
     }
+    return audioCtxRef.current;
+  }, []);
+
+  // ─── Drum synth helpers ────────────────────────────────────────────────────
+  // All three are scheduled using ctx.currentTime + offset — sample-accurate,
+  // never drifts from the note chart because both use the same clock.
+
+  // Bass note — clean pitched pulse playing the chord roots.
+  // All three scheduler helpers (bass, lead, hat) are "music" — they multiply
+  // their volume through the user's music gain so muting music kills them all.
+  const scheduleBass = useCallback((ctx: AudioContext, when: number, freq: number, volume = 0.38) => {
+    const v = volume * gainsRef.current.music;
+    if (v <= 0) return;
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    filter.type = "lowpass";
+    filter.frequency.value = 420;
+    filter.Q.value = 1;
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(v, when + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.22);
+    osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    osc.start(when); osc.stop(when + 0.24);
+    scheduledNodesRef.current.push(osc);
+  }, []);
+
+  // Lead melody — soft triangle synth through a lowpass, plays the song's hook
+  // on top of the bass. This is what makes it sound like an actual tune instead
+  // of just a beat. Volume stays below the bells so player hits always win.
+  const scheduleLead = useCallback((ctx: AudioContext, when: number, freq: number, duration: number, volume = 0.12) => {
+    const v = volume * gainsRef.current.music;
+    if (v <= 0) return;
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    filter.type = "lowpass";
+    filter.frequency.value = 2800;
+    filter.Q.value = 0.7;
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(v, when + 0.015);
+    gain.gain.setValueAtTime(v, when + duration * 0.75);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
+    osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    osc.start(when); osc.stop(when + duration + 0.02);
+    scheduledNodesRef.current.push(osc);
+  }, []);
+
+  const scheduleHihat = useCallback((ctx: AudioContext, when: number, volume = 0.12) => {
+    const v = volume * gainsRef.current.music;
+    if (v <= 0) return;
+    const bufferSize = Math.floor(ctx.sampleRate * 0.05);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource(); noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highpass"; filter.frequency.value = 7000;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(v, when + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
+    noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    noise.start(when); noise.stop(when + 0.06);
+    scheduledNodesRef.current.push(noise);
+  }, []);
+
+  // Schedule the 30-second backing track: a musical C minor bassline + hi-hats.
+  // No fake drums — just a pitched bass playing the chord roots, so hitting a
+  // bell on top completes the harmony (root-in-bass + chord-tone-in-bell = consonance).
+  //
+  // Sections follow the chart exactly (45s total):
+  //   intro   (0–9s)    → hats only → soft C2 pulse starting t=4
+  //   verse1  (9–15s)   → i-VI-V-i progression, bass on beats 1 & 3
+  //   build1  (15–21s)  → bass on every beat, ascending pattern
+  //   drop1   (21–29s)  → driving bass on every beat in C minor
+  //   break   (29–30s)  → hats only — the calm before the reprise
+  //   verse2  (30–35s)  → same progression as verse 1 (the earworm repeats)
+  //   build2  (35–37s)  → short re-ramp
+  //   drop2   (37–44s)  → final drop, loudest, resolves to C
+  //   outro   (44–45s)  → hats tail
+  const scheduleDrumTrack = useCallback((audioStartTime: number) => {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const total = TRACK_DURATION;
+    const eighth = BEAT / 2;
+
+    // C minor note frequencies — used by every bass call
+    const C2  = 65.41;
+    const Eb2 = 77.78;
+    const G2  = 98.00;
+    const Ab2 = 103.83;
+    const Bb2 = 116.54;
+
+    // ── INTRO pulse (4.0s–8.5s)
+    for (let t = 4.0; t < 9.0; t += BEAT) {
+      scheduleBass(ctx, audioStartTime + t, C2, 0.3);
+    }
+
+    // ── VERSE 1 progression (9.0s–15.0s): 12 beats = i-VI-V-i
+    const verseChords = [C2, C2, Ab2, G2, C2, G2];
+    for (let i = 0; i < verseChords.length; i++) {
+      scheduleBass(ctx, audioStartTime + 9.0 + i * BEAT, verseChords[i], 0.38);
+    }
+
+    // ── BUILD 1 (15.0s–21.0s): ascending C minor scale pulse on every beat
+    const buildScale = [C2, Eb2, G2, Bb2];
+    for (let i = 0; i < 12; i++) {
+      scheduleBass(ctx, audioStartTime + 15.0 + i * BEAT, buildScale[i % 4], 0.42);
+    }
+
+    // ── DROP 1 (21.0s–29.0s): driving i-V pattern on every beat
+    const dropPattern = [C2, C2, G2, G2];
+    for (let i = 0; i < 16; i++) {
+      scheduleBass(ctx, audioStartTime + 21.0 + i * BEAT, dropPattern[i % 4], 0.48);
+    }
+
+    // ── BREAK (29.0s–30.0s): silence on bass — hats carry the tempo alone
+
+    // ── VERSE 2 (30.0s–35.0s): hook reprise, same progression as verse 1
+    for (let i = 0; i < 10; i++) {
+      scheduleBass(ctx, audioStartTime + 30.0 + i * BEAT, verseChords[i % 6], 0.42);
+    }
+
+    // ── BUILD 2 (35.0s–37.0s): short re-ramp into the final drop
+    for (let i = 0; i < 4; i++) {
+      scheduleBass(ctx, audioStartTime + 35.0 + i * BEAT, buildScale[i % 4], 0.5);
+    }
+
+    // ── DROP 2 (37.0s–44.0s): final drop — louder punch, 14 beats resolving on C
+    for (let i = 0; i < 14; i++) {
+      // Resolve on C on the last two beats instead of G-G
+      const freq = i >= 12 ? C2 : dropPattern[i % 4];
+      scheduleBass(ctx, audioStartTime + 37.0 + i * BEAT, freq, 0.56);
+    }
+
+    // ── FAST-RUN FILLS: bass on every off-beat eighth during eighth-note tile runs,
+    //    so every fast tile lands on a bass pulse (not just hats). This is what fixes
+    //    the "tiles come fast but don't groove with the music" feel during cascades.
+    const fastFills: [number, number][] = [
+      // Build burst (tiles 18.5→19.25): on-beats 18.5/19.0 already covered by main loop
+      [18.75, G2],  [19.25, G2],
+      // Drop 1 eighth pair (tiles 23.5/23.75)
+      [23.75, G2],
+      // Drop 1 cascade (tiles 25.0→25.75)
+      [25.25, G2],  [25.75, C2],
+      // Rebuild (tiles 35.5→36.25)
+      [35.75, G2],  [36.25, G2],
+      // Drop 2 eighth pair (tiles 39.5→40.25)
+      [39.75, G2],  [40.25, G2],
+      // Drop 2 cascade (tiles 41.0→41.75)
+      [41.25, G2],  [41.75, C2],
+    ];
+    for (const [t, f] of fastFills) {
+      scheduleBass(ctx, audioStartTime + t, f, 0.44);
+    }
+
+    // ═══ No ghost melody — pure Piano Tiles feel ═══
+    // Tiles ONLY make sound when the player taps them. Bass + hats carry the
+    // song's rhythm underneath; bells (played from hitLane) carry the melody.
+    // Missing a tile = silence on that note. That's the whole point of the
+    // genre: the player IS playing the melody.
+
+    // HATS — the tempo spine underneath everything
+    for (let h = 2; h < total; h += eighth) {
+      const when = audioStartTime + h;
+      if (h < 9) scheduleHihat(ctx, when, 0.06);
+      else if (h < 15) scheduleHihat(ctx, when, 0.09);
+      else if (h < 21) scheduleHihat(ctx, when, 0.12);
+      else if (h < 29) scheduleHihat(ctx, when, 0.14);       // drop 1
+      else if (h < 30) scheduleHihat(ctx, when, 0.08);       // break
+      else if (h < 35) scheduleHihat(ctx, when, 0.11);       // verse 2
+      else if (h < 37) scheduleHihat(ctx, when, 0.14);       // build 2
+      else if (h < 44) scheduleHihat(ctx, when, 0.16);       // final drop
+      else scheduleHihat(ctx, when, 0.10);                   // outro
+    }
+  }, [getAudioCtx, scheduleBass, scheduleLead, scheduleHihat]);
+
+  // Stop every still-playing scheduled drum hit (used on exit/end)
+  const stopDrumTrack = useCallback(() => {
+    for (const node of scheduledNodesRef.current) {
+      try { node.stop(); } catch { /* already stopped */ }
+    }
+    scheduledNodesRef.current = [];
+  }, []);
+
+  // Miss thud — counts as "music" since it's a scheduled non-tap sound.
+  const playTone = useCallback((freq: number, duration: number, type: OscillatorType = "triangle", volume = 0.2) => {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const v = volume * gainsRef.current.music;
+    if (v <= 0) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  }, [getAudioCtx]);
+
+  // Bell/pluck for player taps — this is SFX, gated on the sfx gain.
+  const playBell = useCallback((freq: number, volume = 0.18) => {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const v = volume * gainsRef.current.sfx;
+    if (v <= 0) return;
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0, now);
+    master.gain.linearRampToValueAtTime(v, now + 0.005);
+    master.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    master.connect(ctx.destination);
+
+    const o1 = ctx.createOscillator();
+    o1.type = "sine"; o1.frequency.value = freq;
+    o1.connect(master); o1.start(now); o1.stop(now + 0.5);
+
+    const o2 = ctx.createOscillator();
+    const o2Gain = ctx.createGain();
+    o2Gain.gain.value = 0.35;
+    o2.type = "triangle"; o2.frequency.value = freq * 2;
+    o2.connect(o2Gain); o2Gain.connect(master);
+    o2.start(now); o2.stop(now + 0.4);
+  }, [getAudioCtx]);
+
+  // Hit sound — plays the tile's OWN melody pitch (Piano Tiles style).
+  // Each tile carries a freq in its NoteDef, so tapping the correct sequence of
+  // tiles literally plays the song's hook note-by-note. Perfect hits ring out
+  // loud; good hits are quieter but still play the same pitch (so missed timing
+  // doesn't corrupt the melody).
+  const playHitForNote = useCallback((freq: number, type: "perfect" | "good") => {
+    playBell(freq, type === "perfect" ? 0.24 : 0.15);
+  }, [playBell]);
+
+  // Haptic buzz on mobile — gated on the hapticsOn user preference.
+  // Reads from the settings object directly (not a ref) since haptic is small
+  // and gets re-created cheaply when the preference flips.
+  const haptic = useCallback((ms = 10) => {
+    if (!audioSettings.hapticsOn) return;
+    if ("vibrate" in navigator) navigator.vibrate(ms);
+  }, [audioSettings.hapticsOn]);
+  const [countdown, setCountdown] = useState(3);
+  const [score, setScore] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const [hits, setHits] = useState({ perfect: 0, good: 0, miss: 0 });
+  const [timeLeft, setTimeLeft] = useState(TRACK_DURATION);
+  const [activeNotes, setActiveNotes] = useState<(NoteDef & { spawnedAt: number })[]>([]);
+  const [bursts, setBursts] = useState<Burst[]>([]);
+  const [comboToast, setComboToast] = useState<string | null>(null);
+  const [flashLane, setFlashLane] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number } | null>(null);
+
+  const chartRef   = useRef<NoteDef[]>([]);
+  const startRef   = useRef<number>(0);
+  const spawnedRef = useRef<Set<number>>(new Set());
+  const missedRef  = useRef<Set<number>>(new Set());
+  const rafRef     = useRef<number>(0);
+  const burstIdRef = useRef(0);
+
+  // Encore refs — drive the unbounded survival mode after the main track
+  const encoreMissesRef    = useRef(0);                  // 3 = game over
+  const encoreNextSpawnRef = useRef(0);                  // wall-clock time for next tile
+  const encorePoolIdxRef   = useRef(0);                  // rotates through ENCORE_POOL
+  const encoreIdRef        = useRef(100000);             // high id base to avoid clashes
+  const encoreLoopAtRef    = useRef(0);                  // next audio loop reschedule time
+  const [encoreLives, setEncoreLives] = useState(3);     // UI display
+
+  // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
+  // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
+  type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
+  const [stars, setStars] = useState<Star[]>([]);
+  useEffect(() => {
+    setStars(Array.from({ length: 44 }, () => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() * 1.6 + 0.6,
+      delay: Math.random() * 4,
+      dur: Math.random() * 3 + 2.5,
+      alpha: Math.random() * 0.5 + 0.4,
+    })));
+  }, []);
+
+  // Snapshot of hit counters at the moment the main 45s track ends. Encore
+  // misses/goods shouldn't disqualify FC/AP — those achievements reward
+  // completing the chart cleanly, not surviving encore perfectly.
+  const mainTrackStatsRef = useRef<{ misses: number; goods: number }>({ misses: 0, goods: 0 });
+
+  // ═══ Score submission (via server actions) ═══
+  // Writes go through @/app/actions/game so the games-backend URL and
+  // INTERNAL_SECRET are never shipped to the browser. Verification of the
+  // player (Privy JWT or MiniPay wallet signature) happens server-side.
+  const gameStartMsRef = useRef<number>(0);
+  const submittedRef = useRef<boolean>(false);  // one-shot guard so we never double-submit
+  type SubmitResult = {
+    rank?: number;
+    xpEarned?: number;
+    xp?: number;
+    level?: number;
+    leveledUp?: boolean;
+    isNewPb?: boolean;
+    prevBest?: number;
+    newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
   };
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const endGame = useCallback(async () => {
-    if (gameEndingRef.current) return;
-    gameEndingRef.current = true;
-    setGameActive(false);
-    setGameOver(true);
-    if (beatIntervalRef.current) clearTimeout(beatIntervalRef.current);
-    if (gameTimerRef.current) clearInterval(gameTimerRef.current);
-    const elapsed = Date.now() - startTimeRef.current;
-    setGameTimeMs(elapsed);
+  // Auth context — Privy users provide a JWT, MiniPay users sign a message.
+  // Both code paths live in the submit effect below.
+  const { getAccessToken, user } = usePrivy();
+  const { signMessageAsync } = useSignMessage();
+  const { writeContractAsync } = useWriteContract();
+  const isMiniPay = useIsMiniPay();
+  // Privy-embedded wallets sign transactions silently (no popup). External
+  // wallets like MiniPay / injected show a confirmation. We use this to bump
+  // the gas limit for embedded (their estimation is sometimes too tight).
+  const isEmbeddedWallet = user?.linkedAccounts?.some(
+    (a: { type: string; walletClientType?: string }) =>
+      a.type === "wallet" && a.walletClientType === "privy"
+  );
 
-    if (!address || (!authenticated && !isMiniPay)) return;
-    setSubmitting(true);
-    try {
-      let sig: { success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string };
-      let authToken: string | null = null;
-      let miniPaySig: string | null = null;
-      let miniPayMsg: string | null = null;
+  // On-chain submission UI states — finish screen renders different messaging
+  // for "waiting for wallet", "tx rejected", "insufficient gas", etc.
+  const [signingOnChain, setSigningOnChain] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
 
-      if (isMiniPay) {
-        // MiniPay: verify ownership via wallet signature instead of Privy JWT
-        miniPayMsg = `GameArena|rhythm|${scoreRef.current}|${Date.now()}`;
-        miniPaySig = await signMessageAsync({ message: miniPayMsg });
-        sig = await signScoreMiniPay(address, miniPaySig, miniPayMsg, { game: 'rhythm', score: scoreRef.current });
-      } else {
-        authToken = await getAccessToken();
-        if (!authToken) return;
-        sig = await signScore(authToken, address, { game: 'rhythm', score: scoreRef.current });
-      }
+  // Reset game state
+  const reset = useCallback(() => {
+    chartRef.current = buildChart();
+    spawnedRef.current = new Set();
+    missedRef.current = new Set();
+    encoreMissesRef.current = 0;
+    encoreNextSpawnRef.current = 0;
+    encorePoolIdxRef.current = 0;
+    encoreIdRef.current = 100000;
+    encoreLoopAtRef.current = 0;
+    mainTrackStatsRef.current = { misses: 0, goods: 0 };
+    setEncoreLives(3);
+    setScore(0); setCombo(0); setMaxCombo(0);
+    setHits({ perfect: 0, good: 0, miss: 0 });
+    setTimeLeft(TRACK_DURATION);
+    setActiveNotes([]);
+    setBursts([]);
+    setComboToast(null);
+    setFlashLane(null);
+    setFeedback(null);
+  }, []);
 
-      // 2. Player submits on-chain — embedded wallet: silent, MiniPay: popup
-      let txHash: string | null = null;
-      let txFailed = false;
-      if (sig.success) {
+  // Countdown → playing
+  const startGame = () => {
+    reset();
+    // Reset submission bookkeeping — a fresh run is a fresh submit
+    submittedRef.current = false;
+    setSubmitResult(null);
+    setSubmitError(null);
+    setPhase("countdown");
+    setCountdown(3);
+    // Warm up audio context (needs user gesture, so do it on START tap)
+    getAudioCtx();
+  };
+  useEffect(() => {
+    if (phase !== "countdown") return;
+    if (countdown <= 0) {
+      // GO! — bright higher-octave bell to signal play starts
+      playBell(783.99, 0.28);  // G5
+      startRef.current = performance.now();
+      gameStartMsRef.current = Date.now();  // wall-clock start for gameTime calculation
+      setPhase("playing");
+      // Schedule the full 30-second drum track aligned to the audio clock.
+      // Same zero-point as startRef means tiles and drums share one timeline.
+      const ctx = getAudioCtx();
+      if (ctx) scheduleDrumTrack(ctx.currentTime);
+      return;
+    }
+    // 3 / 2 / 1 — steady bell tick on each count (same pitch, builds anticipation)
+    playBell(523.25, 0.22);  // C5
+    const t = setTimeout(() => setCountdown(c => c - 1), 750);
+    return () => clearTimeout(t);
+  }, [phase, countdown, getAudioCtx, scheduleDrumTrack, playBell]);
+
+  // ═══ Submit score — mirrors v1's three-step gated flow ═══
+  // 1. signScore           — server action returns the backend's EIP-712 voucher
+  // 2. recordScoreWithBackendSig  — player's wallet signs the on-chain tx
+  //                                 (Privy-embedded: silent; MiniPay/injected:
+  //                                 shows a confirmation popup). This is the
+  //                                 signature gate — if the user rejects here,
+  //                                 NOTHING gets saved anywhere.
+  // 3. submitScore         — only runs after on-chain tx succeeded; saves to
+  //                          Supabase, awards XP, unlocks achievements
+  useEffect(() => {
+    if (phase !== "finished") return;
+    if (submittedRef.current) return;
+    if (!address) return;
+    submittedRef.current = true;
+
+    const gameTime = Math.max(5000, Date.now() - gameStartMsRef.current);
+    // Clamp to the backend's global upper bound (1M). Uncapped scoring is fine
+    // because the submission path requires two independent auth factors (internal
+    // secret + Privy/MiniPay verification) before a voucher is signed.
+    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(score)));
+
+    // FC/AP computed from the main-track snapshot captured at t=TRACK_DURATION.
+    // Encore misses don't disqualify the achievement — reaching the end of the
+    // song without missing any of its notes is what unlocks it. If the player
+    // never reached main-end (died before, e.g. pressed X), both stay false.
+    const reachedMainEnd = mainTrackStatsRef.current.misses > 0 || mainTrackStatsRef.current.goods > 0 || phase === "finished";
+    const mainChartLen   = chartRef.current.filter(n => n.id < 100000).length;
+    const mainHits       = hits.perfect + hits.good; // cumulative, including encore
+    // Conservative FC check: main-track snapshot had zero misses AND we
+    // actually made it through the whole main chart (total hits - encore hits
+    // ≥ main chart length).
+    const mainPlusEncoreHits = mainHits; // setHits was monotonic with taps
+    const fullCombo  = reachedMainEnd
+      && mainTrackStatsRef.current.misses === 0
+      && mainPlusEncoreHits >= mainChartLen;
+    const allPerfect = fullCombo && mainTrackStatsRef.current.goods === 0;
+
+    const baseScoreData = {
+      game: "rhythm" as const,
+      score: scoreToSubmit,
+      gameTime,
+      fullCombo,
+      allPerfect,
+    };
+
+    (async () => {
+      setSubmitting(true);
+      setTxError(null);
+      try {
+        // ── STEP 1: voucher ──
+        let sig:
+          | { success: true; signature: string; nonce: string; gameType: number }
+          | { success: false; error: string };
+        let authToken: string | null = null;
+        let miniPayMsg: string | null = null;
+        let miniPaySig: string | null = null;
+
+        if (isMiniPay) {
+          miniPayMsg = `GameArena|rhythm|${scoreToSubmit}|${Date.now()}`;
+          miniPaySig = await signMessageAsync({ message: miniPayMsg });
+          sig = await signScoreMiniPay(address, miniPaySig, miniPayMsg, {
+            game: "rhythm", score: scoreToSubmit,
+          });
+        } else {
+          authToken = await getAccessToken();
+          if (!authToken) {
+            setSubmitError("Not signed in — score not recorded");
+            return;
+          }
+          sig = await signScore(authToken, address, {
+            game: "rhythm", score: scoreToSubmit,
+          });
+        }
+
+        if (!sig.success) {
+          setSubmitError(sig.error || "Voucher signing failed");
+          return;
+        }
+
+        // ── STEP 2: on-chain tx — THE SIGNATURE GATE ──
+        let txHash: string | null = null;
         setSigningOnChain(true);
         try {
           txHash = await writeContractAsync({
             address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
             abi: GAME_PASS_ABI,
-            functionName: 'recordScoreWithBackendSig',
-            args: [sig.gameType, BigInt(scoreRef.current), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            functionName: "recordScoreWithBackendSig",
+            args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
             ...(isEmbeddedWallet ? { gas: 300000n } : {}),
           });
         } catch (err: unknown) {
-          txFailed = true;
-          const e   = err as { name?: string; code?: number; message?: string; cause?: { name?: string; code?: string } };
-          const msg = ((err as Error)?.message ?? '').toLowerCase();
+          // Classify wallet errors so we can show something useful.
+          const e = err as {
+            name?: string; code?: number;
+            message?: string; shortMessage?: string; details?: string;
+            cause?: { name?: string; code?: string; message?: string };
+          };
+          const name      = e?.name ?? "";
+          const code      = e?.code ?? 0;
+          const causeName = e?.cause?.name ?? "";
+          const causeCode = e?.cause?.code ?? "";
+          const msg       = (e?.message ?? e?.shortMessage ?? e?.details ?? e?.cause?.message ?? "").toLowerCase();
           const isRejected =
-            e?.name === 'UserRejectedRequestError' || e?.code === 4001 || e?.code === -32003 ||
-            e?.cause?.name === 'UserRejectedRequestError' ||
-            e?.cause?.code === 'policy_violation' ||
-            msg.includes('user rejected') || msg.includes('rejected the request') || msg.includes('user denied');
+            name === "UserRejectedRequestError" || code === 4001 || code === -32003 ||
+            causeName === "UserRejectedRequestError" ||
+            causeCode === "policy_violation" ||
+            msg.includes("user rejected") ||
+            msg.includes("rejected the request") ||
+            msg.includes("user denied");
           const isGasOrFunds =
-            e?.name === 'InsufficientFundsError' || e?.name === 'EstimateGasExecutionError' ||
-            e?.code === -32000 || e?.code === -32010 || e?.cause?.code === 'insufficient_funds' ||
-            msg.includes('insufficient funds') || msg.includes('insufficient balance') ||
-            msg.includes('gas limit') || msg.includes('exceeds gas');
-          if (isRejected) {
-            setTxError('Transaction rejected — score not saved on-chain');
-          } else if (isGasOrFunds) {
-            setTxError('Insufficient CELO to cover gas — top up and try again');
-          } else {
-            setTxError('Transaction failed — score not saved on-chain');
-          }
-        } finally { setSigningOnChain(false); }
+            name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
+            code === -32000 || code === -32010 || causeCode === "insufficient_funds" ||
+            msg.includes("insufficient funds") || msg.includes("insufficient balance") ||
+            msg.includes("gas limit") || msg.includes("exceeds gas");
+          if (isRejected)        setTxError("Transaction rejected — score not saved");
+          else if (isGasOrFunds) setTxError("Insufficient CELO for gas — top up and try again");
+          else                   setTxError("Transaction failed — score not saved");
+          return;  // BAIL: don't call submitScore, nothing is saved anywhere
+        } finally {
+          setSigningOnChain(false);
+        }
+
+        // ── STEP 3: save off-chain (Supabase + XP + achievements + rank) ──
+        let result;
+        const fullScoreData = { ...baseScoreData, txHash };
+        if (isMiniPay && miniPaySig && miniPayMsg) {
+          result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, fullScoreData);
+        } else if (authToken) {
+          result = await submitScore(authToken, address, fullScoreData);
+        }
+
+        if (result?.success) {
+          setSubmitResult({
+            rank: result.rank,
+            xpEarned: result.xpEarned,
+            xp: result.xp,
+            level: result.level,
+            leveledUp: result.leveledUp,
+            isNewPb: result.isNewPb,
+            prevBest: result.prevBest,
+            newAchievements: result.newAchievements || [],
+          });
+        } else {
+          setSubmitError(result?.error || "Score not recorded");
+        }
+      } catch {
+        setSubmitError("Unexpected error — score not recorded");
+      } finally {
+        setSubmitting(false);
       }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
-      if (txFailed) return;
-
-      // 3. Save to Supabase + get rank/streak
-      let result;
-      if (isMiniPay && miniPaySig && miniPayMsg) {
-        result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, {
-          game: 'rhythm', score: scoreRef.current, gameTime: elapsed, txHash,
-        });
-      } else if (authToken) {
-        result = await submitScore(authToken, address, {
-          game: 'rhythm', score: scoreRef.current, gameTime: elapsed, txHash,
-        });
-      }
-      if (result?.success) {
-        if (result.rank) setMyRank(result.rank);
-        if (result.streak) setStreak(result.streak);
-      }
-    } catch (_) {
-    } finally {
-      setSubmitting(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, authenticated]);
-
-  const actualStart = useCallback(() => {
-    setCountdown(null);
-    setScore(0); scoreRef.current = 0;
-    setCombo(0); comboRef.current = 0;
-    setMaxCombo(0); maxComboRef.current = 0;
-    setComboMultiplier(1);
-    setBpm(BASE_BPM); bpmRef.current = BASE_BPM;
-    setPerfectHits(0); perfectRef.current = 0;
-    setGoodHits(0); goodRef.current = 0;
-    setMissHits(0); missRef.current = 0;
-    setGameActive(true); setGameOver(false);
-    setTimeRemaining(30); setProgress(0);
-    setCurrentTarget(1); setFeedback(''); setFeedbackType('');
-    setShakeScreen(false); setComboFlash(null); setMyRank(null); setStreak(null); setGameTimeMs(0); setTxError(null);
-    gameEndingRef.current = false;
-    startTimeRef.current = Date.now();
-    targetStartTimeRef.current = Date.now();
-    beatHitRef.current = false;
-    scheduleNextBeat();
-
-    gameTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      setTimeRemaining(Math.max(0, Math.ceil((GAME_DURATION - elapsed) / 1000)));
-      setProgress(Math.min((elapsed / GAME_DURATION) * 100, 100));
-      if (elapsed >= GAME_DURATION) endGame();
-    }, 100);
-  }, [scheduleNextBeat, endGame]);
-
-  const startGame = () => {
-    setGameOver(false); setCountdown(3); playTone('perfect');
-    setTimeout(() => { setCountdown(2); playTone('perfect'); }, 1000);
-    setTimeout(() => { setCountdown(1); playTone('perfect'); }, 2000);
-    setTimeout(() => { setCountdown('GO!'); playTone('combo'); }, 3000);
-    setTimeout(() => actualStart(), 3500);
-  };
-
-  const handleButtonClick = useCallback((clicked: number) => {
-    if (!gameActive || beatHitRef.current) return;
-    const timeSince = Date.now() - targetStartTimeRef.current;
-    playTone(`tone${clicked}`);
-
-    if (clicked === currentTarget) {
-      beatHitRef.current = true;
-      const newCombo = comboRef.current + 1;
-      comboRef.current = newCombo; setCombo(newCombo);
-      if (newCombo > maxComboRef.current) { maxComboRef.current = newCombo; setMaxCombo(newCombo); }
-      const mult = newCombo >= 25 ? 5 : newCombo >= 15 ? 4 : newCombo >= 10 ? 3 : newCombo >= 5 ? 2 : 1;
-      setComboMultiplier(mult);
-      if (COMBO_THRESHOLDS.includes(newCombo)) triggerComboMilestone(newCombo);
-      const newBpm = Math.min(MAX_BPM, bpmRef.current + BPM_RAMP_PER_HIT);
-      bpmRef.current = newBpm; setBpm(newBpm);
-      const perfectWindow = Math.max(200, 400 - (bpmRef.current - BASE_BPM));
-      const goodWindow    = Math.max(400, 700 - (bpmRef.current - BASE_BPM) * 0.5);
-
-      if (timeSince <= perfectWindow) {
-        playTone('perfect'); perfectRef.current++; setPerfectHits(perfectRef.current);
-        const pts = 10 * mult;
-        setScore(p => { const n = p + pts; scoreRef.current = n; return n; });
-        setFeedback(`PERFECT! +${pts}${mult > 1 ? ` (${mult}x)` : ''}`); setFeedbackType('perfect');
-      } else if (timeSince <= goodWindow) {
-        goodRef.current++; setGoodHits(goodRef.current);
-        const pts = 5 * mult;
-        setScore(p => { const n = p + pts; scoreRef.current = n; return n; });
-        setFeedback(`GOOD +${pts}${mult > 1 ? ` (${mult}x)` : ''}`); setFeedbackType('good');
-      } else {
-        missRef.current++; setMissHits(missRef.current);
-        comboRef.current = 0; setCombo(0); setComboMultiplier(1);
-        bpmRef.current = Math.max(BASE_BPM, bpmRef.current - 5); setBpm(bpmRef.current);
-        playTone('miss'); setFeedback('LATE!'); setFeedbackType('miss');
-      }
-    } else {
-      missRef.current++; setMissHits(missRef.current);
-      comboRef.current = 0; setCombo(0); setComboMultiplier(1);
-      bpmRef.current = Math.max(BASE_BPM, bpmRef.current - 10); setBpm(bpmRef.current);
-      const penalty = 8;
-      setScore(p => { const n = Math.max(0, p - penalty); scoreRef.current = n; return n; });
-      playTone('miss'); setFeedback(`WRONG! -${penalty}`); setFeedbackType('miss');
-    }
-    setTimeout(() => { setFeedback(''); setFeedbackType(''); }, 600);
-  }, [gameActive, currentTarget]);
-
-  // Keyboard support
+  // Stop scheduled drums whenever we leave active play (both playing and encore).
+  // Transitioning playing → encore must NOT stop drums, so the encore handler
+  // can reschedule new loops seamlessly over the existing ones.
   useEffect(() => {
-    const map: Record<string, number> = {
-      '1': 1, 'ArrowLeft': 1, 'a': 1, 'A': 1,
-      '2': 2, 'ArrowUp': 2,   'w': 2, 'W': 2,
-      '3': 3, 'ArrowRight': 3,'d': 3, 'D': 3,
-      '4': 4, 'ArrowDown': 4, 's': 4, 'S': 4,
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (!gameActive) return;
-      const btn = map[e.key];
-      if (btn !== undefined) { e.preventDefault(); handleButtonClick(btn); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [gameActive, handleButtonClick]);
+    if (phase === "playing" || phase === "encore") return;
+    stopDrumTrack();
+  }, [phase, stopDrumTrack]);
 
-  if (!ready || !authenticated) return null;
+  // Handle a hit (from tap or keyboard)
+  const hitLane = useCallback((lane: number) => {
+    if (phase !== "playing" && phase !== "encore") return;
+    const now = (performance.now() - startRef.current) / 1000;
+    // Find nearest active note in this lane
+    const candidates = chartRef.current.filter(n =>
+      n.lane === lane &&
+      !missedRef.current.has(n.id) &&
+      spawnedRef.current.has(n.id) &&
+      now >= n.time - GOOD_WINDOW &&
+      now <= n.time + GOOD_WINDOW
+    );
+    if (candidates.length === 0) return;
+
+    const note = candidates.reduce((best, n) =>
+      Math.abs(n.time - now) < Math.abs(best.time - now) ? n : best);
+    const diff = Math.abs(note.time - now);
+
+    // Mark as hit (so game loop doesn't flag it as miss)
+    missedRef.current.add(note.id);
+
+    const type: "perfect" | "good" = diff <= PERFECT_WINDOW ? "perfect" : "good";
+
+    // ═══ SCORING — uncapped by design ═══
+    // Multiplier grows with combo FOREVER (no cap). 50 combo = 11×, 100 combo = 21×.
+    const multiplier = 1 + Math.floor(combo / 5);
+
+    // Precision bonus: exact-on-beat = up to +8, edge of good window = +0.
+    // Means two "all perfect" runs never score identically — tighter timing wins.
+    const precision = Math.max(0, 1 - diff / GOOD_WINDOW);
+    const precisionBonus = Math.round(precision * 8);
+    const basePoints = type === "perfect" ? 10 : 5;
+    const gained = (basePoints + precisionBonus) * multiplier;
+
+    // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
+    playHitForNote(note.freq, type);
+    haptic(type === "perfect" ? 12 : 8);
+
+    setScore(s => s + gained);
+    setCombo(c => {
+      const next = c + 1;
+      if (next > maxCombo) setMaxCombo(next);
+      // Combo milestone toast
+      if (next === 5)  setComboToast("WARMED UP!");
+      if (next === 10) setComboToast("ON FIRE 🔥");
+      if (next === 15) setComboToast("UNSTOPPABLE!");
+      if (next === 25) setComboToast("GOD MODE!");
+      if ([5, 10, 15, 25].includes(next)) setTimeout(() => setComboToast(null), 1200);
+      return next;
+    });
+    setHits(h => ({ ...h, [type]: h[type] + 1 }));
+    setFeedback({ lane, type, ts: performance.now() });
+
+    // Spawn particles
+    const laneWidth = 100 / LANES.length;
+    const xPct = laneWidth * lane + laneWidth / 2;
+    const color = LANES[lane].accent;
+    setBursts(bs => [...bs, { id: burstIdRef.current++, x: xPct, y: 90, color: type === "perfect" ? "#fbbf24" : color, born: performance.now() }]);
+
+    // Flash lane briefly
+    setFlashLane(lane);
+    setTimeout(() => setFlashLane(l => (l === lane ? null : l)), 100);
+  }, [phase, combo, maxCombo, playHitForNote, haptic]);
+
+  // Keyboard controls
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "encore") return;
+    const handler = (e: KeyboardEvent) => {
+      const keyMap: Record<string, number> = {
+        "a": 0, "s": 1, "d": 2, "f": 3,
+        "1": 0, "2": 1, "3": 2, "4": 3,
+        "ArrowLeft": 0, "ArrowDown": 1, "ArrowUp": 2, "ArrowRight": 3,
+      };
+      const lane = keyMap[e.key];
+      if (lane !== undefined) { e.preventDefault(); hitLane(lane); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [phase, hitLane]);
+
+  // Main RAF loop — handles both the scripted song AND the endless encore.
+  // Encore is triggered when the 30s chart finishes while the player's combo is
+  // alive. In encore, new tiles are spawned dynamically at accelerating speed
+  // and 3 misses end the game. Score keeps growing — no cap, Tetris-style.
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "encore") return;
+    const tick = () => {
+      const now = (performance.now() - startRef.current) / 1000;
+      if (phase === "playing") setTimeLeft(Math.max(0, TRACK_DURATION - now));
+
+      // ── Encore: spawn new tiles dynamically, accelerating over time ──
+      if (phase === "encore" && now >= encoreNextSpawnRef.current) {
+        const encoreElapsed = now - TRACK_DURATION;
+        // Travel time shrinks from 1.4s → 0.7s over 30s of encore (skill ceiling rises)
+        const travel = Math.max(0.7, 1.4 - encoreElapsed * 0.023);
+        // Spawn gap shrinks from 0.55s → 0.22s (tiles pack tighter)
+        const nextGap = Math.max(0.22, 0.55 - encoreElapsed * 0.011);
+
+        const [lane, freq] = ENCORE_POOL[encorePoolIdxRef.current % ENCORE_POOL.length];
+        encorePoolIdxRef.current++;
+        chartRef.current.push({
+          id: encoreIdRef.current++,
+          lane, freq,
+          time: now + travel,
+          travel,
+        });
+        encoreNextSpawnRef.current = now + nextGap;
+
+        // Reschedule the backing loop every 8 seconds so the rhythm never
+        // drops. Bass + hats only — no lead melody, same Piano Tiles rule as
+        // the main track: only player taps produce melodic notes.
+        const ctx = getAudioCtx();
+        if (ctx && ctx.currentTime >= encoreLoopAtRef.current) {
+          const loopStart = ctx.currentTime;
+          const C2 = 65.41, G2 = 98.00;
+          for (let i = 0; i < 16; i++) {
+            scheduleBass(ctx, loopStart + i * BEAT, i % 4 < 2 ? C2 : G2, 0.46);
+          }
+          for (let h = 0; h < 8; h += BEAT / 2) {
+            scheduleHihat(ctx, loopStart + h, 0.14);
+          }
+          encoreLoopAtRef.current = loopStart + 7.8; // slight overlap to avoid gaps
+        }
+      }
+
+      // Spawn notes that are now visible (notes whose fall window has started)
+      const visible: (NoteDef & { spawnedAt: number })[] = [];
+      for (const n of chartRef.current) {
+        if (now >= n.time - n.travel && now <= n.time + GOOD_WINDOW + 0.3) {
+          if (!spawnedRef.current.has(n.id)) spawnedRef.current.add(n.id);
+          if (!missedRef.current.has(n.id)) visible.push({ ...n, spawnedAt: n.time - n.travel });
+        }
+      }
+      setActiveNotes(visible);
+
+      // Flag misses: notes that passed the good window without being hit
+      for (const n of chartRef.current) {
+        if (now > n.time + GOOD_WINDOW && !missedRef.current.has(n.id)) {
+          missedRef.current.add(n.id);
+          setCombo(0);
+          setHits(h => ({ ...h, miss: h.miss + 1 }));
+          setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
+          // No sound on miss — silence IS the feedback. The player should feel
+          // the absence of a note they should have played. Visual cues (MISS
+          // text + combo break + red lives in encore) carry the signal instead.
+
+          // Encore: track lives, end on 3 misses
+          if (phase === "encore") {
+            encoreMissesRef.current++;
+            setEncoreLives(3 - encoreMissesRef.current);
+            if (encoreMissesRef.current >= 3) {
+              setPhase("finished");
+              return;
+            }
+          }
+        }
+      }
+
+      // Clean up old particles
+      setBursts(bs => bs.filter(b => performance.now() - b.born < 600));
+
+      // End of scripted track: if combo alive → ENCORE, else → finished.
+      // Either way, snapshot the main-track hit stats so FC/AP achievements
+      // reward clearing the chart cleanly, regardless of how encore plays out.
+      // The setState callback is the safe way to read the latest `hits` from
+      // inside a RAF closure without adding it to the effect's dep array
+      // (which would tear down the RAF every time a hit registers).
+      if (phase === "playing" && now >= TRACK_DURATION) {
+        setHits(h => {
+          mainTrackStatsRef.current = { misses: h.miss, goods: h.good };
+          return h;
+        });
+        if (combo > 0) {
+          setPhase("encore");
+          setComboToast("ENCORE!");
+          setTimeout(() => setComboToast(null), 1500);
+          encoreNextSpawnRef.current = now + 0.8;  // first encore tile after brief beat
+          encoreLoopAtRef.current = 0;             // trigger immediate drum reschedule
+        } else {
+          setPhase("finished");
+          return;
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [phase, combo, getAudioCtx, scheduleBass, scheduleHihat, scheduleLead, playTone]);
+
+  // ─── Render helpers ──────────────────────────────────────────────────────────
+
+  const totalNotes = chartRef.current.length || buildChart().length;
+  const maxScore   = 10 * 5 * totalNotes; // perfect + max multiplier per note
+  const grade      = gradeFor(score, maxScore);
+
+  // ─── Layout ──────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ fontFamily: 'Orbitron, monospace', padding: '24px 16px', maxWidth: '480px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ color: '#a855f7', fontSize: '22px', fontWeight: 900, letterSpacing: '2px', margin: 0 }}>RHYTHM_RUSH</h1>
-          <p style={{ color: '#6b7280', fontSize: '11px', margin: '4px 0 0' }}>30 second sprint · hit the right beat</p>
-        </div>
-        <button onClick={() => router.push('/')} style={{ color: '#6b7280', fontSize: '11px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>
-          ← BACK
-        </button>
-      </div>
+    <div style={{
+      position: "fixed", inset: 0,
+      // Deep cosmic void — falling tiles read as bright lights against darkness,
+      // matching the Simon chamber aesthetic for brand-wide visual consistency.
+      background: "radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
+      overflow: "hidden",
+      fontFamily: "inherit",
+      touchAction: "manipulation",
+    }}>
+      {/* Starfield — 44 twinkling points, ambient depth behind the game */}
+      {stars.map((s, i) => (
+        <div key={i} className="dot-pulse" style={{
+          position: "absolute",
+          top: `${s.y}%`,
+          left: `${s.x}%`,
+          width: `${s.size}px`,
+          height: `${s.size}px`,
+          borderRadius: "50%",
+          background: "white",
+          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
+          ["--dur" as string]: `${s.dur}s`,
+          ["--delay" as string]: `${s.delay}s`,
+          opacity: s.alpha,
+          pointerEvents: "none", zIndex: 1,
+        }} />
+      ))}
 
-      {/* Countdown overlay */}
-      {countdown !== null && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(5,5,15,0.85)' }}>
-          <div style={{ color: countdown === 'GO!' ? '#10b981' : '#a855f7', fontSize: countdown === 'GO!' ? '72px' : '96px', fontWeight: 900 }}>{countdown}</div>
+      {/* Splash icons — kept as ambient texture at low opacity */}
+      {BG_ICONS.map((ic, i) => (
+        <div key={i} className="icon-float" style={{
+          position: "absolute",
+          top: ic.top,
+          ...("left" in ic ? { left: ic.left } : { right: ic.right }),
+          width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`,
+          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          opacity: 0.22, pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
         </div>
+      ))}
+
+      {/* Magenta tint wash — intensifies as the track progresses, adds tension */}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: `radial-gradient(ellipse 45% 35% at 50% 55%, rgba(232,121,249,${Math.min(0.28, 0.08 + (TRACK_DURATION - timeLeft) / TRACK_DURATION * 0.25)}) 0%, transparent 70%)`,
+        pointerEvents: "none", zIndex: 1,
+      }} />
+
+      {/* ═══ IDLE ═══ */}
+      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} />}
+
+      {/* ═══ COUNTDOWN ═══ */}
+      {phase === "countdown" && <CountdownView n={countdown} />}
+
+      {/* ═══ PLAYING + ENCORE (same view, different HUD treatment) ═══ */}
+      {(phase === "playing" || phase === "encore") && (
+        <PlayingView
+          score={score} combo={combo} timeLeft={timeLeft}
+          activeNotes={activeNotes} bursts={bursts}
+          comboToast={comboToast} flashLane={flashLane} feedback={feedback}
+          onTapLane={hitLane}
+          // QUIT ends the run with the current score. Transitions to "finished"
+          // which triggers the normal submit flow — player sees their grade
+          // and whatever XP/achievements they earned.
+          onQuit={() => {
+            // Snapshot main-track stats if they quit before reaching the end,
+            // so FC/AP flags stay accurate (they quit → they didn't FC).
+            if (phase === "playing") {
+              mainTrackStatsRef.current = { misses: hits.miss + 1, goods: hits.good };
+            }
+            setPhase("finished");
+          }}
+          startRef={startRef}
+          pet={pet}
+          isEncore={phase === "encore"}
+          encoreLives={encoreLives}
+        />
       )}
 
-      {/* Game panel — border shifts purple → red as BPM climbs */}
-      {(() => {
-        const intensity = Math.min(1, (bpm - BASE_BPM) / (MAX_BPM - BASE_BPM));
-        const r = Math.round(168 + 71 * intensity);
-        const g = Math.round(85  - 85  * intensity);
-        const b = Math.round(247 - 200 * intensity);
-        const a = gameActive ? 0.2 + intensity * 0.4 : 0.2;
-        const panelBorder = `1px solid rgba(${r},${g},${b},${a})`;
-        return (
-      <div style={{ background: 'rgba(10,10,20,0.8)', border: panelBorder, borderRadius: '12px', padding: '20px 16px' }}>
-        {/* Stats row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#6b7280', fontSize: '10px' }}>SCORE</div>
-            <div style={{ color: '#a855f7', fontSize: '36px', fontWeight: 900 }}>{score}</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#6b7280', fontSize: '10px' }}>TIME</div>
-            <div style={{ color: timeRemaining <= 5 ? '#ef4444' : '#06b6d4', fontSize: '36px', fontWeight: 900 }}>{timeRemaining}s</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#6b7280', fontSize: '10px' }}>COMBO</div>
-            <div style={{ color: '#f59e0b', fontSize: '36px', fontWeight: 900 }}>{combo}</div>
+      {/* ═══ FINISHED ═══ */}
+      {phase === "finished" && (
+        <FinishedView
+          grade={grade}
+          score={score} maxCombo={maxCombo} hits={hits}
+          total={totalNotes}
+          onPlayAgain={startGame}
+          onExit={() => router.push("/games")}
+          submitting={submitting}
+          signingOnChain={signingOnChain}
+          submitResult={submitResult}
+          submitError={submitError}
+          txError={txError}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Idle: "GET READY" splash before game starts ──────────────────────────────
+function IdleView({ onStart, onExit }: { onStart: () => void; onExit: () => void }) {
+  return (
+    <div style={{
+      position: "absolute", inset: 0, zIndex: 10,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      gap: "32px", padding: "24px",
+    }}>
+      {/* Back X */}
+      <button onClick={onExit} style={{
+        position: "absolute", top: "18px", left: "18px",
+        width: "40px", height: "40px", borderRadius: "12px",
+        background: "#6b0000", paddingBottom: "4px",
+        border: "none", cursor: "pointer", fontFamily: "inherit",
+        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
+      }}>
+        <div style={{
+          width: "100%", height: "36px", borderRadius: "10px 10px 8px 8px",
+          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
+          border: "2px solid rgba(255,255,255,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </div>
+      </button>
+
+      <div style={{ textAlign: "center" }}>
+        <div style={{
+          fontSize: "12px", fontWeight: 900, letterSpacing: "0.4em",
+          color: "rgba(232,121,249,0.7)",
+          textShadow: "0 0 14px rgba(232,121,249,0.7)",
+        }}>GAME ARENA</div>
+        <div style={{
+          fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em",
+          color: "white", marginTop: "6px",
+          textShadow: "0 0 24px rgba(232,121,249,0.9), 0 4px 10px rgba(0,0,0,0.7)",
+          lineHeight: 1,
+        }}>RHYTHM<br/>RUSH</div>
+      </div>
+
+      <div style={{
+        maxWidth: "360px", textAlign: "center",
+        color: "rgba(220,200,255,0.75)", fontSize: "13px", fontWeight: 700, lineHeight: 1.6,
+      }}>
+        Tap the notes as they hit the bottom.
+        Build combos for bigger multipliers.
+        <br/>
+        <span style={{ color: "rgba(251,191,36,0.85)" }}>
+          Desktop: A S D F or ← ↓ ↑ →
+        </span>
+      </div>
+
+      {/* Juicy START button */}
+      <div role="button" tabIndex={0} onClick={onStart}
+        style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
+        <div style={{
+          borderRadius: "18px", background: "#7c1d5a", paddingBottom: "6px",
+          boxShadow: "0 12px 28px -6px rgba(232,121,249,0.75), 0 0 40px rgba(232,121,249,0.3)",
+        }}>
+          <div style={{
+            borderRadius: "16px 16px 12px 12px",
+            background: "linear-gradient(160deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)",
+            padding: "18px 28px", textAlign: "center",
+            border: "2px solid rgba(255,255,255,0.5)",
+            position: "relative", overflow: "hidden",
+            boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
+          }}>
+            <div style={{
+              position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+              borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
+            }} />
+            <span style={{
+              position: "relative", zIndex: 1,
+              color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.18em",
+              textShadow: "0 2px 4px rgba(0,0,0,0.45)",
+            }}>START</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Progress bar */}
-        <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginBottom: '16px' }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg,#a855f7,#06b6d4)', borderRadius: '2px', transition: 'width 0.1s linear' }} />
+// ─── Countdown: 3 · 2 · 1 · GO ────────────────────────────────────────────────
+function CountdownView({ n }: { n: number }) {
+  const label = n <= 0 ? "GO!" : String(n);
+  const color = n <= 0 ? "#fbbf24" : "#e879f9";
+  return (
+    <div key={label} style={{
+      position: "absolute", inset: 0, zIndex: 10,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      animation: "bounce-scale-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+    }}>
+      <div style={{
+        fontSize: "clamp(120px, 24vw, 200px)", fontWeight: 900, color: "white",
+        textShadow: `0 0 40px ${color}, 0 0 80px ${color}aa, 0 4px 12px rgba(0,0,0,0.6)`,
+        letterSpacing: "0.04em", lineHeight: 1,
+      }}>{label}</div>
+    </div>
+  );
+}
+
+// ─── Pet center — visible during gameplay, reacts to hits + combos ───────────
+function PetCenter({
+  pet, combo, feedback,
+}: {
+  pet: PetStage;
+  combo: number;
+  feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number } | null;
+}) {
+  // Reaction state driven by feedback timestamp. Wilt holds longer than jump
+  // so misses actually register visually — previously 420ms was too brief for
+  // players focused on the tiles to notice.
+  const [reaction, setReaction] = useState<"idle" | "jump" | "wilt">("idle");
+  const [bubble, setBubble] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!feedback) return;
+    if (feedback.type === "perfect") {
+      setReaction("jump");
+      const t = setTimeout(() => setReaction("idle"), 550);
+      return () => clearTimeout(t);
+    }
+    if (feedback.type === "miss") {
+      setReaction("wilt");
+      setBubble("💔");
+      const t1 = setTimeout(() => setReaction("idle"), 900);
+      const t2 = setTimeout(() => setBubble(null), 900);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+  }, [feedback?.ts, feedback?.type]);
+
+  // Combo milestone speech bubbles — pet cheers on every 10-streak.
+  // Different emoji per tier so the ceiling feels earned.
+  useEffect(() => {
+    if (combo > 0 && combo % 10 === 0) {
+      const emoji = combo >= 40 ? "👑" : combo >= 30 ? "🔥" : combo >= 20 ? "⭐" : "✨";
+      setBubble(emoji);
+      const t = setTimeout(() => setBubble(null), 1100);
+      return () => clearTimeout(t);
+    }
+  }, [combo]);
+
+  // Combo-driven aura + pulse — more dramatic progression than before so the
+  // pet visibly grows and glows as you chain streaks. Max at 1.3x scale.
+  const showAura   = combo >= 10;
+  const bigAura    = combo >= 25;
+  const celebrate  = combo > 0 && combo % 10 === 0 && combo >= 10;
+  const pulseScale = 1 + Math.min(combo, 40) * 0.0075; // 1.0 → 1.30 across 0→40 combo
+
+  const animClass = reaction === "jump" ? "pet-poke" : "slime-idle";
+
+  return (
+    <div style={{
+      flexShrink: 0, position: "relative",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "0 0 6px",
+      pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "relative",
+        width: "84px", height: "84px",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        transform: `scale(${pulseScale})`,
+        transition: "transform 0.2s",
+      }}>
+        {/* Outer tier-style aura at combo 10+ */}
+        {showAura && (
+          <div style={{
+            position: "absolute", inset: "-10px",
+            borderRadius: "50%",
+            background: bigAura
+              ? "conic-gradient(from 0deg, #fbbf24, #f97316, #c026d3, #06b6d4, #fbbf24)"
+              : `conic-gradient(from 0deg, ${pet.color}, ${pet.color}88, ${pet.color})`,
+            opacity: 0.85,
+            filter: "blur(3px)",
+            animation: "bounce-scale-in 0.35s cubic-bezier(0.34,1.56,0.64,1) both",
+          }} />
+        )}
+        {/* Soft ground glow — intensifies with combo */}
+        <div style={{
+          position: "absolute", bottom: "-4px", left: "50%", transform: "translateX(-50%)",
+          width: "82%", height: "18px",
+          borderRadius: "50%",
+          background: `radial-gradient(ellipse at 50% 50%, ${pet.color}cc 0%, transparent 70%)`,
+          filter: "blur(3px)",
+          opacity: 0.6 + Math.min(combo, 20) * 0.02,
+        }} />
+        {/* Celebration sparkles burst on every 10th combo — now 8 sparkles, wider */}
+        {celebrate && (
+          <>
+            {[...Array(8)].map((_, i) => {
+              const angle = (i / 8) * Math.PI * 2;
+              return (
+                <span key={`${combo}-${i}`} style={{
+                  position: "absolute", top: "50%", left: "50%",
+                  color: "#fbbf24", fontSize: "14px",
+                  filter: "drop-shadow(0 0 8px rgba(251,191,36,0.95))",
+                  transform: `translate(${Math.cos(angle) * 34 - 50}%, ${Math.sin(angle) * 34 - 50}%)`,
+                  animation: `pet-sparkle 0.9s ease-out both`,
+                }}>✦</span>
+              );
+            })}
+          </>
+        )}
+        {/* Pet */}
+        <div className={animClass} style={{
+          width: "100%", height: "100%",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          transformOrigin: "50% 100%",
+          filter: reaction === "wilt"
+            ? "grayscale(0.85) brightness(0.5) saturate(0.4)"
+            : "none",
+          transition: "filter 0.2s",
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pet.src} alt="" draggable={false}
+            style={{
+              width: "100%", height: "100%", objectFit: "contain",
+              filter: `drop-shadow(0 0 12px ${pet.color}cc) drop-shadow(0 4px 6px rgba(0,0,0,0.5))`,
+            }} />
         </div>
+        {/* Speech bubble — floats above on misses + combo milestones */}
+        {bubble && (
+          <div key={bubble + (feedback?.ts ?? combo)} style={{
+            position: "absolute",
+            top: "-22px", left: "50%", transform: "translateX(-50%)",
+            fontSize: "22px",
+            filter: "drop-shadow(0 0 10px rgba(255,255,255,0.6))",
+            animation: "bubble-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            zIndex: 3,
+          }}>{bubble}</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-        {/* BPM + multiplier */}
-        {gameActive && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '10px', color: '#6b7280' }}>
-            <span>{bpm} BPM</span>
-            {comboMultiplier > 1 && <span style={{ color: '#f59e0b', fontWeight: 700 }}>{comboMultiplier}x MULTIPLIER</span>}
+// ─── Playing: the actual game ─────────────────────────────────────────────────
+function PlayingView({
+  score, combo, timeLeft, activeNotes, bursts,
+  comboToast, flashLane, feedback,
+  onTapLane, onQuit, startRef,
+  pet,
+  isEncore, encoreLives,
+}: {
+  score: number; combo: number; timeLeft: number;
+  activeNotes: (NoteDef & { spawnedAt: number })[]; bursts: Burst[];
+  comboToast: string | null; flashLane: number | null;
+  feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number } | null;
+  onTapLane: (lane: number) => void;
+  onQuit: () => void;
+  startRef: React.MutableRefObject<number>;
+  pet: PetStage;
+  isEncore: boolean;
+  encoreLives: number;
+}) {
+  const timePct = 1 - timeLeft / TRACK_DURATION;
+  // Multiplier is uncapped now — display 5× as max to avoid HUD overflow but score uses real value
+  const multiplier = 1 + Math.floor(combo / 5);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+
+      {/* ═══ TOP HUD ═══ */}
+      <div style={{
+        padding: "14px 16px 10px",
+        display: "flex", alignItems: "center", gap: "10px",
+      }}>
+        {/* QUIT — ends the run, submits what the player has, shows finish screen */}
+        <button onClick={onQuit} aria-label="Quit run"
+          style={{
+            flexShrink: 0,
+            borderRadius: "10px",
+            background: "linear-gradient(180deg, #3a0a0a 0%, #2a0606 100%)",
+            border: "1.5px solid rgba(255,80,80,0.45)",
+            color: "#fca5a5",
+            fontSize: "10px", fontWeight: 900, letterSpacing: "0.14em",
+            cursor: "pointer", fontFamily: "inherit",
+            padding: "8px 12px",
+            boxShadow: "0 0 14px rgba(239,68,68,0.3), 0 4px 10px rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", gap: "6px",
+          }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+          QUIT
+        </button>
+
+        {/* Timer bar during song, LIVES display during encore */}
+        {!isEncore ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ color: "rgba(200,180,255,0.6)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.1em", minWidth: "38px" }}>
+              {timeLeft.toFixed(1)}s
+            </span>
+            <div style={{
+              flex: 1, height: "10px", borderRadius: "999px",
+              background: "rgba(0,0,0,0.5)",
+              border: "1.5px solid rgba(160,100,255,0.25)",
+              boxShadow: "inset 0 2px 4px rgba(0,0,0,0.5)",
+              overflow: "hidden",
+            }}>
+              <div style={{
+                width: `${timePct * 100}%`, height: "100%", borderRadius: "999px",
+                background: timeLeft < 5
+                  ? "linear-gradient(90deg, #ef4444 0%, #f97316 100%)"
+                  : "linear-gradient(90deg, #c026d3 0%, #e879f9 50%, #fbbf24 100%)",
+                boxShadow: timeLeft < 5
+                  ? "0 0 10px rgba(239,68,68,0.6)"
+                  : "0 0 10px rgba(232,121,249,0.6)",
+                transition: "width 0.05s linear",
+              }} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "10px", justifyContent: "space-between" }}>
+            <span style={{
+              color: "#fbbf24",
+              fontSize: "13px", fontWeight: 900, letterSpacing: "0.24em",
+              textShadow: "0 0 12px rgba(251,191,36,0.9), 0 2px 4px rgba(0,0,0,0.6)",
+              animation: "bounce-scale-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
+            }}>★ ENCORE ★</span>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  width: "16px", height: "16px", borderRadius: "50%",
+                  background: i < encoreLives
+                    ? "radial-gradient(circle at 30% 30%, #ff6b6b 0%, #dc2626 60%, #7f1d1d 100%)"
+                    : "rgba(0,0,0,0.4)",
+                  border: i < encoreLives ? "1.5px solid rgba(255,180,180,0.6)" : "1.5px solid rgba(255,255,255,0.1)",
+                  boxShadow: i < encoreLives ? "0 0 8px rgba(239,68,68,0.6)" : "inset 0 2px 3px rgba(0,0,0,0.6)",
+                  transition: "all 0.25s",
+                }} />
+              ))}
+            </div>
           </div>
         )}
+      </div>
 
-        {/* Combo flash */}
-        {comboFlash && (
-          <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-            <span style={{ color: '#f59e0b', fontSize: '18px', fontWeight: 900 }}>{comboFlash}</span>
-          </div>
-        )}
+      {/* ═══ STATS STRIP ═══ */}
+      <div style={{
+        padding: "0 16px 10px",
+        display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px",
+      }}>
+        <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
+        <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
+        <StatGem label="MULT" value={`×${multiplier}`} color="#67e8f9" wall="#083a6b" />
+      </div>
 
-        {/* Feedback */}
-        <div style={{ textAlign: 'center', height: '28px', marginBottom: '16px' }}>
-          <span style={{ fontSize: '14px', fontWeight: 700, color: feedbackType === 'perfect' ? '#10b981' : feedbackType === 'good' ? '#06b6d4' : feedbackType === 'miss' ? '#ef4444' : '#6b7280' }}>
-            {feedback || (gameActive ? `HIT ${currentTarget}` : gameOver ? 'GAME OVER' : 'GET READY')}
-          </span>
-        </div>
+      {/* ═══ PET — top center, reacts to hits ═══ */}
+      <PetCenter pet={pet} combo={combo} feedback={feedback} />
 
-        {/* Buttons 2×2 */}
-        <style>{`
-          @keyframes beatRing {
-            from { transform: scale(2.2); opacity: 0.9; }
-            to   { transform: scale(1.0); opacity: 0; }
-          }
-        `}</style>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}>
-          {[1, 2, 3, 4].map(btn => {
-            const c = BUTTON_COLORS[btn];
-            const isTarget = gameActive && btn === currentTarget;
-            const intensity = Math.min(1, (bpm - BASE_BPM) / (MAX_BPM - BASE_BPM));
-            const glowSize  = Math.round(24 + intensity * 20); // 24px → 44px as BPM climbs
-            const scale     = isTarget ? 1.1 + intensity * 0.05 : 1;
-            return (
-              <div key={btn} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {isTarget && (
-                  <div
-                    key={`ring-${beatTick}`}
-                    style={{
-                      position: 'absolute',
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: '50%',
-                      border: `2px solid ${c.active}`,
-                      animation: `beatRing ${getBeatInterval(bpm)}ms linear forwards`,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                <button
-                  onPointerDown={e => { e.preventDefault(); handleButtonClick(btn); }}
-                  disabled={!gameActive || gameOver}
-                  style={{
-                    width: '64px',
-                    height: '64px',
-                    borderRadius: '50%',
-                    border: `3px solid ${isTarget ? c.active : 'rgba(255,255,255,0.08)'}`,
-                    background: isTarget ? `${c.active}33` : `${c.active}11`,
-                    boxShadow: isTarget ? `0 0 ${glowSize}px ${c.glow}` : 'none',
-                    transform: `scale(${scale})`,
-                    transition: 'all 0.08s ease',
-                    cursor: gameActive ? 'pointer' : 'default',
-                  }}
-                >
-                  <span style={{ color: c.active, fontSize: '9px', fontWeight: 700 }}>{c.key}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
 
-        {/* Quit button */}
-        {gameActive && !gameOver && (
-          <button onClick={endGame} style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', color: '#ef4444', fontSize: '12px', fontWeight: 700, letterSpacing: '2px', cursor: 'pointer', marginBottom: '8px' }}>
-            END GAME
-          </button>
-        )}
+      {/* ═══ PLAY FIELD (lanes + falling notes) ═══ */}
+      <div style={{
+        flex: 1,
+        position: "relative",
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+        gap: "6px",
+        padding: "0 10px 10px",
+        overflow: "hidden",
+      }}>
+        {LANES.map((theme, i) => (
+          <Lane
+            key={i}
+            theme={theme}
+            laneIdx={i}
+            flashing={flashLane === i}
+            feedback={feedback && feedback.lane === i ? feedback : null}
+          />
+        ))}
 
-        {/* Start */}
-        {!gameActive && !gameOver && (
-          <button onClick={startGame} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '14px', fontWeight: 700, letterSpacing: '2px', cursor: 'pointer' }}>
-            START_GAME
-          </button>
-        )}
-
-        {/* Game over overlay */}
-        {gameOver && (() => {
-          const totalTaps = perfectHits + goodHits + missHits;
-          const accuracy = totalTaps > 0 ? Math.round((perfectHits / totalTaps) * 100) : 0;
-          const grade = score >= 500 ? 'S' : score >= 350 ? 'A' : score >= 200 ? 'B' : score >= 100 ? 'C' : 'D';
-          const gradeColor: Record<string, string> = { S: '#f59e0b', A: '#10b981', B: '#06b6d4', C: '#a855f7', D: '#6b7280' };
-          const gradeLabel: Record<string, string> = { S: 'LEGENDARY', A: 'SKILLED', B: 'SOLID', C: 'DECENT', D: 'KEEP GOING' };
-          const rank = myRank ?? 0;
+        {/* Falling notes — Magic Tiles style: wall+face tiles matching our V2 button language */}
+        {activeNotes.map(n => {
+          const now = (performance.now() - startRef.current) / 1000;
+          const progress = (now - n.spawnedAt) / n.travel; // 0 to 1, uses per-note speed
+          const yPct = Math.max(0, Math.min(1, progress)) * 100;
+          const theme = LANES[n.lane];
+          const laneWidthPct = 100 / LANES.length;
+          const fadeIn = Math.min(1, progress / 0.15);
           return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(5,5,15,0.6)', animation: 'fadeIn 0.2s ease' }} onClick={() => setGameOver(false)}>
-              <div style={{ background: '#0a0a1a', borderTop: `2px solid ${gradeColor[grade]}40`, borderRadius: '24px 24px 0 0', padding: '20px 20px 28px', animation: 'slideUp 0.4s cubic-bezier(0.34,1.2,0.64,1)', position: 'relative', maxHeight: '82vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-                <button onClick={() => setGameOver(false)} style={{ position: 'absolute', top: '14px', right: '16px', background: 'none', border: 'none', color: '#4b5563', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            <div key={n.id} style={{
+              position: "absolute",
+              left: `calc(${laneWidthPct * n.lane}% + ${laneWidthPct / 2}%)`,
+              top: `${yPct}%`,
+              transform: "translate(-50%, -50%)",
+              width: "78%", maxWidth: "90px", minWidth: "54px",
+              pointerEvents: "none",
+              opacity: fadeIn,
+              willChange: "top, transform",
+            }}>
+              {/* Motion trail above the tile — sells the "falling" feel */}
+              <div style={{
+                position: "absolute", top: "-26px", left: "20%", right: "20%",
+                height: "26px",
+                background: `linear-gradient(180deg, transparent 0%, ${theme.glow} 100%)`,
+                filter: "blur(4px)",
+                opacity: 0.7,
+                pointerEvents: "none",
+              }} />
 
-                {/* Title */}
-                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                  <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '3px', marginBottom: '4px' }}>RHYTHM_RUSH · RESULT</div>
-                  <div style={{ width: '40px', height: '2px', background: gradeColor[grade], margin: '0 auto', borderRadius: '2px' }} />
-                </div>
-
-                {/* Grade + Score */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '16px' }}>
-                  <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: `${gradeColor[grade]}15`, border: `2px solid ${gradeColor[grade]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '30px', fontWeight: 900, color: gradeColor[grade], boxShadow: `0 0 20px ${gradeColor[grade]}40` }}>{grade}</div>
-                  <div>
-                    <div style={{ color: '#fff', fontSize: '42px', fontWeight: 900, lineHeight: 1 }}>{score}</div>
-                    <div style={{ color: gradeColor[grade], fontSize: '11px', letterSpacing: '2px', fontWeight: 700, marginTop: '2px' }}>{gradeLabel[grade]}</div>
-                  </div>
-                </div>
-
-                {/* Hit breakdown */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                  {[
-                    { val: perfectHits, label: 'PERFECT', color: '#10b981' },
-                    { val: goodHits,    label: 'GOOD',    color: '#f59e0b' },
-                    { val: missHits,    label: 'MISS',    color: '#ef4444' },
-                    { val: `${accuracy}%`, label: 'ACC', color: '#06b6d4' },
-                  ].map(s => (
-                    <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                      <div style={{ color: s.color, fontSize: '18px', fontWeight: 900 }}>{s.val}</div>
-                      <div style={{ color: '#4b5563', fontSize: '8px', letterSpacing: '1px', marginTop: '2px' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Combo / BPM / Time */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '8px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', marginBottom: '12px' }}>
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#f59e0b', fontSize: '16px', fontWeight: 900 }}>{maxCombo}x</div><div style={{ color: '#4b5563', fontSize: '8px' }}>COMBO</div></div>
-                  <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#ef4444', fontSize: '16px', fontWeight: 900 }}>{Math.round(bpm)}</div><div style={{ color: '#4b5563', fontSize: '8px' }}>BPM</div></div>
-                  <div style={{ width: '1px', background: 'rgba(255,255,255,0.06)' }} />
-                  <div style={{ textAlign: 'center' }}><div style={{ color: '#a855f7', fontSize: '16px', fontWeight: 900 }}>{(gameTimeMs / 1000).toFixed(1)}s</div><div style={{ color: '#4b5563', fontSize: '8px' }}>TIME</div></div>
-                </div>
-
-                {/* Rank */}
-                <div style={{ textAlign: 'center', marginBottom: '14px', minHeight: '28px' }}>
-                  {submitting && <span style={{ color: '#4b5563', fontSize: '11px', letterSpacing: '1px' }}>SAVING...</span>}
-                  {txError && !submitting && (
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ color: '#ef4444', fontSize: '11px', letterSpacing: '1px', fontWeight: 700 }}>⚠ SCORE NOT SAVED</div>
-                      <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '3px' }}>Insufficient CELO to cover gas — top up and try again</div>
-                    </div>
-                  )}
-                  {rank > 0 && !submitting && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 20px', background: rank <= 3 ? `${gradeColor[grade]}15` : 'rgba(255,255,255,0.04)', border: `1px solid ${rank <= 3 ? gradeColor[grade] : 'rgba(255,255,255,0.08)'}`, borderRadius: '20px' }}>
-                      <span style={{ color: rank <= 3 ? gradeColor[grade] : '#6b7280', fontSize: '13px', fontWeight: 900 }}>
-                        {rank === 1 ? '🥇 RANK #1' : rank === 2 ? '🥈 RANK #2' : rank === 3 ? '🥉 RANK #3' : `RANK #${rank}`}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Buttons */}
-                <button onClick={startGame} style={{ width: '100%', padding: '13px', background: 'linear-gradient(135deg,#a855f7,#7c3aed)', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '13px', fontWeight: 700, letterSpacing: '2px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', marginBottom: '8px' }}>
-                  PLAY AGAIN
-                </button>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => router.push('/leaderboard')} style={{ flex: 1, padding: '13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: '#9ca3af', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
-                    SCORES
-                  </button>
-                  <button onClick={() => { const text = `🎮 GameArena — Rhythm Rush\n🎵 Score: ${score} | Grade: ${grade} | Combo: ${maxCombo}x\n🎯 Accuracy: ${accuracy}%\n\nPlay: ${window.location.origin}`; navigator.clipboard.writeText(text); }} style={{ flex: 1, padding: '13px', background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '12px', color: '#a855f7', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>
-                    SHARE
-                  </button>
+              {/* WALL (3D depth underneath) */}
+              <div style={{
+                borderRadius: "14px",
+                background: theme.wall,
+                paddingBottom: "5px",
+                boxShadow: `0 0 18px ${theme.glow}, 0 0 36px ${theme.glow}44, 0 8px 14px rgba(0,0,0,0.4)`,
+              }}>
+                {/* FACE (the actual tile surface with gloss) */}
+                <div style={{
+                  borderRadius: "12px 12px 10px 10px",
+                  background: theme.face,
+                  padding: "14px 6px",
+                  border: "2px solid rgba(255,255,255,0.5)",
+                  boxShadow: "inset 0 5px 12px rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.25)",
+                  position: "relative",
+                  overflow: "hidden",
+                }}>
+                  {/* Gloss crescent — same as V2 START buttons */}
+                  <div style={{
+                    position: "absolute", top: "2px", left: "6%", right: "6%", height: "48%",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.72) 0%, transparent 100%)",
+                    borderRadius: "10px 10px 60px 60px",
+                    pointerEvents: "none",
+                  }} />
+                  {/* Specular highlight dot */}
+                  <div style={{
+                    position: "absolute", top: "3px", left: "18%", width: "22px", height: "5px",
+                    borderRadius: "50%", background: "rgba(255,255,255,0.8)",
+                    pointerEvents: "none",
+                  }} />
                 </div>
               </div>
             </div>
           );
-        })()}
-      </div>
-        );
-      })()}
+        })}
 
-      {/* Wallet signing overlay */}
-      {signingOnChain && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(5,5,15,0.85)', backdropFilter: 'blur(8px)', animation: 'fadeIn 0.2s ease' }}>
-          <div style={{ textAlign: 'center', padding: '40px 32px', background: 'rgba(10,10,26,0.95)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '24px', maxWidth: '320px', width: '90%', boxShadow: '0 0 80px rgba(168,85,247,0.15)' }}>
-            <div style={{ fontSize: '56px', marginBottom: '16px', animation: 'walletPulse 1.4s ease-in-out infinite' }}>🦊</div>
-            <div style={{ color: '#a855f7', fontSize: '11px', fontWeight: 700, letterSpacing: '3px', marginBottom: '8px' }}>ACTION REQUIRED</div>
-            <div style={{ color: '#fff', fontSize: '18px', fontWeight: 900, letterSpacing: '1px', marginBottom: '12px', fontFamily: 'Orbitron, monospace' }}>CHECK YOUR WALLET</div>
-            <div style={{ color: '#9ca3af', fontSize: '12px', lineHeight: 1.6, marginBottom: '24px' }}>
-              Your wallet is asking for approval.<br />Open your wallet app and tap <span style={{ color: '#10b981', fontWeight: 700 }}>Confirm</span> to save your score on-chain.
+        {/* Particle bursts */}
+        {bursts.map(b => {
+          const age = (performance.now() - b.born) / 600;
+          return (
+            <div key={b.id} style={{
+              position: "absolute",
+              left: `${b.x}%`, top: `${b.y}%`,
+              width: "80px", height: "80px",
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none",
+              opacity: 1 - age,
+            }}>
+              {[...Array(8)].map((_, i) => {
+                const angle = (i / 8) * Math.PI * 2;
+                const dist = age * 40;
+                const x = Math.cos(angle) * dist;
+                const y = Math.sin(angle) * dist;
+                return (
+                  <span key={i} style={{
+                    position: "absolute", top: "50%", left: "50%",
+                    width: "6px", height: "6px", borderRadius: "50%",
+                    background: b.color,
+                    boxShadow: `0 0 8px ${b.color}`,
+                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                  }} />
+                );
+              })}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', animation: 'dot1 1.4s ease-in-out infinite' }} />
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', animation: 'dot1 1.4s ease-in-out infinite 0.2s' }} />
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', animation: 'dot1 1.4s ease-in-out infinite 0.4s' }} />
+          );
+        })}
+      </div>
+
+      {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══ */}
+      <div style={{
+        padding: "0 10px 16px",
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px",
+      }}>
+        {LANES.map((theme, i) => (
+          <TapButton
+            key={i}
+            theme={theme}
+            laneIdx={i}
+            isFlashing={flashLane === i}
+            onPress={() => onTapLane(i)}
+          />
+        ))}
+      </div>
+
+      {/* ═══ COMBO TOAST (center) ═══ */}
+      {comboToast && (
+        <div style={{
+          position: "absolute", top: "32%", left: "50%",
+          transform: "translate(-50%, -50%)",
+          padding: "14px 28px", borderRadius: "999px",
+          background: "linear-gradient(180deg, #fbbf24 0%, #d97706 100%)",
+          border: "3px solid rgba(255,255,255,0.6)",
+          boxShadow: "0 0 40px rgba(251,191,36,0.8), 0 0 80px rgba(251,191,36,0.4), 0 12px 24px rgba(0,0,0,0.5)",
+          animation: "bounce-scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+          zIndex: 8,
+        }}>
+          <span style={{
+            color: "white", fontSize: "clamp(22px, 5vw, 30px)", fontWeight: 900,
+            letterSpacing: "0.08em", textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+          }}>{comboToast}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Stat gem (reused from profile pattern) ───────────────────────────────────
+function StatGem({ label, value, color, wall, emphasize }: { label: string; value: string; color: string; wall: string; emphasize?: boolean }) {
+  return (
+    <div style={{
+      borderRadius: "12px", background: wall, paddingBottom: "4px",
+      boxShadow: `0 6px 14px -4px ${color}77, 0 0 0 1px ${color}66${emphasize ? `, 0 0 20px ${color}88` : ""}`,
+    }}>
+      <div style={{
+        borderRadius: "10px 10px 8px 8px",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.3) 100%)",
+        padding: "8px 4px 6px", textAlign: "center",
+        border: `1.5px solid ${color}55`, position: "relative", overflow: "hidden",
+      }}>
+        <div style={{
+          position: "absolute", top: 0, left: "10%", right: "10%", height: "40%",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%)",
+          pointerEvents: "none",
+        }} />
+        <div style={{
+          position: "relative", zIndex: 1,
+          fontSize: "20px", fontWeight: 900, color, lineHeight: 1,
+          textShadow: `0 0 12px ${color}, 0 2px 4px rgba(0,0,0,0.6)`,
+        }}>{value}</div>
+        <div style={{
+          position: "relative", zIndex: 1,
+          fontSize: "7px", fontWeight: 800, color: "rgba(200,180,255,0.55)",
+          letterSpacing: "0.16em", marginTop: "4px",
+        }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Lane — the vertical track where notes fall ──────────────────────────────
+function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number } | null }) {
+  const feedbackLabel = feedback ? (feedback.type === "perfect" ? "PERFECT!" : feedback.type === "good" ? "GOOD" : "MISS") : null;
+  const feedbackColor = feedback?.type === "perfect" ? "#fbbf24" : feedback?.type === "good" ? theme.accent : "#ef4444";
+  return (
+    <div style={{
+      position: "relative",
+      borderRadius: "14px",
+      background: flashing
+        ? `linear-gradient(180deg, ${theme.accent}18 0%, rgba(0,0,0,0.2) 100%)`
+        : "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.25) 100%)",
+      border: `1.5px solid ${flashing ? theme.accent : "rgba(255,255,255,0.08)"}`,
+      boxShadow: flashing ? `inset 0 0 24px ${theme.glow}` : "none",
+      overflow: "hidden",
+      transition: "border-color 0.08s, box-shadow 0.08s",
+    }}>
+      {/* Lane glow strip down center */}
+      <div style={{
+        position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+        width: "2px", height: "100%",
+        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}33 50%, transparent 100%)`,
+        pointerEvents: "none",
+      }} />
+
+      {/* TAP TARGET — dashed tile shape matching the falling notes */}
+      <div style={{
+        position: "absolute", bottom: "0%", left: "50%",
+        transform: "translate(-50%, 50%)",
+        width: "78%", maxWidth: "90px", minWidth: "54px",
+        height: "40px",
+        borderRadius: "12px",
+        border: `2px dashed ${theme.accent}88`,
+        boxShadow: flashing ? `0 0 20px ${theme.glow}` : `inset 0 0 12px ${theme.accent}22`,
+        background: flashing ? `${theme.accent}11` : "transparent",
+        pointerEvents: "none",
+        transition: "all 0.08s",
+      }} />
+
+      {/* Feedback label (floats up from bottom on hit) */}
+      {feedbackLabel && (
+        <div key={feedback!.ts} style={{
+          position: "absolute", bottom: "20%", left: "50%", transform: "translateX(-50%)",
+          color: feedbackColor, fontSize: "14px", fontWeight: 900,
+          letterSpacing: "0.1em",
+          textShadow: `0 0 10px ${feedbackColor}`,
+          animation: "bubble-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+          pointerEvents: "none", zIndex: 2,
+        }}>{feedbackLabel}</div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tap button (juicy wall + face — same pattern as game card START) ────────
+function TapButton({ theme, laneIdx, isFlashing, onPress }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void }) {
+  const keyLabels = ["A", "S", "D", "F"];
+  return (
+    <div
+      role="button" tabIndex={0}
+      // Opt out of the global UI click blip — tapping a lane plays the bell
+      // at the tile's pitch (melodic). A UI tick on top would muddle it.
+      data-no-click-sound="true"
+      onPointerDown={e => { e.preventDefault(); onPress(); }}
+      style={{
+        cursor: "pointer", userSelect: "none",
+        transition: "transform 0.05s",
+        transform: isFlashing ? "scale(0.96) translateY(2px)" : "scale(1)",
+        touchAction: "manipulation",
+      }}>
+      <div style={{
+        borderRadius: "14px", background: theme.wall, paddingBottom: "5px",
+        boxShadow: `0 10px 22px -4px ${theme.glow}, 0 0 18px ${theme.glow}55`,
+      }}>
+        <div style={{
+          borderRadius: "12px 12px 10px 10px",
+          background: theme.face,
+          padding: "16px 4px", textAlign: "center",
+          position: "relative", overflow: "hidden",
+          border: "2px solid rgba(255,255,255,0.45)",
+          boxShadow: isFlashing
+            ? `inset 0 6px 14px rgba(255,255,255,0.9), 0 0 30px ${theme.glow}`
+            : "inset 0 6px 14px rgba(255,255,255,0.6), inset 0 -3px 6px rgba(0,0,0,0.3)",
+        }}>
+          {/* Gloss */}
+          <div style={{
+            position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
+          }} />
+          <span style={{
+            position: "relative", zIndex: 1,
+            color: "white", fontSize: "22px", fontWeight: 900,
+            textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+          }}>{keyLabels[laneIdx]}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Finished: results + grade ────────────────────────────────────────────────
+type FinishedSubmit = {
+  rank?: number;
+  xpEarned?: number;
+  xp?: number;
+  level?: number;
+  leveledUp?: boolean;
+  isNewPb?: boolean;
+  prevBest?: number;
+  newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
+};
+
+function FinishedView({
+  grade, score, maxCombo, hits, total,
+  onPlayAgain, onExit,
+  submitting, signingOnChain, submitResult, submitError, txError,
+}: {
+  grade: ReturnType<typeof gradeFor>;
+  score: number; maxCombo: number;
+  hits: { perfect: number; good: number; miss: number };
+  total: number;
+  onPlayAgain: () => void;
+  onExit: () => void;
+  submitting: boolean;
+  signingOnChain: boolean;
+  submitResult: FinishedSubmit | null;
+  submitError: string | null;
+  txError: string | null;
+}) {
+  const accuracy = total === 0 ? 0 : Math.round(((hits.perfect + hits.good * 0.5) / total) * 100);
+  return (
+    <div style={{
+      position: "absolute", inset: 0, zIndex: 15,
+      background: "rgba(4,0,20,0.82)", backdropFilter: "blur(10px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "20px",
+      animation: "fadeIn 0.3s ease both",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: "440px",
+        borderRadius: "26px", background: "#1a0550", paddingBottom: "7px",
+        boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.6), 0 30px 60px rgba(0,0,0,0.9)",
+        animation: "scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both",
+      }}>
+        <div style={{
+          borderRadius: "24px 24px 20px 20px",
+          background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
+          border: "2px solid rgba(255,255,255,0.12)",
+          padding: "28px 24px",
+          textAlign: "center",
+          overflow: "hidden", position: "relative",
+        }}>
+          {/* Top gloss */}
+          <div style={{
+            position: "absolute", top: 0, left: 0, right: 0, height: "100px",
+            background: "linear-gradient(180deg, rgba(200,160,255,0.16) 0%, transparent 100%)",
+            pointerEvents: "none",
+          }} />
+
+          {/* Confetti around grade */}
+          {[...Array(6)].map((_, i) => {
+            const angle = (i / 6) * Math.PI * 2;
+            return (
+              <span key={i} style={{
+                position: "absolute",
+                top: "25%", left: "50%",
+                fontSize: "14px", color: grade.color,
+                filter: `drop-shadow(0 0 8px ${grade.color})`,
+                transform: `translate(${Math.cos(angle) * 90 - 50}%, ${Math.sin(angle) * 90 - 50}%)`,
+                animation: `pet-sparkle ${2.4 + i * 0.2}s ease-in-out ${i * 0.3}s infinite`,
+              }}>✦</span>
+            );
+          })}
+
+          {/* Grade letter */}
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "11px", fontWeight: 900, letterSpacing: "0.2em", marginBottom: "8px" }}>
+              {grade.desc}
             </div>
-            <div style={{ marginTop: '16px', color: '#374151', fontSize: '10px' }}>Skipping will still save your score to the leaderboard</div>
+            <div style={{
+              width: "140px", height: "140px", margin: "0 auto",
+              borderRadius: "50%", padding: "5px",
+              background: `conic-gradient(from 0deg, ${grade.color}, ${grade.color}aa, ${grade.color})`,
+              boxShadow: `0 0 40px ${grade.color}88, 0 0 80px ${grade.color}44`,
+            }}>
+              <div style={{
+                width: "100%", height: "100%", borderRadius: "50%",
+                background: "linear-gradient(180deg, #13063a 0%, #07021a 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <span style={{
+                  fontSize: "88px", fontWeight: 900, color: grade.color,
+                  textShadow: `0 0 28px ${grade.color}, 0 4px 8px rgba(0,0,0,0.7)`,
+                  lineHeight: 1,
+                }}>{grade.letter}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Score */}
+          <div style={{ marginTop: "20px" }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
+            <div style={{
+              color: "#fbbf24", fontSize: "42px", fontWeight: 900,
+              textShadow: "0 0 20px rgba(251,191,36,0.8), 0 2px 6px rgba(0,0,0,0.6)",
+              lineHeight: 1, marginTop: "3px",
+            }}>{score}</div>
+          </div>
+
+          {/* Hits breakdown */}
+          <div style={{
+            marginTop: "20px",
+            display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px",
+          }}>
+            <MiniStat label="PERFECT" value={hits.perfect} color="#fbbf24" />
+            <MiniStat label="GOOD"    value={hits.good}    color="#e879f9" />
+            <MiniStat label="MISS"    value={hits.miss}    color="#ef4444" />
+            <MiniStat label="MAX×"    value={maxCombo}     color="#22c55e" />
+          </div>
+
+          {/* Accuracy bar */}
+          <div style={{ marginTop: "16px" }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", marginBottom: "4px",
+              color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.12em",
+            }}>
+              <span>ACCURACY</span>
+              <span style={{ color: "#fbbf24" }}>{accuracy}%</span>
+            </div>
+            <div style={{
+              height: "8px", borderRadius: "999px",
+              background: "rgba(0,0,0,0.5)", overflow: "hidden",
+              border: "1px solid rgba(167,139,250,0.18)",
+            }}>
+              <div style={{
+                width: `${accuracy}%`, height: "100%", borderRadius: "999px",
+                background: "linear-gradient(90deg, #c026d3 0%, #e879f9 50%, #fbbf24 100%)",
+                boxShadow: "0 0 8px rgba(232,121,249,0.6)",
+              }} />
+            </div>
+          </div>
+
+          {/* Reward panel — rank, XP, level-up, new achievements */}
+          <RewardPanel
+            submitting={submitting}
+            signingOnChain={signingOnChain}
+            result={submitResult}
+            error={submitError}
+            txError={txError}
+            score={score}
+          />
+
+          {/* CTAs */}
+          <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
+            <JuicyBtn label="PLAY AGAIN" wall="#7c1d5a"
+              face="linear-gradient(160deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)"
+              onClick={onPlayAgain} />
+            <JuicyBtn label="EXIT" wall="#1a0550"
+              face="linear-gradient(160deg, #c084fc 0%, #a78bfa 50%, #6b21a8 100%)"
+              onClick={onExit} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Reward panel — shown on the finish screen after submitting ──────────────
+// State machine:
+//   signingOnChain → "CONFIRM IN WALLET…" (wallet popup is open)
+//   submitting      → "SAVING SCORE…"       (off-chain save in flight)
+//   txError        → "TRANSACTION REJECTED" (user said no to the on-chain tx)
+//   error          → generic red error line (off-chain save failed)
+//   result         → rank + XP + level-up + new achievements
+function RewardPanel({
+  submitting, signingOnChain, result, error, txError, score,
+}: {
+  submitting: boolean;
+  signingOnChain: boolean;
+  result: FinishedSubmit | null;
+  error: string | null;
+  txError: string | null;
+  score: number;
+}) {
+  // Wallet popup is open — highest priority state
+  if (signingOnChain) {
+    return (
+      <div style={{
+        marginTop: "16px", padding: "12px",
+        borderRadius: "10px",
+        background: "rgba(251,191,36,0.1)",
+        border: "1px solid rgba(251,191,36,0.35)",
+        color: "#fbbf24",
+        fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em",
+        textAlign: "center",
+        boxShadow: "0 0 16px rgba(251,191,36,0.2)",
+      }}>
+        ✦ CONFIRM IN YOUR WALLET ✦
+        <div style={{
+          color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 700,
+          letterSpacing: "0.1em", marginTop: "4px",
+        }}>Signing records your score on-chain</div>
+      </div>
+    );
+  }
+
+  // Off-chain save in flight (after on-chain tx confirmed)
+  if (submitting) {
+    return (
+      <div style={{
+        marginTop: "16px", padding: "10px 12px",
+        borderRadius: "10px",
+        background: "rgba(167,139,250,0.08)",
+        border: "1px solid rgba(167,139,250,0.2)",
+        color: "rgba(200,180,255,0.7)",
+        fontSize: "11px", fontWeight: 900, letterSpacing: "0.14em",
+        textAlign: "center",
+      }}>
+        SAVING SCORE…
+      </div>
+    );
+  }
+
+  // On-chain rejection — own red style with a hint to retry
+  if (txError) {
+    return (
+      <div style={{
+        marginTop: "16px", padding: "10px 12px",
+        borderRadius: "10px",
+        background: "rgba(239,68,68,0.1)",
+        border: "1px solid rgba(239,68,68,0.35)",
+        color: "#fca5a5",
+        fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
+        textAlign: "center",
+      }}>
+        {txError}
+        <div style={{
+          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
+          letterSpacing: "0.1em", marginTop: "4px",
+        }}>Tap PLAY AGAIN to try again</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        marginTop: "16px", padding: "10px 12px",
+        borderRadius: "10px",
+        background: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(239,68,68,0.2)",
+        color: "rgba(252,165,165,0.85)",
+        fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em",
+        textAlign: "center",
+      }}>
+        {error}
+      </div>
+    );
+  }
+
+  if (!result) return null;
+
+  const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
+  const showPbDelta  = isNewPb && typeof prevBest === "number" && prevBest > 0;
+  const showFirstPb  = isNewPb && !showPbDelta;
+
+  return (
+    <RewardContent
+      rank={rank}
+      xpEarned={xpEarned}
+      level={level}
+      leveledUp={leveledUp}
+      isNewPb={isNewPb}
+      showPbDelta={showPbDelta}
+      showFirstPb={showFirstPb}
+      prevBest={prevBest}
+      newAchievements={newAchievements}
+      score={score}
+    />
+  );
+}
+
+// ─── RewardContent — separated so we can fire stings when callouts mount ────
+// Each callout has its own short useEffect that plays its specific chime the
+// first time the card renders. Order-sequenced with setTimeout so you hear
+// PB -> level up -> achievement as stacked events instead of one blurry mush.
+type RewardContentProps = {
+  rank: number | undefined;
+  xpEarned: number | undefined;
+  level: number | undefined;
+  leveledUp: boolean | undefined;
+  isNewPb: boolean | undefined;
+  showPbDelta: boolean | undefined;
+  showFirstPb: boolean | undefined;
+  prevBest: number | undefined;
+  newAchievements: { id: string; name: string; icon?: string; desc?: string }[];
+  score: number;
+};
+
+function RewardContent({
+  rank, xpEarned, level, leveledUp, isNewPb, showPbDelta, showFirstPb, prevBest, newAchievements, score,
+}: RewardContentProps) {
+  // Stagger the stings so each one is individually audible. Rank hits first
+  // (it's always there), PB second (if earned), level-up third, achievements
+  // last. Each has its own chime — layered, they read as a celebration build.
+  useEffect(() => {
+    if (rank) playRankReveal();
+  }, [rank]);
+  useEffect(() => {
+    if (isNewPb) {
+      const t = setTimeout(() => playSaveSuccess(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [isNewPb]);
+  useEffect(() => {
+    if (leveledUp) {
+      const t = setTimeout(() => playLevelUp(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [leveledUp]);
+  useEffect(() => {
+    if (newAchievements.length > 0) {
+      const t = setTimeout(() => playAchievementChime(), 900);
+      return () => clearTimeout(t);
+    }
+  }, [newAchievements.length]);
+
+  return (
+    <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+      {/* Rank + XP strip */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px",
+      }}>
+        {rank ? (
+          <div style={{
+            padding: "10px 8px", borderRadius: "10px",
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.28)",
+            textAlign: "center",
+          }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
+            <div style={{ color: "#fbbf24", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: "2px" }}>
+              #{rank}
+            </div>
+          </div>
+        ) : <div />}
+        {typeof xpEarned === "number" ? (
+          <div style={{
+            padding: "10px 8px", borderRadius: "10px",
+            background: "rgba(167,139,250,0.1)",
+            border: "1px solid rgba(167,139,250,0.3)",
+            textAlign: "center",
+          }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
+            <div style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: "2px" }}>
+              +{xpEarned}
+            </div>
+          </div>
+        ) : <div />}
+      </div>
+
+      {/* Personal-best callout — beat your previous high score */}
+      {showPbDelta && typeof prevBest === "number" && (
+        <div style={{
+          padding: "10px 12px", borderRadius: "10px",
+          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
+          border: "1px solid rgba(6,182,212,0.4)",
+          textAlign: "center",
+          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
+          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        }}>
+          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+            ★ NEW PERSONAL BEST ★
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", fontWeight: 800, marginTop: "3px" }}>
+            Beat your previous {prevBest} by{" "}
+            <span style={{ color: "#86efac", fontWeight: 900 }}>
+              +{Math.max(0, score - prevBest)}
+            </span>
+          </div>
+        </div>
+      )}
+      {showFirstPb && (
+        <div style={{
+          padding: "10px 12px", borderRadius: "10px",
+          background: "rgba(6,182,212,0.1)",
+          border: "1px solid rgba(6,182,212,0.35)",
+          textAlign: "center",
+          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        }}>
+          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+            ★ FIRST PERSONAL BEST ★
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px", fontWeight: 700, marginTop: "3px" }}>
+            Your score is now on the leaderboard
           </div>
         </div>
       )}
 
-      {/* Screen shake style */}
-      <style>{`
-        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
-        @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
-        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
-        @keyframes walletPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.12);opacity:0.85} }
-        @keyframes dot1 { 0%,80%,100%{transform:scale(0.6);opacity:0.3} 40%{transform:scale(1);opacity:1} }
-        ${shakeScreen ? 'body{animation:shake 0.3s ease}' : ''}
-      `}</style>
+      {/* Level-up callout */}
+      {leveledUp && level && (
+        <div style={{
+          padding: "10px 12px", borderRadius: "10px",
+          background: "linear-gradient(90deg, rgba(251,191,36,0.15) 0%, rgba(232,121,249,0.15) 100%)",
+          border: "1px solid rgba(251,191,36,0.4)",
+          textAlign: "center",
+          boxShadow: "0 0 20px rgba(251,191,36,0.2)",
+          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        }}>
+          <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+            ★ LEVEL UP ★
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", fontWeight: 800, marginTop: "3px" }}>
+            You&apos;re now Level {level}
+          </div>
+        </div>
+      )}
+
+      {/* New achievements */}
+      {newAchievements.length > 0 && (
+        <div style={{
+          padding: "10px 12px", borderRadius: "10px",
+          background: "rgba(34,197,94,0.1)",
+          border: "1px solid rgba(34,197,94,0.35)",
+          animation: "bounce-scale-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both",
+        }}>
+          <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", textAlign: "center", marginBottom: "6px" }}>
+            ✦ NEW ACHIEVEMENT{newAchievements.length > 1 ? "S" : ""} ✦
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {newAchievements.map(a => (
+              <div key={a.id} style={{
+                display: "flex", alignItems: "center", gap: "8px",
+                color: "rgba(255,255,255,0.9)", fontSize: "12px", fontWeight: 800,
+              }}>
+                <span style={{ fontSize: "16px" }}>{a.icon || "🏆"}</span>
+                <span>{a.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{
+      borderRadius: "10px",
+      background: "rgba(255,255,255,0.04)",
+      border: `1px solid ${color}44`,
+      padding: "8px 4px", textAlign: "center",
+    }}>
+      <div style={{ color, fontSize: "17px", fontWeight: 900, textShadow: `0 0 10px ${color}88` }}>{value}</div>
+      <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "7px", fontWeight: 800, letterSpacing: "0.1em", marginTop: "2px" }}>{label}</div>
+    </div>
+  );
+}
+
+function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string; face: string; onClick: () => void }) {
+  return (
+    <div role="button" tabIndex={0} onClick={onClick}
+      style={{ flex: 1, cursor: "pointer", userSelect: "none" }}
+      onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(3px)"; }}
+      onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}>
+      <div style={{
+        borderRadius: "14px", background: wall, paddingBottom: "5px",
+        boxShadow: "0 10px 22px -4px rgba(0,0,0,0.6)",
+      }}>
+        <div style={{
+          borderRadius: "12px 12px 10px 10px",
+          background: face,
+          padding: "12px 8px", textAlign: "center",
+          border: "2px solid rgba(255,255,255,0.45)",
+          boxShadow: "inset 0 6px 14px rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.3)",
+          position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", top: "2px", left: "4%", right: "4%", height: "46%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)",
+            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
+          }} />
+          <span style={{
+            position: "relative", zIndex: 1,
+            color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.14em",
+            textShadow: "0 1px 2px rgba(0,0,0,0.4)",
+          }}>{label}</span>
+        </div>
+      </div>
     </div>
   );
 }

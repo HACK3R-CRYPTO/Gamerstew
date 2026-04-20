@@ -1,65 +1,36 @@
-# GameArena — Frontend
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Next.js 15 app for GameArena — a competitive gaming platform on Celo Mainnet powered by GoodDollar G$.
+## Getting Started
 
-## Stack
-
-- **Next.js 15** (App Router, Server Actions)
-- **Privy** — wallet connect + auth
-- **wagmi / viem** — on-chain reads/writes
-- **Supabase** — score data (via server actions only)
-- **GoodDollar Identity SDK** — Sybil-resistant verification
-
-## Quick Start
+First, run the development server:
 
 ```bash
-npm install
-npm run dev       # http://localhost:3000
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-## Environment Variables
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Create a `.env.local` file:
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-```bash
-# Privy
-NEXT_PUBLIC_PRIVY_APP_ID=
-PRIVY_APP_SECRET=
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-# Backend
-NEXT_PUBLIC_BACKEND_URL=http://localhost:3005
-BACKEND_URL=http://localhost:3005
-INTERNAL_SECRET=<shared secret with backend>
+## Learn More
 
-# Contracts (Celo Mainnet)
-NEXT_PUBLIC_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
-NEXT_PUBLIC_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
-NEXT_PUBLIC_GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
-NEXT_PUBLIC_G_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
-NEXT_PUBLIC_AI_AGENT_ADDRESS=0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1
-NEXT_PUBLIC_ERC8004_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
-NEXT_PUBLIC_AGENT_TOKEN_ID=6386
-```
+To learn more about Next.js, take a look at the following resources:
 
-## Pages
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-| Route | Description |
-|---|---|
-| `/` | Home — game cards, wager, FAQ, onboarding |
-| `/games/rhythm` | Rhythm Rush — tap to the beat |
-| `/games/simon` | Simon Memory — repeat color sequences |
-| `/games/arena` | Arena — challenge Markov-1 AI |
-| `/leaderboard` | Rankings, seasons, PvP history |
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Key Architecture
+## Deploy on Vercel
 
-- **Server Actions** (`app/actions/game.ts`) — score submission runs server-side. `PRIVY_APP_SECRET` and `INTERNAL_SECRET` never reach the browser.
-- **Score flow**: Browser → Next.js Server Action → Express backend → Supabase + on-chain tx
-- **Security**: `INTERNAL_SECRET` header on all backend calls. Backend fails to start if secret is missing.
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-## Build
-
-```bash
-npm run build
-npm start
-```
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

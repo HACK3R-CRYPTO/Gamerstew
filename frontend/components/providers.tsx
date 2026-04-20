@@ -3,7 +3,6 @@
 import { PrivyProvider } from '@privy-io/react-auth';
 import { WagmiProvider } from '@privy-io/wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { celo } from 'viem/chains';
 import { wagmiConfig, supportedChains } from '@/lib/wagmiConfig';
 import { Toaster } from 'react-hot-toast';
 import { SelfVerificationProvider } from '@/contexts/SelfVerificationContext';
@@ -29,10 +28,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         appearance: {
           theme: 'dark',
           accentColor: '#7b2ff7',
-          logo: '/logo.png',
+          logo: '/components/game_arena_text.png',
           showWalletLoginFirst: false,
         },
-        loginMethods: ['email', 'wallet', 'google', 'twitter'],
+        loginMethods: ['email', 'wallet', 'google'],
         defaultChain: supportedChains[0],
         supportedChains: [...supportedChains],
         embeddedWallets: {
@@ -48,13 +47,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <MiniPayConnector />
           <SelfVerificationProvider>
             <Toaster
-              position="top-right"
+              position="top-center"
               toastOptions={{
                 style: {
-                  background: 'rgba(13,13,25,0.9)',
-                  border: '1px solid rgba(0,212,255,0.1)',
+                  background: 'rgba(20,8,60,0.95)',
+                  border: '1px solid rgba(140,80,255,0.3)',
                   color: '#fff',
-                  fontFamily: 'Orbitron, sans-serif',
+                  fontFamily: 'Melon Pop, sans-serif',
+                  fontSize: '13px',
                 },
               }}
             />

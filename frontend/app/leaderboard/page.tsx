@@ -1,542 +1,1277 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
-import { useAccount, usePublicClient } from 'wagmi';
-import { formatUnits } from 'viem';
-import { CONTRACT_ADDRESSES } from '@/lib/contracts';
+import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useAccount } from "wagmi";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import BottomNav from "@/components/BottomNav";
+import MobileStreakChip from "@/components/MobileStreakChip";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3005';
+// ─── Splash icons ──────────────────────────────────────────────────────────────
+const D = "/splash_screen_icons/dice.png";
+const G = "/splash_screen_icons/gamepad.png";
+const J = "/splash_screen_icons/joystick.png";
+const M = "/splash_screen_icons/golden_music.png";
+const V = "/splash_screen_icons/vending.png";
+
+// Desktop decoratives — curated 3+3 at the edges. Matches home/games.
+// Hidden on mobile via `.icon-float--desktop`.
+const LEFT_ICONS = [
+  { src: D, top: "2%", left: "-22px", size: 110, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.8 },
+  { src: J, top: "48%", left: "-14px", size: 90, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.65 },
+  { src: G, top: "82%", left: "-10px", size: 100, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.7 },
+];
+const RIGHT_ICONS = [
+  { src: D, top: "4%", right: "-24px", size: 100, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.75 },
+  { src: V, top: "44%", right: "-8px", size: 105, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.65 },
+  { src: M, top: "80%", right: "-6px", size: 86, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.7 },
+];
+
+// Mobile decoratives — 3+3 smaller at viewport edges. Podium art is the
+// hero, so icons are pushed past the edge and half-visible, reading as
+// atmosphere rather than competing elements. Hidden on desktop via CSS.
+type MobileIcon = {
+  src: string;
+  top: string;
+  left?: string;
+  right?: string;
+  size: number;
+  delay: number;
+  dur: number;
+  glow: string;
+  rotate: number;
+  opacity: number;
+};
+const MOBILE_LEFT_ICONS: MobileIcon[] = [
+  { src: D, top: "6%", left: "-24px", size: 60, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.45 },
+  { src: J, top: "48%", left: "-22px", size: 54, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.4 },
+  { src: G, top: "84%", left: "-18px", size: 58, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.4 },
+];
+const MOBILE_RIGHT_ICONS: MobileIcon[] = [
+  { src: D, top: "10%", right: "-26px", size: 58, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.45 },
+  { src: V, top: "52%", right: "-20px", size: 62, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.4 },
+  { src: M, top: "86%", right: "-18px", size: 52, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.45 },
+];
+
+const NAV_ITEMS = [
+  { label: "Home", path: "/home", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg> },
+  { label: "Games", path: "/games", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 00-1 1v10a1 1 0 001 1h18a1 1 0 001-1V7a1 1 0 00-1-1zm-10 7H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 1a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-3a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" /></svg> },
+  { label: "Leaderboard", path: "/leaderboard", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M11 21H5a2 2 0 01-2-2v-7a2 2 0 012-2h6v11zm2 0V6a2 2 0 012-2h4a2 2 0 012 2v13h-8z" /></svg> },
+  { label: "Profile", path: "/profile", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" /></svg> },
+];
 
 const TABS = [
-  { id: 'live', label: 'RANKINGS' },
-  { id: 'competition', label: '🏆 3-WEEK' },
-  { id: 'history', label: 'SEASONS' },
-  { id: 'pvp', label: 'PVP' },
+  { id: "rankings", label: "RANKINGS", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "seasons", label: "SEASONS", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "pvp", label: "PVP ARENA", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
 ];
+
 const GAME_TABS = [
-  { id: 'rhythm', label: 'RHYTHM_RUSH', accent: '#a855f7' },
-  { id: 'simon', label: 'SIMON_MEMORY', accent: '#06b6d4' },
+  { id: "rhythm", label: "RHYTHM_RUSH", accent: "#c026d3" },
+  { id: "simon", label: "SIMON_MEMORY", accent: "#06b6d4" },
 ];
-const MEDALS = ['🥇', '🥈', '🥉'];
-const GAME_ACCENT: Record<string, string> = { rhythm: '#a855f7', simon: '#06b6d4' };
 
-type Entry = { player: string; username?: string; score: number; timestamp: number; gWon?: number; streak?: number };
-function fmt(addr: string, username?: string) {
-  if (!addr || addr === 'you') return 'YOU';
+// Tier pyramid — elite tiers stay rare (like LoL: <1% Master, ~3% Diamond).
+//   #1       → MASTER    (the king)
+//   #2-3     → DIAMOND   (podium runners-up)
+//   #4-6     → PLATINUM  (elite competitive)
+//   #7-15    → GOLD      (solid regulars)
+//   #16-50   → SILVER    (active players)
+//   #51+     → BRONZE    (everyone else)
+function rowColorByRank(rank: number): string {
+  if (rank === 1) return "#f472b6"; // MASTER
+  if (rank <= 3) return "#a78bfa"; // DIAMOND
+  if (rank <= 6) return "#67e8f9"; // PLATINUM
+  if (rank <= 15) return "#fbbf24"; // GOLD
+  if (rank <= 50) return "#c0c0c0"; // SILVER
+  return "#cd7f32";                    // BRONZE
+}
+
+function tierLabelByRank(rank: number): string {
+  if (rank === 1) return "MASTER I";
+  if (rank <= 3) return `DIAMOND ${rank === 2 ? "I" : "II"}`;
+  if (rank <= 6) return `PLATINUM ${rank === 4 ? "I" : rank === 5 ? "II" : "III"}`;
+  if (rank <= 15) return `GOLD ${rank <= 9 ? "I" : rank <= 12 ? "II" : "III"}`;
+  if (rank <= 50) return `SILVER ${rank <= 25 ? "I" : rank <= 38 ? "II" : "III"}`;
+  if (rank <= 200) return `BRONZE ${rank <= 100 ? "I" : "II"}`;
+  return "BRONZE III";
+}
+
+type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number };
+
+// /api/seasons response
+type PastSeason = {
+  season: number;
+  startTs: number;
+  endTs: number;
+  prizePot: number;
+  sealedAt: number;
+  totalPlayers?: number;
+  rhythm: Entry[];
+  simon: Entry[];
+};
+type SeasonsData = {
+  currentSeason: number;
+  currentEndsAt: number;
+  live: { rhythm: Entry[]; simon: Entry[] };
+  past: PastSeason[];
+};
+
+// /api/competition response
+type CompRanking = { wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number };
+type CompetitionData = {
+  weeks: number[];
+  prizes: { first: number; second: number; third: number };
+  compEnd: number;
+  weeksLeft: number;
+  currentWeek: number;
+  rankings: CompRanking[];
+};
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+
+// ─── Dummy data for preview ────────────────────────────────────────────────────
+const DUMMY_ENTRIES: Entry[] = [
+  { player: "0xronayan0000000000000000000000000000a001", username: "Ronayan", score: 985, timestamp: 0 },
+  { player: "0xmarina00000000000000000000000000000a002", username: "Marina", score: 942, timestamp: 0 },
+  { player: "0xnedahom0000000000000000000000000000a003", username: "Nedahom", score: 918, timestamp: 0 },
+  { player: "0xamanko00000000000000000000000000000a004", username: "Amanko", score: 870, timestamp: 0 },
+  { player: "0xnichaina000000000000000000000000000a005", username: "Nichaina", score: 844, timestamp: 0 },
+  { player: "0xbottak00000000000000000000000000000a006", username: "Bottak", score: 821, timestamp: 0 },
+  { player: "0xlumos000000000000000000000000000000a007", username: "lumos", score: 796, timestamp: 0 },
+  { player: "0xminimie0000000000000000000000000000a008", username: "Minimie", score: 754, timestamp: 0 },
+  { player: "0xzuruonyx000000000000000000000000000a009", username: "zuruonyx", score: 720, timestamp: 0 },
+  { player: "0xdevairmd000000000000000000000000000a010", username: "Devairmd", score: 688, timestamp: 0 },
+  { player: "0xmarvysmind00000000000000000000000000a011", username: "Marvysmind", score: 651, timestamp: 0 },
+  { player: "0xprince000000000000000000000000000000a012", username: "prince", score: 613, timestamp: 0 },
+  { player: "0xsshdopey000000000000000000000000000a013", username: "sshdopey", score: 590, timestamp: 0 },
+];
+
+function fmtName(addr: string, username?: string | null) {
   if (username) return username;
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  return `${addr.slice(0, 4)}...${addr.slice(-3)}`;
+}
+function avatarUrl(address: string, username?: string | null) {
+  // Always seed with BOTH username and address — guarantees uniqueness per wallet.
+  const seed = `${username || ""}-${address}`;
+  return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9,fbbf24,f97316,c026d3`;
 }
 
-function timeAgo(ts: number) {
-  const diff = Date.now() / 1000 - ts;
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-function formatDate(ts: number) {
-  return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-
-function SeasonRow({ season, game, myAddress, accent }: { season: { season: number; startTs: number; endTs: number; totalPlayers?: number; [key: string]: unknown }; game: string; myAddress?: string; accent: string }) {
-  const entries = (season[game] as Entry[]) || [];
-  const myRank = myAddress ? entries.findIndex(e => e.player === myAddress.toLowerCase()) + 1 : 0;
-  const totalPlayers = (season.totalPlayers as number) || entries.length;
-  if (entries.length === 0) return null;
+// ─── Juicy Pill Tab ────────────────────────────────────────────────────────────
+function PillTab({
+  label, active, wallColor, faceGrad, glow, onClick, compact = false,
+}: {
+  label: string; active: boolean; wallColor: string; faceGrad: string;
+  glow: string; onClick: () => void;
+  // compact: mobile shrinks padding, font, shadow spread. The default
+  // shadow blooms ~40px past the pill — on a 390px viewport that caused
+  // the active pill's glow to bleed off-screen.
+  compact?: boolean;
+}) {
   return (
-    <div style={{ padding: '12px 16px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', marginBottom: '10px', background: myRank > 0 ? `${accent}08` : 'rgba(0,0,0,0.2)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <div>
-          <span style={{ color: '#9ca3af', fontSize: '12px', fontWeight: 700 }}>WEEK {season.season}</span>
-          <span style={{ color: '#374151', fontSize: '9px', marginLeft: '8px' }}>{formatDate(season.startTs)} – {formatDate(season.endTs)}</span>
+    <div role="button" tabIndex={0} onClick={onClick}
+      style={{ cursor: "pointer", userSelect: "none", transition: "transform 0.15s" }}
+      onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.95) translateY(3px)"; }}
+      onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+    >
+      <div style={{
+        borderRadius: "999px",
+        background: active ? wallColor : "#1a0550",
+        paddingBottom: compact ? "4px" : "5px",
+        boxShadow: active
+          ? compact
+            ? `0 0 0 1.5px #3b82f6, 0 0 12px ${glow}, 0 6px 16px -4px ${glow}`
+            : `0 0 0 2px #3b82f6, 0 0 20px ${glow}, 0 0 40px ${glow}, 0 10px 24px -4px ${glow}`
+          : "0 6px 16px -4px rgba(0,0,0,0.5)",
+        transition: "all 0.2s",
+      }}>
+        <div style={{
+          borderRadius: "999px",
+          background: active ? faceGrad : "linear-gradient(180deg, #3b1fa3 0%, #1e0762 100%)",
+          padding: compact ? "7px 14px" : "10px 22px",
+          textAlign: "center",
+          position: "relative",
+          overflow: "hidden",
+          border: active ? "2px solid rgba(255,255,255,0.5)" : "2px solid rgba(255,255,255,0.12)",
+          boxShadow: active
+            ? "inset 0 6px 14px rgba(255,255,255,0.7), inset 0 -3px 6px rgba(0,0,0,0.35)"
+            : "inset 0 3px 8px rgba(255,255,255,0.06), inset 0 -2px 5px rgba(0,0,0,0.35)",
+        }}>
+          {/* Gloss crescent */}
+          {active && (
+            <div style={{
+              position: "absolute", top: "2px", left: "6%", right: "6%", height: "46%",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+              borderRadius: "999px", pointerEvents: "none",
+            }} />
+          )}
+          <span style={{
+            position: "relative", zIndex: 1,
+            color: active ? "white" : "rgba(220,200,255,0.6)",
+            fontSize: compact ? "11px" : "13px",
+            fontWeight: 900, letterSpacing: "0.08em",
+            textShadow: active ? "0 2px 4px rgba(0,0,0,0.4)" : "none",
+            whiteSpace: "nowrap",
+          }}>{label}</span>
         </div>
-        {myRank > 0 && (
-          <div style={{ padding: '3px 10px', borderRadius: '10px', background: myRank === 1 ? 'rgba(245,158,11,0.15)' : `${accent}15`, border: `1px solid ${myRank === 1 ? 'rgba(245,158,11,0.4)' : `${accent}40`}`, color: myRank === 1 ? '#f59e0b' : accent, fontSize: '10px', fontWeight: 900 }}>
-            {myRank === 1 ? '🥇' : myRank === 2 ? '🥈' : myRank === 3 ? '🥉' : `#${myRank}`} YOUR FINISH
-          </div>
-        )}
-      </div>
-      {/* Total players pill */}
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '10px', padding: '3px 10px', borderRadius: '20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <span style={{ color: '#6b7280', fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em' }}>👥 {totalPlayers} PLAYER{totalPlayers !== 1 ? 'S' : ''} THIS WEEK</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {entries.slice(0, 10).map((e, i) => {
-          const isMe = myAddress && e.player === myAddress.toLowerCase();
-          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-          return (
-            <div key={e.player} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '5px 8px', borderRadius: '6px', background: isMe ? `${accent}12` : 'transparent' }}>
-              <span style={{ fontSize: medal ? '14px' : '10px', minWidth: '20px', color: medal ? undefined : '#4b5563', fontWeight: 700, textAlign: 'center' }}>{medal || `#${i + 1}`}</span>
-              <span style={{ color: isMe ? accent : '#9ca3af', fontSize: '11px', fontWeight: isMe ? 700 : 400, flex: 1 }}>{isMe ? 'YOU' : fmt(e.player, e.username)}</span>
-              <span style={{ color: i === 0 ? accent : '#6b7280', fontSize: '13px', fontWeight: 900 }}>{e.score}</span>
-              <span style={{ color: '#374151', fontSize: '9px' }}>pts</span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );
 }
 
-export default function Leaderboard() {
-  const { address } = useAccount();
-  const [activeTab, setActiveTab] = useState('live');
-  const [gameTab, setGameTab] = useState('rhythm');
+// ─── Confetti sparkle particles ────────────────────────────────────────────────
+const CONFETTI = [
+  { left: "8%", top: "25%", color: "#f9a8d4", size: 10, shape: "star", dur: 3.5, delay: 0.0 },
+  { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "22%", top: "20%", color: "#22d3ee", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note", dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#e879f9", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle", dur: 4.0, delay: 0.8 },
+  { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
+  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star", dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#34d399", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note", dur: 4.1, delay: 0.7 },
+  { left: "92%", top: "22%", color: "#fbbf24", size: 10, shape: "sparkle", dur: 3.9, delay: 1.6 },
+  { left: "10%", top: "40%", color: "#22d3ee", size: 11, shape: "triangle", dur: 4.3, delay: 1.8 },
+];
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('game') === 'simon') setGameTab('simon');
-  }, []);
-  const [podium, setPodium] = useState<Entry[]>([]);
-  const [listEntries, setListEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [backendDown, setBackendDown] = useState(false);
-  const [newEntries, setNewEntries] = useState(new Set<string>());
-  const [countdown, setCountdown] = useState(15);
-  const [seasons, setSeasons] = useState<unknown>(null);
-  const [competition, setCompetition] = useState<{ weeks: number[]; prizes: { first: number; second: number; third: number }; compEnd: number; weeksLeft: number; currentWeek: number; rankings: { wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number; weeklyScores: Record<number, Record<string, number>> }[] } | null>(null);
-  const [pvpMatches, setPvpMatches] = useState<{ id: number; challenger: string; opponent: string; wager: bigint; gameType: number; status: number; winner: string }[]>([]);
-  const [pvpLeaders, setPvpLeaders] = useState<{ address: string; count: number }[]>([]);
-  const [listPage, setListPage] = useState(1);
-  const [totalListPages, setTotalListPages] = useState(1);
-  const [totalEntries, setTotalEntries] = useState(0);
-  const prevPlayers = useRef(new Set<string>());
-  const countRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const publicClient = usePublicClient();
+function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
+  const base = {
+    position: "absolute" as const,
+    left: p.left, top: p.top,
+    width: p.size, height: p.size,
+    animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`,
+    pointerEvents: "none" as const,
+    filter: `drop-shadow(0 0 6px ${p.color})`,
+  };
+  if (p.shape === "dot") return <div style={{ ...base, background: p.color, borderRadius: "50%" }} />;
+  if (p.shape === "triangle") return (
+    <div style={{ ...base, width: 0, height: 0, borderLeft: `${p.size / 2}px solid transparent`, borderRight: `${p.size / 2}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}`, background: "transparent" }} />
+  );
+  if (p.shape === "note") return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>♪</div>;
+  if (p.shape === "sparkle") return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>✦</div>;
+  return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
+}
 
-  const tab = GAME_TABS.find(t => t.id === gameTab)!;
+// ─── Stage Podium (podium.png background + 3 character PNGs on top) ────────────
+function StagePodium({ podium }: { podium: Entry[] }) {
+  const first = podium[0];
+  const second = podium[1];
+  const third = podium[2];
 
-  const LIST_SIZE = 7;
-
-  const fetchPodium = useCallback(async (game: string) => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/leaderboard?game=${game}&offset=0&limit=3`);
-      const data = await res.json();
-      setPodium(data.leaderboard || []);
-      setTotalEntries(data.total || 0);
-    } catch {}
-  }, []);
-
-  const fetchList = useCallback(async (game: string, p = 1, silent = false) => {
-    if (!silent) setLoading(true);
-    setBackendDown(false);
-    try {
-      const offset = 3 + (p - 1) * LIST_SIZE;
-      const res = await fetch(`${BACKEND_URL}/api/leaderboard?game=${game}&offset=${offset}&limit=${LIST_SIZE}`);
-      const data = await res.json();
-      const list: Entry[] = data.leaderboard || [];
-      const fresh = new Set<string>();
-      list.forEach(e => { if (!prevPlayers.current.has(e.player)) fresh.add(e.player); });
-      if (fresh.size) { setNewEntries(fresh); setTimeout(() => setNewEntries(new Set()), 2000); }
-      prevPlayers.current = new Set(list.map(e => e.player));
-      setListEntries(list);
-      const total = data.total || 0;
-      setTotalEntries(total);
-      setTotalListPages(Math.max(1, Math.ceil(Math.max(0, total - 3) / LIST_SIZE)));
-    } catch {
-      setBackendDown(true);
-      setListEntries([]);
-    } finally { setLoading(false); }
-  }, []);
-
-  const fetchScores = useCallback((game: string, silent = false) => {
-    fetchPodium(game);
-    fetchList(game, 1, silent);
-    setListPage(1);
-  }, [fetchPodium, fetchList]);
-
-  const fetchMeta = useCallback(async () => {
-    try {
-      const sRes = await fetch(`${BACKEND_URL}/api/seasons`);
-      if (sRes.ok) setSeasons(await sRes.json());
-    } catch (_) {}
-  }, []);
-
-  const fetchCompetition = useCallback(async () => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/competition`);
-      if (res.ok) setCompetition(await res.json());
-    } catch (_) {}
-  }, []);
-
-  useEffect(() => { fetchScores(gameTab); }, [gameTab, fetchScores]);
-  useEffect(() => { fetchMeta(); }, [fetchMeta]);
-  useEffect(() => { fetchCompetition(); }, [fetchCompetition]);
-
-  useEffect(() => {
-    if (activeTab !== 'pvp' || !publicClient) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const ARENA_ABI = [
-          { name: 'matchCounter', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [] },
-          { name: 'matches', outputs: [{ type: 'tuple', components: [{ name: 'id', type: 'uint256' }, { name: 'challenger', type: 'address' }, { name: 'opponent', type: 'address' }, { name: 'wager', type: 'uint256' }, { name: 'gameType', type: 'uint8' }, { name: 'status', type: 'uint8' }, { name: 'winner', type: 'address' }] }], stateMutability: 'view', type: 'function', inputs: [{ type: 'uint256' }] },
-        ] as const;
-        const count = await publicClient.readContract({ address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`, abi: ARENA_ABI, functionName: 'matchCounter' });
-        const total = Number(count);
-        if (total === 0) return;
-        const start = Math.max(0, total - 50);
-        const ids = Array.from({ length: total - start }, (_, i) => BigInt(total - 1 - i));
-        const results = await publicClient.multicall({
-          contracts: ids.map(id => ({ address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`, abi: ARENA_ABI, functionName: 'matches' as const, args: [id] })),
-        });
-        const matches = results.map((r, i) => {
-          if (r.status === 'failure' || !r.result) return null;
-          const m = r.result as { id: bigint; challenger: string; opponent: string; wager: bigint; gameType: number; status: number; winner: string };
-          return { id: Number(ids[i]), challenger: m.challenger, opponent: m.opponent, wager: m.wager, gameType: Number(m.gameType), status: Number(m.status), winner: m.winner };
-        }).filter(Boolean) as typeof pvpMatches;
-        if (cancelled) return;
-        setPvpMatches(matches);
-        const wins: Record<string, number> = {};
-        matches.forEach(m => {
-          if (m.status === 2 && m.winner && m.winner !== '0x0000000000000000000000000000000000000000') {
-            const w = m.winner.toLowerCase();
-            wins[w] = (wins[w] || 0) + 1;
-          }
-        });
-        setPvpLeaders(Object.entries(wins).map(([a, c]) => ({ address: a, count: c })).sort((a, b) => b.count - a.count).slice(0, 20));
-      } catch (_) {}
-    })();
-    return () => { cancelled = true; };
-  }, [activeTab, publicClient]);
-
-  useEffect(() => {
-    if (activeTab !== 'live') return;
-    setCountdown(15);
-    if (countRef.current) clearInterval(countRef.current);
-    countRef.current = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { fetchScores(gameTab, true); return 15; }
-        return c - 1;
-      });
-    }, 1000);
-    return () => { if (countRef.current) clearInterval(countRef.current); };
-  }, [activeTab, gameTab, fetchScores]);
-
-  const allVisible = [...podium, ...listEntries];
-  const myRankInPodium = address ? podium.findIndex((e: Entry) => e.player.toLowerCase() === address.toLowerCase()) : -1;
-  const myRankInList   = address ? listEntries.findIndex((e: Entry) => e.player.toLowerCase() === address.toLowerCase()) : -1;
-  const myRank = myRankInPodium >= 0
-    ? myRankInPodium + 1
-    : myRankInList >= 0
-      ? 3 + (listPage - 1) * LIST_SIZE + myRankInList + 1
-      : 0;
-  const myScore = address ? allVisible.find((e: Entry) => e.player.toLowerCase() === address.toLowerCase())?.score : null;
-  const aboveEntry = myRank > 1
-    ? myRankInPodium > 0
-      ? podium[myRankInPodium - 1]
-      : myRankInList === 0
-        ? podium[2]
-        : listEntries[myRankInList - 1]
-    : null;
-  const gap = aboveEntry && myScore != null ? aboveEntry.score - myScore : null;
-  const seasonsData = seasons as { currentSeason: number; currentEndsAt: number; live: Record<string, Entry[]>; past: ({ season: number; startTs: number; endTs: number } & Record<string, Entry[]>)[] } | null;
+  // LOCKED — character placements tuned to podium.png (1536x1024). Don't change
+  // unless you also regenerate the podium image with different pedestal positions.
+  const placements = [
+    { char: "/characters/char1.png", entry: first, color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: second, color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char3.png", entry: third, color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+  ];
 
   return (
-    <>
-      <style>{`
-        @keyframes slideDown { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes flashGlow { 0%{box-shadow:none} 30%{box-shadow:0 0 14px currentColor} 100%{box-shadow:none} }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-      `}</style>
+    <div style={{
+      position: "relative",
+      width: "100%", maxWidth: "620px",
+      aspectRatio: "3 / 2",
+      margin: "0 auto",
+    }}>
+      {/* Podium background */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/characters/podium.png"
+        alt="podium"
+        style={{
+          position: "absolute", inset: 0,
+          width: "100%", height: "100%",
+          objectFit: "contain",
+          filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))",
+          zIndex: 1,
+        }}
+      />
 
-      <div style={{ fontFamily: 'Orbitron, monospace', maxWidth: '560px', margin: '0 auto', padding: '0 4px' }}>
+      {/* Floating confetti sparkles */}
+      {CONFETTI.map((p, i) => <ConfettiParticle key={i} p={p} />)}
 
-        {/* Header */}
-        <div style={{ marginBottom: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h1 style={{ color: '#fff', fontSize: '17px', fontWeight: 900, letterSpacing: '2px', margin: 0 }}>LEADERBOARD</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              {activeTab === 'live' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  <span style={{ display: 'inline-block', width: '5px', height: '5px', borderRadius: '50%', background: '#10b981', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                  <span style={{ color: '#374151', fontSize: '9px' }}>{countdown}s</span>
-                </div>
-              )}
-              <button onClick={() => { fetchScores(gameTab); fetchMeta(); }} style={{ color: '#6b7280', fontSize: '9px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron, monospace' }}>↺</button>
-              <Link href="/" style={{ color: '#6b7280', fontSize: '9px', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '4px', whiteSpace: 'nowrap' }}>← BACK</Link>
+      {/* Characters */}
+      {placements.map((pl) => (
+        <div key={pl.rank} style={{
+          position: "absolute",
+          left: `${pl.leftPct}%`,
+          bottom: `${pl.bottomPct}%`,
+          transform: "translateX(-50%)",
+          width: `${pl.widthPct}%`,
+          zIndex: pl.z,
+          display: "flex", flexDirection: "column", alignItems: "center",
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={pl.char}
+            alt={`rank ${pl.rank}`}
+            style={{
+              width: "100%", height: "auto",
+              objectFit: "contain",
+              filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)`,
+            }}
+          />
+        </div>
+      ))}
+
+      {/* Name + score labels — placed just above the character's head */}
+      {placements.map((pl) => {
+        // Character portrait is 2:3 so visible height = widthPct * 1.5 (as % of container width).
+        // Container is 3:2 so 1% of container height = 1.5% of container width.
+        // Character height as % of container height = widthPct * 1.5 / 1.5 * 1.5 = widthPct * 1.5.
+        // Actually: height_in_px = widthPct/100 * W * 1.5;  height_pct_of_H = (widthPct/100 * W * 1.5) / (W * 2/3) * 100 = widthPct * 2.25
+        const charHeightPct = pl.widthPct * 2.25;
+        const labelBottom = pl.bottomPct + charHeightPct + 1;
+        return (
+          <div key={`label-${pl.rank}`} style={{
+            position: "absolute",
+            left: `${pl.leftPct}%`,
+            bottom: `${labelBottom}%`,
+            transform: "translateX(-50%)",
+            textAlign: "center",
+            zIndex: 4,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}>
+            <div style={{
+              color: "white", fontSize: "12px", fontWeight: 900,
+              letterSpacing: "0.04em",
+              textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)`,
+            }}>
+              {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
+            </div>
+            <div style={{
+              color: pl.color, fontSize: "13px", fontWeight: 900,
+              textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`,
+              marginTop: "2px",
+            }}>
+              {pl.entry ? pl.entry.score : 0}
             </div>
           </div>
-          {backendDown && <p style={{ color: '#f59e0b', fontSize: '10px', letterSpacing: '1px', margin: '3px 0 0' }}>OFFLINE — showing local scores</p>}
-        </div>
+        );
+      })}
+    </div>
+  );
+}
 
-        {/* Main tabs */}
-        <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, padding: '7px', background: activeTab === t.id ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeTab === t.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: '8px', color: activeTab === t.id ? '#fff' : '#4b5563', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', transition: 'all 0.2s' }}>{t.label}</button>
-          ))}
+// ─── Player Row (neon bordered pill) ───────────────────────────────────────────
+function PlayerRow({
+  entry, rank, color, isMe,
+}: { entry: Entry; rank: number; color: string; isMe: boolean }) {
+  return (
+    <div style={{
+      borderRadius: "999px",
+      padding: "2.5px",
+      background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`,
+      boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)`,
+    }}>
+      <div style={{
+        borderRadius: "999px",
+        background: isMe
+          ? `linear-gradient(90deg, ${color}26 0%, rgba(20,10,50,0.9) 100%)`
+          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
+        padding: "8px 14px 8px 10px",
+        display: "flex", alignItems: "center", gap: "10px",
+        position: "relative", overflow: "hidden",
+      }}>
+        {/* Rank */}
+        <div style={{
+          minWidth: "22px", textAlign: "center",
+          color: color, fontSize: "15px", fontWeight: 900,
+          textShadow: `0 0 10px ${color}`,
+        }}>{rank}</div>
+        {/* Avatar — DiceBear personas face */}
+        <div style={{
+          width: "34px", height: "34px", borderRadius: "50%",
+          border: `2px solid ${color}aa`,
+          boxShadow: `0 0 8px ${color}77`,
+          flexShrink: 0, overflow: "hidden",
+          background: "#1a0550",
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={avatarUrl(entry.player, entry.username)}
+            alt=""
+            width={34}
+            height={34}
+            style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
+          />
         </div>
-
-        {/* Game sub-tabs */}
-        {activeTab !== 'pvp' && (
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
-            {GAME_TABS.map(t => (
-              <button key={t.id} onClick={() => { setGameTab(t.id); }} style={{ flex: 1, padding: '7px 6px', background: gameTab === t.id ? `${t.accent}18` : 'rgba(255,255,255,0.02)', border: `1px solid ${gameTab === t.id ? t.accent : 'rgba(255,255,255,0.06)'}`, borderRadius: '8px', color: gameTab === t.id ? t.accent : '#6b7280', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px', cursor: 'pointer', fontFamily: 'Orbitron, monospace', transition: 'all 0.2s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</button>
-            ))}
+        {/* Name + tier subtitle (Wild Rift style — tier explicit under the name) */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            color: isMe ? color : "white",
+            fontSize: "12px", fontWeight: 800, lineHeight: 1.15,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {isMe ? "YOU" : fmtName(entry.player, entry.username)}
+          </div>
+          <div style={{
+            color: color, fontSize: "8.5px", fontWeight: 800,
+            letterSpacing: "0.1em", marginTop: "1px",
+            textShadow: `0 0 6px ${color}88`,
+          }}>
+            {tierLabelByRank(rank)}
+          </div>
+        </div>
+        {/* Streak flex chip — shown after at least one return (>= 2 days) */}
+        {entry.streak && entry.streak >= 2 && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: "3px",
+            padding: "2px 7px", borderRadius: "999px",
+            background: "rgba(249,115,22,0.15)",
+            border: "1px solid rgba(249,115,22,0.5)",
+            boxShadow: "0 0 8px rgba(249,115,22,0.35)",
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: "10px" }}>🔥</span>
+            <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, textShadow: "0 0 6px rgba(251,191,36,0.6)" }}>{entry.streak}</span>
           </div>
         )}
+        {/* Score */}
+        <div style={{
+          color: "#fbbf24", fontSize: "11px", fontWeight: 900,
+          letterSpacing: "0.12em",
+          textShadow: "0 0 10px rgba(251,191,36,0.7)",
+          flexShrink: 0,
+        }}>
+          {entry.score}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* LIVE RANKINGS */}
-        {activeTab === 'live' && (
-          <>
-            {myRank > 0 && (
-              <div style={{ marginBottom: '10px', padding: '10px 14px', background: `${tab.accent}10`, border: `1px solid ${tab.accent}35`, borderRadius: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <div>
-                    <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '1px' }}>YOUR RANK</div>
-                    <div style={{ color: tab.accent, fontSize: '22px', fontWeight: 900, lineHeight: 1.1 }}>#{myRank}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: '#6b7280', fontSize: '10px', letterSpacing: '1px' }}>YOUR BEST</div>
-                    <div style={{ color: '#fff', fontSize: '22px', fontWeight: 900, lineHeight: 1.1 }}>{myScore}</div>
-                  </div>
-                </div>
-                {gap !== null && gap > 0 && (
-                  <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                    <div style={{ color: '#ef4444', fontSize: '11px', fontWeight: 700, letterSpacing: '1px' }}>
-                      {gap === 1 ? `1 PT FROM #${myRank - 1} — SO CLOSE` : `${gap} PTS FROM #${myRank - 1} — PLAY AGAIN`}
-                    </div>
-                    <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '3px' }}>{fmt(aboveEntry!.player, aboveEntry!.username)} is blocking your spot</div>
-                  </div>
-                )}
-                {myRank === 1 && (
-                  <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}>
-                    <div style={{ color: '#10b981', fontSize: '11px', fontWeight: 700, letterSpacing: '1px' }}>YOU ARE #1 — DEFEND YOUR THRONE</div>
-                    <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '3px' }}>{podium[1] ? `${fmt(podium[1].player, podium[1].username)} is ${myScore! - podium[1].score} pts behind` : 'No challengers yet'}</div>
-                  </div>
-                )}
-              </div>
-            )}
+// ─── Page ──────────────────────────────────────────────────────────────────────
+export default function LeaderboardPage() {
+  const router = useRouter();
+  const { address } = useAccount();
+  // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState<"rankings" | "seasons" | "pvp">("rankings");
+  const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
+  const [entries, setEntries] = useState<Entry[]>(DUMMY_ENTRIES);
+  const [loading, setLoading] = useState(false);
+  const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
 
-            {podium.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '90px', marginBottom: '10px' }}>
-                {[podium[1], podium[0], podium[2]].map((e, i) => {
-                  const rank = i === 0 ? 2 : i === 1 ? 1 : 3;
-                  const height = rank === 1 ? '100%' : rank === 2 ? '70%' : '52%';
-                  if (!e) return <div key={i} style={{ flex: 1 }} />;
-                  const isMe = address && e.player.toLowerCase() === address.toLowerCase();
-                  const isNew = newEntries.has(e.player);
+  useEffect(() => {
+    if (!address) { setStreak(null); return; }
+    fetch(`${BACKEND_URL}/api/streak/${address}`)
+      .then(r => r.json())
+      .then(d => setStreak({ streak: d.streak || 0, playedToday: !!d.playedToday }))
+      .catch(() => setStreak(null));
+  }, [address]);
+
+  // Seasons + competition data (for SEASONS tab)
+  const [seasonsData, setSeasonsData] = useState<SeasonsData | null>(null);
+  const [competition, setCompetition] = useState<CompetitionData | null>(null);
+  const [selectedSeason, setSelectedSeason] = useState<PastSeason | null>(null);
+  useEffect(() => {
+    if (activeTab !== "seasons") return;
+    fetch(`${BACKEND_URL}/api/seasons`).then(r => r.json()).then(setSeasonsData).catch(() => setSeasonsData(null));
+    fetch(`${BACKEND_URL}/api/competition`).then(r => r.json()).then(setCompetition).catch(() => setCompetition(null));
+  }, [activeTab]);
+
+  // Live countdown to season end (refreshes every second)
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    if (activeTab !== "seasons") return;
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [activeTab]);
+  function formatCountdown(secondsLeft: number) {
+    if (secondsLeft <= 0) return "ENDED";
+    const d = Math.floor(secondsLeft / 86400);
+    const h = Math.floor((secondsLeft % 86400) / 3600);
+    const m = Math.floor((secondsLeft % 3600) / 60);
+    const s = secondsLeft % 60;
+    if (d > 0) return `${d}D ${h}H ${m}M`;
+    if (h > 0) return `${h}H ${m}M ${s}S`;
+    return `${m}M ${s}S`;
+  }
+
+  const fetchEntries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/leaderboard?game=${gameTab}&offset=0&limit=20`);
+      const data = await res.json();
+      const fetched = data.leaderboard || [];
+      setEntries(fetched.length > 0 ? fetched : DUMMY_ENTRIES);
+    } catch {
+      setEntries(DUMMY_ENTRIES);
+    } finally {
+      setLoading(false);
+    }
+  }, [gameTab]);
+
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  const podium = entries.slice(0, 3);
+  const rest = entries.slice(3, 13);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "radial-gradient(ellipse 80% 60% at 50% 15%, #6a18c8 0%, #3b0a9e 30%, #1a044a 60%, #0a0120 100%)",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      {/* Floating icons — split by breakpoint via CSS. No SSR flash. */}
+      {LEFT_ICONS.map((ic, i) => (
+        <div key={`l${i}`} className="icon-float icon-float--desktop" style={{
+          position: "absolute", top: ic.top, left: ic.left, width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 8px ${ic.glow}77)`,
+          opacity: ic.opacity,
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          userSelect: "none", pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
+        </div>
+      ))}
+      {RIGHT_ICONS.map((ic, i) => (
+        <div key={`r${i}`} className="icon-float icon-float--desktop" style={{
+          position: "absolute", top: ic.top, right: ic.right, width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 8px ${ic.glow}77)`,
+          opacity: ic.opacity,
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          userSelect: "none", pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
+        </div>
+      ))}
+      {MOBILE_LEFT_ICONS.map((ic, i) => (
+        <div key={`ml${i}`} className="icon-float icon-float--mobile" style={{
+          position: "absolute", top: ic.top, left: ic.left, width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 6px ${ic.glow}55)`,
+          opacity: ic.opacity,
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          userSelect: "none", pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
+        </div>
+      ))}
+      {MOBILE_RIGHT_ICONS.map((ic, i) => (
+        <div key={`mr${i}`} className="icon-float icon-float--mobile" style={{
+          position: "absolute", top: ic.top, right: ic.right, width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 6px ${ic.glow}55)`,
+          opacity: ic.opacity,
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          userSelect: "none", pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
+        </div>
+      ))}
+
+      {/* Body row: sidebar + center */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative", zIndex: 2 }}>
+
+        {/* Sidebar — desktop only; mobile uses BottomNav below */}
+        {!isMobile && <div style={{
+          width: "68px", flexShrink: 0, alignSelf: "stretch",
+          background: "rgba(4,1,18,0.95)", borderRight: "1px solid rgba(255,255,255,0.06)",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          padding: "16px 0", gap: "6px",
+        }}>
+          {/* Streak chip — played today warm orange, not played today FROZEN
+              (blue flame via hue-rotate + cyan glow). Same chip across
+              profile / games / leaderboard. */}
+          {address && streak && streak.streak > 0 && (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
+              padding: "7px 6px", borderRadius: "12px",
+              background: streak.playedToday
+                ? "linear-gradient(180deg, #7c2d00 0%, #3f1300 100%)"
+                : "linear-gradient(180deg, #0c2742 0%, #041022 100%)",
+              border: `2px solid ${streak.playedToday ? "#f97316" : "#38bdf8"}`,
+              boxShadow: streak.playedToday
+                ? "0 0 14px rgba(249,115,22,0.7), 0 0 28px rgba(249,115,22,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
+                : "0 0 10px rgba(56,189,248,0.45), 0 0 22px rgba(56,189,248,0.15), inset 0 1px 0 rgba(186,230,253,0.15)",
+              minWidth: "46px",
+            }}>
+              <span style={{
+                fontSize: "16px", lineHeight: 1,
+                filter: streak.playedToday
+                  ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))"
+                  : "hue-rotate(190deg) saturate(1.3) brightness(0.95) drop-shadow(0 0 4px rgba(56,189,248,0.7))",
+              }}>🔥</span>
+              <span style={{
+                color: streak.playedToday ? "#fbbf24" : "#bae6fd",
+                fontSize: "13px", fontWeight: 900, lineHeight: 1.1,
+                textShadow: streak.playedToday
+                  ? "0 0 8px rgba(251,191,36,0.7)"
+                  : "0 0 6px rgba(56,189,248,0.6)",
+              }}>{streak.streak}</span>
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {NAV_ITEMS.map(item => {
+            const active = item.path === "/leaderboard";
+            return (
+              <button key={item.path} onClick={() => router.push(item.path)} style={{
+                width: "54px", borderRadius: "12px", padding: "8px 4px 6px",
+                background: active ? "rgba(255,255,255,0.18)" : "transparent", border: "none",
+                color: active ? "white" : "rgba(255,255,255,0.55)",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
+                cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                boxShadow: active ? "0 0 0 1px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.4)" : "none",
+              }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)"; }}
+              >
+                {item.icon}
+                <span style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "0.04em" }}>{item.label.toUpperCase()}</span>
+              </button>
+            );
+          })}
+
+          <div style={{ flex: 1 }} />
+        </div>}
+
+        {/* Center */}
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column",
+            alignItems: "center",
+            // Top padding on mobile needs to clear the active tab's glow
+            // shadow (~20px) or the pill clips against the viewport edge.
+            // Extra bottom padding clears the fixed BottomNav.
+            padding: isMobile ? "24px 14px 96px" : "18px 16px 20px",
+            gap: "14px", overflowY: "auto",
+          }}>
+
+            {/* Juicy pill tabs — compact on mobile so all 3 fit a 360px
+                phone without the active glow bleeding off the viewport. */}
+            <div style={{ display: "flex", gap: isMobile ? "6px" : "10px", flexShrink: 0 }}>
+              {TABS.map(t => (
+                <PillTab
+                  key={t.id}
+                  label={t.label}
+                  active={activeTab === t.id}
+                  wallColor={t.wallColor}
+                  faceGrad={t.faceGrad}
+                  glow={t.glow}
+                  compact={isMobile}
+                  onClick={() => setActiveTab(t.id as typeof activeTab)}
+                />
+              ))}
+            </div>
+
+            {/* Game sub-tabs — stronger fill/border on mobile so the
+                active state reads as a real selection, not a ghost. */}
+            {activeTab !== "pvp" && (
+              <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                {GAME_TABS.map(t => {
+                  const active = gameTab === t.id;
                   return (
-                    <div key={e.player} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{ fontSize: rank === 1 ? '26px' : '20px', marginBottom: '4px' }}>{MEDALS[rank - 1]}</div>
-                      <div style={{ width: '100%', height, background: rank === 1 ? `${tab.accent}22` : 'rgba(255,255,255,0.05)', border: `1px solid ${rank === 1 ? tab.accent : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px 8px 0 0', outline: isMe ? `2px solid ${tab.accent}` : 'none', animation: isNew ? 'flashGlow 1.5s ease-out' : 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', padding: '8px' }}>
-                        <div style={{ color: rank === 1 ? tab.accent : '#fff', fontSize: '14px', fontWeight: 900 }}>{e.score}</div>
-                        <div style={{ color: '#6b7280', fontSize: '9px', marginTop: '2px', textAlign: 'center' }}>{isMe ? 'YOU' : fmt(e.player, e.username)}</div>
-                        {e.streak && e.streak >= 1 && (
-                          <div style={{ fontSize: '8px', fontWeight: 700, color: '#f59e0b', marginTop: '2px' }}>🔥{e.streak}d</div>
-                        )}
-                      </div>
-                    </div>
+                    <button key={t.id} onClick={() => setGameTab(t.id as typeof gameTab)} style={{
+                      padding: isMobile ? "7px 16px" : "6px 14px",
+                      borderRadius: "999px", fontFamily: "inherit",
+                      background: active
+                        ? `linear-gradient(180deg, ${t.accent}55 0%, ${t.accent}22 100%)`
+                        : "rgba(255,255,255,0.04)",
+                      border: `1.5px solid ${active ? t.accent : "rgba(255,255,255,0.14)"}`,
+                      color: active ? "white" : "rgba(200,180,255,0.65)",
+                      fontSize: isMobile ? "11px" : "10px",
+                      fontWeight: 800, letterSpacing: "0.1em",
+                      cursor: "pointer", transition: "all 0.15s",
+                      boxShadow: active
+                        ? `0 0 18px ${t.accent}77, inset 0 1px 0 rgba(255,255,255,0.15)`
+                        : "none",
+                      textShadow: active ? `0 0 10px ${t.accent}` : "none",
+                    }}>{t.label}</button>
                   );
                 })}
               </div>
             )}
 
-            <div style={{ background: 'rgba(10,10,20,0.8)', border: `1px solid ${tab.accent}22`, borderRadius: '12px', overflow: 'hidden' }}>
-              {loading ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#4b5563', fontSize: '12px', letterSpacing: '1px' }}>LOADING...</div>
-              ) : listEntries.length === 0 && podium.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎮</div>
-                  <div style={{ color: '#4b5563', fontSize: '12px', letterSpacing: '1px' }}>NO SCORES YET</div>
-                </div>
-              ) : listEntries.length === 0 && podium.length > 0 ? (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#4b5563', fontSize: '10px', letterSpacing: '1px' }}>TOP {podium.length} PLAYER{podium.length > 1 ? 'S' : ''} SHOWN ABOVE</div>
-              ) : listEntries.map((e: Entry, i: number) => {
-                const globalRank = 3 + (listPage - 1) * LIST_SIZE + i + 1;
-                const isMe = address && e.player.toLowerCase() === address.toLowerCase();
-                const isNew = newEntries.has(e.player);
-                return (
-                  <div key={`${e.player}-${i}`} style={{ padding: '10px 14px', borderBottom: i < listEntries.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: isMe ? `${tab.accent}0d` : isNew ? 'rgba(16,185,129,0.06)' : 'transparent', outline: isMe ? `1px solid ${tab.accent}40` : 'none', animation: isNew ? 'slideDown 0.4s ease-out' : 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '12px', minWidth: '26px', textAlign: 'center', color: '#6b7280', fontWeight: 700 }}>{`#${globalRank}`}</span>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ color: isMe ? tab.accent : '#d1d5db', fontSize: '13px', fontWeight: 700 }}>
-                              {isMe ? 'YOU' : fmt(e.player, e.username)}
-                            </span>
-                            {isNew && <span style={{ color: '#10b981', fontSize: '9px' }}>NEW</span>}
-                            {e.streak && e.streak >= 1 && (
-                              <span style={{ fontSize: '9px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', padding: '1px 5px' }}>
-                                🔥 {e.streak}d
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ color: '#4b5563', fontSize: '10px', marginTop: '1px' }}>{timeAgo(e.timestamp)}</div>
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ color: '#fff', fontSize: '16px', fontWeight: 900 }}>{e.score}</div>
-                        <div style={{ color: '#4b5563', fontSize: '10px' }}>pts</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {!loading && totalListPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', gap: '8px' }}>
-                <button onClick={() => { const p = Math.max(1, listPage - 1); setListPage(p); fetchList(gameTab, p, true); }} disabled={listPage === 1} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: listPage === 1 ? '#374151' : '#9ca3af', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: listPage === 1 ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron, monospace' }}>← PREV</button>
-                <span style={{ color: '#4b5563', fontSize: '10px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>{listPage} / {totalListPages}</span>
-                <button onClick={() => { const p = Math.min(totalListPages, listPage + 1); setListPage(p); fetchList(gameTab, p, true); }} disabled={listPage === totalListPages} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: listPage === totalListPages ? '#374151' : '#9ca3af', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', cursor: listPage === totalListPages ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron, monospace' }}>NEXT →</button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* 3-WEEK COMPETITION */}
-        {activeTab === 'competition' && (
-          <div>
-            {!competition ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#4b5563', fontSize: '12px' }}>LOADING...</div>
-            ) : (
+            {/* RANKINGS — Podium + rows */}
+            {activeTab === "rankings" && (
               <>
-                {/* Header */}
-                <div style={{ padding: '14px 16px', borderRadius: '12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', marginBottom: '14px' }}>
-                  <div style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 900, letterSpacing: '2px', marginBottom: '6px' }}>3-WEEK COMPETITION</div>
-                  <div style={{ color: '#9ca3af', fontSize: '10px', marginBottom: '10px' }}>
-                    Weeks {competition.weeks.join(', ')} — highest total score wins. {competition.weeksLeft > 0 ? `${competition.weeksLeft} week${competition.weeksLeft > 1 ? 's' : ''} left.` : 'Competition ended.'}
+                {loading ? (
+                  <div style={{ padding: "60px", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING...</div>
+                ) : entries.length === 0 ? (
+                  <div style={{ padding: "40px", textAlign: "center" }}>
+                    <div style={{ fontSize: "40px", marginBottom: "10px" }}>🎮</div>
+                    <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>NO SCORES YET</div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {[
-                      { label: '1ST', prize: `$${competition.prizes.first}`, color: '#f59e0b' },
-                      { label: '2ND', prize: `$${competition.prizes.second}`, color: '#9ca3af' },
-                      { label: '3RD', prize: `$${competition.prizes.third}`,  color: '#b45309' },
-                    ].map(p => (
-                      <div key={p.label} style={{ flex: 1, textAlign: 'center', padding: '8px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${p.color}30` }}>
-                        <div style={{ color: p.color, fontSize: '13px', fontWeight: 900 }}>{p.prize}</div>
-                        <div style={{ color: '#4b5563', fontSize: '8px', marginTop: '2px' }}>{p.label} PLACE</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Rankings */}
-                {competition.rankings.length === 0 ? (
-                  <div style={{ padding: '30px', textAlign: 'center', color: '#374151', fontSize: '11px' }}>No scores yet. Competition starts week {competition.weeks[0]}.</div>
-                ) : (
-                  <div style={{ background: 'rgba(10,10,20,0.8)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '12px', overflow: 'hidden' }}>
-                    {competition.rankings.map((e, i) => {
-                      const isMe = address && e.wallet === address.toLowerCase();
-                      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                      return (
-                        <div key={e.wallet} style={{ padding: '10px 14px', borderBottom: i < competition.rankings.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: isMe ? 'rgba(245,158,11,0.06)' : 'transparent' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontSize: '14px', minWidth: '24px', textAlign: 'center' }}>{medal || `#${i + 1}`}</span>
-                              <div>
-                                <div style={{ color: isMe ? '#f59e0b' : '#d1d5db', fontSize: '12px', fontWeight: 700 }}>{isMe ? 'YOU' : (e.username || `${e.wallet.slice(0, 6)}...${e.wallet.slice(-4)}`)}</div>
-                                <div style={{ color: '#4b5563', fontSize: '9px', marginTop: '2px' }}>R: {e.totalRhythm} pts + S: {e.totalSimon} pts</div>
-                              </div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ color: i === 0 ? '#f59e0b' : '#fff', fontSize: '16px', fontWeight: 900 }}>{e.total}</div>
-                              <div style={{ color: '#4b5563', fontSize: '9px' }}>total pts</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* SEASON HISTORY */}
-        {activeTab === 'history' && (
-          <div>
-            {!seasonsData ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#4b5563', fontSize: '12px' }}>LOADING...</div>
-            ) : (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                    <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                    <span style={{ color: '#10b981', fontSize: '10px', fontWeight: 700, letterSpacing: '2px' }}>WEEK {seasonsData.currentSeason} — IN PROGRESS</span>
-                    <span style={{ color: '#374151', fontSize: '9px' }}>ends {formatDate(seasonsData.currentEndsAt)}</span>
-                  </div>
-                  <SeasonRow season={{ season: seasonsData.currentSeason, startTs: 0, endTs: seasonsData.currentEndsAt, rhythm: seasonsData.live.rhythm, simon: seasonsData.live.simon }} game={gameTab} myAddress={address} accent={GAME_ACCENT[gameTab]} />
-                </div>
-                {seasonsData.past.length === 0 ? (
-                  <div style={{ padding: '30px', textAlign: 'center', color: '#374151', fontSize: '11px' }}>No completed seasons yet.</div>
                 ) : (
                   <>
-                    <div style={{ color: '#4b5563', fontSize: '9px', letterSpacing: '2px', marginBottom: '10px' }}>COMPLETED SEASONS</div>
-                    {seasonsData.past.map(s => <SeasonRow key={s.season} season={s} game={gameTab} myAddress={address} accent={GAME_ACCENT[gameTab]} />)}
+                    {/* Podium with character PNGs */}
+                    <StagePodium podium={podium} />
+
+                    {/* Rows grid — 2 columns */}
+                    <div style={{
+                      width: "100%", maxWidth: "720px",
+                      display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
+                      gap: "10px 14px", marginTop: "4px",
+                    }}>
+                      {rest.map((e, i) => {
+                        const rank = i + 4;
+                        const color = rowColorByRank(rank);
+                        const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                        return <PlayerRow key={e.player} entry={e} rank={rank} color={color} isMe={isMe} />;
+                      })}
+                    </div>
+
+                    {/* Sparse-list empty state — instead of a huge void
+                        below the podium when there are only 1-3 entries,
+                        show a CTA card that fills the space and pushes
+                        users to play. Top-game leaderboards never leave
+                        this dead; they always drive the next action. */}
+                    {entries.length <= 3 && (
+                      <div style={{
+                        width: "100%", maxWidth: "520px", marginTop: "12px",
+                        borderRadius: "18px",
+                        padding: "2.5px",
+                        background: "linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #c026d3 100%)",
+                        boxShadow: "0 16px 36px -8px rgba(251,191,36,0.4), 0 0 40px rgba(192,38,211,0.25)",
+                      }}>
+                        <div style={{
+                          borderRadius: "16px",
+                          background: "linear-gradient(180deg, #1a0550 0%, #0a0230 100%)",
+                          padding: "18px 18px 16px",
+                          textAlign: "center",
+                          border: "1.5px solid rgba(255,255,255,0.08)",
+                        }}>
+                          <div style={{ fontSize: "28px", marginBottom: "6px" }}>🏆</div>
+                          <div style={{
+                            color: "white", fontSize: "13px", fontWeight: 900,
+                            letterSpacing: "0.08em", marginBottom: "4px",
+                            textShadow: "0 0 14px rgba(251,191,36,0.6)",
+                          }}>
+                            FRESH LEADERBOARD
+                          </div>
+                          <div style={{
+                            color: "rgba(200,170,255,0.75)", fontSize: "11px",
+                            lineHeight: 1.5, marginBottom: "14px",
+                          }}>
+                            Only {entries.length} player{entries.length > 1 ? "s have" : " has"} posted a score this week. Play now to claim a spot on the podium before it fills up.
+                          </div>
+                          <div role="button" tabIndex={0}
+                            onClick={() => router.push("/games")}
+                            style={{ cursor: "pointer", userSelect: "none", display: "inline-block" }}
+                            onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(2px)"; }}
+                            onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+                          >
+                            <div style={{
+                              borderRadius: "12px",
+                              background: "#7c2d00",
+                              paddingBottom: "4px",
+                              boxShadow: "0 8px 18px -4px rgba(251,191,36,0.6)",
+                            }}>
+                              <div style={{
+                                borderRadius: "10px 10px 8px 8px",
+                                background: "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
+                                padding: "9px 26px",
+                                border: "2px solid rgba(255,255,255,0.5)",
+                                boxShadow: "inset 0 4px 10px rgba(255,255,255,0.6), inset 0 -2px 6px rgba(0,0,0,0.3)",
+                              }}>
+                                <span style={{
+                                  color: "white", fontSize: "12px", fontWeight: 900,
+                                  letterSpacing: "0.18em",
+                                  textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                                }}>PLAY NOW ▸</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </>
             )}
-          </div>
-        )}
 
-        {/* PVP ARENA */}
-        {activeTab === 'pvp' && (() => {
-          const myWins = pvpMatches.filter(m => m.status === 2 && m.winner?.toLowerCase() === address?.toLowerCase()).length;
-          const myTotal = pvpMatches.filter(m => m.status === 2 && address && (m.challenger.toLowerCase() === address.toLowerCase() || m.opponent.toLowerCase() === address.toLowerCase())).length;
-          const myLosses = myTotal - myWins;
-          return (
-            <div>
-              {address && myTotal > 0 && (
-                <div style={{ display: 'flex', gap: '0', marginBottom: '14px', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  {[{ v: myWins, l: 'WINS', c: '#10b981' }, { v: myLosses, l: 'LOSSES', c: '#ef4444' }, { v: myTotal > 0 ? `${Math.round(myWins / myTotal * 100)}%` : '—', l: 'RATE', c: '#a855f7' }].map((s, i) => (
-                    <div key={s.l} style={{ flex: 1, textAlign: 'center', padding: '10px 4px', background: 'rgba(0,0,0,0.25)', borderRight: i < 2 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                      <div style={{ color: s.c, fontSize: '16px', fontWeight: 900 }}>{s.v}</div>
-                      <div style={{ color: '#2a2a3a', fontSize: '7px', marginTop: '2px' }}>{s.l}</div>
+            {/* SEASONS / PVP placeholders */}
+            {activeTab === "seasons" && (
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", gap: "16px" }}>
+
+                {/* ── ACTIVE SEASON HERO ── */}
+                {seasonsData && (() => {
+                  const liveEntries = (gameTab === "rhythm" ? seasonsData.live.rhythm : seasonsData.live.simon) || [];
+                  const top3 = liveEntries.slice(0, 3);
+                  const myEntry = address ? liveEntries.find(e => e.player.toLowerCase() === address.toLowerCase()) : undefined;
+                  const myRank = myEntry ? liveEntries.findIndex(e => e.player.toLowerCase() === address!.toLowerCase()) + 1 : 0;
+                  const secondsLeft = Math.max(0, seasonsData.currentEndsAt - now);
+                  return (
+                    <div style={{
+                      borderRadius: "20px", padding: "3px",
+                      background: "linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #fbbf24 100%)",
+                      boxShadow: "0 0 32px rgba(251,191,36,0.4), 0 0 60px rgba(249,115,22,0.2), 0 12px 30px rgba(0,0,0,0.6)",
+                    }}>
+                      <div style={{
+                        borderRadius: "18px",
+                        background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
+                        padding: "18px 18px 16px",
+                        position: "relative", overflow: "hidden",
+                      }}>
+                        {/* Top gloss */}
+                        <div style={{
+                          position: "absolute", top: 0, left: 0, right: 0, height: "60px",
+                          background: "linear-gradient(180deg, rgba(251,191,36,0.18) 0%, transparent 100%)",
+                          pointerEvents: "none",
+                        }} />
+
+                        {/* Header row */}
+                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
+                          <div>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                              <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e", animation: "icon-float 1.5s ease-in-out infinite" }} />
+                              <span style={{ color: "#22c55e", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em" }}>LIVE NOW</span>
+                            </div>
+                            <div style={{ color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.04em", textShadow: "0 0 16px rgba(251,191,36,0.6)" }}>
+                              SEASON {seasonsData.currentSeason}
+                            </div>
+                          </div>
+                          {/* Countdown */}
+                          <div style={{
+                            padding: "6px 12px", borderRadius: "12px",
+                            background: "rgba(0,0,0,0.5)",
+                            border: "1.5px solid rgba(251,191,36,0.6)",
+                            boxShadow: "inset 0 2px 6px rgba(0,0,0,0.6)",
+                            textAlign: "right",
+                          }}>
+                            <div style={{ color: "rgba(251,191,36,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>ENDS IN</div>
+                            <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, fontFamily: "monospace", textShadow: "0 0 8px rgba(251,191,36,0.7)" }}>
+                              {formatCountdown(secondsLeft)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Prize pool + players */}
+                        <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "2fr 1fr", gap: "10px", marginBottom: "14px" }}>
+                          <div style={{
+                            borderRadius: "14px",
+                            background: "linear-gradient(180deg, rgba(251,191,36,0.18) 0%, rgba(0,0,0,0.3) 100%)",
+                            border: "1.5px solid rgba(251,191,36,0.5)",
+                            padding: "10px 14px",
+                          }}>
+                            <div style={{ color: "rgba(251,191,36,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>PRIZE POOL</div>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: "5px", marginTop: "2px" }}>
+                              <span style={{ color: "#fbbf24", fontSize: "20px", fontWeight: 900, textShadow: "0 0 14px rgba(251,191,36,0.7)" }}>50</span>
+                              <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "11px", fontWeight: 800, letterSpacing: "0.1em" }}>G$</span>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", marginTop: "6px", fontSize: "8px", fontWeight: 800 }}>
+                              <span style={{ color: "#fbbf24" }}>🥇 25</span>
+                              <span style={{ color: "#e2e8f0" }}>🥈 15</span>
+                              <span style={{ color: "#f97316" }}>🥉 10</span>
+                            </div>
+                          </div>
+                          <div style={{
+                            borderRadius: "14px",
+                            background: "linear-gradient(180deg, rgba(167,139,250,0.18) 0%, rgba(0,0,0,0.3) 100%)",
+                            border: "1.5px solid rgba(167,139,250,0.5)",
+                            padding: "10px 12px", textAlign: "center",
+                            display: "flex", flexDirection: "column", justifyContent: "center",
+                          }}>
+                            <div style={{ color: "#a78bfa", fontSize: "20px", fontWeight: 900, textShadow: "0 0 14px rgba(167,139,250,0.7)" }}>
+                              {liveEntries.length}
+                            </div>
+                            <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em", marginTop: "2px" }}>PLAYERS</div>
+                          </div>
+                        </div>
+
+                        {/* Mini podium (top 3 chips) */}
+                        {top3.length > 0 && (
+                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.16em", marginBottom: "2px" }}>
+                              CURRENT TOP 3 — {gameTab === "rhythm" ? "RHYTHM RUSH" : "SIMON MEMORY"}
+                            </div>
+                            {top3.map((e, i) => {
+                              const medalColor = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";
+                              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
+                              const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                              return (
+                                <div key={e.player} style={{
+                                  display: "flex", alignItems: "center", gap: "10px",
+                                  padding: "7px 12px", borderRadius: "10px",
+                                  background: isMe ? `${medalColor}26` : "rgba(255,255,255,0.04)",
+                                  border: `1px solid ${isMe ? medalColor : "rgba(255,255,255,0.07)"}`,
+                                }}>
+                                  <span style={{ fontSize: "16px" }}>{medal}</span>
+                                  <span style={{ flex: 1, color: isMe ? medalColor : "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {isMe ? "YOU" : fmtName(e.player, e.username)}
+                                  </span>
+                                  <span style={{ color: medalColor, fontSize: "13px", fontWeight: 900, textShadow: `0 0 8px ${medalColor}` }}>{e.score}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Your status */}
+                        {myEntry && myRank > 3 && (
+                          <div style={{
+                            position: "relative", zIndex: 1, marginTop: "10px",
+                            padding: "8px 12px", borderRadius: "10px",
+                            background: "rgba(192,38,211,0.12)",
+                            border: "1px solid rgba(192,38,211,0.45)",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                          }}>
+                            <span style={{ color: "rgba(244,182,253,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                              YOU&apos;RE #{myRank}
+                            </span>
+                            <span style={{ color: "#e879f9", fontSize: "13px", fontWeight: 900, textShadow: "0 0 8px rgba(232,121,249,0.6)" }}>
+                              {myEntry.score} pts
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                  );
+                })()}
+
+                {/* ── 3-WEEK COMPETITION SPECIAL EVENT — single gold accent ── */}
+                {competition && competition.weeksLeft > 0 && (
+                  <div style={{
+                    borderRadius: "18px", padding: "2px",
+                    background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
+                    boxShadow: "0 0 18px rgba(251,191,36,0.3), 0 10px 24px rgba(0,0,0,0.6)",
+                  }}>
+                    <div style={{
+                      borderRadius: "16px",
+                      background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                      padding: "16px 18px",
+                      position: "relative", overflow: "hidden",
+                    }}>
+                      <div style={{
+                        position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+                        background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
+                        pointerEvents: "none",
+                      }} />
+                      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
+                        <div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.5)", marginBottom: "6px" }}>
+                            <span style={{ color: "#fbbf24", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>SPECIAL EVENT</span>
+                          </div>
+                          <div style={{ color: "white", fontSize: "15px", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
+                            3-WEEK COMPETITION
+                          </div>
+                        </div>
+                        <div style={{
+                          padding: "5px 10px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.5)",
+                          border: "1px solid rgba(251,191,36,0.4)",
+                          textAlign: "right",
+                        }}>
+                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>WEEKS LEFT</div>
+                          <div style={{ color: "#fbbf24", fontSize: "16px", fontWeight: 900, lineHeight: 1 }}>
+                            {competition.weeksLeft}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                        {[
+                          { rank: "1ST", emoji: "🥇", color: "#fbbf24", prize: competition.prizes.first },
+                          { rank: "2ND", emoji: "🥈", color: "#e2e8f0", prize: competition.prizes.second },
+                          { rank: "3RD", emoji: "🥉", color: "#f97316", prize: competition.prizes.third },
+                        ].map(p => (
+                          <div key={p.rank} style={{
+                            borderRadius: "10px",
+                            background: "rgba(0,0,0,0.35)",
+                            border: `1px solid ${p.color}55`,
+                            padding: "8px 4px", textAlign: "center",
+                          }}>
+                            <div style={{ fontSize: "14px" }}>{p.emoji}</div>
+                            <div style={{ color: p.color, fontSize: "15px", fontWeight: 900, marginTop: "2px" }}>
+                              ${p.prize}
+                            </div>
+                            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em", marginTop: "1px" }}>{p.rank}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {address && (() => {
+                        const myCompRank = competition.rankings.findIndex(r => r.wallet === address.toLowerCase());
+                        if (myCompRank < 0) return null;
+                        const me = competition.rankings[myCompRank];
+                        return (
+                          <div style={{
+                            position: "relative", zIndex: 1, marginTop: "10px",
+                            padding: "8px 12px", borderRadius: "10px",
+                            background: "rgba(251,191,36,0.08)",
+                            border: "1px solid rgba(251,191,36,0.4)",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                          }}>
+                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                              YOU&apos;RE #{myCompRank + 1} OVERALL
+                            </span>
+                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
+                              {me.total} pts
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── PAST SEASONS HISTORY ── */}
+                {seasonsData && seasonsData.past.length > 0 && (
+                  <div>
+                    <div style={{
+                      fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
+                      color: "rgba(200,180,255,0.8)", textAlign: "center",
+                      textShadow: "0 0 14px rgba(160,100,255,0.8)", marginBottom: "12px",
+                    }}>── COMPLETED SEASONS ──</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
+                      {seasonsData.past.slice(0, 12).map(s => {
+                        const entries = (gameTab === "rhythm" ? s.rhythm : s.simon) || [];
+                        const winner = entries[0];
+                        const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
+                        const placedTop3 = myFinish > 0 && myFinish <= 3;
+                        const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
+                        const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
+                        return (
+                          <div key={s.season}
+                            role="button" tabIndex={0}
+                            onClick={() => setSelectedSeason(s)}
+                            style={{
+                              borderRadius: "14px",
+                              background: "rgba(20,10,50,0.6)",
+                              border: placedTop3
+                                ? `1.5px solid ${myMedalColor}88`
+                                : "1px solid rgba(167,139,250,0.18)",
+                              boxShadow: placedTop3
+                                ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
+                                : "0 6px 14px rgba(0,0,0,0.5)",
+                              padding: "12px 14px",
+                              cursor: "pointer", userSelect: "none",
+                              transition: "transform 0.15s, border-color 0.15s",
+                            }}
+                            onMouseEnter={e => {
+                              const el = e.currentTarget as HTMLDivElement;
+                              el.style.transform = "translateY(-2px)";
+                              if (!placedTop3) el.style.borderColor = "rgba(167,139,250,0.5)";
+                            }}
+                            onMouseLeave={e => {
+                              const el = e.currentTarget as HTMLDivElement;
+                              el.style.transform = "";
+                              if (!placedTop3) el.style.borderColor = "rgba(167,139,250,0.18)";
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                              <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em" }}>
+                                SEASON {s.season}
+                              </div>
+                              {myMedal && (
+                                <div style={{
+                                  padding: "2px 8px", borderRadius: "999px",
+                                  background: `${myMedalColor}1a`, border: `1px solid ${myMedalColor}66`,
+                                }}>
+                                  <span style={{ fontSize: "10px" }}>{myMedal}</span>
+                                  <span style={{ color: myMedalColor!, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>YOU</span>
+                                </div>
+                              )}
+                            </div>
+                            {winner ? (
+                              <div style={{
+                                display: "flex", alignItems: "center", gap: "8px",
+                                padding: "6px 8px", borderRadius: "8px",
+                                background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
+                                marginBottom: "8px",
+                              }}>
+                                <span style={{ fontSize: "13px" }}>🏆</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
+                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {fmtName(winner.player, winner.username)}
+                                  </div>
+                                </div>
+                                <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
+                                  {winner.score}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "rgba(200,180,255,0.4)", fontSize: "10px", textAlign: "center", padding: "12px 0" }}>
+                                No scores
+                              </div>
+                            )}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: "9px", fontWeight: 700 }}>
+                              <span>👥 {s.totalPlayers || entries.length} player{(s.totalPlayers || entries.length) !== 1 ? "s" : ""}</span>
+                              <span style={{ color: "rgba(167,139,250,0.7)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {!seasonsData && (
+                  <div style={{
+                    padding: "40px 20px", textAlign: "center",
+                    color: "rgba(200,180,255,0.5)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.15em",
+                  }}>LOADING SEASONS...</div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "pvp" && (
+              <div style={{
+                width: "100%", maxWidth: "540px",
+                padding: "30px 20px", borderRadius: "18px",
+                background: "rgba(20,10,50,0.6)", border: "1px solid rgba(168,85,247,0.2)",
+                boxShadow: "0 0 30px rgba(168,85,247,0.15)",
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: "36px", marginBottom: "10px" }}>⚔️</div>
+                <div style={{ color: "white", fontSize: "14px", fontWeight: 900, letterSpacing: "0.1em", marginBottom: "6px" }}>PVP ARENA</div>
+                <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "11px", lineHeight: 1.5 }}>
+                  1v1 challenges with G$ wagers — top wins ranking coming here.
                 </div>
-              )}
-              {pvpLeaders.length > 0 && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                  {pvpLeaders.slice(0, 3).map((p, i) => {
-                    const isMe = address && p.address === address.toLowerCase();
+              </div>
+            )}
+            <div style={{ flex: 1 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Season Detail Modal ── */}
+      {selectedSeason && (() => {
+        const s = selectedSeason;
+        const entries = (gameTab === "rhythm" ? s.rhythm : s.simon) || [];
+        const top10 = entries.slice(0, 10);
+        const myRank = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
+        const startDate = new Date(s.startTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const endDate = new Date(s.endTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return (
+          <div onClick={() => setSelectedSeason(null)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "20px",
+            }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{
+              width: "100%", maxWidth: "440px", maxHeight: "88vh",
+              borderRadius: "24px",
+              background: "#1a0550", paddingBottom: "6px",
+              boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.5), 0 30px 60px rgba(0,0,0,0.9)",
+              display: "flex", flexDirection: "column",
+            }}>
+              <div style={{
+                flex: 1, minHeight: 0,
+                borderRadius: "22px 22px 18px 18px",
+                background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
+                border: "2px solid rgba(255,255,255,0.12)",
+                display: "flex", flexDirection: "column", overflow: "hidden",
+              }}>
+                {/* Header */}
+                <div style={{
+                  padding: "16px 18px",
+                  borderBottom: "1px solid rgba(167,139,250,0.18)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "linear-gradient(180deg, rgba(167,139,250,0.1) 0%, transparent 100%)",
+                }}>
+                  <div>
+                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900, letterSpacing: "0.06em" }}>
+                      SEASON {s.season}
+                    </div>
+                    <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
+                      {startDate} – {endDate} · {gameTab === "rhythm" ? "RHYTHM RUSH" : "SIMON MEMORY"}
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedSeason(null)} style={{
+                    width: "32px", height: "32px", borderRadius: "50%",
+                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
+                    color: "rgba(200,180,255,0.7)", fontSize: "16px", cursor: "pointer", fontFamily: "inherit",
+                  }}>×</button>
+                </div>
+
+                {/* Stats strip */}
+                <div style={{
+                  padding: "10px 18px",
+                  display: "flex", justifyContent: "space-between", gap: "8px",
+                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                }}>
+                  <div>
+                    <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS</div>
+                    <div style={{ color: "#a78bfa", fontSize: "14px", fontWeight: 900 }}>{s.totalPlayers || entries.length}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>POOL</div>
+                    <div style={{ color: "#fbbf24", fontSize: "14px", fontWeight: 900 }}>{s.prizePot || 50} G$</div>
+                  </div>
+                  {myRank > 0 && (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>YOUR FINISH</div>
+                      <div style={{
+                        color: myRank <= 3 ? (myRank === 1 ? "#fbbf24" : myRank === 2 ? "#e2e8f0" : "#f97316") : "#a78bfa",
+                        fontSize: "14px", fontWeight: 900,
+                      }}>#{myRank}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Top 10 list */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px" }}>
+                  {top10.length === 0 ? (
+                    <div style={{ padding: "30px", textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "11px" }}>
+                      No scores recorded for this season
+                    </div>
+                  ) : top10.map((e, i) => {
+                    const rank = i + 1;
+                    const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
+                    const medalColor = rank === 1 ? "#fbbf24" : rank === 2 ? "#e2e8f0" : rank === 3 ? "#f97316" : null;
                     return (
-                      <div key={p.address} style={{ flex: 1, textAlign: 'center', padding: '14px 6px', borderRadius: '12px', background: i === 0 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isMe ? 'rgba(168,85,247,0.3)' : i === 0 ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)'}` }}>
-                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>{MEDALS[i]}</div>
-                        <div style={{ color: isMe ? '#a855f7' : '#9ca3af', fontSize: '10px', fontWeight: 900 }}>{isMe ? 'YOU' : `${p.address.slice(0, 4)}...`}</div>
-                        <div style={{ color: '#fff', fontSize: '16px', fontWeight: 900, marginTop: '2px' }}>{p.count}</div>
-                        <div style={{ color: '#374151', fontSize: '7px' }}>WINS</div>
+                      <div key={e.player} style={{
+                        display: "flex", alignItems: "center", gap: "10px",
+                        padding: "8px 10px", borderRadius: "10px",
+                        background: isMe ? "rgba(167,139,250,0.15)" : "transparent",
+                        border: `1px solid ${isMe ? "rgba(167,139,250,0.4)" : "transparent"}`,
+                        marginBottom: "4px",
+                      }}>
+                        <div style={{
+                          minWidth: "26px", textAlign: "center",
+                          color: medalColor || "rgba(200,180,255,0.6)",
+                          fontSize: medal ? "16px" : "11px", fontWeight: 900,
+                        }}>{medal || `#${rank}`}</div>
+                        <div style={{
+                          width: "30px", height: "30px", borderRadius: "50%",
+                          border: "1.5px solid rgba(167,139,250,0.4)", flexShrink: 0, overflow: "hidden",
+                          background: "#1a0550",
+                        }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={avatarUrl(e.player, e.username)} alt="" width={30} height={30}
+                            style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                        </div>
+                        <div style={{
+                          flex: 1, minWidth: 0, color: isMe ? "#a78bfa" : "white", fontSize: "12px", fontWeight: 800,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                        }}>
+                          {isMe ? "YOU" : fmtName(e.player, e.username)}
+                        </div>
+                        <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, flexShrink: 0 }}>
+                          {e.score}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              )}
-              <div style={{ padding: '12px', borderRadius: '12px', marginBottom: '14px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                <div style={{ color: '#6b7280', fontSize: '9px', fontWeight: 700, letterSpacing: '2px', marginBottom: '8px' }}>RECENT MATCHES</div>
-                {pvpMatches.length === 0 ? (
-                  <div style={{ padding: '16px', textAlign: 'center', color: '#374151', fontSize: '10px' }}>No matches yet</div>
-                ) : pvpMatches.slice(0, 5).map(m => {
-                  const isMe = address && (m.challenger.toLowerCase() === address.toLowerCase() || m.opponent.toLowerCase() === address.toLowerCase());
-                  const iWon = m.status === 2 && m.winner?.toLowerCase() === address?.toLowerCase();
-                  const iLost = m.status === 2 && isMe && !iWon && m.winner !== '0x0000000000000000000000000000000000000000';
-                  return (
-                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <span style={{ fontSize: '9px', color: '#6b7280' }}>⚔️ {m.challenger.slice(0, 5)}.. vs {m.opponent.slice(0, 5)}..<span style={{ color: '#374151' }}> · {formatUnits(m.wager, 18)} G$</span></span>
-                      <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '8px', fontWeight: 900, color: m.status === 2 ? (iWon ? '#10b981' : iLost ? '#ef4444' : '#6b7280') : '#f59e0b', background: m.status === 2 ? (iWon ? 'rgba(16,185,129,0.1)' : iLost ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.03)') : 'rgba(245,158,11,0.08)' }}>
-                        {m.status === 2 ? (iWon ? 'WON' : iLost ? 'LOST' : 'DONE') : 'LIVE'}
-                      </span>
-                    </div>
-                  );
-                })}
               </div>
-              <Link href="/games/arena" style={{ display: 'block', padding: '14px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(168,85,247,0.05))', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '12px', color: '#a855f7', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textDecoration: 'none', fontFamily: 'Orbitron, monospace' }}>CHALLENGE AI</Link>
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
 
-        {/* Play buttons */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-          <Link href="/games/rhythm" style={{ flex: 1, padding: '12px', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '8px', color: '#a855f7', fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textDecoration: 'none', textAlign: 'center', display: 'block' }}>PLAY RHYTHM</Link>
-          <Link href="/games/simon" style={{ flex: 1, padding: '12px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', borderRadius: '8px', color: '#06b6d4', fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textDecoration: 'none', textAlign: 'center', display: 'block' }}>PLAY SIMON</Link>
-        </div>
-      </div>
-    </>
+      {/* Mobile bottom tab nav — replaces the desktop sidebar when < 768px */}
+      {isMobile && <BottomNav />}
+
+      {/* Mobile streak chip — sidebar is hidden on mobile so this floats
+          top-right instead. */}
+      {isMobile && streak && (
+        <MobileStreakChip streak={streak.streak} playedToday={streak.playedToday} />
+      )}
+    </div>
   );
 }

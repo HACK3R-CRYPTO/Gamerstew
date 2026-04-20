@@ -2,31 +2,32 @@
 
 import { PrivyClient } from '@privy-io/server-auth';
 import { verifyMessage } from 'viem';
-import { supabase } from '@/lib/supabase';
 
-// ─── Privy server-side client ─────────────────────────────────────────────────
-// PRIVY_APP_SECRET never leaves the server — not in NEXT_PUBLIC_ so browser can't see it
+// ─── Server-only env vars ────────────────────────────────────────────────────
+// BACKEND_URL and INTERNAL_SECRET are NOT prefixed with NEXT_PUBLIC_ on purpose
+// — that means they never get bundled into the browser JS. They only exist in
+// this Node process, so the games-backend URL and the shared secret never
+// appear in a Network request visible to end users.
+const BACKEND_URL     = process.env.BACKEND_URL;
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+
+// ─── Privy server-side client ────────────────────────────────────────────────
+// Used to verify access tokens that browsers pass in — confirms the caller
+// actually logged in via Privy AND that their linked wallet matches the address
+// they claim to be submitting for. Blocks "submit a score for someone else".
 const privy = new PrivyClient(
   process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
   process.env.PRIVY_APP_SECRET!,
 );
 
-// ─── Season helpers ──────────────────────────────────────────────────────────
-const SEASON_EPOCH = 1770249600;
-const SEASON_DAYS  = 7;
+// ═══ Auth verifiers ══════════════════════════════════════════════════════════
 
-function currentSeason() {
-  return Math.floor((Math.floor(Date.now() / 1000) - SEASON_EPOCH) / (SEASON_DAYS * 86400)) + 1;
-}
-
-// ─── Verify caller owns the wallet ───────────────────────────────────────────
-async function verifyUser(accessToken: string, claimedAddress: string) {
+async function verifyUser(accessToken: string, claimedAddress: string): Promise<boolean> {
   try {
     const claims = await privy.verifyAuthToken(accessToken);
-    // claims.userId is the Privy user ID — we also need their linked wallet
-    const user = await privy.getUser(claims.userId);
+    const user   = await privy.getUser(claims.userId);
     const wallet = user.linkedAccounts.find(
-      (a: { type: string }) => a.type === 'wallet'
+      (a: { type: string }) => a.type === 'wallet',
     ) as { type: string; address: string } | undefined;
     if (!wallet) return false;
     return wallet.address.toLowerCase() === claimedAddress.toLowerCase();
@@ -35,349 +36,205 @@ async function verifyUser(accessToken: string, claimedAddress: string) {
   }
 }
 
-// ─── MiniPay wallet-signature verification ───────────────────────────────────
-// MiniPay users have no Privy JWT — they sign a short message with their injected wallet.
-// Message format: "GameArena|{game}|{score}|{timestampMs}"
-// We verify (a) the signature recovers to claimedAddress and (b) timestamp is <5 min old.
-async function verifyMiniPaySig(sig: string, message: string, claimedAddress: string): Promise<boolean> {
+// MiniPay users have no Privy JWT — they sign a short message with their
+// injected wallet instead. Message format: "GameArena|{game}|{score}|{ts}".
+// We check (a) the signature recovers to claimedAddress, (b) timestamp is
+// under 5 min old (prevents replay), (c) scheme/game prefix matches.
+async function verifyMiniPaySig(
+  sig: string,
+  message: string,
+  claimedAddress: string,
+): Promise<boolean> {
   try {
     const parts = message.split('|');
     if (parts.length !== 4 || parts[0] !== 'GameArena') return false;
     const ts = parseInt(parts[3], 10);
-    if (isNaN(ts) || Date.now() - ts > 5 * 60 * 1000) return false; // stale
-    const recovered = await verifyMessage({ address: claimedAddress as `0x${string}`, message, signature: sig as `0x${string}` });
-    return recovered;
+    if (isNaN(ts) || Date.now() - ts > 5 * 60 * 1000) return false;
+    return await verifyMessage({
+      address:   claimedAddress as `0x${string}`,
+      message,
+      signature: sig as `0x${string}`,
+    });
   } catch {
     return false;
   }
 }
 
-// ─── signScoreMiniPay ────────────────────────────────────────────────────────
-export async function signScoreMiniPay(
-  playerAddress: string,
-  walletSig: string,
-  signedMessage: string,
-  scoreData: { game: 'rhythm' | 'simon'; score: number }
-): Promise<{ success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string }> {
-  const isValid = await verifyMiniPaySig(walletSig, signedMessage, playerAddress);
-  if (!isValid) return { success: false, error: 'Unauthorized' };
-
-  try {
-    const res = await fetch(`${process.env.BACKEND_URL}/api/sign-score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
-      body: JSON.stringify({ playerAddress, game: scoreData.game, score: scoreData.score }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { success: false, error: data.error || 'Sign failed' };
-    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
-  } catch {
-    return { success: false, error: 'Backend unavailable' };
-  }
+// ═══ Backend proxy with internal secret ══════════════════════════════════════
+// Every call to the games-backend goes through this helper so the secret
+// header is applied consistently. Never invoke `fetch(BACKEND_URL/...)` without
+// using this helper — otherwise you forget the header and get 401s.
+async function internalFetch(path: string, body: unknown) {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':     'application/json',
+      'x-internal-secret': INTERNAL_SECRET!,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return { ok: res.ok, data };
 }
 
-// ─── submitScoreMiniPay ──────────────────────────────────────────────────────
-export async function submitScoreMiniPay(
-  playerAddress: string,
-  walletSig: string,
-  signedMessage: string,
-  scoreData: {
-    game: 'rhythm' | 'simon';
-    score: number;
-    gameTime: number;
-    wagered?: string | null;
-    wagerId?: string | null;
-    txHash?: string | null;
-  }
-) {
-  const isValid = await verifyMiniPaySig(walletSig, signedMessage, playerAddress);
-  if (!isValid) return { success: false, error: 'Unauthorized' };
+// ═══ Public server actions ═══════════════════════════════════════════════════
 
-  const { game, score, gameTime } = scoreData;
-  if (score < 0 || score > 1_000_000) return { success: false, error: 'Score out of range' };
-  if (gameTime < 5000) return { success: false, error: 'Game time too short' };
+export type GameId = 'rhythm' | 'simon';
+export type ScoreData = {
+  game:     GameId;
+  score:    number;
+  gameTime: number;
+  wagered?: string | null;
+  wagerId?: string | null;
+  txHash?:  string | null;
+  // Rhythm-only skill flags — unlock rhythm_fc / rhythm_ap achievements.
+  // Backend trusts the frontend for these since the score itself is already
+  // bound on-chain via the EIP-712 voucher (a lying client still needs a
+  // matching tx receipt, so it can't FC a score it didn't earn).
+  fullCombo?:  boolean;
+  allPerfect?: boolean;
+};
 
-  const season = currentSeason();
-  const lower  = playerAddress.toLowerCase();
-  const streak = await registerUser(lower);
+type SignScoreResult =
+  | { success: true;  signature: string; nonce: string; gameType: number }
+  | { success: false; error: string };
 
-  let txHash: string | null = scoreData.txHash ?? null;
-  let backendHandled = false;
-  let rank = 0;
-  try {
-    const backendRes = await fetch(`${process.env.BACKEND_URL}/api/submit-score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
-      body: JSON.stringify({ playerAddress, scoreData }),
-    });
-    const backendData = await backendRes.json();
-    if (backendRes.ok && backendData.success) {
-      txHash = backendData.txHash || null;
-      rank = backendData.rank || 0;
-      backendHandled = true;
+type SubmitScoreResult =
+  | {
+      success:         true;
+      score:           number;
+      rank:            number;
+      txHash:          string | null;
+      streak:          number;
+      xpEarned?:       number;
+      xp?:             number;
+      level?:          number;
+      leveledUp?:      boolean;
+      isNewPb?:        boolean;
+      prevBest?:       number;
+      newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
     }
-  } catch (_) {}
+  | { success: false; error: string };
 
-  if (!backendHandled) {
-    await saveScore({
-      wallet_address: lower,
-      game,
-      score,
-      game_time: gameTime,
-      season_number: season,
-      wagered: scoreData.wagered || null,
-      wager_id: scoreData.wagerId || null,
-      tx_hash: txHash,
-    });
-    const leaderboard = await getLeaderboard(game);
-    rank = leaderboard.findIndex(e => e.wallet_address === lower) + 1;
-  }
-
-  return { success: true, score, rank, txHash, streak };
-}
-
-// ─── rollDice ────────────────────────────────────────────────────────────────
-// Requires a valid Privy session + matchId.
-// The roll is cached in Supabase per matchId — calling this twice for the
-// same match always returns the same number, so cherry-picking is pointless.
-export async function rollDice(accessToken: string, matchId: number): Promise<number | null> {
-  // 1. Must be an authenticated user
-  try {
-    await privy.verifyAuthToken(accessToken);
-  } catch {
-    return null;
-  }
-
-  // 2. Return cached roll if one already exists for this match
-  const { data: existing } = await supabase
-    .from('dice_rolls')
-    .select('roll')
-    .eq('match_id', matchId)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    return existing[0].roll as number;
-  }
-
-  // 3. Generate a fresh roll and cache it
-  const { randomInt } = await import('crypto');
-  const roll = randomInt(1, 7);
-
-  await supabase.from('dice_rolls').insert({ match_id: matchId, roll });
-
-  return roll;
-}
-
-// ─── signScore ───────────────────────────────────────────────────────────────
-// Called before the on-chain tx. Backend signs an EIP-712 BackendApproval
-// voucher. Frontend passes that voucher to recordScoreWithBackendSig so the
-// player's wallet submits the tx (player pays gas, shows on their Celoscan).
+// ─── signScore — Privy users ─────────────────────────────────────────────────
+// Call BEFORE the on-chain tx. Returns an EIP-712 BackendApproval voucher that
+// the player's wallet passes to recordScoreWithBackendSig on GamePass.
 export async function signScore(
-  accessToken: string,
+  accessToken:   string,
   playerAddress: string,
-  scoreData: { game: 'rhythm' | 'simon'; score: number }
-): Promise<{ success: true; signature: string; nonce: string; gameType: number } | { success: false; error: string }> {
-  const isValid = await verifyUser(accessToken, playerAddress);
-  if (!isValid) return { success: false, error: 'Unauthorized' };
-
+  scoreData:     { game: GameId; score: number },
+): Promise<SignScoreResult> {
+  if (!await verifyUser(accessToken, playerAddress)) {
+    return { success: false, error: 'Unauthorized' };
+  }
   try {
-    const res = await fetch(`${process.env.BACKEND_URL}/api/sign-score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
-      body: JSON.stringify({ playerAddress, game: scoreData.game, score: scoreData.score }),
+    const { ok, data } = await internalFetch('/api/sign-score', {
+      playerAddress,
+      game:  scoreData.game,
+      score: scoreData.score,
     });
-    const data = await res.json();
-    if (!res.ok) return { success: false, error: data.error || 'Sign failed' };
+    if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
 }
 
-// ─── submitScore ─────────────────────────────────────────────────────────────
-// Called from game components — runs entirely on the server.
-// Supabase URL, anon key, and Privy app secret never touch the browser.
-export async function submitScore(
-  accessToken: string,
-  playerAddress: string,
-  scoreData: {
-    game: 'rhythm' | 'simon';
-    score: number;
-    gameTime: number;
-    wagered?: string | null;
-    wagerId?: string | null;
-    txHash?: string | null;
+// ─── signScoreMiniPay — MiniPay users (no Privy JWT) ─────────────────────────
+export async function signScoreMiniPay(
+  playerAddress:  string,
+  walletSig:      string,
+  signedMessage:  string,
+  scoreData:      { game: GameId; score: number },
+): Promise<SignScoreResult> {
+  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
+    return { success: false, error: 'Unauthorized' };
   }
-) {
-  // 1. Verify the caller actually owns this wallet via Privy
-  const isValid = await verifyUser(accessToken, playerAddress);
-  if (!isValid) {
+  try {
+    const { ok, data } = await internalFetch('/api/sign-score', {
+      playerAddress,
+      game:  scoreData.game,
+      score: scoreData.score,
+    });
+    if (!ok) return { success: false, error: data?.error || 'Sign failed' };
+    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+// ─── submitScore — Privy users ───────────────────────────────────────────────
+// Call AFTER the on-chain tx (or instead of it, if the game is off-chain-only).
+// Saves the score to Supabase, awards XP, updates missions, unlocks achievements.
+// Returns the new rank and any achievement unlocks so the UI can celebrate.
+export async function submitScore(
+  accessToken:   string,
+  playerAddress: string,
+  scoreData:     ScoreData,
+): Promise<SubmitScoreResult> {
+  if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
   }
 
-  // 2. Basic score sanity
-  const { game, score, gameTime } = scoreData;
+  const { score, gameTime } = scoreData;
   if (score < 0 || score > 1_000_000) return { success: false, error: 'Score out of range' };
-  if (gameTime < 5000) return { success: false, error: 'Game time too short' };
+  if (gameTime < 5000)                 return { success: false, error: 'Game time too short' };
 
-  const season = currentSeason();
-  const lower  = playerAddress.toLowerCase();
-
-  // 3. Register / update streak
-  const streak = await registerUser(lower);
-
-  // 4. Forward to Express backend — handles on-chain tx + full DB save
-  //    BACKEND_URL is a server env var — browser never sees it
-  let txHash: string | null = null;
-  let backendHandled = false;
-  let rank = 0;
   try {
-    const backendRes = await fetch(`${process.env.BACKEND_URL}/api/submit-score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SECRET! },
-      body: JSON.stringify({ playerAddress, scoreData }),
-    });
-    const backendData = await backendRes.json();
-    if (backendRes.ok && backendData.success) {
-      txHash = backendData.txHash || null;
-      rank = backendData.rank || 0;
-      backendHandled = true;
-    }
-  } catch (_) {}
-
-  // 5. Fallback: save directly to Supabase only if Express failed
-  if (!backendHandled) {
-    await saveScore({
-      wallet_address: lower,
-      game,
-      score,
-      game_time: gameTime,
-      season_number: season,
-      wagered: scoreData.wagered || null,
-      wager_id: scoreData.wagerId || null,
-      tx_hash: txHash,
-    });
-    const leaderboard = await getLeaderboard(game);
-    rank = leaderboard.findIndex(e => e.wallet_address === lower) + 1;
+    const { ok, data } = await internalFetch('/api/submit-score', { playerAddress, scoreData });
+    if (!ok) return { success: false, error: data?.error || 'Submit failed' };
+    return {
+      success:         true,
+      score:           data.score ?? score,
+      rank:            data.rank ?? 0,
+      txHash:          data.txHash ?? null,
+      streak:          data.streak ?? 0,
+      xpEarned:        data.xpEarned,
+      xp:              data.xp,
+      level:           data.level,
+      leveledUp:       !!data.leveledUp,
+      isNewPb:         !!data.isNewPb,
+      prevBest:        typeof data.prevBest === 'number' ? data.prevBest : undefined,
+      newAchievements: data.newAchievements || [],
+    };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
   }
-
-  return { success: true, score, rank, txHash, streak };
 }
 
-// ─── getLeaderboard ──────────────────────────────────────────────────────────
-export async function getLeaderboard(game: 'rhythm' | 'simon', limit = 50) {
-  const season = currentSeason();
-  const { start } = {
-    start: SEASON_EPOCH + (season - 1) * SEASON_DAYS * 86400,
-  };
-  const startDate = new Date(start * 1000).toISOString();
-
-  const { data } = await supabase
-    .from('scores')
-    .select('*')
-    .eq('game', game)
-    .gte('created_at', startDate)
-    .order('score', { ascending: false })
-    .limit(500);
-
-  if (!data) return [];
-
-  const seen = new Map<string, typeof data[0]>();
-  for (const row of data) {
-    const key = row.wallet_address?.toLowerCase();
-    if (!key) continue;
-    if (!seen.has(key) || row.score > seen.get(key)!.score) seen.set(key, row);
+// ─── submitScoreMiniPay — MiniPay users ──────────────────────────────────────
+export async function submitScoreMiniPay(
+  playerAddress:  string,
+  walletSig:      string,
+  signedMessage:  string,
+  scoreData:      ScoreData,
+): Promise<SubmitScoreResult> {
+  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
+    return { success: false, error: 'Unauthorized' };
   }
 
-  return Array.from(seen.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
+  const { score, gameTime } = scoreData;
+  if (score < 0 || score > 1_000_000) return { success: false, error: 'Score out of range' };
+  if (gameTime < 5000)                 return { success: false, error: 'Game time too short' };
 
-// ─── getStreak ───────────────────────────────────────────────────────────────
-export async function getStreak(address: string) {
-  const lower = address.toLowerCase();
-  const today = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-  const { data } = await supabase
-    .from('users')
-    .select('play_streak, last_play_date')
-    .eq('wallet_address', lower)
-    .limit(1);
-
-  if (!data || data.length === 0) return { streak: 0, playedToday: false };
-
-  const user = data[0];
-  const playedToday = user.last_play_date === today;
-  let streak = user.play_streak || 0;
-  if (!playedToday && user.last_play_date !== yesterday) streak = 0;
-
-  return { streak, playedToday };
-}
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-async function registerUser(lower: string) {
-  const today = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-  const { data: rows } = await supabase
-    .from('users')
-    .select('wallet_address, play_streak, last_play_date')
-    .eq('wallet_address', lower)
-    .limit(1);
-
-  if (!rows || rows.length === 0) {
-    await supabase.from('users').insert({ wallet_address: lower, play_streak: 1, last_play_date: today });
-    return 1;
+  try {
+    const { ok, data } = await internalFetch('/api/submit-score', { playerAddress, scoreData });
+    if (!ok) return { success: false, error: data?.error || 'Submit failed' };
+    return {
+      success:         true,
+      score:           data.score ?? score,
+      rank:            data.rank ?? 0,
+      txHash:          data.txHash ?? null,
+      streak:          data.streak ?? 0,
+      xpEarned:        data.xpEarned,
+      xp:              data.xp,
+      level:           data.level,
+      leveledUp:       !!data.leveledUp,
+      isNewPb:         !!data.isNewPb,
+      prevBest:        typeof data.prevBest === 'number' ? data.prevBest : undefined,
+      newAchievements: data.newAchievements || [],
+    };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
   }
-
-  const user = rows[0];
-  if (user.last_play_date === today) return user.play_streak || 1;
-
-  const newStreak = user.last_play_date === yesterday ? (user.play_streak || 0) + 1 : 1;
-  await supabase.from('users').update({ play_streak: newStreak, last_play_date: today }).eq('wallet_address', lower);
-  return newStreak;
-}
-
-async function saveScore(entry: {
-  wallet_address: string;
-  game: string;
-  score: number;
-  game_time: number;
-  season_number: number;
-  wagered: string | null;
-  wager_id: string | null;
-  tx_hash: string | null;
-}) {
-  const { data: rows } = await supabase
-    .from('scores')
-    .select('id, score')
-    .eq('wallet_address', entry.wallet_address)
-    .eq('game', entry.game)
-    .order('score', { ascending: false })
-    .limit(1);
-
-  const existing = rows && rows.length > 0 ? rows[0] : null;
-
-  if (existing && existing.score >= entry.score) {
-    await supabase.from('activity').insert({
-      wallet_address: entry.wallet_address,
-      game: entry.game,
-      score: entry.score,
-      tx_hash: entry.tx_hash,
-    });
-    return;
-  }
-
-  if (existing) {
-    await supabase.from('scores').delete().eq('id', existing.id);
-  }
-  await supabase.from('scores').insert(entry);
-  await supabase.from('activity').insert({
-    wallet_address: entry.wallet_address,
-    game: entry.game,
-    score: entry.score,
-    tx_hash: entry.tx_hash,
-  });
 }
