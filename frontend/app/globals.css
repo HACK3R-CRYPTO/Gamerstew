@@ -10,14 +10,8 @@
 }
 
 @layer base {
-  html, body {
+  html {
     font-family: "Melon Pop", sans-serif;
-    /* Kill mobile pull-to-refresh. On iOS Safari and Chrome mobile, a
-       downward swipe — or even a tap near the top of the viewport during
-       the sequence flash in Simon — triggers a page reload. Game-app
-       convention (Duolingo, Clash Royale, Candy Crush) is to disable it. */
-    overscroll-behavior-y: none;
-    overscroll-behavior-x: none;
   }
   button {
     background: transparent;
@@ -26,6 +20,28 @@
     -webkit-appearance: none;
     appearance: none;
   }
+}
+
+/* NOT inside @layer base — Tailwind's reset can override these at lower
+   layers. Kept top-level so the rule always wins.
+
+   Why: on iOS Safari / Chrome mobile, tapping the Simon pads (especially
+   the top row) would fire the browser's native pull-to-refresh before
+   onPointerDown's preventDefault could run. Page reloaded mid-round.
+   Game-app convention (Duolingo, Clash Royale, Candy Crush) is to
+   disable overscroll globally. */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* Simon / Rhythm pads: block any native gesture (pan, pull-to-refresh,
+   double-tap zoom) from starting on the pad itself. `manipulation`
+   previously allowed vertical panning through, which is what let the
+   refresh gesture get its first frame. `none` blocks everything. */
+button[aria-label$="button"],
+[data-game-pad="true"] {
+  touch-action: none;
 }
 
 @keyframes icon-float {

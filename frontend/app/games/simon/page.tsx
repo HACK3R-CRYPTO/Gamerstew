@@ -1101,11 +1101,22 @@ function Slice({ pos, theme, active, disabled, onTap }: {
   };
   return (
     <button
+      type="button"
       aria-label={`${theme.id} button`}
       // Opts out of the app-wide UI click blip. Simon's bell tone carries
       // the color info; a UI tick on top would muddle that audio cue.
       data-no-click-sound="true"
-      onPointerDown={(e) => { if (!disabled) { e.preventDefault(); onTap(); } }}
+      data-game-pad="true"
+      onPointerDown={(e) => {
+        if (disabled) return;
+        // Belt-and-suspenders against mobile refresh:
+        //   - preventDefault cancels the default tap behavior
+        //   - stopPropagation keeps the event off the document where
+        //     pull-to-refresh is tracked on iOS Safari.
+        e.preventDefault();
+        e.stopPropagation();
+        onTap();
+      }}
       disabled={disabled}
       style={{
         position: "absolute",
@@ -1130,7 +1141,10 @@ function Slice({ pos, theme, active, disabled, onTap }: {
         transform: active ? "scale(1.015)" : "scale(1)",
         transformOrigin: "center",
         transition: "filter 0.08s ease-out, box-shadow 0.08s ease-out, transform 0.08s ease-out",
-        touchAction: "manipulation",
+        // `none` — block every native gesture starting on the pad. With
+        // `manipulation`, a vertical finger travel at tap-start gave iOS
+        // Safari the first frame it needed to trigger pull-to-refresh.
+        touchAction: "none",
         fontFamily: "inherit",
       }}
     />
@@ -1151,9 +1165,16 @@ function CenterDome({
   const tappable = !!onTap && !disabled;
   return (
     <button
+      type="button"
       aria-label={bonusUnlocked ? "Purple bonus button" : "Round display"}
       data-no-click-sound="true"
-      onPointerDown={(e) => { if (tappable) { e.preventDefault(); onTap?.(); } }}
+      data-game-pad="true"
+      onPointerDown={(e) => {
+        if (!tappable) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onTap?.();
+      }}
       disabled={!tappable}
       style={{
         position: "absolute",
