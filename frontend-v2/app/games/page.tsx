@@ -779,9 +779,10 @@ export default function GamesPage() {
           overflowY: "auto",
         }}>
 
-          {/* Stats pills — compact on mobile. Use nowrap + small padding
-              so all 3 fit one row on a 360px phone (the wrap that forced
-              POT onto row 2 created the awkward gap against the logo). */}
+          {/* Stats pills — compact on mobile. On mobile we also append a
+              STREAK pill as the 4th member when the user is connected
+              with a non-zero streak, instead of floating a separate chip
+              that overlaps the POT pill edge. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             gap: isMobile ? "6px" : "10px",
@@ -789,45 +790,79 @@ export default function GamesPage() {
             flexShrink: 0,
             width: "100%",
           }}>
-            {[
-              { icon: STAT_ICONS.players, label: "PLAYERS", value: fmtNumber(stats.totalUsers), borderColor: "#a78bfa", textColor: "#c4b5fd" },
-              { icon: STAT_ICONS.games,   label: "GAMES",   value: fmtNumber(stats.totalGames), borderColor: "#a78bfa", textColor: "#c4b5fd" },
-              { icon: STAT_ICONS.pot,     label: "POT",     value: isMobile ? `${Number(stats.estimatedPrizePot).toFixed(0)}` : `${Number(stats.estimatedPrizePot).toFixed(2)} G$`, borderColor: "#fbbf24", textColor: "#fde68a" },
-            ].map((s, i) => (
-              <div key={i} style={{
-                display: "flex", alignItems: "center",
-                gap: isMobile ? "4px" : "7px",
-                padding: isMobile ? "5px 9px" : "7px 16px",
-                borderRadius: "24px",
-                background: "rgba(8,2,28,0.65)",
-                border: `${isMobile ? 1.5 : 2}px solid ${s.borderColor}`,
-                boxShadow: `0 0 ${isMobile ? 10 : 16}px ${s.borderColor}55, inset 0 1px 0 rgba(255,255,255,0.06)`,
-                minWidth: 0,
-              }}>
-                <span style={{ color: s.textColor, display: "flex" }}>
-                  {isMobile
-                    ? <span style={{ width: 14, height: 14, display: "inline-flex" }}>
-                        {s.icon}
-                      </span>
-                    : s.icon}
-                </span>
-                {/* Label — tiny on mobile, standard on desktop. Without
-                    any label, bare numbers like "49" read as mystery meat. */}
-                <span style={{
-                  color: s.textColor,
-                  fontSize: isMobile ? "8px" : "10px",
-                  fontWeight: 700,
-                  letterSpacing: isMobile ? "0.1em" : "0.12em",
-                }}>{s.label}{isMobile ? "" : ":"}</span>
-                <span style={{
-                  color: "white",
-                  fontSize: isMobile ? "11px" : "13px",
-                  fontWeight: 900,
-                  letterSpacing: "0.04em",
-                  whiteSpace: "nowrap",
-                }}>{s.value}{isMobile && s.label === "POT" ? " G$" : ""}</span>
-              </div>
-            ))}
+            {(() => {
+              type Pill = {
+                icon: React.ReactNode; label: string; value: string;
+                borderColor: string; textColor: string;
+                // Streak pill uses a hot/frozen visual to mirror the
+                // desktop sidebar; regular stats pills just have one color.
+                streakMode?: "hot" | "frozen";
+              };
+              const pills: Pill[] = [
+                { icon: STAT_ICONS.players, label: "PLAYERS", value: fmtNumber(stats.totalUsers), borderColor: "#a78bfa", textColor: "#c4b5fd" },
+                { icon: STAT_ICONS.games,   label: "GAMES",   value: fmtNumber(stats.totalGames), borderColor: "#a78bfa", textColor: "#c4b5fd" },
+                { icon: STAT_ICONS.pot,     label: "POT",     value: isMobile ? `${Number(stats.estimatedPrizePot).toFixed(0)}` : `${Number(stats.estimatedPrizePot).toFixed(2)} G$`, borderColor: "#fbbf24", textColor: "#fde68a" },
+              ];
+              if (isMobile && address && streak && streak.streak > 0) {
+                const hot = streak.playedToday;
+                pills.push({
+                  icon: <span style={{
+                    fontSize: "13px", lineHeight: 1,
+                    filter: hot
+                      ? "drop-shadow(0 0 4px rgba(249,115,22,0.9))"
+                      : "hue-rotate(190deg) saturate(1.3) brightness(0.95) drop-shadow(0 0 3px rgba(56,189,248,0.7))",
+                  }}>🔥</span>,
+                  label: "STREAK",
+                  value: String(streak.streak),
+                  borderColor: hot ? "#f97316" : "#38bdf8",
+                  textColor: hot ? "#fbbf24" : "#bae6fd",
+                  streakMode: hot ? "hot" : "frozen",
+                });
+              }
+              return pills.map((s, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center",
+                  gap: isMobile ? "4px" : "7px",
+                  padding: isMobile ? "5px 9px" : "7px 16px",
+                  borderRadius: "24px",
+                  background: "rgba(8,2,28,0.65)",
+                  border: `${isMobile ? 1.5 : 2}px solid ${s.borderColor}`,
+                  boxShadow: `0 0 ${isMobile ? 10 : 16}px ${s.borderColor}55, inset 0 1px 0 rgba(255,255,255,0.06)`,
+                  minWidth: 0,
+                }}>
+                  <span style={{ color: s.textColor, display: "flex" }}>
+                    {s.streakMode
+                      ? s.icon
+                      : isMobile
+                        ? <span style={{ width: 14, height: 14, display: "inline-flex" }}>{s.icon}</span>
+                        : s.icon}
+                  </span>
+                  {/* Label — tiny on mobile, standard on desktop. Streak
+                      pill drops the label on mobile (the 🔥 is self-explanatory
+                      and the pill is already the 4th one in a tight row). */}
+                  {!(isMobile && s.streakMode) && (
+                    <span style={{
+                      color: s.textColor,
+                      fontSize: isMobile ? "8px" : "10px",
+                      fontWeight: 700,
+                      letterSpacing: isMobile ? "0.1em" : "0.12em",
+                    }}>{s.label}{isMobile ? "" : ":"}</span>
+                  )}
+                  <span style={{
+                    color: s.streakMode ? s.textColor : "white",
+                    fontSize: isMobile ? "11px" : "13px",
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                    whiteSpace: "nowrap",
+                    textShadow: s.streakMode === "hot"
+                      ? "0 0 6px rgba(251,191,36,0.7)"
+                      : s.streakMode === "frozen"
+                        ? "0 0 5px rgba(56,189,248,0.6)"
+                        : undefined,
+                  }}>{s.value}{isMobile && s.label === "POT" ? " G$" : ""}</span>
+                </div>
+              ));
+            })()}
           </div>
 
           {/* Logo */}
@@ -893,6 +928,9 @@ export default function GamesPage() {
 
       {/* Mobile bottom tab nav — replaces the desktop sidebar when < 768px */}
       {isMobile && <BottomNav />}
+      {/* Streak is rendered inline as the 4th stats pill on mobile (see
+          the pills array above), not as a floating chip — avoids the
+          edge collision with the POT pill. */}
     </div>
   );
 }

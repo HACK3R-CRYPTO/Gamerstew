@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
+import MobileStreakChip from "@/components/MobileStreakChip";
 
 // ─── Splash icons ──────────────────────────────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -158,8 +159,15 @@ function avatarUrl(address: string, username?: string | null) {
 
 // ─── Juicy Pill Tab ────────────────────────────────────────────────────────────
 function PillTab({
-  label, active, wallColor, faceGrad, glow, onClick,
-}: { label: string; active: boolean; wallColor: string; faceGrad: string; glow: string; onClick: () => void }) {
+  label, active, wallColor, faceGrad, glow, onClick, compact = false,
+}: {
+  label: string; active: boolean; wallColor: string; faceGrad: string;
+  glow: string; onClick: () => void;
+  // compact: mobile shrinks padding, font, shadow spread. The default
+  // shadow blooms ~40px past the pill — on a 390px viewport that caused
+  // the active pill's glow to bleed off-screen.
+  compact?: boolean;
+}) {
   return (
     <div role="button" tabIndex={0} onClick={onClick}
       style={{ cursor: "pointer", userSelect: "none", transition: "transform 0.15s" }}
@@ -170,16 +178,18 @@ function PillTab({
       <div style={{
         borderRadius: "999px",
         background: active ? wallColor : "#1a0550",
-        paddingBottom: "5px",
+        paddingBottom: compact ? "4px" : "5px",
         boxShadow: active
-          ? `0 0 0 2px #3b82f6, 0 0 20px ${glow}, 0 0 40px ${glow}, 0 10px 24px -4px ${glow}`
+          ? compact
+            ? `0 0 0 1.5px #3b82f6, 0 0 12px ${glow}, 0 6px 16px -4px ${glow}`
+            : `0 0 0 2px #3b82f6, 0 0 20px ${glow}, 0 0 40px ${glow}, 0 10px 24px -4px ${glow}`
           : "0 6px 16px -4px rgba(0,0,0,0.5)",
         transition: "all 0.2s",
       }}>
         <div style={{
           borderRadius: "999px",
           background: active ? faceGrad : "linear-gradient(180deg, #3b1fa3 0%, #1e0762 100%)",
-          padding: "10px 22px",
+          padding: compact ? "7px 14px" : "10px 22px",
           textAlign: "center",
           position: "relative",
           overflow: "hidden",
@@ -199,7 +209,8 @@ function PillTab({
           <span style={{
             position: "relative", zIndex: 1,
             color: active ? "white" : "rgba(220,200,255,0.6)",
-            fontSize: "13px", fontWeight: 900, letterSpacing: "0.08em",
+            fontSize: compact ? "11px" : "13px",
+            fontWeight: 900, letterSpacing: "0.08em",
             textShadow: active ? "0 2px 4px rgba(0,0,0,0.4)" : "none",
             whiteSpace: "nowrap",
           }}>{label}</span>
@@ -635,8 +646,9 @@ export default function LeaderboardPage() {
             gap: "14px", overflowY: "auto",
           }}>
 
-            {/* Juicy pill tabs */}
-            <div style={{ display: "flex", gap: "10px", flexShrink: 0 }}>
+            {/* Juicy pill tabs — compact on mobile so all 3 fit a 360px
+                phone without the active glow bleeding off the viewport. */}
+            <div style={{ display: "flex", gap: isMobile ? "6px" : "10px", flexShrink: 0 }}>
               {TABS.map(t => (
                 <PillTab
                   key={t.id}
@@ -645,6 +657,7 @@ export default function LeaderboardPage() {
                   wallColor={t.wallColor}
                   faceGrad={t.faceGrad}
                   glow={t.glow}
+                  compact={isMobile}
                   onClick={() => setActiveTab(t.id as typeof activeTab)}
                 />
               ))}
@@ -1251,6 +1264,12 @@ export default function LeaderboardPage() {
 
       {/* Mobile bottom tab nav — replaces the desktop sidebar when < 768px */}
       {isMobile && <BottomNav />}
+
+      {/* Mobile streak chip — sidebar is hidden on mobile so this floats
+          top-right instead. */}
+      {isMobile && streak && (
+        <MobileStreakChip streak={streak.streak} playedToday={streak.playedToday} />
+      )}
     </div>
   );
 }

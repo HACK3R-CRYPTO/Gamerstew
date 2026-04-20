@@ -9,6 +9,7 @@ import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { playCoin, playTabSwitch } from "@/hooks/useAppAudio";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
+import MobileStreakChip from "@/components/MobileStreakChip";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -1523,6 +1524,12 @@ export default function ProfilePage() {
 
       {/* Mobile bottom tab nav — replaces the desktop sidebar when < 768px */}
       {isMobile && <BottomNav />}
+
+      {/* Mobile streak chip — sidebar is hidden on mobile so this floats
+          top-right instead. */}
+      {isMobile && streak && (
+        <MobileStreakChip streak={streak.streak} playedToday={streak.playedToday} />
+      )}
     </div>
   );
 }
