@@ -17,14 +17,14 @@ const V = "/splash_screen_icons/vending.png";
 // Desktop decoratives — curated 3+3 at the edges. Matches home/games.
 // Hidden on mobile via `.icon-float--desktop`.
 const LEFT_ICONS = [
-  { src: D, top: "2%",  left: "-22px", size: 110, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.8 },
-  { src: J, top: "48%", left: "-14px", size: 90,  delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8,  opacity: 0.65 },
+  { src: D, top: "2%", left: "-22px", size: 110, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.8 },
+  { src: J, top: "48%", left: "-14px", size: 90, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.65 },
   { src: G, top: "82%", left: "-10px", size: 100, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.7 },
 ];
 const RIGHT_ICONS = [
-  { src: D, top: "4%",  right: "-24px", size: 100, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20,  opacity: 0.75 },
-  { src: V, top: "44%", right: "-8px",  size: 105, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4,  opacity: 0.65 },
-  { src: M, top: "80%", right: "-6px",  size: 86,  delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.7 },
+  { src: D, top: "4%", right: "-24px", size: 100, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.75 },
+  { src: V, top: "44%", right: "-8px", size: 105, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.65 },
+  { src: M, top: "80%", right: "-6px", size: 86, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.7 },
 ];
 
 // Mobile decoratives — 3+3 smaller at viewport edges. Podium art is the
@@ -43,13 +43,13 @@ type MobileIcon = {
   opacity: number;
 };
 const MOBILE_LEFT_ICONS: MobileIcon[] = [
-  { src: D, top: "6%",  left: "-24px", size: 60, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.45 },
-  { src: J, top: "48%", left: "-22px", size: 54, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8,  opacity: 0.4  },
-  { src: G, top: "84%", left: "-18px", size: 58, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.4  },
+  { src: D, top: "6%", left: "-24px", size: 60, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.45 },
+  { src: J, top: "48%", left: "-22px", size: 54, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.4 },
+  { src: G, top: "84%", left: "-18px", size: 58, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.4 },
 ];
 const MOBILE_RIGHT_ICONS: MobileIcon[] = [
-  { src: D, top: "10%", right: "-26px", size: 58, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20,  opacity: 0.45 },
-  { src: V, top: "52%", right: "-20px", size: 62, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4,  opacity: 0.4  },
+  { src: D, top: "10%", right: "-26px", size: 58, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.45 },
+  { src: V, top: "52%", right: "-20px", size: 62, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.4 },
   { src: M, top: "86%", right: "-18px", size: 52, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.45 },
 ];
 
@@ -79,21 +79,21 @@ const GAME_TABS = [
 //   #16-50   → SILVER    (active players)
 //   #51+     → BRONZE    (everyone else)
 function rowColorByRank(rank: number): string {
-  if (rank === 1)   return "#f472b6"; // MASTER
-  if (rank <= 3)    return "#a78bfa"; // DIAMOND
-  if (rank <= 6)    return "#67e8f9"; // PLATINUM
-  if (rank <= 15)   return "#fbbf24"; // GOLD
-  if (rank <= 50)   return "#c0c0c0"; // SILVER
+  if (rank === 1) return "#f472b6"; // MASTER
+  if (rank <= 3) return "#a78bfa"; // DIAMOND
+  if (rank <= 6) return "#67e8f9"; // PLATINUM
+  if (rank <= 15) return "#fbbf24"; // GOLD
+  if (rank <= 50) return "#c0c0c0"; // SILVER
   return "#cd7f32";                    // BRONZE
 }
 
 function tierLabelByRank(rank: number): string {
-  if (rank === 1)                  return "MASTER I";
-  if (rank <= 3)                   return `DIAMOND ${rank === 2 ? "I" : "II"}`;
-  if (rank <= 6)                   return `PLATINUM ${rank === 4 ? "I" : rank === 5 ? "II" : "III"}`;
-  if (rank <= 15)                  return `GOLD ${rank <= 9 ? "I" : rank <= 12 ? "II" : "III"}`;
-  if (rank <= 50)                  return `SILVER ${rank <= 25 ? "I" : rank <= 38 ? "II" : "III"}`;
-  if (rank <= 200)                 return `BRONZE ${rank <= 100 ? "I" : "II"}`;
+  if (rank === 1) return "MASTER I";
+  if (rank <= 3) return `DIAMOND ${rank === 2 ? "I" : "II"}`;
+  if (rank <= 6) return `PLATINUM ${rank === 4 ? "I" : rank === 5 ? "II" : "III"}`;
+  if (rank <= 15) return `GOLD ${rank <= 9 ? "I" : rank <= 12 ? "II" : "III"}`;
+  if (rank <= 50) return `SILVER ${rank <= 25 ? "I" : rank <= 38 ? "II" : "III"}`;
+  if (rank <= 200) return `BRONZE ${rank <= 100 ? "I" : "II"}`;
   return "BRONZE III";
 }
 
@@ -263,9 +263,9 @@ function StagePodium({ podium }: { podium: Entry[] }) {
   // LOCKED — character placements tuned to podium.png (1536x1024). Don't change
   // unless you also regenerate the podium image with different pedestal positions.
   const placements = [
-    { char: "/characters/char1.png", entry: first,  color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char1.png", entry: first, color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
     { char: "/characters/char2.png", entry: second, color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
-    { char: "/characters/char3.png", entry: third,  color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+    { char: "/characters/char3.png", entry: third, color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
 
   return (
@@ -1141,7 +1141,7 @@ export default function LeaderboardPage() {
         const top10 = entries.slice(0, 10);
         const myRank = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
         const startDate = new Date(s.startTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        const endDate   = new Date(s.endTs   * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const endDate = new Date(s.endTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         return (
           <div onClick={() => setSelectedSeason(null)}
             style={{
@@ -1245,8 +1245,10 @@ export default function LeaderboardPage() {
                           <img src={avatarUrl(e.player, e.username)} alt="" width={30} height={30}
                             style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
                         </div>
-                        <div style={{ flex: 1, minWidth: 0, color: isMe ? "#a78bfa" : "white", fontSize: "12px", fontWeight: 800,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{
+                          flex: 1, minWidth: 0, color: isMe ? "#a78bfa" : "white", fontSize: "12px", fontWeight: 800,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                        }}>
                           {isMe ? "YOU" : fmtName(e.player, e.username)}
                         </div>
                         <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, flexShrink: 0 }}>

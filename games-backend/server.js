@@ -1080,6 +1080,12 @@ app.get('/api/seasons', async (_, res) => {
         .order('score', { ascending: false }).limit(500),
     ]);
 
+    // Count distinct players across both games this week
+    const allPlayers = new Set([
+      ...(rRaw  || []).map(e => e.wallet_address),
+      ...(siRaw || []).map(e => e.wallet_address),
+    ]);
+
     const fmt = async (e) => ({
       player: e.wallet_address,
       username: await resolveUsername(e.wallet_address) || null,
@@ -1090,13 +1096,14 @@ app.get('/api/seasons', async (_, res) => {
     });
 
     return {
-      season:   s.season_number,
-      startTs:  s.start_ts,
-      endTs:    s.end_ts,
-      prizePot: s.prize_pot,
-      sealedAt: Math.floor(new Date(s.created_at).getTime() / 1000),
-      rhythm:   await Promise.all(dedupScores(rRaw,  10).map(fmt)),
-      simon:    await Promise.all(dedupScores(siRaw, 10).map(fmt)),
+      season:       s.season_number,
+      startTs:      s.start_ts,
+      endTs:        s.end_ts,
+      prizePot:     s.prize_pot,
+      sealedAt:     Math.floor(new Date(s.created_at).getTime() / 1000),
+      totalPlayers: allPlayers.size,
+      rhythm:       await Promise.all(dedupScores(rRaw,  10).map(fmt)),
+      simon:        await Promise.all(dedupScores(siRaw, 10).map(fmt)),
     };
   }));
 
