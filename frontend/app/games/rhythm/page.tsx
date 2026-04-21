@@ -11,6 +11,7 @@ import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
+import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -478,6 +479,11 @@ export default function RhythmGamePage() {
   const missedRef = useRef<Set<number>>(new Set());
   const rafRef = useRef<number>(0);
   const burstIdRef = useRef(0);
+  // Imperative handle into the <NoteCanvas>. Every RAF tick we call
+  // canvasHandleRef.current.draw(visible, now) to render the falling
+  // tiles straight to a canvas, bypassing React reconcile. See
+  // components/rhythm/NoteCanvas.tsx for rationale.
+  const canvasHandleRef = useRef<NoteCanvasHandle | null>(null);
 
   // Encore refs — drive the unbounded survival mode after the main track
   const encoreMissesRef = useRef(0);                  // 3 = game over
@@ -927,6 +933,7 @@ export default function RhythmGamePage() {
     // cadence, AND only when the value actually changed.
     let lastTimerSecond = -1;            // setTimeLeft only when whole seconds change
     let lastBurstPrune = 0;              // setBursts cleanup max ~4×/sec
+    let lastVisibleSig = "";             // setActiveNotes only when id set changes (canvas draws tiles, React just mirrors state)
     const tick = () => {
       const wall = performance.now();
       // Anchor guard — under fast restart re-renders the RAF effect can
@@ -1003,15 +1010,19 @@ export default function RhythmGamePage() {
         }
       }
 
-      // Unconditional setActiveNotes every frame. The tile's `top` is
-      // computed inline inside the render from performance.now() —
-      // React needs to re-render at 60Hz for that to stay smooth. This
-      // is the EXACT pattern the old-UI celo branch used, and it
-      // worked on iPhone 13 + similar mid-range phones. Fancier
-      // alternatives (CSS keyframes, direct DOM writes via refs, sig
-      // compares) all introduced their own sync bugs — stick with the
-      // pattern the old build proved on real devices.
-      setActiveNotes(visible);
+      // Canvas draw — imperative, single paint op per frame regardless
+      // of tile count. React never reconciles the tiles; see
+      // components/rhythm/NoteCanvas.tsx. We still call setActiveNotes
+      // (with a sig-compare skip) so any React-side consumer of
+      // activeNotes stays consistent, but the TILES THEMSELVES are
+      // no longer rendered from that state.
+      canvasHandleRef.current?.draw(visible, now);
+
+      const sig = visible.map(v => v.id).join(",");
+      if (sig !== lastVisibleSig) {
+        lastVisibleSig = sig;
+        setActiveNotes(visible);
+      }
 
       // Flag misses: notes that passed the good window without being hit
       for (const n of chartRef.current) {
@@ -1172,6 +1183,7 @@ export default function RhythmGamePage() {
             setPhase("finished");
           }}
           startRef={startRef}
+          canvasHandleRef={canvasHandleRef}
           pet={pet}
           isEncore={phase === "encore"}
           encoreLives={encoreLives}
@@ -1445,7 +1457,7 @@ function PetCenter({
 function PlayingView({
   score, combo, timeLeft, activeNotes, bursts,
   comboToast, flashLane, feedback,
-  onTapLane, onQuit, startRef,
+  onTapLane, onQuit, startRef, canvasHandleRef,
   pet,
   isEncore, encoreLives,
 }: {
@@ -1456,6 +1468,10 @@ function PlayingView({
   onTapLane: (lane: number) => void;
   onQuit: () => void;
   startRef: React.MutableRefObject<number>;
+  // Parent RAF calls canvasHandleRef.current.draw() every tick.
+  // PlayingView owns the JSX that mounts the canvas, then stashes the
+  // handle into this shared ref so the parent can reach it.
+  canvasHandleRef: React.MutableRefObject<NoteCanvasHandle | null>;
   pet: PetStage;
   isEncore: boolean;
   encoreLives: number;
@@ -1575,75 +1591,17 @@ function PlayingView({
           />
         ))}
 
-        {/* Falling notes — Magic Tiles style: wall+face tiles matching
-            our V2 button language. Position recomputed inline from
-            performance.now() every render; setActiveNotes fires each
-            RAF frame so React reconciles at 60Hz. This is the exact
-            pattern the old-UI celo build used and confirmed smooth on
-            iPhone 13 + mid-range Android. */}
-        {activeNotes.map(n => {
-          const now = (performance.now() - startRef.current) / 1000;
-          const progress = (now - n.spawnedAt) / n.travel; // 0 to 1, uses per-note speed
-          const yPct = Math.max(0, Math.min(1, progress)) * 100;
-          const theme = LANES[n.lane];
-          const laneWidthPct = 100 / LANES.length;
-          const fadeIn = Math.min(1, progress / 0.15);
-          return (
-            <div key={n.id} style={{
-              position: "absolute",
-              left: `calc(${laneWidthPct * n.lane}% + ${laneWidthPct / 2}%)`,
-              top: `${yPct}%`,
-              transform: "translate(-50%, -50%)",
-              width: "78%", maxWidth: "90px", minWidth: "54px",
-              pointerEvents: "none",
-              opacity: fadeIn,
-              willChange: "top, transform",
-            }}>
-              {/* Motion trail above the tile — sells the "falling" feel */}
-              <div style={{
-                position: "absolute", top: "-26px", left: "20%", right: "20%",
-                height: "26px",
-                background: `linear-gradient(180deg, transparent 0%, ${theme.glow} 100%)`,
-                filter: "blur(4px)",
-                opacity: 0.7,
-                pointerEvents: "none",
-              }} />
-
-              {/* WALL (3D depth underneath) */}
-              <div style={{
-                borderRadius: "14px",
-                background: theme.wall,
-                paddingBottom: "5px",
-                boxShadow: `0 0 18px ${theme.glow}, 0 0 36px ${theme.glow}44, 0 8px 14px rgba(0,0,0,0.4)`,
-              }}>
-                {/* FACE (the actual tile surface with gloss) */}
-                <div style={{
-                  borderRadius: "12px 12px 10px 10px",
-                  background: theme.face,
-                  padding: "14px 6px",
-                  border: "2px solid rgba(255,255,255,0.5)",
-                  boxShadow: "inset 0 5px 12px rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.25)",
-                  position: "relative",
-                  overflow: "hidden",
-                }}>
-                  {/* Gloss crescent — same as V2 START buttons */}
-                  <div style={{
-                    position: "absolute", top: "2px", left: "6%", right: "6%", height: "48%",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.72) 0%, transparent 100%)",
-                    borderRadius: "10px 10px 60px 60px",
-                    pointerEvents: "none",
-                  }} />
-                  {/* Specular highlight dot */}
-                  <div style={{
-                    position: "absolute", top: "3px", left: "18%", width: "22px", height: "5px",
-                    borderRadius: "50%", background: "rgba(255,255,255,0.8)",
-                    pointerEvents: "none",
-                  }} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {/* Falling tiles — rendered on a single <canvas>, drawn
+            imperatively from the parent's RAF loop via
+            canvasHandleRef.current.draw(visible, now). React never
+            reconciles the tiles. See components/rhythm/NoteCanvas.tsx
+            for the full rationale (short version: DOM tiles melted
+            phones once more than a few were on-screen; canvas stays
+            smooth on mid-range Android + iPhone 13). */}
+        <NoteCanvas
+          ref={canvasHandleRef}
+          lanes={LANES}
+        />
 
         {/* Particle bursts */}
         {bursts.map(b => {
