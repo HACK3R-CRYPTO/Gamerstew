@@ -479,15 +479,6 @@ export default function RhythmGamePage() {
 
   const chartRef = useRef<NoteDef[]>([]);
   const startRef = useRef<number>(0);
-  // audioStartRef holds the AudioContext.currentTime value at "GO!"
-  // (countdown == 0). The RAF tick uses it to derive `now` from the
-  // audio clock instead of performance.now(). Audio clocks are
-  // monotonic and immune to main-thread jank — if the UI stutters for
-  // 100ms during a GC pause, tiles and drums stay in sync because
-  // both are keyed off the same audio timeline. performance.now()
-  // fallback kicks in when the audio context is unavailable (pre-user-
-  // gesture edge cases, autoplay-blocked browsers).
-  const audioStartRef = useRef<number>(0);
   const spawnedRef = useRef<Set<number>>(new Set());
   const missedRef = useRef<Set<number>>(new Set());
   const rafRef = useRef<number>(0);
@@ -589,9 +580,8 @@ export default function RhythmGamePage() {
     // window — exactly the "MISS at start with no tiles falling" bug
     // users reported. The RAF loop now also skips ticks while
     // startRef.current === 0 so the countdown effect is the only
-    // writer. Same treatment for audioStartRef.
+    // writer.
     startRef.current = 0;
-    audioStartRef.current = 0;
     setEncoreLives(3);
     setScore(0); setCombo(0); setMaxCombo(0);
     setHits({ perfect: 0, good: 0, miss: 0 });
@@ -619,18 +609,11 @@ export default function RhythmGamePage() {
     if (countdown <= 0) {
       // GO! — bright higher-octave bell to signal play starts
       playBell(783.99, 0.28);  // G5
-      const ctx = getAudioCtx();
-      // Anchor tile timing to the AudioContext clock. Both the drum
-      // schedule AND the tile physics read from this same zero-point,
-      // so they can never drift under main-thread jank. performance.now
-      // stays as a fallback anchor for stall detection.
-      if (ctx) audioStartRef.current = ctx.currentTime;
       startRef.current = performance.now();
       gameStartMsRef.current = Date.now();  // wall-clock start for gameTime calculation
       setPhase("playing");
       // Schedule the full 30-second drum track aligned to the audio clock.
-      // Same zero-point as audioStartRef means tiles and drums share
-      // one timeline.
+      const ctx = getAudioCtx();
       if (ctx) scheduleDrumTrack(ctx.currentTime);
       return;
     }
@@ -975,15 +958,16 @@ export default function RhythmGamePage() {
       }
       lastWall = wall;
 
-      // Prefer the AudioContext clock as the authoritative timeline.
-      // The drum schedule uses the same zero-point (audioStartRef), so
-      // tiles and audio can never drift under main-thread jank.
-      // Fall back to performance.now if the audio context isn't
-      // available (pre-gesture edge cases).
-      const ctx = getAudioCtx();
-      const now = ctx && audioStartRef.current > 0
-        ? ctx.currentTime - audioStartRef.current
-        : (wall - startRef.current) / 1000;
+      // Timing source: performance.now() anchored at startRef. I
+      // briefly tried ctx.currentTime as the authoritative clock
+      // (cleaner in theory — audio and visual share one monotonic
+      // timeline) but it introduced lag/skip regressions on laptop
+      // and mobile. Suspect: AudioContext.currentTime doesn't always
+      // advance at wall-clock rate under throttled backgrounds or
+      // Web Audio implementations that buffer differently. Going back
+      // to wall clock and relying on the stall guard below to end the
+      // run cleanly when the thread pauses.
+      const now = (wall - startRef.current) / 1000;
       if (phase === "playing") {
         const sec = Math.ceil(TRACK_DURATION - now);
         if (sec !== lastTimerSecond) {
