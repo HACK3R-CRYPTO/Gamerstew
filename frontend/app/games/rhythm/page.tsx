@@ -561,6 +561,17 @@ export default function RhythmGamePage() {
     encoreIdRef.current = 100000;
     encoreLoopAtRef.current = 0;
     mainTrackStatsRef.current = { misses: 0, goods: 0 };
+    // Zero the timeline anchor. If the user quit mid-run and hit START
+    // again immediately, the RAF loop could mount with a stale
+    // startRef from the PREVIOUS run (countdown's anchor-set can miss
+    // the window under fast re-renders). `now` would compute as
+    // "already 30+ seconds in" on the very first tick, every chart
+    // note would instantly miss, and NO tile ever entered the spawn
+    // window — exactly the "MISS at start with no tiles falling" bug
+    // users reported. The RAF loop now also skips ticks while
+    // startRef.current === 0 so the countdown effect is the only
+    // writer.
+    startRef.current = 0;
     setEncoreLives(3);
     setScore(0); setCombo(0); setMaxCombo(0);
     setHits({ perfect: 0, good: 0, miss: 0 });
@@ -904,8 +915,31 @@ export default function RhythmGamePage() {
     // the very first RAF after a throttled resume can detect a stall.
     let lastWall = performance.now();
     const STALL_THRESHOLD_MS = 1500;
+    // ── Render throttles ──
+    // Mobile users reported tiles "skipping" + phones getting hot. Root
+    // cause: setActiveNotes / setTimeLeft / setBursts were firing 60×/sec,
+    // forcing React to reconcile the entire game tree every frame. On
+    // thermal-throttled phones that spirals — slower frames mean tiles
+    // skip past hit windows, scores tank, frustration climbs.
+    //
+    // Fix: physics still runs at full RAF cadence (so timing accuracy is
+    // preserved), but the React-visible state only updates on a slower
+    // cadence, AND only when the value actually changed.
+    let lastTimerSecond = -1;            // setTimeLeft only when whole seconds change
+    let lastVisibleSig = "";             // setActiveNotes only when ids change
+    let lastBurstPrune = 0;              // setBursts cleanup max ~4×/sec
     const tick = () => {
       const wall = performance.now();
+      // Anchor guard — under fast restart re-renders the RAF effect can
+      // mount before the countdown effect has set startRef.current. If
+      // we computed `now` against 0, `now` would be a huge epoch-ish
+      // number and every chart note would stampede as a miss before
+      // any tile rendered. Just idle the tick until the anchor lands.
+      if (startRef.current === 0) {
+        lastWall = wall;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const dt = wall - lastWall;
       if (dt > STALL_THRESHOLD_MS) {
         setHits(h => {
@@ -918,7 +952,13 @@ export default function RhythmGamePage() {
       lastWall = wall;
 
       const now = (wall - startRef.current) / 1000;
-      if (phase === "playing") setTimeLeft(Math.max(0, TRACK_DURATION - now));
+      if (phase === "playing") {
+        const sec = Math.ceil(TRACK_DURATION - now);
+        if (sec !== lastTimerSecond) {
+          lastTimerSecond = sec;
+          setTimeLeft(Math.max(0, TRACK_DURATION - now));
+        }
+      }
 
       // ── Encore: spawn new tiles dynamically, accelerating over time ──
       if (phase === "encore" && now >= encoreNextSpawnRef.current) {
@@ -963,7 +1003,16 @@ export default function RhythmGamePage() {
           if (!missedRef.current.has(n.id)) visible.push({ ...n, spawnedAt: n.time - n.travel });
         }
       }
-      setActiveNotes(visible);
+      // Skip the React update if the visible set is unchanged. The set
+      // typically holds 1-3 items at a time; 60 reconciles/sec of the
+      // same array was the biggest CPU drain on thermal-throttled
+      // phones. CSS animations on the tiles handle the actual fall —
+      // React only needs to re-render when ids enter or leave the set.
+      const sig = visible.map(v => v.id).join(",");
+      if (sig !== lastVisibleSig) {
+        lastVisibleSig = sig;
+        setActiveNotes(visible);
+      }
 
       // Flag misses: notes that passed the good window without being hit
       for (const n of chartRef.current) {
@@ -988,8 +1037,17 @@ export default function RhythmGamePage() {
         }
       }
 
-      // Clean up old particles
-      setBursts(bs => bs.filter(b => performance.now() - b.born < 600));
+      // Clean up old particles — throttle to ~4×/sec instead of every
+      // RAF frame. Bursts only live 600ms anyway, so a 250ms prune
+      // cadence is invisible to the player but spares the React tree
+      // 50+ pointless reconciles per second.
+      if (wall - lastBurstPrune > 250) {
+        lastBurstPrune = wall;
+        setBursts(bs => {
+          const filtered = bs.filter(b => wall - b.born < 600);
+          return filtered.length === bs.length ? bs : filtered;
+        });
+      }
 
       // End of scripted track: if combo alive → ENCORE, else → finished.
       // Either way, snapshot the main-track hit stats so FC/AP achievements
@@ -1062,9 +1120,13 @@ export default function RhythmGamePage() {
         }} />
       ))}
 
-      {/* Splash icons — kept as ambient texture at low opacity */}
+      {/* Splash icons — ambient texture at low opacity. We pause the
+          float animation while a run is active (playing/encore) — the
+          tiles ARE the animation, and 6+ infinite drop-shadow + transform
+          keyframes running in parallel cooked low-end phones. Idle and
+          finished phases still bob. */}
       {BG_ICONS.map((ic, i) => (
-        <div key={i} className="icon-float" style={{
+        <div key={i} className={phase === "playing" || phase === "encore" ? "" : "icon-float"} style={{
           position: "absolute",
           top: ic.top,
           ...("left" in ic ? { left: ic.left } : { right: ic.right }),
