@@ -316,6 +316,40 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           </p>
         </InfoCard>
 
+        {/* G$ explainer — surfaces up top because players kept asking
+            "is this real money?" the moment they saw "Wager G$". The goal
+            is to make two things crystal clear before anyone has to scroll
+            deeper: (1) G$ is a free token you claim, (2) it's not fiat —
+            it's in-game crypto that funds real UBI. */}
+        <SectionDivider label="WHAT IS G$" />
+
+        <InfoCard accentColor="#fbbf24">
+          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
+            G$ = GoodDollar
+          </div>
+          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
+            G$ is a <strong style={{ color: "#fde68a" }}>free crypto token</strong> on Celo. You claim it daily after a one-time face-scan verification — no purchase, no deposit, no credit card. It&apos;s the currency you use to wager inside Game Arena.
+          </div>
+        </InfoCard>
+
+        <InfoCard accentColor="#86efac">
+          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
+            What can I do with it?
+          </div>
+          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
+            Wager G$ on Rhythm or Simon rounds — beat the target, win <strong style={{ color: "#fde68a" }}>1.3×</strong> back. G$ also counts toward leaderboard rewards. Unspent G$ stays in your wallet; you can swap or transfer it like any ERC-20.
+          </div>
+        </InfoCard>
+
+        <InfoCard accentColor="#c084fc">
+          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
+            Is it real money?
+          </div>
+          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
+            It&apos;s a real on-chain token with a market value — but it&apos;s <strong style={{ color: "#d8b4fe" }}>earned, not bought</strong>. Think of it like XP that happens to live on a blockchain. Everyone who verifies claims the same daily amount. No pay-to-play.
+          </div>
+        </InfoCard>
+
         <SectionDivider label="THE GAMES" />
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -369,6 +403,12 @@ function AboutModal({ onClose }: { onClose: () => void }) {
 
 function SupportModal({ onClose }: { onClose: () => void }) {
   const faqs = [
+    // G$ explainer pinned to the top — it's the #1 question we get from
+    // new players ("is this real money I'm wagering?"). Answer it before
+    // anyone has to ask.
+    { q: "What is G$? Is it real money?", a: "G$ (GoodDollar) is a free crypto token on Celo. You claim it daily after a one-time face-scan verification — no purchase. It has on-chain value but it's earned, not bought. Think of it like XP that lives on a blockchain." },
+    { q: "How do I get G$?", a: "Verify with GoodDollar (face scan, one-time), then tap CLAIM on home/profile every 24h. You can also win G$ by wagering on games (1.3× back on a win) or finishing top-3 on the weekly leaderboard." },
+    { q: "What can I do with my G$?", a: "Wager it on Rhythm or Simon rounds for a 1.3× return if you beat the target. Unspent G$ stays in your wallet as a regular ERC-20 — you can swap or transfer it outside the app too." },
     { q: "My score is not on the leaderboard", a: "Scores post on-chain after each game. If it's missing, refresh — the leaderboard polls every 15s." },
     { q: "I can't claim G$", a: "Verify with GoodDollar first. Tap VERIFY on home and complete the face scan. Claims reset daily." },
     { q: "My Game Pass won't mint", a: "You need a small amount of CELO for gas. Top up via the Celo faucet or a bridge and retry." },

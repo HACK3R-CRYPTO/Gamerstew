@@ -451,7 +451,7 @@ export default function GamesPage() {
             events.push({
               icon: "🗓️", color: "#a78bfa",
               title: `Season ${seasonInfo.season} — ends in ${fmtShortCountdown(seasonInfo.endsAt - now)}`,
-              subtitle: "50 G$ pool · Top 3 win · View →",
+              subtitle: "Top 3 win · View →",
               onClick: () => router.push("/leaderboard"),
             });
           }

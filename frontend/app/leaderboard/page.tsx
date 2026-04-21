@@ -846,36 +846,25 @@ export default function LeaderboardPage() {
                           </div>
                         </div>
 
-                        {/* Prize pool + players */}
-                        <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "2fr 1fr", gap: "10px", marginBottom: "14px" }}>
-                          <div style={{
-                            borderRadius: "14px",
-                            background: "linear-gradient(180deg, rgba(251,191,36,0.18) 0%, rgba(0,0,0,0.3) 100%)",
-                            border: "1.5px solid rgba(251,191,36,0.5)",
-                            padding: "10px 14px",
-                          }}>
-                            <div style={{ color: "rgba(251,191,36,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>PRIZE POOL</div>
-                            <div style={{ display: "flex", alignItems: "baseline", gap: "5px", marginTop: "2px" }}>
-                              <span style={{ color: "#fbbf24", fontSize: "20px", fontWeight: 900, textShadow: "0 0 14px rgba(251,191,36,0.7)" }}>50</span>
-                              <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "11px", fontWeight: 800, letterSpacing: "0.1em" }}>G$</span>
-                            </div>
-                            <div style={{ display: "flex", gap: "8px", marginTop: "6px", fontSize: "8px", fontWeight: 800 }}>
-                              <span style={{ color: "#fbbf24" }}>🥇 25</span>
-                              <span style={{ color: "#e2e8f0" }}>🥈 15</span>
-                              <span style={{ color: "#f97316" }}>🥉 10</span>
-                            </div>
-                          </div>
+                        {/* Players chip only — prize pool hidden for now.
+                            Players thought the 50 G$ was a real-money
+                            entry fee or a cash prize, not a free in-game
+                            currency, and bounced. We'll bring it back once
+                            the explainer on /about makes G$ obvious. */}
+                        <div style={{ position: "relative", zIndex: 1, marginBottom: "14px" }}>
                           <div style={{
                             borderRadius: "14px",
                             background: "linear-gradient(180deg, rgba(167,139,250,0.18) 0%, rgba(0,0,0,0.3) 100%)",
                             border: "1.5px solid rgba(167,139,250,0.5)",
-                            padding: "10px 12px", textAlign: "center",
-                            display: "flex", flexDirection: "column", justifyContent: "center",
+                            padding: "10px 14px",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
                           }}>
-                            <div style={{ color: "#a78bfa", fontSize: "20px", fontWeight: 900, textShadow: "0 0 14px rgba(167,139,250,0.7)" }}>
+                            <span style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 14px rgba(167,139,250,0.7)" }}>
                               {liveEntries.length}
-                            </div>
-                            <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em", marginTop: "2px" }}>PLAYERS</div>
+                            </span>
+                            <span style={{ color: "rgba(200,180,255,0.75)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.14em" }}>
+                              PLAYER{liveEntries.length !== 1 ? "S" : ""} THIS SEASON
+                            </span>
                           </div>
                         </div>
 
