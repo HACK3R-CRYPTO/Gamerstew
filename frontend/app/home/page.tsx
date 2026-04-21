@@ -680,7 +680,9 @@ export default function HomePage() {
               path: "/connect?next=/games",
               gradient: "linear-gradient(160deg, #a4f480 0%, #2bd0b9 55%, #05a0cd 100%)",
               wall: "#006282", // Extremely dark heavy bottom base
-              shadowGlow: "rgba(5, 160, 205, 0.6)"
+              shadowGlow: "rgba(5, 160, 205, 0.6)",
+              disabled: false,
+              comingSoon: false,
             },
             {
               label: "CHALLENGE\nAI",
@@ -689,19 +691,35 @@ export default function HomePage() {
               path: "/connect?next=/games/coinflip",
               gradient: "linear-gradient(160deg, #ffc76b 0%, #ff5232 50%, #cc0c0c 100%)",
               wall: "#800000",
-              shadowGlow: "rgba(216, 17, 17, 0.6)"
+              shadowGlow: "rgba(216, 17, 17, 0.6)",
+              // Coin-flip AI route isn't shipped yet — dim the whole
+              // button and block the tap so users can't end up at a
+              // dead route. Visual language matches the "LOCKED" state
+              // on the Coming Soon game card.
+              disabled: true,
+              comingSoon: true,
             },
           ].map((btn) => (
             <div
               key={btn.path}
               role="button"
-              tabIndex={0}
-              onClick={() => router.push(btn.path)}
-              style={{ cursor: "pointer", userSelect: "none", transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s" }}
-              onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"}
-              onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"}
-              onMouseDown={e => (e.currentTarget as HTMLDivElement).style.transform = "scale(0.92) translateY(12px)"}
-              onMouseUp={e => (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"}
+              tabIndex={btn.disabled ? -1 : 0}
+              aria-disabled={btn.disabled}
+              onClick={() => { if (!btn.disabled) router.push(btn.path); }}
+              style={{
+                cursor: btn.disabled ? "not-allowed" : "pointer",
+                userSelect: "none",
+                position: "relative",
+                transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s",
+                // Fade + desaturate the dead button so it reads as
+                // unavailable without removing it from the layout.
+                filter: btn.disabled ? "grayscale(0.55) brightness(0.7)" : "none",
+                opacity: btn.disabled ? 0.7 : 1,
+              }}
+              onMouseEnter={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"; }}
+              onMouseLeave={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
+              onMouseDown={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.92) translateY(12px)"; }}
+              onMouseUp={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"; }}
             >
               {/* Outer container provides the 3D base (wall/lip). Size clamps
                   to the viewport — ~150px on 360px phones, up to 240px on
@@ -774,6 +792,29 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
+              {btn.comingSoon && (
+                <div style={{
+                  position: "absolute",
+                  top: isMobile ? "-8px" : "-10px",
+                  right: isMobile ? "-8px" : "-12px",
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  background: "linear-gradient(180deg, #fde68a 0%, #d97706 100%)",
+                  border: "2px solid rgba(255,255,255,0.7)",
+                  boxShadow: "0 6px 14px -2px rgba(251,191,36,0.65), 0 0 18px rgba(251,191,36,0.4)",
+                  color: "white",
+                  fontSize: isMobile ? "9px" : "10px",
+                  fontWeight: 900,
+                  letterSpacing: "0.14em",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                  // Filter from the parent removes color — override so the
+                  // ribbon itself stays warm and readable.
+                  filter: "grayscale(0) brightness(1)",
+                  pointerEvents: "none",
+                  zIndex: 3,
+                  whiteSpace: "nowrap",
+                }}>SOON</div>
+              )}
             </div>
           ))}
         </div>
