@@ -998,6 +998,91 @@ export default function LeaderboardPage() {
                           </div>
                         );
                       })()}
+
+                      {/* ── 3-WEEK CUP RANKINGS ──
+                          Full cumulative leaderboard for the competition.
+                          Was previously only accessible via the /api/competition
+                          endpoint with no UI — users saw the "3-WEEK COMPETITION"
+                          card advertising $15/$10/$5 prizes but had no way to
+                          check who was winning or where they stood (unless they
+                          were already in the top 20).
+                          Top 10 shown; the "you're #N" chip above covers ranks
+                          beyond that. Rhythm+Simon split in the score cell so
+                          players see both contributions at a glance. */}
+                      {competition.rankings.length > 0 && (
+                        <div style={{
+                          position: "relative", zIndex: 1, marginTop: "14px",
+                          padding: "12px",
+                          borderRadius: "12px",
+                          background: "rgba(0,0,0,0.3)",
+                          border: "1px solid rgba(251,191,36,0.2)",
+                        }}>
+                          <div style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            marginBottom: "10px",
+                          }}>
+                            <span style={{
+                              color: "rgba(254,215,170,0.9)", fontSize: "10px",
+                              fontWeight: 900, letterSpacing: "0.16em",
+                            }}>CUP RANKINGS</span>
+                            <span style={{
+                              color: "rgba(200,180,255,0.55)", fontSize: "9px",
+                              fontWeight: 700, letterSpacing: "0.08em",
+                            }}>RHYTHM + SIMON COMBINED</span>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                            {competition.rankings.slice(0, 10).map((r, i) => {
+                              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+                              const medalColor = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : i === 2 ? "#f97316" : "rgba(200,180,255,0.6)";
+                              const isMe = !!address && r.wallet === address.toLowerCase();
+                              const display = r.username || `${r.wallet.slice(0, 4)}...${r.wallet.slice(-3)}`;
+                              return (
+                                <div key={r.wallet} style={{
+                                  display: "flex", alignItems: "center", gap: "10px",
+                                  padding: "7px 10px",
+                                  borderRadius: "8px",
+                                  background: isMe ? "rgba(251,191,36,0.12)" : (i < 3 ? `${medalColor}10` : "rgba(255,255,255,0.025)"),
+                                  border: isMe ? "1px solid rgba(251,191,36,0.45)" : `1px solid ${i < 3 ? medalColor + "33" : "transparent"}`,
+                                }}>
+                                  <span style={{
+                                    minWidth: "22px", textAlign: "center",
+                                    fontSize: medal ? "14px" : "10px",
+                                    color: medalColor,
+                                    fontWeight: 800,
+                                  }}>
+                                    {medal || `#${i + 1}`}
+                                  </span>
+                                  <span style={{
+                                    flex: 1, minWidth: 0,
+                                    color: isMe ? "#fde68a" : "white",
+                                    fontSize: "11.5px",
+                                    fontWeight: isMe ? 900 : 700,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                  }}>
+                                    {isMe ? "YOU" : display}
+                                  </span>
+                                  <span style={{
+                                    color: "rgba(200,180,255,0.5)",
+                                    fontSize: "9px", fontWeight: 700,
+                                    letterSpacing: "0.04em",
+                                    whiteSpace: "nowrap",
+                                  }}>
+                                    🥁 {r.totalRhythm} · 🧠 {r.totalSimon}
+                                  </span>
+                                  <span style={{
+                                    minWidth: "48px", textAlign: "right",
+                                    color: isMe ? "#fbbf24" : (i < 3 ? medalColor : "white"),
+                                    fontSize: "13px", fontWeight: 900,
+                                    textShadow: i < 3 ? `0 0 8px ${medalColor}66` : "none",
+                                  }}>
+                                    {r.total}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
