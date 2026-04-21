@@ -49,6 +49,20 @@ button[aria-label$="button"],
   50%       { transform: translateY(-14px); }
 }
 
+/* Rhythm tile fall — tile slides from lane top (top: 0%) to lane bottom
+   (top: 100%) over its travel duration. Animates `top` directly so the
+   fall is exact to the lane height, not a viewport-relative guess.
+   `transform: translate(-50%, -50%)` is held constant in the keyframe
+   (via the base inline style, unaffected here). animation-delay on the
+   element can be negative to pick up mid-fall for tiles whose spawnedAt
+   is slightly in the past (React renders at throttled cadence; RAF
+   physics at 60Hz). */
+@keyframes tile-fall {
+  0%   { top: 0%;   opacity: 0; }
+  8%   { opacity: 1; }
+  100% { top: 100%; opacity: 1; }
+}
+
 @keyframes dot-pulse {
   0%, 100% { opacity: 0.55; transform: scale(1); }
   50%       { opacity: 1;    transform: scale(1.35); }

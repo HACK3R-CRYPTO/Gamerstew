@@ -1576,24 +1576,37 @@ function PlayingView({
           />
         ))}
 
-        {/* Falling notes — Magic Tiles style: wall+face tiles matching our V2 button language */}
+        {/* Falling notes — Magic Tiles style: wall+face tiles matching our V2 button language.
+            Motion is driven by a CSS keyframe (`tile-fall`) not by React
+            re-computing `top` every frame. React is throttled to only
+            render when tile ids change (perf), so per-frame position
+            updates here would freeze the tile between renders and look
+            like skipping. The GPU composites the fall via transform, so
+            it stays smooth at 60fps regardless of React cadence.
+            `animationDelay` is negative so a tile that's already been
+            falling for some time (spawned slightly before this render)
+            picks up the animation mid-way — preserves timing accuracy. */}
         {activeNotes.map(n => {
-          const now = (performance.now() - startRef.current) / 1000;
-          const progress = (now - n.spawnedAt) / n.travel; // 0 to 1, uses per-note speed
-          const yPct = Math.max(0, Math.min(1, progress)) * 100;
+          const nowAtRender = (performance.now() - startRef.current) / 1000;
+          const alreadyFallenSec = Math.max(0, nowAtRender - n.spawnedAt);
           const theme = LANES[n.lane];
           const laneWidthPct = 100 / LANES.length;
-          const fadeIn = Math.min(1, progress / 0.15);
           return (
             <div key={n.id} style={{
               position: "absolute",
               left: `calc(${laneWidthPct * n.lane}% + ${laneWidthPct / 2}%)`,
-              top: `${yPct}%`,
+              top: "0%",
               transform: "translate(-50%, -50%)",
               width: "78%", maxWidth: "90px", minWidth: "54px",
               pointerEvents: "none",
-              opacity: fadeIn,
-              willChange: "top, transform",
+              // GPU-animated fall from top:0% → top:100% over n.travel
+              // seconds. alreadyFallenSec > 0 catches tiles whose
+              // spawnedAt is slightly in the past (React runs at 4-20Hz
+              // under throttle; RAF physics at 60Hz). Fade-in handled
+              // by the same keyframe (0→1 opacity in the first 15%).
+              animation: `tile-fall ${n.travel}s linear both`,
+              animationDelay: `${-alreadyFallenSec}s`,
+              willChange: "transform, opacity",
             }}>
               {/* Motion trail above the tile — sells the "falling" feel */}
               <div style={{
