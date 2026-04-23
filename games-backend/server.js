@@ -1380,6 +1380,153 @@ app.get('/api/streak/:address', async (req, res) => {
   res.json({ streak, playedToday });
 });
 
+// ─── GET /api/challenge — short-burst play-count challenge ────────────────────
+// 72-hour hosted event that awards a flat USDC prize to the top N players by
+// total game plays. Designed for end-of-program traction pushes where the
+// goal is volume of transactions, not peak score.
+//
+// Config is hardcoded on purpose so the event is deterministic and the
+// whole team knows when it starts and stops without hunting through env
+// vars. Update these three constants to run another challenge later.
+const CHALLENGE_ID          = '2026-04-23_72h_arena_cup';
+const CHALLENGE_NAME        = '72-hr Arena Cup';
+const CHALLENGE_START       = Math.floor(new Date('2026-04-23T00:00:00Z').getTime() / 1000);
+const CHALLENGE_END         = Math.floor(new Date('2026-04-26T00:00:00Z').getTime() / 1000);
+const CHALLENGE_MIN_PLAYS   = 500;
+const CHALLENGE_TOP_N       = 6;
+const CHALLENGE_PRIZE_USDC  = 5;
+
+// Freeze guard — flips to true the moment we write the immutable winner
+// record. Survives across /api/challenge calls within one process; on cold
+// start the first post-end caller re-runs the freeze, which the upsert's
+// onConflict: 'id' makes idempotent.
+let challengeFrozen = false;
+
+async function freezeChallengeIfNeeded(nowSec, ranked) {
+  if (challengeFrozen) return;
+  if (nowSec < CHALLENGE_END) return;
+
+  // Winners = top N qualified players. If fewer than N qualified, we record
+  // only those who did — no inflating the winner list with players below
+  // the min-plays floor.
+  const winners = ranked
+    .filter(r => r.qualified)
+    .slice(0, CHALLENGE_TOP_N)
+    .map((r, i) => ({
+      rank: i + 1,
+      wallet: r.wallet,
+      username: r.username,
+      plays: r.plays,
+    }));
+
+  try {
+    await supabase.from('challenge_winners').upsert({
+      id: CHALLENGE_ID,
+      name: CHALLENGE_NAME,
+      starts_at: new Date(CHALLENGE_START * 1000).toISOString(),
+      ends_at:   new Date(CHALLENGE_END   * 1000).toISOString(),
+      min_plays: CHALLENGE_MIN_PLAYS,
+      top_n:     CHALLENGE_TOP_N,
+      prize_usdc: CHALLENGE_PRIZE_USDC,
+      winners,
+    }, { onConflict: 'id' });
+    challengeFrozen = true;
+    console.log(`🏆 Froze ${CHALLENGE_ID} — ${winners.length} winner(s)`);
+  } catch (e) {
+    console.error('Failed to freeze challenge:', e?.message || e);
+    // Leave challengeFrozen=false so the next caller retries.
+  }
+}
+
+// In-memory cache for the expensive aggregation. Every client polls every
+// 30s; without this, 50 concurrent clients hammer the DB with 50 identical
+// full-window scans. 10s TTL means worst-case stale data is 10 seconds old,
+// which is invisible to the player and saves ~5x the DB load.
+const CHALLENGE_CACHE_TTL_MS = 10_000;
+let challengeCache = { at: 0, plays: null, ranked: null };
+
+async function getChallengePlays() {
+  const nowMs = Date.now();
+  if (challengeCache.plays && nowMs - challengeCache.at < CHALLENGE_CACHE_TTL_MS) {
+    return { plays: challengeCache.plays, ranked: challengeCache.ranked };
+  }
+  const startIso = new Date(CHALLENGE_START * 1000).toISOString();
+  const endIso   = new Date(CHALLENGE_END   * 1000).toISOString();
+
+  const { data: rows } = await supabase
+    .from('activity')
+    .select('wallet_address')
+    .gte('created_at', startIso)
+    .lt('created_at', endIso);
+
+  const plays = new Map();
+  for (const row of (rows || [])) {
+    const key = row.wallet_address?.toLowerCase();
+    if (!key) continue;
+    plays.set(key, (plays.get(key) || 0) + 1);
+  }
+
+  const ranked = await Promise.all(
+    Array.from(plays.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(async ([wallet, count]) => ({
+        wallet,
+        plays: count,
+        qualified: count >= CHALLENGE_MIN_PLAYS,
+        username: await resolveUsername(wallet) || null,
+      }))
+  );
+
+  challengeCache = { at: nowMs, plays, ranked };
+  return { plays, ranked };
+}
+
+app.get('/api/challenge', async (req, res) => {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const active = nowSec >= CHALLENGE_START && nowSec < CHALLENGE_END;
+
+  // Hit the shared cache — one DB query every 10s, shared across all
+  // concurrent polls. Fresh enough that no player notices the staleness.
+  const { plays, ranked } = await getChallengePlays();
+
+  // Auto-freeze on first call after CHALLENGE_END. Idempotent via upsert —
+  // if multiple concurrent requests race here they all converge on one row.
+  await freezeChallengeIfNeeded(nowSec, ranked);
+
+  // My play count + qualification state, if the client passed ?player=.
+  const requester = (req.query.player || '').toString().toLowerCase();
+  const myPlays = requester ? (plays.get(requester) || 0) : 0;
+
+  res.json({
+    active,
+    startsAt: CHALLENGE_START,
+    endsAt: CHALLENGE_END,
+    secondsLeft: Math.max(0, CHALLENGE_END - nowSec),
+    minPlays: CHALLENGE_MIN_PLAYS,
+    topN: CHALLENGE_TOP_N,
+    prizeUsdc: CHALLENGE_PRIZE_USDC,
+    totalPrizePool: CHALLENGE_TOP_N * CHALLENGE_PRIZE_USDC,
+    rankings: ranked,
+    myPlays,
+    myQualified: myPlays >= CHALLENGE_MIN_PLAYS,
+  });
+});
+
+// ─── GET /api/challenges/past — archive of frozen challenge results ──────────
+// Returns every challenge that has ended and been frozen, newest first.
+// The leaderboard "past seasons" section uses this to render a history of
+// hosted events alongside regular weekly seasons.
+app.get('/api/challenges/past', async (_, res) => {
+  const { data } = await supabase
+    .from('challenge_winners')
+    .select('*')
+    .lte('ends_at', new Date().toISOString())
+    .order('ends_at', { ascending: false })
+    .limit(20);
+  res.json({ challenges: data || [] });
+});
+
 // ─── GET /api/competition — 3-week cumulative leaderboard (weeks 11-13) ────────
 // Each player's best score per week is summed. Top 3 win $15/$10/$5.
 const COMPETITION_WEEKS = [11, 12, 13];

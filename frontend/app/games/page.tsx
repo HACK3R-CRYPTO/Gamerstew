@@ -7,6 +7,7 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import LevelUpToast from "@/components/LevelUpToast";
+import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -253,6 +254,11 @@ export default function GamesPage() {
   type EventCard = { icon: string; color: string; title: string; subtitle: string; onClick?: () => void };
   const [seasonInfo, setSeasonInfo] = useState<{ season: number; endsAt: number } | null>(null);
   const [compInfo, setCompInfo] = useState<{ weeksLeft: number; total: number } | null>(null);
+
+  // 72-hour Arena Challenge — shared hook polls /api/challenge every 30s
+  // and returns null when the event is not active, so the banner below
+  // only renders during the window.
+  const challenge = useChallenge(address);
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/seasons`)
       .then(r => r.json())
@@ -459,6 +465,13 @@ export default function GamesPage() {
 
         {/* EVENTS */}
         <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>EVENTS</div>
+
+        {/* 72-hour Arena Challenge — hosted push with a live countdown,
+            personal progress bar, and the current top 3. Sits at the TOP
+            of the events list because it's time-bound and the most urgent
+            thing on the page while active. */}
+        {challenge && <ChallengeBanner challenge={challenge} />}
+
         {(() => {
           const events: EventCard[] = [];
           if (seasonInfo && seasonInfo.endsAt > 0) {

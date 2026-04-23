@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
+import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
 
 // ─── Splash icons ──────────────────────────────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -461,6 +462,10 @@ function LeaderboardInner() {
   })();
   const [activeTab, setActiveTab] = useState<"rankings" | "seasons" | "pvp">(initialTab);
   const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
+
+  // 72-hour Arena Cup — shared hook returns null outside the event window,
+  // so the banner below only renders while the challenge is live.
+  const challenge = useChallenge(address);
   const [entries, setEntries] = useState<Entry[]>(DUMMY_ENTRIES);
   const [loading, setLoading] = useState(false);
   const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
@@ -477,10 +482,29 @@ function LeaderboardInner() {
   const [seasonsData, setSeasonsData] = useState<SeasonsData | null>(null);
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
   const [selectedSeason, setSelectedSeason] = useState<PastSeason | null>(null);
+  // Past hosted challenges (72-hr Arena Cup and future short-burst events).
+  // Each row is a frozen snapshot written at event end, immutable. Rendered
+  // alongside past seasons in the Seasons tab so players see every past
+  // competition we've run in one place.
+  type PastChallenge = {
+    id: string;
+    name: string;
+    starts_at: string;
+    ends_at: string;
+    min_plays: number;
+    top_n: number;
+    prize_usdc: number;
+    winners: { rank: number; wallet: string; username: string | null; plays: number }[];
+  };
+  const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
   useEffect(() => {
     if (activeTab !== "seasons") return;
     fetch(`${BACKEND_URL}/api/seasons`).then(r => r.json()).then(setSeasonsData).catch(() => setSeasonsData(null));
     fetch(`${BACKEND_URL}/api/competition`).then(r => r.json()).then(setCompetition).catch(() => setCompetition(null));
+    fetch(`${BACKEND_URL}/api/challenges/past`)
+      .then(r => r.json())
+      .then(d => setPastChallenges(d.challenges || []))
+      .catch(() => setPastChallenges([]));
   }, [activeTab]);
 
   // Live countdown to season end (refreshes every second)
@@ -654,6 +678,15 @@ function LeaderboardInner() {
             padding: isMobile ? "24px 14px 96px" : "18px 16px 20px",
             gap: "14px", overflowY: "auto",
           }}>
+
+            {/* 72-hour Arena Cup — pinned above the tabs so every visitor
+                to the leaderboard sees the event first. Only renders while
+                the event is active; `useChallenge` returns null otherwise. */}
+            {challenge && (
+              <div style={{ width: "100%", maxWidth: "640px", flexShrink: 0 }}>
+                <ChallengeBanner challenge={challenge} />
+              </div>
+            )}
 
             {/* Juicy pill tabs — compact on mobile so all 3 fit a 360px
                 phone without the active glow bleeding off the viewport. */}
@@ -1203,6 +1236,106 @@ function LeaderboardInner() {
                     padding: "40px 20px", textAlign: "center",
                     color: "rgba(200,180,255,0.5)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.15em",
                   }}>LOADING SEASONS...</div>
+                )}
+
+                {/* ── PAST CHALLENGES — hosted short-burst events (72-hr
+                    Arena Cup and future ones). Rendered as a sibling block
+                    under the seasons history so every past competition
+                    lives in one place. */}
+                {pastChallenges.length > 0 && (
+                  <div style={{ marginTop: "clamp(20px, 3vh, 32px)" }}>
+                    <div style={{
+                      fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
+                      color: "rgba(254,215,170,0.9)", textAlign: "center",
+                      textShadow: "0 0 14px rgba(251,191,36,0.7)", marginBottom: "12px",
+                    }}>── PAST CHALLENGES ──</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "10px" }}>
+                      {pastChallenges.map(ch => {
+                        const winner = ch.winners[0] || null;
+                        const myFinish = address
+                          ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0)
+                          : 0;
+                        const placed = myFinish > 0 && myFinish <= ch.top_n;
+                        const medalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : "#a78bfa";
+                        const medal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : myFinish > 0 ? "🏅" : null;
+                        const dateLabel = new Date(ch.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+                        return (
+                          <div key={ch.id} style={{
+                            borderRadius: "14px",
+                            background: "linear-gradient(180deg, rgba(40,10,80,0.8) 0%, rgba(10,2,40,0.9) 100%)",
+                            border: placed
+                              ? `1.5px solid ${medalColor}88`
+                              : "1px solid rgba(251,191,36,0.3)",
+                            boxShadow: placed
+                              ? `0 0 14px ${medalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
+                              : "0 0 10px rgba(251,191,36,0.08), 0 6px 14px rgba(0,0,0,0.5)",
+                            padding: "12px 14px",
+                          }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", marginBottom: "8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                                <span style={{ fontSize: "14px" }}>🏆</span>
+                                <span style={{
+                                  color: "#fbbf24", fontSize: "11.5px", fontWeight: 900, letterSpacing: "0.06em",
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>{ch.name.toUpperCase()}</span>
+                              </div>
+                              {medal && (
+                                <div style={{
+                                  padding: "2px 8px", borderRadius: "999px",
+                                  background: `${medalColor}1a`, border: `1px solid ${medalColor}66`,
+                                  flexShrink: 0,
+                                }}>
+                                  <span style={{ fontSize: "10px" }}>{medal}</span>
+                                  <span style={{ color: medalColor, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>
+                                    #{myFinish}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{
+                              display: "flex", justifyContent: "space-between",
+                              color: "rgba(200,180,255,0.6)", fontSize: "9.5px", fontWeight: 700,
+                              letterSpacing: "0.06em", marginBottom: "8px",
+                            }}>
+                              <span>ENDED {dateLabel}</span>
+                              <span style={{ color: "#fde68a" }}>${ch.top_n * ch.prize_usdc} POOL</span>
+                            </div>
+
+                            {winner ? (
+                              <div style={{
+                                display: "flex", alignItems: "center", gap: "8px",
+                                padding: "6px 8px", borderRadius: "8px",
+                                background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
+                              }}>
+                                <span style={{ fontSize: "13px" }}>🥇</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
+                                  <div style={{
+                                    color: "white", fontSize: "11px", fontWeight: 800,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                  }}>
+                                    {winner.username || `${winner.wallet.slice(0,4)}…${winner.wallet.slice(-3)}`}
+                                  </div>
+                                </div>
+                                <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900 }}>
+                                  {winner.plays} plays
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{
+                                padding: "10px 8px", borderRadius: "8px",
+                                background: "rgba(0,0,0,0.25)",
+                                color: "rgba(200,180,255,0.5)", fontSize: "10px",
+                                textAlign: "center", fontWeight: 700,
+                              }}>No qualifiers</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
