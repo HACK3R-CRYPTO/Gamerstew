@@ -10,6 +10,7 @@ import { playCoin, playTabSwitch } from "@/hooks/useAppAudio";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
+import ShareCard from "@/components/ShareCard";
 import { CONTRACT_ADDRESSES, ERC20_ABI } from "@/lib/contracts";
 import { formatUnits } from "viem";
 
@@ -818,6 +819,10 @@ export default function ProfilePage() {
   const username = (onchainUsername as string) || "Player";
   const totalGames = Number(gamesPlayedRaw || 0);
 
+  // Shareable player card — modal opens on demand so we never pay the
+  // html-to-image cost until the player actually wants to export.
+  const [shareOpen, setShareOpen] = useState(false);
+
   // Real XP / Level from backend (Phase 2). Falls back to derived value while loading.
   const [userMeta, setUserMeta] = useState<{ xp: number; level: number; xpInLevel: number; xpToNext: number } | null>(null);
   useEffect(() => {
@@ -1247,6 +1252,20 @@ export default function ProfilePage() {
                     <StatGem value={`LV.${playerLevel}`} label="LEVEL" color="#fbbf24" wall="#2a1800" />
                   </div>
 
+                  {/* Share Card — players tap this, modal renders a 1080x1350
+                      poster of their profile, one tap to download or share to
+                      X/WhatsApp. Lives right after the stat gems since that
+                      is the moment a player sees the numbers worth sharing. */}
+                  <JuicyBtn
+                    label="🎴 SHARE MY CARD"
+                    wallColor="#2a1800"
+                    faceGrad="linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #b45309 100%)"
+                    glowColor="rgba(251,191,36,0.55)"
+                    onClick={() => setShareOpen(true)}
+                    fullWidth
+                    fontSize={13}
+                  />
+
                   {/* G$ Claim — NOTE: use explicit boolean comparison, not
                       short-circuit on BigInt. A raw `entitlement && …` yields
                       `0n` when entitlement is zero, which React renders as "0"
@@ -1644,6 +1663,27 @@ export default function ProfilePage() {
           top-right instead. */}
       {isMobile && streak && (
         <MobileStreakChip streak={streak.streak} playedToday={streak.playedToday} />
+      )}
+
+      {/* Share card modal — rendered at root so its fixed overlay sits above
+          every other profile chrome. Only mounts when the player opens it,
+          so html-to-image and QR generation are paid lazily. */}
+      {address && (
+        <ShareCard
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          username={username}
+          address={address}
+          level={playerLevel}
+          rhythmBest={Number(rhythmBest || 0)}
+          simonBest={Number(simonBest || 0)}
+          streak={streak?.streak ?? 0}
+          goldBadges={badgeData?.summary.totalGold ?? 0}
+          tierLabel={`${tier.name}${division ? ` ${division}` : ""}`}
+          petSrc={petForLevel(playerLevel).src}
+          petName={petForLevel(playerLevel).name}
+          avatarUrl={avatarUrl(address, username)}
+        />
       )}
     </div>
   );

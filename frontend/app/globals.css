@@ -166,6 +166,20 @@ button[aria-label$="button"],
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Pet idle loops are the core brand signal — without them the hero
+     character looks broken, not calm. They're gentle (soft breath + a
+     small hop every 3.6s), no spin, no fast motion, no parallax, so they
+     don't trigger vestibular discomfort. Exempt them so iOS users whose
+     system default is Reduce Motion still see the pet breathing.
+     Poke bounce is kept too (it only fires on tap, not ambient). */
+  .egg-wobble,
+  .slime-idle,
+  .pet-poke,
+  .pet-bubble {
+    animation-duration: revert !important;
+    animation-iteration-count: revert !important;
+  }
 }
 
 /* Decoratives split by breakpoint via CSS (not JS) to avoid SSR hydration
