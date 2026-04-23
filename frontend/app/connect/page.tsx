@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -98,6 +98,18 @@ function ConnectInner() {
   const isMiniPay = useIsMiniPay();
 
   const isConnected = ready && (authenticated || (isMiniPay && !!address));
+
+  // MiniPay auto-connects via components/MiniPayConnector.tsx. Per the Celo
+  // MiniPay reference, apps running inside MiniPay must NOT show any
+  // Connect Wallet UI. If we're inside MiniPay and the connector hasn't
+  // flipped `isConnected` yet, show a minimal "Connecting..." state and
+  // wait for the shim. If MiniPay is connected, skip straight to the next
+  // route so the user never sees this screen at all.
+  useEffect(() => {
+    if (isMiniPay && isConnected) {
+      router.replace(`/mint?next=${encodeURIComponent(next)}`);
+    }
+  }, [isMiniPay, isConnected, next, router]);
   const shortAddr = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null;
   const source = isMiniPay ? "MiniPay" : "Privy";
 
@@ -327,30 +339,35 @@ function ConnectInner() {
                       </div>
                     )}
 
-                    {/* Gas hint — Celo mainnet needs real CELO for gas.
-                        Point new players to the Telegram group so someone
-                        can send them a cent or two to their address. */}
-                    <div style={{
-                      fontSize: "10.5px",
-                      color: "rgba(180,150,255,0.7)",
-                      lineHeight: 1.45,
-                    }}>
-                      Need CELO for gas? Copy your address and ask in our{" "}
-                      <a
-                        href="https://t.me/+oY4inbBoglViNmE0"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          color: "#67e8f9",
-                          fontWeight: 800,
-                          textDecoration: "none",
-                          borderBottom: "1px dashed rgba(103,232,249,0.5)",
-                        }}
-                      >
-                        Telegram group
-                      </a>
-                      . Someone will send you a cent.
-                    </div>
+                    {/* Network-fee hint — suppressed entirely inside MiniPay.
+                        MiniPay users have no CELO by design and pay network
+                        fees in stablecoins via feeCurrency abstraction, so
+                        the Celo MiniPay copy rules forbid mentioning CELO
+                        or "gas" to a MiniPay user. For Privy/embedded-wallet
+                        users outside MiniPay this hint is still useful. */}
+                    {!isMiniPay && (
+                      <div style={{
+                        fontSize: "10.5px",
+                        color: "rgba(180,150,255,0.7)",
+                        lineHeight: 1.45,
+                      }}>
+                        Need a bit of CELO for network fees? Copy your address and ask in our{" "}
+                        <a
+                          href="https://t.me/+oY4inbBoglViNmE0"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: "#67e8f9",
+                            fontWeight: 800,
+                            textDecoration: "none",
+                            borderBottom: "1px dashed rgba(103,232,249,0.5)",
+                          }}
+                        >
+                          Telegram group
+                        </a>
+                        . Someone will send you a cent.
+                      </div>
+                    )}
                   </div>
 
                   {/* Continue juicy button — routes through /mint first.
@@ -372,8 +389,45 @@ function ConnectInner() {
                     }
                   />
                 </>
+              ) : isMiniPay ? (
+                // Inside MiniPay but auto-connect hasn't fired yet. Show a
+                // minimal spinner. Celo's MiniPay spec requires that apps
+                // running inside MiniPay do not render any Connect Wallet
+                // UI — the wallet is the browser itself, there is nothing
+                // for the user to pick.
+                <div style={{
+                  padding: "22px 10px",
+                  textAlign: "center",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "14px",
+                }}>
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    border: "3px solid rgba(134,239,172,0.25)",
+                    borderTopColor: "#22c55e",
+                    animation: "rotate 0.9s linear infinite",
+                  }} />
+                  <div style={{
+                    color: "rgba(230,220,255,0.85)",
+                    fontSize: "13px",
+                    fontWeight: 800,
+                    letterSpacing: "0.06em",
+                  }}>Connecting to MiniPay...</div>
+                  <div style={{
+                    color: "rgba(180,150,255,0.55)",
+                    fontSize: "11px",
+                    lineHeight: 1.45,
+                    maxWidth: 260,
+                  }}>
+                    We sign you in with your MiniPay wallet. This takes a second.
+                  </div>
+                </div>
               ) : (
-                // Not connected — show wallet options
+                // Not connected — show wallet options (non-MiniPay only)
                 <>
                   <JuicyBtn
                     onClick={login}

@@ -8,7 +8,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
@@ -748,6 +748,10 @@ export default function RhythmGamePage() {
             functionName: "recordScoreWithBackendSig",
             args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
             ...(isEmbeddedWallet ? { gas: 300000n } : {}),
+            // MiniPay users have no CELO — pay the network fee in USDC via
+            // Celo's fee-currency adapter. Non-MiniPay callers get {} here
+            // so the tx uses CELO like any normal Celo wallet.
+            ...celoFeeSpread(isMiniPay),
           });
         } catch (err: unknown) {
           // Classify wallet errors so we can show something useful.

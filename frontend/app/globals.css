@@ -91,6 +91,11 @@ button[aria-label$="button"],
 }
 .pet-poke { animation: pet-poke 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
 
+/* Generic rotate — used by the MiniPay auto-connect spinner on /connect */
+@keyframes rotate {
+  to { transform: rotate(360deg); }
+}
+
 /* Speech bubble pop-in */
 @keyframes bubble-pop {
   0%   { transform: translateY(8px) scale(0.6); opacity: 0; }

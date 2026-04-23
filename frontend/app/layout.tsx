@@ -1,11 +1,55 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "@/components/providers";
 import AppAudio from "@/components/AppAudio";
 
+const APP_URL = "https://gamearenahq.xyz";
+const APP_TITLE = "Game Arena";
+const APP_TAGLINE = "Play free skill games on Celo. Top the weekly board, win real USDC.";
+
 export const metadata: Metadata = {
-  title: "Game Arena",
-  description: "Play skill games on Celo. Wager G$ and win real rewards.",
+  metadataBase: new URL(APP_URL),
+  title: { default: APP_TITLE, template: `%s · ${APP_TITLE}` },
+  description: APP_TAGLINE,
+  applicationName: APP_TITLE,
+  manifest: "/manifest.webmanifest",
+  // Apple web-app meta — when a MiniPay / iOS user adds the app to home
+  // screen it launches full-screen with a dark translucent status bar so
+  // the gradient bg flows edge-to-edge.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: APP_TITLE,
+  },
+  // OpenGraph + Twitter — the cards that render when gamearenahq.xyz is
+  // shared in WhatsApp, X, Telegram, Discord, etc. Falls back to the
+  // in-app hero logo for now; swap in a real 1200x630 banner when it's
+  // designed.
+  openGraph: {
+    type: "website",
+    url: APP_URL,
+    siteName: APP_TITLE,
+    title: APP_TITLE,
+    description: APP_TAGLINE,
+    images: [{ url: "/components/game_arena_text.png", width: 1200, height: 630, alt: APP_TITLE }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: APP_TITLE,
+    description: APP_TAGLINE,
+    images: ["/components/game_arena_text.png"],
+  },
+};
+
+// Viewport exports are required by the Next 16 metadata API. Opera MiniPay
+// reads them when deciding how to render the app inside its webview. The
+// Celo MiniPay reference recommends a 360x640 test viewport; width=device-
+// width + initialScale=1 matches that.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#6a18c8",
 };
 
 export default function RootLayout({

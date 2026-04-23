@@ -9,6 +9,38 @@ export const CONTRACT_ADDRESSES = {
   GAME_PASS: '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE',
 };
 
+// Celo MiniPay fee-currency adapters — Celo lets you pay gas in stablecoins
+// instead of CELO. MiniPay users have zero CELO by design, so every
+// transaction a MiniPay user signs must include `feeCurrency` pointing at
+// one of these adapter addresses. Canonical addresses from the Celo
+// docs / celo-org/skills reference.
+//
+// Usage:
+//   import { feeCurrencyFor } from "@/lib/contracts";
+//   writeContract({ ...args, feeCurrency: feeCurrencyFor(isMiniPay) });
+export const FEE_CURRENCY_ADAPTERS = {
+  USDC: '0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B',
+  USDT: '0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72',
+} as const;
+
+// Pick the fee currency for a given context. We default MiniPay users to
+// the USDC adapter (most commonly funded); non-MiniPay users pay in CELO
+// (undefined = default gas token).
+export function feeCurrencyFor(isMiniPay: boolean): `0x${string}` | undefined {
+  return isMiniPay ? (FEE_CURRENCY_ADAPTERS.USDC as `0x${string}`) : undefined;
+}
+
+// Spread-helper: returns `{ feeCurrency }` when a MiniPay adapter should
+// apply, or an empty object otherwise. `feeCurrency` is a Celo-specific
+// transaction field that viem's Celo chain serializer handles at runtime,
+// but wagmi's generic writeContract type does not include it, so we cast
+// the spread to keep TS happy at call sites.
+//   writeContractAsync({ ...args, ...celoFeeSpread(isMiniPay) })
+export function celoFeeSpread(isMiniPay: boolean): Record<string, unknown> {
+  const fc = feeCurrencyFor(isMiniPay);
+  return fc ? { feeCurrency: fc } : {};
+}
+
 export const ERC20_ABI = [
   {
     inputs: [{ internalType: 'address', name: 'account', type: 'address' }],

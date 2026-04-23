@@ -20,7 +20,7 @@ import { Suspense, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
 
 function MintInner() {
   const router = useRouter();
@@ -75,11 +75,16 @@ function MintInner() {
     }
     setMinting(true);
     try {
+      // MiniPay users have no CELO, so every writeContract must pay the
+      // network fee in a Celo fee-currency adapter (USDC by default).
+      // celoFeeSpread returns an empty spread for non-MiniPay callers so
+      // wagmi falls back to the native gas token (CELO) on mainnet.
       await writeContractAsync({
         address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
         abi: GAME_PASS_ABI,
         functionName: "mint",
         args: [username],
+        ...celoFeeSpread(isMiniPay),
       });
       // Contract state takes a beat to reflect — refetch once so the
       // redirect effect above fires cleanly after the tx lands.

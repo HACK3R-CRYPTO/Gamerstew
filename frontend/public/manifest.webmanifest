@@ -1,0 +1,13 @@
+{
+  "name": "Game Arena",
+  "short_name": "Arena",
+  "description": "Play free skill games on Celo. Top the weekly board, win real USDC.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0120",
+  "theme_color": "#6a18c8",
+  "icons": [
+    { "src": "/components/game_arena_text.png", "sizes": "any", "type": "image/png", "purpose": "any" }
+  ]
+}

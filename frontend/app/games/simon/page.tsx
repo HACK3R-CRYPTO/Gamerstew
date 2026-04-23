@@ -9,7 +9,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
@@ -358,6 +358,9 @@ export default function SimonGamePage() {
           functionName: "recordScoreWithBackendSig",
           args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
           ...(isEmbeddedWallet ? { gas: 300000n } : {}),
+          // MiniPay pays network fees in USDC via Celo's fee-currency
+          // adapter since the wallet holds no CELO.
+          ...celoFeeSpread(isMiniPay),
         });
       } catch (err: unknown) {
         const e = err as {
