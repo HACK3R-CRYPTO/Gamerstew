@@ -88,10 +88,9 @@ const LANES: LaneTheme[] = [
 // drum track.
 type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number };
 
-// C major scale pitches — Ode to Joy stays on scale degrees 1..6 plus the
-// octave, so B5 is not needed in the chart (kept out to avoid a dead const).
+// C major scale pitches — Ode to Joy sits between C5 and G5.
 const P_C5 = 523.25, P_D5 = 587.33, P_E5 = 659.25, P_F5 = 698.46,
-  P_G5 = 783.99, P_A5 = 880.00, P_C6 = 1046.50;
+  P_G5 = 783.99;
 
 function buildChart(): NoteDef[] {
   const notes: NoteDef[] = [];
@@ -99,78 +98,79 @@ function buildChart(): NoteDef[] {
   const push = (lane: number, time: number, travel: number, freq: number) =>
     notes.push({ id: id++, lane, time, travel, freq });
 
-  // ═══ INTRO (4.0s → 7.5s): first half of the famous Ode to Joy phrase A
-  //    E E F G | G F E D
-  // Quarter notes at 120 BPM, slow travel so the player learns the map.
-  const intro: [number, number][] = [
-    [1, P_E5], [1, P_E5], [1, P_F5], [2, P_G5],
-    [2, P_G5], [1, P_F5], [1, P_E5], [0, P_D5],
-  ];
-  intro.forEach(([lane, f], i) => push(lane, 4.0 + i * BEAT, TRAVEL_INTRO, f));
+  // The full eight-phrase Ode to Joy right-hand melody, C major. Drawn
+  // straight from Mantius Cazaubon's beginner piano tutorial:
+  //   P1: E E F G G F E D        (8 notes)
+  //   P2: C C D E E D D          (7)
+  //   P3: E E F G G F E D        (8, same as P1)
+  //   P4: C C D E D C C          (7, first resolution on C)
+  //   P5: D D E C D E F E C      (9, bridge opens)
+  //   P6: D E F E D C D G        (8, bridge closes on G to lift back to P7)
+  //   P7: E E F G G F E D        (8, same as P1)
+  //   P8: C C D E D C C          (7, final resolution)
+  type Pitch = number;
+  const P1: Pitch[] = [P_E5, P_E5, P_F5, P_G5, P_G5, P_F5, P_E5, P_D5];
+  const P2: Pitch[] = [P_C5, P_C5, P_D5, P_E5, P_E5, P_D5, P_D5];
+  const P3: Pitch[] = P1;
+  const P4: Pitch[] = [P_C5, P_C5, P_D5, P_E5, P_D5, P_C5, P_C5];
+  const P5: Pitch[] = [P_D5, P_D5, P_E5, P_C5, P_D5, P_E5, P_F5, P_E5, P_C5];
+  const P6: Pitch[] = [P_D5, P_E5, P_F5, P_E5, P_D5, P_C5, P_D5, P_G5];
+  const P7: Pitch[] = P1;
+  const P8: Pitch[] = P4;
 
-  // ═══ VERSE (9.0s → 13.5s): phrase A resolution — C C D E | E D D
-  // Lands the hook so the player recognises the tune immediately.
-  const verse: [number, number, number][] = [
-    [9.0, 0, P_C5], [9.5, 0, P_C5], [10.0, 0, P_D5], [10.5, 1, P_E5],
-    [11.0, 1, P_E5], [11.75, 0, P_D5],
-    [12.5, 0, P_D5], [13.0, 1, P_E5], [13.5, 1, P_E5],
-  ];
-  verse.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
+  // Lane map — low-left to high-right. C D on lane 0, E on lane 1, F on
+  // lane 2, G on lane 3. Spreads the six-note Ode palette across all four
+  // lanes so the player's hand visits every tile zone.
+  const laneFor = (f: Pitch): number => {
+    if (f === P_C5 || f === P_D5) return 0;
+    if (f === P_E5) return 1;
+    if (f === P_F5) return 2;
+    return 3; // P_G5
+  };
 
-  // ═══ BUILD (15.0s → 19.25s): phrase A again (E E F G | G F E D), tighter
-  // travel, closing with an ascending C-E-G-C6 eighth-note run into the drop.
-  const build: [number, number, number][] = [
-    [15.0, 1, P_E5], [15.5, 1, P_F5], [16.0, 2, P_G5], [16.5, 2, P_G5],
-    [17.0, 1, P_F5], [17.5, 0, P_D5],
-    // Eighth burst — C E G C6 — ascending sweep into the drop
-    [18.5, 0, P_C5], [18.75, 1, P_E5], [19.0, 2, P_G5], [19.25, 3, P_C6],
-  ];
-  build.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
+  // Section stamper — lays a phrase at `start` with the given `travel` and
+  // `step` (seconds per note). Quarter notes on the first pass, eighth-note
+  // reprise for the climb, which is how rhythm games build tension without
+  // changing the tune.
+  const stamp = (phrase: Pitch[], start: number, travel: number, step = BEAT) => {
+    phrase.forEach((f, i) => push(laneFor(f), start + i * step, travel, f));
+  };
 
-  // ═══ DROP 1 (21.0s → 28.5s): peak energy — hook up an octave, then the
-  // full phrase A cascade back down to the tonic.
-  const drop: [number, number, number][] = [
-    // Triumphant opening on the high octave: C6 G A G
-    [21.0, 3, P_C6], [21.5, 2, P_G5], [22.0, 2, P_A5], [22.5, 2, P_G5],
-    // Pickup eighth pair — F E
-    [23.5, 1, P_F5], [23.75, 1, P_E5], [24.5, 0, P_D5],
-    // Descending cascade C6 → C5 — the dramatic sweep
-    [25.0, 3, P_C6], [25.25, 2, P_G5], [25.5, 1, P_E5], [25.75, 0, P_C5],
-    // Resolve with the Ode hook tail — C C D E E D C
-    [26.5, 0, P_C5], [27.0, 0, P_D5], [27.5, 1, P_E5], [28.0, 0, P_D5], [28.5, 0, P_C5],
-  ];
-  drop.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
+  // ─── Full canonical play-through ─────────────────────────────────────────
+  //   All 8 phrases end to end at quarter notes. One 0.5s breath between
+  //   each phrase so the ear hears the phrasing. Travel tightens as the
+  //   song progresses so early tiles are readable and the finale drives.
 
-  // → 1.5 beat breakdown silence — breath before the reprise hits
+  // Phrase 1 (4.0s → 7.5s): E E F G G F E D
+  stamp(P1, 4.0, TRAVEL_INTRO);
 
-  // ═══ VERSE 2 (30.0s → 34.5s): hook reprise a fifth above — G A C6 A G F E F G A
-  // Pulls the ear up without leaving C major, sets up the final drop.
-  const verse2: [number, number, number][] = [
-    [30.0, 2, P_G5], [30.5, 2, P_A5], [31.0, 3, P_C6], [31.5, 2, P_A5],
-    [32.0, 2, P_G5], [32.5, 1, P_F5], [33.0, 1, P_E5], [33.5, 1, P_F5],
-    [34.0, 2, P_G5], [34.5, 2, P_A5],
-  ];
-  verse2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
+  // Phrase 2 (8.0s → 11.0s): C C D E E D D
+  stamp(P2, 8.0, TRAVEL_INTRO);
 
-  // ═══ RE-BUILD (35.5s → 36.25s): C-E-G-C6 eighth-note launch
-  const rebuild: [number, number, number][] = [
-    [35.5, 0, P_C5], [35.75, 1, P_E5], [36.0, 2, P_G5], [36.25, 3, P_C6],
-  ];
-  rebuild.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
+  // Phrase 3 (11.5s → 15.0s): E E F G G F E D
+  stamp(P3, 11.5, TRAVEL_VERSE);
 
-  // ═══ FINAL DROP (37.5s → 43.0s): phrase A at peak, climactic descending
-  // run, triple-C tonic resolution.
-  const drop2: [number, number, number][] = [
-    // Phrase A on the high octave — C6 G A G
-    [37.5, 3, P_C6], [38.0, 2, P_G5], [38.5, 2, P_A5], [39.0, 2, P_G5],
-    // Eighth pair accent — F G A G
-    [39.5, 1, P_F5], [39.75, 2, P_G5], [40.0, 2, P_A5], [40.25, 2, P_G5],
-    // Cascade C6 G E C — the big descending sweep
-    [41.0, 3, P_C6], [41.25, 2, P_G5], [41.5, 1, P_E5], [41.75, 0, P_C5],
-    // Triple-C tonic — the "Freude!" resolution
-    [42.5, 0, P_C5], [43.0, 0, P_C5],
-  ];
-  drop2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
+  // Phrase 4 (15.5s → 18.5s): C C D E D C C — first resolution
+  stamp(P4, 15.5, TRAVEL_VERSE);
+
+  // Phrase 5 (19.0s → 23.0s): D D E C D E F E C — bridge opens
+  stamp(P5, 19.0, TRAVEL_VERSE);
+
+  // Phrase 6 (23.5s → 27.0s): D E F E D C D G — bridge closes on the G lift
+  stamp(P6, 23.5, TRAVEL_BUILD);
+
+  // Phrase 7 (27.5s → 31.0s): E E F G G F E D — return to the main theme
+  stamp(P7, 27.5, TRAVEL_BUILD);
+
+  // Phrase 8 (31.5s → 34.5s): C C D E D C C — final resolution on tonic
+  stamp(P8, 31.5, TRAVEL_DROP);
+
+  // ─── RITARDANDO (36.0s → 43.0s): held tonic — the "Freude!" resolution.
+  //   The tutorial ends P8 with "C C" held; rhythm games need the timeline
+  //   filled, so we lay three more C's at slowing intervals. Still canonical
+  //   in spirit: the piece simply holds its tonic to close.
+  const holds: number[] = [36.0, 38.0, 40.0, 42.5];
+  holds.forEach(t => push(laneFor(P_C5), t, TRAVEL_BUILD, P_C5));
 
   return notes.sort((a, b) => a.time - b.time);
 }
@@ -191,17 +191,26 @@ type Burst = { id: number; x: number; y: number; color: string; born: number };
 // ─── Page ──────────────────────────────────────────────────────────────────────
 type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
 
-// Encore pool — the Ode to Joy motif keeps looping during encore.
-// Pattern traces phrase A (E E F G G F E D C C D E E D) and then the
-// octave-up hook (G A C6 A G F) so the ear keeps hearing the tune even
-// as tempo ramps up.
+// Encore pool — loops the singable half of Ode to Joy (phrases 1 and 2)
+// and the second-half answer (phrases 3 and 4). The player hears the real
+// tune cycle underneath the accelerating tile pace.
+//   P1 + P2: E E F G G F E D | C C D E E D D
+//   P3 + P4: E E F G G F E D | C C D E D C C
+// Lane mapping matches buildChart.laneFor:
+//   C, D → lane 0   E → lane 1   F → lane 2   G → lane 3
 const ENCORE_POOL: [number, number][] = [
-  [1, P_E5], [1, P_E5], [1, P_F5], [2, P_G5],
-  [2, P_G5], [1, P_F5], [1, P_E5], [0, P_D5],
+  // Phrase 1 — E E F G G F E D
+  [1, P_E5], [1, P_E5], [2, P_F5], [3, P_G5],
+  [3, P_G5], [2, P_F5], [1, P_E5], [0, P_D5],
+  // Phrase 2 — C C D E E D D
   [0, P_C5], [0, P_C5], [0, P_D5], [1, P_E5],
-  [1, P_E5], [0, P_D5],
-  // Octave lift — the "Freude!" swell
-  [2, P_G5], [2, P_A5], [3, P_C6], [2, P_A5], [2, P_G5], [1, P_F5],
+  [1, P_E5], [0, P_D5], [0, P_D5],
+  // Phrase 3 — E E F G G F E D (same as P1)
+  [1, P_E5], [1, P_E5], [2, P_F5], [3, P_G5],
+  [3, P_G5], [2, P_F5], [1, P_E5], [0, P_D5],
+  // Phrase 4 — C C D E D C C, resolves on the tonic
+  [0, P_C5], [0, P_C5], [0, P_D5], [1, P_E5],
+  [0, P_D5], [0, P_C5], [0, P_C5],
 ];
 
 export default function RhythmGamePage() {
