@@ -393,4 +393,48 @@ export function useAppAudio() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Page Visibility — pause everything when the tab is hidden or the window
+  // loses focus. Previously the ambient loop kept running in the background
+  // because nothing stopped the setInterval or the already-scheduled Web
+  // Audio oscillators, so players heard the pad continue after switching
+  // tabs or minimizing the browser. Suspending the AudioContext silences any
+  // in-flight nodes cleanly, and clearing the loop prevents new waves from
+  // being scheduled while hidden.
+  useEffect(() => {
+    const onHidden = () => {
+      stopAmbientLoop();
+      if (_ctx && _ctx.state === "running") {
+        _ctx.suspend().catch(() => {});
+      }
+    };
+    const onVisible = () => {
+      if (_ctx && _ctx.state === "suspended") {
+        _ctx.resume().catch(() => {});
+      }
+      // Only restart the ambient loop on menu routes — gameplay routes stop
+      // it intentionally so game tracks dominate.
+      if (_ctx && !isGameplayRoute(pathnameRef.current)) {
+        startAmbientLoop();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") onHidden();
+      else onVisible();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    // `blur` / `focus` catch the desktop case where the browser stays visible
+    // but a different window takes focus — visibilitychange does not fire
+    // there. Safe to double-hook since the handlers are idempotent.
+    window.addEventListener("blur", onHidden);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("pagehide", onHidden);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("blur", onHidden);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("pagehide", onHidden);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }

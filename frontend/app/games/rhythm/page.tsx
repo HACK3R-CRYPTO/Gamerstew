@@ -70,16 +70,28 @@ const LANES: LaneTheme[] = [
   { wall: "#003a00", face: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)", glow: "rgba(34,197,94,0.8)", accent: "#22c55e" },
 ];
 
-// ─── Note chart — each tile carries its own melody pitch ─────────────────────
-// Piano Tiles principle: the sequence of taps IS the melody of the song.
-// Every tile has a lane (visual) AND a freq (the note it plays when tapped).
-// Lane is chosen by pitch — low notes on the left, high notes on the right —
-// so tapping left-to-right feels like walking up a piano keyboard.
+// ─── Note chart — Ode to Joy in C major ──────────────────────────────────────
+// Piano Tiles principle: the sequence of taps IS the melody. Every tile has
+// a lane (visual) AND a freq (the note it plays when tapped). Lanes run
+// low-left to high-right so tapping across the screen feels like walking
+// up a piano keyboard.
+//
+// Mapping (diatonic, two notes per lane):
+//   lane 0 → C5, D5   (bottom of the scale)
+//   lane 1 → E5, F5   (mid-low)
+//   lane 2 → G5, A5   (mid-high)
+//   lane 3 → B5, C6   (top)
+//
+// Song: Beethoven's Ode to Joy. Four-bar phrases that repeat with small
+// variations, classic verse / bridge / verse / climax shape, all in 4/4 at
+// 120 BPM, which slots perfectly into the existing 45s game timeline and
+// drum track.
 type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number };
 
-// C minor scale pitches used across the melody
-const P_C5 = 523.25, P_Eb5 = 622.25, P_F5 = 698.46,
-  P_G5 = 783.99, P_Bb5 = 932.33, P_C6 = 1046.50;
+// C major scale pitches — Ode to Joy stays on scale degrees 1..6 plus the
+// octave, so B5 is not needed in the chart (kept out to avoid a dead const).
+const P_C5 = 523.25, P_D5 = 587.33, P_E5 = 659.25, P_F5 = 698.46,
+  P_G5 = 783.99, P_A5 = 880.00, P_C6 = 1046.50;
 
 function buildChart(): NoteDef[] {
   const notes: NoteDef[] = [];
@@ -87,65 +99,75 @@ function buildChart(): NoteDef[] {
   const push = (lane: number, time: number, travel: number, freq: number) =>
     notes.push({ id: id++, lane, time, travel, freq });
 
-  // ═══ INTRO (4.0s → 7.5s): ascending C-Eb-G-Bb arpeggio, twice
-  // Teaches the pitch-to-lane map: lane 0 = low, lane 3 = high
+  // ═══ INTRO (4.0s → 7.5s): first half of the famous Ode to Joy phrase A
+  //    E E F G | G F E D
+  // Quarter notes at 120 BPM, slow travel so the player learns the map.
   const intro: [number, number][] = [
-    [0, P_C5], [1, P_Eb5], [2, P_G5], [3, P_Bb5],
-    [0, P_C5], [1, P_Eb5], [2, P_G5], [3, P_Bb5],
+    [1, P_E5], [1, P_E5], [1, P_F5], [2, P_G5],
+    [2, P_G5], [1, P_F5], [1, P_E5], [0, P_D5],
   ];
   intro.forEach(([lane, f], i) => push(lane, 4.0 + i * BEAT, TRAVEL_INTRO, f));
 
-  // ═══ VERSE (9.0s → 13.5s): main hook — G-Bb-C6-Bb descending-then-rising
+  // ═══ VERSE (9.0s → 13.5s): phrase A resolution — C C D E | E D D
+  // Lands the hook so the player recognises the tune immediately.
   const verse: [number, number, number][] = [
-    [9.0, 2, P_G5], [9.5, 3, P_Bb5], [10.0, 2, P_C6], [10.5, 3, P_Bb5],
-    [11.0, 1, P_G5], [11.5, 0, P_F5], [12.0, 1, P_Eb5], [12.5, 2, P_F5],
-    [13.0, 3, P_G5], [13.5, 2, P_Bb5],
+    [9.0, 0, P_C5], [9.5, 0, P_C5], [10.0, 0, P_D5], [10.5, 1, P_E5],
+    [11.0, 1, P_E5], [11.75, 0, P_D5],
+    [12.5, 0, P_D5], [13.0, 1, P_E5], [13.5, 1, P_E5],
   ];
   verse.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
 
-  // ═══ BUILD (15.0s → 19.25s): ascending arpeggios + eighth-note run into drop
+  // ═══ BUILD (15.0s → 19.25s): phrase A again (E E F G | G F E D), tighter
+  // travel, closing with an ascending C-E-G-C6 eighth-note run into the drop.
   const build: [number, number, number][] = [
-    [15.0, 0, P_C5], [15.5, 1, P_Eb5], [16.0, 2, P_G5], [16.5, 3, P_Bb5],
-    [17.0, 1, P_C5], [17.5, 2, P_Eb5],
-    // Eighth burst: ascending sweep into the drop
-    [18.5, 0, P_Eb5], [18.75, 1, P_G5], [19.0, 2, P_Bb5], [19.25, 3, P_C6],
+    [15.0, 1, P_E5], [15.5, 1, P_F5], [16.0, 2, P_G5], [16.5, 2, P_G5],
+    [17.0, 1, P_F5], [17.5, 0, P_D5],
+    // Eighth burst — C E G C6 — ascending sweep into the drop
+    [18.5, 0, P_C5], [18.75, 1, P_E5], [19.0, 2, P_G5], [19.25, 3, P_C6],
   ];
   build.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
 
-  // ═══ DROP 1 (21.0s → 28.5s): main hook at peak energy
+  // ═══ DROP 1 (21.0s → 28.5s): peak energy — hook up an octave, then the
+  // full phrase A cascade back down to the tonic.
   const drop: [number, number, number][] = [
-    [21.0, 3, P_C6], [21.5, 2, P_G5], [22.0, 3, P_Bb5], [22.5, 1, P_G5],
-    [23.5, 1, P_Eb5], [23.75, 2, P_G5], [24.5, 0, P_F5],
-    [25.0, 3, P_C6], [25.25, 2, P_G5], [25.5, 1, P_Eb5], [25.75, 0, P_C5],
-    [26.5, 0, P_C5], [27.0, 1, P_Eb5], [27.5, 2, P_G5], [28.0, 1, P_Eb5], [28.5, 0, P_C5],
+    // Triumphant opening on the high octave: C6 G A G
+    [21.0, 3, P_C6], [21.5, 2, P_G5], [22.0, 2, P_A5], [22.5, 2, P_G5],
+    // Pickup eighth pair — F E
+    [23.5, 1, P_F5], [23.75, 1, P_E5], [24.5, 0, P_D5],
+    // Descending cascade C6 → C5 — the dramatic sweep
+    [25.0, 3, P_C6], [25.25, 2, P_G5], [25.5, 1, P_E5], [25.75, 0, P_C5],
+    // Resolve with the Ode hook tail — C C D E E D C
+    [26.5, 0, P_C5], [27.0, 0, P_D5], [27.5, 1, P_E5], [28.0, 0, P_D5], [28.5, 0, P_C5],
   ];
   drop.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
 
   // → 1.5 beat breakdown silence — breath before the reprise hits
 
-  // ═══ VERSE 2 (30.0s → 34.5s): same hook, so it sticks in your head (the earworm)
+  // ═══ VERSE 2 (30.0s → 34.5s): hook reprise a fifth above — G A C6 A G F E F G A
+  // Pulls the ear up without leaving C major, sets up the final drop.
   const verse2: [number, number, number][] = [
-    [30.0, 2, P_G5], [30.5, 3, P_Bb5], [31.0, 2, P_C6], [31.5, 3, P_Bb5],
-    [32.0, 1, P_G5], [32.5, 0, P_F5], [33.0, 1, P_Eb5], [33.5, 2, P_F5],
-    [34.0, 3, P_G5], [34.5, 2, P_Bb5],
+    [30.0, 2, P_G5], [30.5, 2, P_A5], [31.0, 3, P_C6], [31.5, 2, P_A5],
+    [32.0, 2, P_G5], [32.5, 1, P_F5], [33.0, 1, P_E5], [33.5, 1, P_F5],
+    [34.0, 2, P_G5], [34.5, 2, P_A5],
   ];
   verse2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_VERSE, f));
 
-  // ═══ RE-BUILD (35.5s → 36.25s): short eighth-note ramp into the final drop
+  // ═══ RE-BUILD (35.5s → 36.25s): C-E-G-C6 eighth-note launch
   const rebuild: [number, number, number][] = [
-    [35.5, 0, P_Eb5], [35.75, 1, P_G5], [36.0, 2, P_Bb5], [36.25, 3, P_C6],
+    [35.5, 0, P_C5], [35.75, 1, P_E5], [36.0, 2, P_G5], [36.25, 3, P_C6],
   ];
   rebuild.forEach(([t, lane, f]) => push(lane, t, TRAVEL_BUILD, f));
 
-  // ═══ FINAL DROP (37.5s → 43.0s): bigger, more aggressive ending
+  // ═══ FINAL DROP (37.5s → 43.0s): phrase A at peak, climactic descending
+  // run, triple-C tonic resolution.
   const drop2: [number, number, number][] = [
-    // Phrase A: punchy downbeats
-    [37.5, 3, P_C6], [38.0, 2, P_G5], [38.5, 3, P_Bb5], [39.0, 1, P_G5],
-    // Phrase B: eighth pair accent
-    [39.5, 1, P_Eb5], [39.75, 2, P_G5], [40.0, 3, P_Bb5], [40.25, 2, P_G5],
-    // Phrase C: full descending cascade — the dramatic sweep
-    [41.0, 3, P_C6], [41.25, 2, P_G5], [41.5, 1, P_Eb5], [41.75, 0, P_C5],
-    // Phrase D: resolve on the tonic (C) with one emphatic final note
+    // Phrase A on the high octave — C6 G A G
+    [37.5, 3, P_C6], [38.0, 2, P_G5], [38.5, 2, P_A5], [39.0, 2, P_G5],
+    // Eighth pair accent — F G A G
+    [39.5, 1, P_F5], [39.75, 2, P_G5], [40.0, 2, P_A5], [40.25, 2, P_G5],
+    // Cascade C6 G E C — the big descending sweep
+    [41.0, 3, P_C6], [41.25, 2, P_G5], [41.5, 1, P_E5], [41.75, 0, P_C5],
+    // Triple-C tonic — the "Freude!" resolution
     [42.5, 0, P_C5], [43.0, 0, P_C5],
   ];
   drop2.forEach(([t, lane, f]) => push(lane, t, TRAVEL_DROP, f));
@@ -169,12 +191,17 @@ type Burst = { id: number; x: number; y: number; color: string; born: number };
 // ─── Page ──────────────────────────────────────────────────────────────────────
 type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
 
-// Encore pool — the melody keeps looping during encore, pulling from these pitches.
-// Paired with lane position for the familiar low-left → high-right feel.
+// Encore pool — the Ode to Joy motif keeps looping during encore.
+// Pattern traces phrase A (E E F G G F E D C C D E E D) and then the
+// octave-up hook (G A C6 A G F) so the ear keeps hearing the tune even
+// as tempo ramps up.
 const ENCORE_POOL: [number, number][] = [
-  [0, P_C5], [1, P_Eb5], [2, P_G5], [3, P_Bb5], [3, P_C6],
-  [2, P_G5], [1, P_F5], [0, P_C5], [1, P_Eb5], [2, P_G5],
-  [3, P_Bb5], [2, P_G5], [1, P_Eb5], [0, P_C5],
+  [1, P_E5], [1, P_E5], [1, P_F5], [2, P_G5],
+  [2, P_G5], [1, P_F5], [1, P_E5], [0, P_D5],
+  [0, P_C5], [0, P_C5], [0, P_D5], [1, P_E5],
+  [1, P_E5], [0, P_D5],
+  // Octave lift — the "Freude!" swell
+  [2, P_G5], [2, P_A5], [3, P_C6], [2, P_A5], [2, P_G5], [1, P_F5],
 ];
 
 export default function RhythmGamePage() {
@@ -282,19 +309,20 @@ export default function RhythmGamePage() {
     scheduledNodesRef.current.push(noise);
   }, []);
 
-  // Schedule the 30-second backing track: a musical C minor bassline + hi-hats.
-  // No fake drums — just a pitched bass playing the chord roots, so hitting a
-  // bell on top completes the harmony (root-in-bass + chord-tone-in-bell = consonance).
+  // Schedule the 45-second backing track: a musical C major bassline + hi-hats.
+  // Voiced in C major so it consonates with the Ode to Joy melody the player
+  // taps out on top. Pitched bass plays the chord roots so a bell on top plus
+  // a bass root = full triad in your ear.
   //
   // Sections follow the chart exactly (45s total):
   //   intro   (0–9s)    → hats only → soft C2 pulse starting t=4
-  //   verse1  (9–15s)   → i-VI-V-i progression, bass on beats 1 & 3
-  //   build1  (15–21s)  → bass on every beat, ascending pattern
-  //   drop1   (21–29s)  → driving bass on every beat in C minor
+  //   verse1  (9–15s)   → I-V-vi-IV classic Ode to Joy progression, beats 1 & 3
+  //   build1  (15–21s)  → C major arpeggio on every beat, ascending
+  //   drop1   (21–29s)  → driving I-V pattern on every beat
   //   break   (29–30s)  → hats only — the calm before the reprise
   //   verse2  (30–35s)  → same progression as verse 1 (the earworm repeats)
   //   build2  (35–37s)  → short re-ramp
-  //   drop2   (37–44s)  → final drop, loudest, resolves to C
+  //   drop2   (37–44s)  → final drop, loudest, resolves on C
   //   outro   (44–45s)  → hats tail
   const scheduleDrumTrack = useCallback((audioStartTime: number) => {
     const ctx = getAudioCtx();
@@ -302,31 +330,32 @@ export default function RhythmGamePage() {
     const total = TRACK_DURATION;
     const eighth = BEAT / 2;
 
-    // C minor note frequencies — used by every bass call
+    // C major note frequencies — used by every bass call
     const C2 = 65.41;
-    const Eb2 = 77.78;
+    const E2 = 82.41;
+    const F2 = 87.31;
     const G2 = 98.00;
-    const Ab2 = 103.83;
-    const Bb2 = 116.54;
+    const A2 = 110.00;
 
     // ── INTRO pulse (4.0s–8.5s)
     for (let t = 4.0; t < 9.0; t += BEAT) {
       scheduleBass(ctx, audioStartTime + t, C2, 0.3);
     }
 
-    // ── VERSE 1 progression (9.0s–15.0s): 12 beats = i-VI-V-i
-    const verseChords = [C2, C2, Ab2, G2, C2, G2];
+    // ── VERSE 1 progression (9.0s–15.0s): I-V-vi-IV-I-V
+    // Classic Ode to Joy harmonisation in C major: C G Am F C G.
+    const verseChords = [C2, G2, A2, F2, C2, G2];
     for (let i = 0; i < verseChords.length; i++) {
       scheduleBass(ctx, audioStartTime + 9.0 + i * BEAT, verseChords[i], 0.38);
     }
 
-    // ── BUILD 1 (15.0s–21.0s): ascending C minor scale pulse on every beat
-    const buildScale = [C2, Eb2, G2, Bb2];
+    // ── BUILD 1 (15.0s–21.0s): ascending C major arpeggio (C E G C) on every beat
+    const buildScale = [C2, E2, G2, C2 * 2];
     for (let i = 0; i < 12; i++) {
       scheduleBass(ctx, audioStartTime + 15.0 + i * BEAT, buildScale[i % 4], 0.42);
     }
 
-    // ── DROP 1 (21.0s–29.0s): driving i-V pattern on every beat
+    // ── DROP 1 (21.0s–29.0s): driving I-V pattern on every beat, C major
     const dropPattern = [C2, C2, G2, G2];
     for (let i = 0; i < 16; i++) {
       scheduleBass(ctx, audioStartTime + 21.0 + i * BEAT, dropPattern[i % 4], 0.48);
