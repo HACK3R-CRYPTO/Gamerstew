@@ -17,8 +17,14 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 export type ChallengeInfo = {
   active: boolean;
+  // `pending` is true during the pre-event preview window so the banner
+  // shows as a "starting soon" teaser. Exactly one of active/pending is
+  // true at any given time; both false means the hook returns null.
+  pending: boolean;
+  name: string;
   startsAt: number;
   endsAt: number;
+  secondsUntilStart: number;
   secondsLeft: number;
   minPlays: number;
   topN: number;
@@ -50,11 +56,13 @@ function signatureFor(c: ChallengeInfo): string {
 // Minimal runtime guard — if the backend returns a malformed payload the
 // UI should render nothing, not crash React. We only check the shape we
 // actually rely on; a looser unknown field is fine.
-function isChallengePayload(d: unknown): d is ChallengeInfo & { active: boolean } {
+function isChallengePayload(d: unknown): d is ChallengeInfo {
   if (!d || typeof d !== 'object') return false;
   const o = d as Record<string, unknown>;
   return (
     typeof o.active === 'boolean' &&
+    typeof o.pending === 'boolean' &&
+    typeof o.startsAt === 'number' &&
     typeof o.endsAt === 'number' &&
     typeof o.minPlays === 'number' &&
     typeof o.topN === 'number' &&
@@ -102,7 +110,9 @@ export function useChallenge(address?: string | null): ChallengeInfo | null {
           setChallenge(null);
           stableTicksRef.current += 1;
         } else {
-          const next = d.active ? d : null;
+          // Show the banner during both the live event AND the pre-event
+          // preview window so players can see what's coming.
+          const next = (d.active || d.pending) ? d : null;
           setChallenge(next);
           // Change detection — signature collapses everything we care about
           // into a string. Equal strings for N polls = nothing is happening.
@@ -178,7 +188,11 @@ export default function ChallengeBanner({
     return () => clearInterval(t);
   }, []);
 
-  const secondsLeft = Math.max(0, challenge.endsAt - nowSec);
+  const isPending     = challenge.pending;
+  const secondsLeft   = Math.max(0, challenge.endsAt   - nowSec);
+  const secondsToStart = Math.max(0, challenge.startsAt - nowSec);
+  // During pending we show time-until-start; during live we show time-left.
+  const timerLabel = isPending ? fmtShortCountdown(secondsToStart) : fmtShortCountdown(secondsLeft);
   const pct = Math.min(100, Math.round((challenge.myPlays / challenge.minPlays) * 100));
   const top3 = challenge.rankings.slice(0, 3);
   const shortName = (wallet: string, name: string | null) =>
@@ -192,7 +206,9 @@ export default function ChallengeBanner({
       // assistive tech reads the card top-to-bottom anyway.
       role="status"
       aria-live="polite"
-      aria-label={`72-hour Arena Cup. ${challenge.myPlays} of ${challenge.minPlays} plays. ${challenge.myQualified ? "Qualified" : "Not yet qualified"}.`}
+      aria-label={isPending
+        ? `72-hour Arena Cup starts in ${timerLabel}.`
+        : `72-hour Arena Cup. ${challenge.myPlays} of ${challenge.minPlays} plays. ${challenge.myQualified ? "Qualified" : "Not yet qualified"}.`}
       style={{
         borderRadius: "clamp(10px, 2.4vw, 14px)",
         padding: "2px",
@@ -211,7 +227,8 @@ export default function ChallengeBanner({
         display: "flex", flexDirection: "column",
         gap: compact ? "clamp(6px, 1.5vw, 8px)" : "clamp(7px, 1.8vw, 10px)",
       }}>
-        {/* Header row — title + countdown */}
+        {/* Header row — title + countdown. When pending the pill reads
+            "STARTS IN ..."; when live it reads time-left. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
             <span style={{ fontSize: compact ? "clamp(12px, 3vw, 14px)" : "clamp(13px, 3.2vw, 16px)" }}>🏆</span>
@@ -223,24 +240,24 @@ export default function ChallengeBanner({
               fontWeight: 900, letterSpacing: "0.14em",
               textShadow: "0 0 10px rgba(251,191,36,0.7)",
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}>72-HR ARENA CUP</span>
+            }}>72-HR ARENA CUP{isPending ? " · SOON" : ""}</span>
           </div>
           <div style={{
             padding: "3px clamp(8px, 2.2vw, 10px)",
             borderRadius: "999px",
-            background: "rgba(251,191,36,0.18)",
-            border: "1px solid rgba(251,191,36,0.55)",
-            color: "#fde68a",
+            background: isPending ? "rgba(167,139,250,0.22)" : "rgba(251,191,36,0.18)",
+            border: `1px solid ${isPending ? "rgba(167,139,250,0.6)" : "rgba(251,191,36,0.55)"}`,
+            color: isPending ? "#e9d5ff" : "#fde68a",
             fontSize: compact ? "clamp(9px, 2.4vw, 10.5px)" : "clamp(10px, 2.6vw, 11.5px)",
             fontWeight: 900,
             fontFamily: "monospace", whiteSpace: "nowrap",
             flexShrink: 0,
           }}>
-            ⏳ {fmtShortCountdown(secondsLeft)}
+            {isPending ? `▶ ${timerLabel}` : `⏳ ${timerLabel}`}
           </div>
         </div>
 
-        {/* Prize line */}
+        {/* Prize line — copy pivots based on state. */}
         <div style={{
           color: "rgba(230,220,255,0.9)",
           fontSize: compact
@@ -248,54 +265,67 @@ export default function ChallengeBanner({
             : "clamp(11px, 3vw, 12.5px)",
           lineHeight: 1.4,
         }}>
-          Top <strong style={{ color: "#fde68a" }}>{challenge.topN}</strong> by total plays win{" "}
-          <strong style={{ color: "#fde68a" }}>${challenge.prizeUsdc} USDC</strong> each. Pool:{" "}
-          <strong style={{ color: "#fde68a" }}>${challenge.totalPrizePool}</strong>.
+          {isPending ? (
+            <>
+              Kicks off in <strong style={{ color: "#e9d5ff" }}>{timerLabel}</strong>. Top{" "}
+              <strong style={{ color: "#fde68a" }}>{challenge.topN}</strong> by total plays win{" "}
+              <strong style={{ color: "#fde68a" }}>${challenge.prizeUsdc} USDC</strong> each.{" "}
+              <strong style={{ color: "#fde68a" }}>{challenge.minPlays}</strong> plays to qualify.
+            </>
+          ) : (
+            <>
+              Top <strong style={{ color: "#fde68a" }}>{challenge.topN}</strong> by total plays win{" "}
+              <strong style={{ color: "#fde68a" }}>${challenge.prizeUsdc} USDC</strong> each. Pool:{" "}
+              <strong style={{ color: "#fde68a" }}>${challenge.totalPrizePool}</strong>.
+            </>
+          )}
         </div>
 
-        {/* Your progress */}
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-            <span style={{
-              color: "rgba(200,180,255,0.8)",
-              fontSize: compact
-                ? "clamp(9px, 2.4vw, 10px)"
-                : "clamp(9.5px, 2.6vw, 11px)",
-              fontWeight: 800, letterSpacing: "0.08em",
-            }}>
-              YOUR PROGRESS
-            </span>
-            <span style={{
-              color: challenge.myQualified ? "#86efac" : "#fde68a",
-              fontSize: compact
-                ? "clamp(9px, 2.4vw, 10.5px)"
-                : "clamp(10px, 2.6vw, 11.5px)",
-              fontWeight: 900,
-            }}>
-              {challenge.myPlays} / {challenge.minPlays} {challenge.myQualified ? "✓" : ""}
-            </span>
-          </div>
-          <div style={{
-            height: compact ? "clamp(5px, 1.3vw, 6px)" : "clamp(6px, 1.5vw, 8px)",
-            borderRadius: "999px",
-            background: "rgba(0,0,0,0.5)",
-            overflow: "hidden", border: "1px solid rgba(251,191,36,0.18)",
-          }}>
+        {/* Your progress — hidden while pending (nothing to progress yet). */}
+        {!isPending && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+              <span style={{
+                color: "rgba(200,180,255,0.8)",
+                fontSize: compact
+                  ? "clamp(9px, 2.4vw, 10px)"
+                  : "clamp(9.5px, 2.6vw, 11px)",
+                fontWeight: 800, letterSpacing: "0.08em",
+              }}>
+                YOUR PROGRESS
+              </span>
+              <span style={{
+                color: challenge.myQualified ? "#86efac" : "#fde68a",
+                fontSize: compact
+                  ? "clamp(9px, 2.4vw, 10.5px)"
+                  : "clamp(10px, 2.6vw, 11.5px)",
+                fontWeight: 900,
+              }}>
+                {challenge.myPlays} / {challenge.minPlays} {challenge.myQualified ? "✓" : ""}
+              </span>
+            </div>
             <div style={{
-              width: `${pct}%`, height: "100%", borderRadius: "999px",
-              background: challenge.myQualified
-                ? "linear-gradient(90deg, #22c55e, #86efac)"
-                : "linear-gradient(90deg, #fbbf24, #f97316)",
-              boxShadow: challenge.myQualified
-                ? "0 0 8px rgba(34,197,94,0.6)"
-                : "0 0 8px rgba(251,191,36,0.6)",
-              transition: "width 0.3s",
-            }} />
+              height: compact ? "clamp(5px, 1.3vw, 6px)" : "clamp(6px, 1.5vw, 8px)",
+              borderRadius: "999px",
+              background: "rgba(0,0,0,0.5)",
+              overflow: "hidden", border: "1px solid rgba(251,191,36,0.18)",
+            }}>
+              <div style={{
+                width: `${pct}%`, height: "100%", borderRadius: "999px",
+                background: challenge.myQualified
+                  ? "linear-gradient(90deg, #22c55e, #86efac)"
+                  : "linear-gradient(90deg, #fbbf24, #f97316)",
+                boxShadow: challenge.myQualified
+                  ? "0 0 8px rgba(34,197,94,0.6)"
+                  : "0 0 8px rgba(251,191,36,0.6)",
+                transition: "width 0.3s",
+              }} />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Live top 3 — hidden in compact mode to save vertical space */}
-        {!compact && top3.length > 0 && (
+        {/* Live top 3 — hidden in compact mode or while pending. */}
+        {!compact && !isPending && top3.length > 0 && (
           <div style={{
             display: "flex", flexDirection: "column",
             gap: "clamp(4px, 1.2vw, 6px)",

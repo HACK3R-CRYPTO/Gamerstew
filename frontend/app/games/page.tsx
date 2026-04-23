@@ -466,11 +466,9 @@ export default function GamesPage() {
         {/* EVENTS */}
         <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>EVENTS</div>
 
-        {/* 72-hour Arena Challenge — hosted push with a live countdown,
-            personal progress bar, and the current top 3. Sits at the TOP
-            of the events list because it's time-bound and the most urgent
-            thing on the page while active. */}
-        {challenge && <ChallengeBanner challenge={challenge} />}
+        {/* (Challenge banner moved to page top as a hero strip so it reads
+            as a "this-is-happening-right-now" signal on both mobile and
+            desktop, instead of competing with Season/Cup rows here.) */}
 
         {(() => {
           const events: EventCard[] = [];
@@ -809,6 +807,17 @@ export default function GamesPage() {
           gap: isMobile ? "14px" : "12px",
           overflowY: "auto",
         }}>
+
+          {/* 72-hour Arena Cup — hero strip at the top of the page so every
+              visitor sees it first on both mobile and desktop. Previously
+              buried inside the events list where mobile users had to scroll
+              past the game cards to reach it. Full-width but clamped so it
+              reads as a focused hero, not a wall. */}
+          {challenge && (
+            <div style={{ width: "100%", maxWidth: "680px", flexShrink: 0 }}>
+              <ChallengeBanner challenge={challenge} compact={isMobile} />
+            </div>
+          )}
 
           {/* Stats pills — compact on mobile. On mobile we also append a
               STREAK pill as the 4th member when the user is connected

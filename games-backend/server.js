@@ -1484,13 +1484,24 @@ async function getChallengePlays() {
   return { plays, ranked };
 }
 
+// Pre-event visibility window — show the "STARTS IN ..." teaser up to 7
+// days before CHALLENGE_START. Builds anticipation, lets players see what's
+// coming, and bumps Games/Leaderboard engagement ahead of launch.
+const CHALLENGE_PREVIEW_SECONDS = 7 * 24 * 60 * 60;
+
 app.get('/api/challenge', async (req, res) => {
   const nowSec = Math.floor(Date.now() / 1000);
-  const active = nowSec >= CHALLENGE_START && nowSec < CHALLENGE_END;
+  const active  = nowSec >= CHALLENGE_START && nowSec < CHALLENGE_END;
+  const pending = nowSec < CHALLENGE_START &&
+                  nowSec >= (CHALLENGE_START - CHALLENGE_PREVIEW_SECONDS);
 
-  // Hit the shared cache — one DB query every 10s, shared across all
-  // concurrent polls. Fresh enough that no player notices the staleness.
-  const { plays, ranked } = await getChallengePlays();
+  // During pending, skip the DB aggregation — no plays exist in the window
+  // yet. Only run it when the event is live or has ended (ended is needed
+  // for the auto-freeze path below).
+  const needPlays = active || nowSec >= CHALLENGE_END;
+  const { plays, ranked } = needPlays
+    ? await getChallengePlays()
+    : { plays: new Map(), ranked: [] };
 
   // Auto-freeze on first call after CHALLENGE_END. Idempotent via upsert —
   // if multiple concurrent requests race here they all converge on one row.
@@ -1502,8 +1513,11 @@ app.get('/api/challenge', async (req, res) => {
 
   res.json({
     active,
+    pending,
+    name: CHALLENGE_NAME,
     startsAt: CHALLENGE_START,
     endsAt: CHALLENGE_END,
+    secondsUntilStart: Math.max(0, CHALLENGE_START - nowSec),
     secondsLeft: Math.max(0, CHALLENGE_END - nowSec),
     minPlays: CHALLENGE_MIN_PLAYS,
     topN: CHALLENGE_TOP_N,
