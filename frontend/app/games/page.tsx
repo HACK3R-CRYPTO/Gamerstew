@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
+import LevelUpToast from "@/components/LevelUpToast";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -204,6 +205,11 @@ export default function GamesPage() {
   type Mission = { id: number; missionId: string; label: string; progress: number; target: number; completed: boolean; claimed: boolean; rewardXp: number };
   const [missions, setMissions] = useState<Mission[]>([]);
   const [missionResetSec, setMissionResetSec] = useState(0);
+  // Level-up celebration. Fires when a mission claim pushes the player
+  // across a level threshold. Before this fix, claimMission discarded the
+  // backend response so the toast never fired for mission-driven level-ups,
+  // making it look like level-ups only happened at level 2 (from games).
+  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null);
   const refetchMissions = () => {
     if (!address) { setMissions([]); return; }
     fetch(`${BACKEND_URL}/api/missions/today/${address}`)
@@ -325,11 +331,19 @@ export default function GamesPage() {
   async function claimMission(id: number) {
     if (!address) return;
     try {
-      await fetch(`${BACKEND_URL}/api/missions/claim`, {
+      const r = await fetch(`${BACKEND_URL}/api/missions/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet: address, missionId: id }),
       });
+      // Backend returns { leveledUp, level, xpAwarded, xp } — fire the
+      // full-screen level-up toast when the claim tips the player into a
+      // new level. This is the only spot outside rhythm/simon that awards
+      // XP, so without this wire-up mission level-ups happened silently.
+      const d = await r.json().catch(() => null);
+      if (d?.leveledUp && typeof d.level === "number") {
+        setLevelUpToastLevel(d.level);
+      }
     } catch {}
     refetchMissions();
   }
@@ -935,6 +949,13 @@ export default function GamesPage() {
       {/* Streak is rendered inline as the 4th stats pill on mobile (see
           the pills array above), not as a floating chip — avoids the
           edge collision with the POT pill. */}
+
+      {/* Level-up celebration — fires for mission-claim level-ups here,
+          since rhythm/simon finish screens handle their own in-game case. */}
+      <LevelUpToast
+        level={levelUpToastLevel}
+        onClose={() => setLevelUpToastLevel(null)}
+      />
     </div>
   );
 }
