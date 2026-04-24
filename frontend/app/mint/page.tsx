@@ -16,11 +16,20 @@
 // to /verify preserving the original ?next= target.
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+
+// Minimum CELO we ask non-MiniPay wallets to hold before we let them tap
+// MINT. 0.002 CELO is a comfortable margin over the ~0.0005 CELO a Game
+// Pass mint actually costs, leaves headroom for one retry, and is dust-level
+// on Celo (~$0.002). MiniPay users skip this check entirely because their
+// gas is paid in USDC via the fee-currency adapter.
+const GAS_MIN_CELO_WEI = 2_000_000_000_000_000n; // 0.002 * 1e18
+
+const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 
 function MintInner() {
   const router = useRouter();
@@ -39,8 +48,28 @@ function MintInner() {
   const [username, setUsername] = useState("");
   const [minting, setMinting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Structured error kind lets us render a specific remediation card per
+  // failure class instead of dumping raw RPC text on non-technical users.
+  //   "gas"     → wallet has no CELO; show faucet/Telegram CTA.
+  //   "taken"   → username already minted by someone else.
+  //   "other"   → generic; fall back to the raw message preview.
+  const [errKind, setErrKind] = useState<"gas" | "taken" | "other" | null>(null);
+  // Flips on after 20s of waiting so we can tell the user the tx is unusually
+  // slow without making them watch a silent spinner. Most Celo txs land in
+  // 5-10s; anything past 20s is almost always a gas issue.
+  const [slowMint, setSlowMint] = useState(false);
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connected = ready && (authenticated || (isMiniPay && !!address));
+
+  // CELO balance — only meaningful for non-MiniPay users because MiniPay
+  // pays fees in USDC via celoFeeSpread. For MiniPay we skip the check
+  // entirely and the MINT button is always enabled.
+  const { data: celoBalance } = useBalance({
+    address,
+    query: { enabled: !!address && !isMiniPay, refetchInterval: 15_000 },
+  });
+  const hasGas = isMiniPay || (celoBalance ? celoBalance.value >= GAS_MIN_CELO_WEI : false);
 
   // Check if they already have a pass — if so, skip this page entirely.
   const { data: hasMinted, isLoading: checkingPass, refetch: refetchPass } = useReadContract({
@@ -69,11 +98,19 @@ function MintInner() {
 
   async function handleMint() {
     setErr(null);
+    setErrKind(null);
     if (username.length < 3) {
       setErr("Username must be at least 3 characters");
+      setErrKind("other");
       return;
     }
     setMinting(true);
+    setSlowMint(false);
+    // If the tx has not resolved in 20s, flip the "taking longer than
+    // usual" hint on. Most Celo mints land in 5-10s; 20s+ means gas,
+    // RPC hiccup, or a wallet prompt the user didn't notice.
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => setSlowMint(true), 20_000);
     try {
       // MiniPay users have no CELO, so every writeContract must pay the
       // network fee in a Celo fee-currency adapter (USDC by default).
@@ -91,17 +128,40 @@ function MintInner() {
       await refetchPass();
       router.replace(afterMint);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("Username taken")) setErr("Username taken — try another");
-      else if (msg.includes("Already minted")) {
-        // Race: user minted in another tab. Treat as success.
+      const raw = e instanceof Error ? e.message : String(e);
+      const lower = raw.toLowerCase();
+      // Race: same wallet already minted in another tab. Silent success.
+      if (lower.includes("already minted")) {
         await refetchPass();
         router.replace(afterMint);
-      } else {
-        setErr(msg.slice(0, 140));
+        return;
       }
+      // Username collision — specific recoverable error.
+      if (lower.includes("username taken")) {
+        setErr("Username taken. Try another.");
+        setErrKind("taken");
+        return;
+      }
+      // Gas / insufficient funds classification. Cover the wording used
+      // by viem, MetaMask, Privy embedded wallets, and the Celo RPC.
+      const isGas =
+        lower.includes("insufficient funds") ||
+        lower.includes("insufficient balance") ||
+        lower.includes("out of gas") ||
+        lower.includes("gas required exceeds") ||
+        lower.includes("cannot estimate gas") ||
+        lower.includes("exceeds allowance");
+      if (isGas) {
+        setErr("Your wallet needs a bit of CELO to pay the network fee.");
+        setErrKind("gas");
+        return;
+      }
+      setErr(raw.slice(0, 140));
+      setErrKind("other");
     } finally {
       setMinting(false);
+      setSlowMint(false);
+      if (slowTimerRef.current) { clearTimeout(slowTimerRef.current); slowTimerRef.current = null; }
     }
   }
 
@@ -257,10 +317,11 @@ function MintInner() {
                     </div>
                   </div>
 
-                  {/* Error */}
-                  {err && (
+                  {/* Inline error — only for non-gas cases, since gas gets
+                      its own tiny chip under the button. One line, no card. */}
+                  {err && errKind !== "gas" && (
                     <div style={{
-                      padding: "10px 12px", borderRadius: "10px",
+                      padding: "8px 12px", borderRadius: "10px",
                       background: "rgba(239,68,68,0.12)",
                       border: "1px solid rgba(239,68,68,0.4)",
                       color: "#fca5a5", fontSize: "11.5px", lineHeight: 1.4,
@@ -269,20 +330,24 @@ function MintInner() {
                     </div>
                   )}
 
-                  {/* Mint CTA — juicy green pill matching /verify's button */}
+                  {/* Mint CTA — juicy green pill matching /verify's button.
+                      Disabled when either the username is invalid or the
+                      wallet has no gas (non-MiniPay path). Preventing the
+                      tap is the fix for "loading forever" — nothing queues
+                      if we never call writeContractAsync. */}
                   <div
                     role="button"
                     tabIndex={0}
-                    aria-disabled={!valid || minting}
-                    onClick={() => { if (valid && !minting) handleMint(); }}
+                    aria-disabled={!valid || minting || !hasGas}
+                    onClick={() => { if (valid && !minting && hasGas) handleMint(); }}
                     style={{
-                      cursor: valid && !minting ? "pointer" : "default",
+                      cursor: valid && !minting && hasGas ? "pointer" : "default",
                       userSelect: "none",
                       transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
-                      opacity: valid ? 1 : 0.55,
+                      opacity: valid && hasGas ? 1 : 0.55,
                       marginTop: "4px",
                     }}
-                    onMouseDown={e => { if (valid && !minting) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(5px)"; }}
+                    onMouseDown={e => { if (valid && !minting && hasGas) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(5px)"; }}
                     onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
                   >
@@ -326,12 +391,85 @@ function MintInner() {
                     </div>
                   </div>
 
-                  <div style={{
-                    color: "rgba(160,130,200,0.5)", fontSize: "10.5px",
-                    textAlign: "center", marginTop: "2px",
-                  }}>
-                    Soulbound NFT · one per wallet · needs a tiny bit of CELO for gas
-                  </div>
+                  {/* Tiny status line below the button. Three possible states,
+                      one line each, no card — keeps the visual weight on the
+                      MINT action itself. */}
+                  {minting ? (
+                    slowMint ? (
+                      <div style={{
+                        fontSize: "10.5px", textAlign: "center",
+                        color: "#fde68a", lineHeight: 1.4,
+                      }}>
+                        Taking longer than usual. <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#67e8f9", fontWeight: 800, textDecoration: "none", borderBottom: "1px dashed rgba(103,232,249,0.5)" }}>Get help →</a>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: "10.5px", textAlign: "center", color: "rgba(160,130,200,0.55)" }}>
+                        Waiting for wallet confirmation...
+                      </div>
+                    )
+                  ) : isMiniPay ? (
+                    <div style={{ fontSize: "10.5px", textAlign: "center", color: "rgba(160,130,200,0.5)" }}>
+                      Soulbound NFT · fees paid in USDC
+                    </div>
+                  ) : !hasGas && celoBalance ? (
+                    // Minimal alert pattern: title + one primary CTA + tiny
+                    // inline link. Same visual grammar as the finish-screen
+                    // gas card in rhythm/simon so the recovery flow looks
+                    // like one consistent product feature.
+                    <div style={{
+                      padding: "12px 14px", borderRadius: "12px",
+                      background: "linear-gradient(180deg, rgba(249,115,22,0.12) 0%, rgba(120,50,0,0.18) 100%)",
+                      border: "1px solid rgba(249,115,22,0.45)",
+                      boxShadow: "0 0 14px rgba(249,115,22,0.12)",
+                      display: "flex", flexDirection: "column",
+                      gap: "8px", textAlign: "center",
+                    }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        gap: "8px",
+                        color: "#fed7aa",
+                        fontSize: "clamp(11px, 3vw, 12.5px)",
+                        fontWeight: 900, letterSpacing: "0.18em",
+                        textShadow: "0 0 10px rgba(249,115,22,0.5)",
+                      }}>
+                        <span style={{ fontSize: "14px" }}>⛽</span>
+                        NEEDS A TOP UP TO MINT
+                      </div>
+                      <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"
+                        style={{
+                          display: "block",
+                          padding: "10px 14px", borderRadius: "10px",
+                          background: "linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)",
+                          color: "white",
+                          fontSize: "clamp(11px, 2.9vw, 12px)",
+                          fontWeight: 900, letterSpacing: "0.1em",
+                          textDecoration: "none",
+                          border: "1.5px solid rgba(255,255,255,0.4)",
+                          boxShadow: "0 6px 14px rgba(6,182,212,0.4), inset 0 2px 6px rgba(255,255,255,0.25)",
+                        }}>
+                        💬 GET HELP IN TELEGRAM
+                      </a>
+                      <button
+                        onClick={() => { if (address) navigator.clipboard?.writeText(address).catch(() => {}); }}
+                        style={{
+                          background: "none", border: "none", padding: 0,
+                          color: "rgba(200,170,255,0.7)",
+                          fontSize: "clamp(10px, 2.5vw, 10.5px)",
+                          fontWeight: 700, letterSpacing: "0.04em",
+                          cursor: "pointer", fontFamily: "inherit",
+                          textDecoration: "underline",
+                          textDecorationStyle: "dashed",
+                          textDecorationColor: "rgba(200,170,255,0.35)",
+                          textUnderlineOffset: "3px",
+                        }}>
+                        Copy wallet ID
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "10.5px", textAlign: "center", color: "rgba(160,130,200,0.5)" }}>
+                      Soulbound NFT · one per wallet
+                    </div>
+                  )}
                 </>
               )}
             </div>

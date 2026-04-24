@@ -2127,25 +2127,16 @@ function RewardPanel({
     );
   }
 
-  // On-chain rejection — own red style with a hint to retry
+  // On-chain failure / rejection. Gas errors get the rich plain-English
+  // help card with Copy-wallet-ID + Telegram; everything else gets the
+  // single-line retry hint.
   if (txError) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(239,68,68,0.1)",
-        border: "1px solid rgba(239,68,68,0.35)",
-        color: "#fca5a5",
-        fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
-        textAlign: "center",
-      }}>
-        {txError}
-        <div style={{
-          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
-          letterSpacing: "0.1em", marginTop: "4px",
-        }}>Tap PLAY AGAIN to try again</div>
-      </div>
-    );
+    const low = txError.toLowerCase();
+    const isGasError =
+      low.includes("insufficient") ||
+      low.includes("gas") ||
+      low.includes("top up");
+    return <GasAwareTxError txError={txError} isGasError={isGasError} />;
   }
 
   if (error) {
@@ -2402,6 +2393,104 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
           }}>{label}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── GasAwareTxError ──────────────────────────────────────────────────────────
+// Finish-screen error banner. Two variants:
+//   • Plain (default): single-line "Transaction failed" with a retry hint.
+//   • Gas-aware: rich card for insufficient-funds failures. One iconic
+//     title, one short sentence, one primary CTA (Telegram), one secondary
+//     inline link (Copy wallet ID). No jargon, no em dashes. Mirrors the
+//     Simon finish screen — both games share the recovery path.
+const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
+function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
+  const { address } = useAccount();
+  const [copied, setCopied] = useState(false);
+
+  if (!isGasError) {
+    return (
+      <div style={{
+        marginTop: "16px", padding: "10px 12px",
+        borderRadius: "10px",
+        background: "rgba(239,68,68,0.1)",
+        border: "1px solid rgba(239,68,68,0.35)",
+        color: "#fca5a5",
+        fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
+        textAlign: "center",
+      }}>
+        {txError}
+        <div style={{
+          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
+          letterSpacing: "0.1em", marginTop: "4px",
+        }}>Tap PLAY AGAIN to try again</div>
+      </div>
+    );
+  }
+
+  const copyWallet = () => {
+    if (!address) return;
+    navigator.clipboard?.writeText(address)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); })
+      .catch(() => {});
+  };
+
+  return (
+    <div style={{
+      marginTop: "16px",
+      padding: "12px clamp(12px, 3.5vw, 14px)",
+      borderRadius: "12px",
+      background: "linear-gradient(180deg, rgba(249,115,22,0.12) 0%, rgba(120,50,0,0.18) 100%)",
+      border: "1px solid rgba(249,115,22,0.45)",
+      boxShadow: "0 0 14px rgba(249,115,22,0.12)",
+      display: "flex", flexDirection: "column",
+      gap: "8px",
+      textAlign: "center",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        gap: "8px",
+        color: "#fed7aa",
+        fontSize: "clamp(11px, 3vw, 12.5px)",
+        fontWeight: 900, letterSpacing: "0.18em",
+        textShadow: "0 0 10px rgba(249,115,22,0.5)",
+      }}>
+        <span style={{ fontSize: "14px" }}>⛽</span>
+        NEEDS A TOP UP TO SAVE
+      </div>
+
+      <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"
+        style={{
+          display: "block",
+          padding: "10px 14px", borderRadius: "10px",
+          background: "linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)",
+          color: "white",
+          fontSize: "clamp(11px, 2.9vw, 12px)",
+          fontWeight: 900, letterSpacing: "0.1em",
+          textDecoration: "none",
+          border: "1.5px solid rgba(255,255,255,0.4)",
+          boxShadow: "0 6px 14px rgba(6,182,212,0.4), inset 0 2px 6px rgba(255,255,255,0.25)",
+        }}>
+        💬 GET HELP IN TELEGRAM
+      </a>
+
+      <button
+        onClick={copyWallet}
+        style={{
+          background: "none", border: "none",
+          padding: 0,
+          color: copied ? "#86efac" : "rgba(200,170,255,0.7)",
+          fontSize: "clamp(10px, 2.5vw, 10.5px)",
+          fontWeight: 700, letterSpacing: "0.04em",
+          cursor: "pointer", fontFamily: "inherit",
+          textDecoration: copied ? "none" : "underline",
+          textDecorationStyle: "dashed",
+          textDecorationColor: "rgba(200,170,255,0.35)",
+          textUnderlineOffset: "3px",
+        }}>
+        {copied ? "✓ Copied" : "Copy wallet ID"}
+      </button>
     </div>
   );
 }

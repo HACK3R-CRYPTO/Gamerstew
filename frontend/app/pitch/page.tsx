@@ -895,42 +895,60 @@ export default function PitchDeckPage() {
         {slide.render()}
       </div>
 
-      {/* Prev / Next arrows — desktop only, hidden on touch */}
+      {/* Prev / Next arrows — chevrons rendered as SVG so they're font
+          independent. Previously used ‹ › text characters, but the custom
+          Melon Pop body font has no glyph for those, and the browser fell
+          back to a .notdef box that looked like a tiny white rectangle.
+          zIndex guards against slide content painting on top. */}
       {i > 0 && (
         <button
           onClick={() => go(-1)}
           aria-label="Previous slide"
           style={{
-            position: "absolute", top: "50%", left: "clamp(8px, 2vw, 24px)",
-            transform: "translateY(-50%)",
-            width: "44px", height: "44px",
+            position: "absolute", top: "50%", left: "clamp(10px, 2.4vw, 28px)",
+            transform: "translateY(-50%)", zIndex: 20,
+            width: "clamp(48px, 5.2vw, 60px)", height: "clamp(48px, 5.2vw, 60px)",
             borderRadius: "50%",
-            background: "rgba(20,10,50,0.7)",
-            border: `1.5px solid ${GOLD}55`,
-            color: "white", fontSize: "20px", fontWeight: 900,
+            background: "rgba(20,10,50,0.88)",
+            border: `2px solid ${GOLD}`,
+            boxShadow: `0 0 0 4px rgba(251,191,36,0.15), 0 10px 26px rgba(0,0,0,0.6), inset 0 2px 6px rgba(255,255,255,0.1)`,
             cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             backdropFilter: "blur(8px)",
+            padding: 0,
           }}
-        >‹</button>
+        >
+          <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none"
+               stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+               style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
       )}
       {i < total - 1 && (
         <button
           onClick={() => go(1)}
           aria-label="Next slide"
           style={{
-            position: "absolute", top: "50%", right: "clamp(8px, 2vw, 24px)",
-            transform: "translateY(-50%)",
-            width: "44px", height: "44px",
+            position: "absolute", top: "50%", right: "clamp(10px, 2.4vw, 28px)",
+            transform: "translateY(-50%)", zIndex: 20,
+            width: "clamp(48px, 5.2vw, 60px)", height: "clamp(48px, 5.2vw, 60px)",
             borderRadius: "50%",
-            background: "rgba(20,10,50,0.7)",
-            border: `1.5px solid ${GOLD}55`,
-            color: "white", fontSize: "20px", fontWeight: 900,
+            background: "rgba(20,10,50,0.88)",
+            border: `2px solid ${GOLD}`,
+            boxShadow: `0 0 0 4px rgba(251,191,36,0.15), 0 10px 26px rgba(0,0,0,0.6), inset 0 2px 6px rgba(255,255,255,0.1)`,
             cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             backdropFilter: "blur(8px)",
+            padding: 0,
           }}
-        >›</button>
+        >
+          <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none"
+               stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+               style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
       )}
 
       {/* Progress dots + slide counter */}
