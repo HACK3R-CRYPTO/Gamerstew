@@ -316,6 +316,20 @@ export default function SimonGamePage() {
     submittedRef.current = true;
 
     const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(finalScore)));
+
+    // Quick-exit guard — 0-score, sub-5s ends are the player tapping
+    // START and bailing before anything happened. There's no score to
+    // save, so skip the network round-trip and surface a calm message.
+    // The 5s threshold is an internal anti-fraud guard the player
+    // never needs to know about — copy speaks to gameplay, not to a
+    // hidden clock they're supposed to beat.
+    if (scoreToSubmit === 0 && gameTime < 5000) {
+      setSubmitting(false);
+      setTxError(null);
+      setSubmitError("No score yet. Tap PLAY AGAIN and play a round to land on the board.");
+      return;
+    }
+
     const clampedGameTime = Math.max(5000, gameTime);
     const baseScoreData = { game: "simon" as const, score: scoreToSubmit, gameTime: clampedGameTime };
 
@@ -1564,15 +1578,20 @@ function RewardPanel({
   }
 
   if (error) {
+    // Quick-exit prefix → calm neutral chip, NOT red error.
+    // The handleGameOver guard sets submitError to "Quick exit. ..."
+    // for sub-5s 0-point runs so the player isn't told their score
+    // failed when there was no score in the first place.
+    const isQuickExit = error.toLowerCase().startsWith("quick exit");
     return (
       <div style={{
         marginTop: "16px", padding: "10px 12px",
         borderRadius: "10px",
-        background: "rgba(239,68,68,0.08)",
-        border: "1px solid rgba(239,68,68,0.2)",
-        color: "rgba(252,165,165,0.85)",
-        fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em",
-        textAlign: "center",
+        background: isQuickExit ? "rgba(167,139,250,0.08)" : "rgba(239,68,68,0.08)",
+        border: `1px solid ${isQuickExit ? "rgba(167,139,250,0.25)" : "rgba(239,68,68,0.2)"}`,
+        color: isQuickExit ? "rgba(200,180,255,0.8)" : "rgba(252,165,165,0.85)",
+        fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em",
+        textAlign: "center", lineHeight: 1.45,
       }}>
         {error}
       </div>
