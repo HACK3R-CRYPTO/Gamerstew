@@ -6,7 +6,7 @@ import { useAccount } from "wagmi";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
-import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
+import { useChallenge } from "@/components/ChallengeBanner";
 
 // ─── Splash icons ──────────────────────────────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -679,14 +679,12 @@ function LeaderboardInner() {
             gap: "14px", overflowY: "auto",
           }}>
 
-            {/* 72-hour Arena Cup — pinned above the tabs so every visitor
-                to the leaderboard sees the event first. Only renders while
-                the event is active; `useChallenge` returns null otherwise. */}
-            {challenge && (
-              <div style={{ width: "100%", maxWidth: "640px", flexShrink: 0 }}>
-                <ChallengeBanner challenge={challenge} />
-              </div>
-            )}
+            {/* Cup banner intentionally NOT rendered at the top of the
+                leaderboard. The full live participation card lives inside
+                the Seasons tab below, alongside the 3-Week Cup and past
+                events. Two surfaces for the same event would split focus
+                and double-count attention; leaderboard is the data home,
+                /games and /home stay the urgency surfaces. */}
 
             {/* Juicy pill tabs — compact on mobile so all 3 fit a 360px
                 phone without the active glow bleeding off the viewport. */}
@@ -969,6 +967,192 @@ function LeaderboardInner() {
                     </div>
                   );
                 })()}
+
+                {/* ── 72-HR ARENA CUP — live participation board ──
+                    Pinned above the 3-Week Competition because it's the
+                    most time-bound thing on the screen. Shows the top
+                    challenge.topN players (matches the actual prize
+                    structure), the prize line, the live countdown, and
+                    the user's own rank chip if they're on the board.
+                    Visible only while the event is active or pending. */}
+                {challenge && (
+                  <div style={{
+                    borderRadius: "18px", padding: "2px",
+                    background: "linear-gradient(180deg, #fbbf24 0%, #f97316 50%, #c026d3 100%)",
+                    boxShadow: "0 0 22px rgba(251,191,36,0.35), 0 10px 24px rgba(0,0,0,0.6)",
+                  }}>
+                    <div style={{
+                      borderRadius: "16px",
+                      background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                      padding: "clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 20px)",
+                      position: "relative", overflow: "hidden",
+                      display: "flex", flexDirection: "column",
+                      gap: "clamp(10px, 2.4vw, 14px)",
+                    }}>
+                      <div style={{
+                        position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+                        background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
+                        pointerEvents: "none",
+                      }} />
+
+                      {/* Header — title + countdown chip */}
+                      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{
+                            display: "inline-flex", alignItems: "center", gap: "5px",
+                            padding: "2px 8px", borderRadius: "999px",
+                            background: challenge.pending ? "rgba(167,139,250,0.18)" : "rgba(251,191,36,0.18)",
+                            border: `1px solid ${challenge.pending ? "rgba(167,139,250,0.5)" : "rgba(251,191,36,0.5)"}`,
+                            marginBottom: "6px",
+                          }}>
+                            <span style={{
+                              color: challenge.pending ? "#e9d5ff" : "#fbbf24",
+                              fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em",
+                            }}>{challenge.pending ? "STARTING SOON" : "LIVE NOW"}</span>
+                          </div>
+                          <div style={{
+                            color: "white",
+                            fontSize: "clamp(14px, 4vw, 16px)",
+                            fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
+                          }}>
+                            72-HOUR ARENA CUP
+                          </div>
+                        </div>
+                        <div style={{
+                          padding: "5px 10px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.5)",
+                          border: `1px solid ${challenge.pending ? "rgba(167,139,250,0.4)" : "rgba(251,191,36,0.4)"}`,
+                          textAlign: "right", flexShrink: 0,
+                        }}>
+                          <div style={{
+                            color: challenge.pending ? "rgba(233,213,255,0.7)" : "rgba(254,215,170,0.7)",
+                            fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em",
+                          }}>{challenge.pending ? "STARTS IN" : "TIME LEFT"}</div>
+                          <div style={{
+                            color: challenge.pending ? "#e9d5ff" : "#fbbf24",
+                            fontSize: "clamp(13px, 3.6vw, 16px)", fontWeight: 900, lineHeight: 1,
+                            fontFamily: "monospace",
+                          }}>
+                            {formatCountdown(challenge.pending ? challenge.secondsUntilStart : challenge.secondsLeft)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Prize line — single chip because every winner gets same amount */}
+                      <div style={{
+                        position: "relative", zIndex: 1,
+                        padding: "10px 12px", borderRadius: "10px",
+                        background: "rgba(0,0,0,0.35)",
+                        border: "1px solid rgba(251,191,36,0.4)",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        gap: "10px",
+                      }}>
+                        <div>
+                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>PRIZE POOL</div>
+                          <div style={{ color: "#fbbf24", fontSize: "clamp(13px, 3.6vw, 15px)", fontWeight: 900, marginTop: "2px" }}>
+                            ${challenge.totalPrizePool} USDC · top {challenge.topN}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>EACH WINS</div>
+                          <div style={{ color: "#fbbf24", fontSize: "clamp(13px, 3.6vw, 15px)", fontWeight: 900, marginTop: "2px" }}>
+                            ${challenge.prizeUsdc}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Live top N — only render when event has actually started */}
+                      {!challenge.pending && challenge.rankings.length > 0 && (
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          display: "flex", flexDirection: "column",
+                          gap: "6px",
+                        }}>
+                          <div style={{
+                            color: "rgba(254,215,170,0.7)",
+                            fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
+                          }}>LIVE TOP {challenge.topN} · {challenge.minPlays} PLAYS TO QUALIFY</div>
+                          {challenge.rankings.slice(0, challenge.topN).map((p, i) => {
+                            const isMe = address && p.wallet.toLowerCase() === address.toLowerCase();
+                            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🏅";
+                            return (
+                              <div key={p.wallet} style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                gap: "10px",
+                                padding: "8px 10px", borderRadius: "10px",
+                                background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
+                                border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                              }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                                  <span style={{
+                                    fontSize: "12px",
+                                    color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
+                                    fontWeight: 900, letterSpacing: "0.05em",
+                                    flexShrink: 0, minWidth: "22px",
+                                  }}>#{i + 1}</span>
+                                  <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
+                                  <span style={{
+                                    color: isMe ? "#fde68a" : p.qualified ? "rgba(255,255,255,0.92)" : "rgba(200,180,255,0.7)",
+                                    fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
+                                    fontWeight: isMe ? 900 : 700,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                  }}>
+                                    {p.username || `${p.wallet.slice(0, 4)}…${p.wallet.slice(-3)}`}
+                                    {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
+                                  </span>
+                                </span>
+                                <span style={{
+                                  color: p.qualified ? "#86efac" : "#fde68a",
+                                  fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
+                                  fontFamily: "monospace",
+                                  flexShrink: 0,
+                                }}>
+                                  {p.plays}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* My rank chip — when player is in top 20 but outside top N */}
+                      {!challenge.pending && address && (() => {
+                        const myIdx = challenge.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase());
+                        if (myIdx < 0 || myIdx < challenge.topN) return null;
+                        const me = challenge.rankings[myIdx];
+                        return (
+                          <div style={{
+                            position: "relative", zIndex: 1,
+                            padding: "8px 12px", borderRadius: "10px",
+                            background: "rgba(251,191,36,0.08)",
+                            border: "1px solid rgba(251,191,36,0.4)",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                          }}>
+                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                              YOU&apos;RE #{myIdx + 1} · KEEP PLAYING
+                            </span>
+                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
+                              {me.plays} plays
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Empty state — pending or no qualifiers yet */}
+                      {!challenge.pending && challenge.rankings.length === 0 && (
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          padding: "14px 12px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.3)",
+                          color: "rgba(200,180,255,0.55)",
+                          fontSize: "11px", textAlign: "center", fontWeight: 700,
+                        }}>
+                          No plays yet. Be the first to qualify.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* ── 3-WEEK COMPETITION SPECIAL EVENT — single gold accent ── */}
                 {competition && competition.weeksLeft > 0 && (

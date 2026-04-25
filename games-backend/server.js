@@ -1440,62 +1440,141 @@ async function freezeChallengeIfNeeded(nowSec, ranked) {
   }
 }
 
-// In-memory cache for the expensive aggregation. Every client polls every
-// 30s; without this, 50 concurrent clients hammer the DB with 50 identical
-// full-window scans. 10s TTL means worst-case stale data is 10 seconds old,
-// which is invisible to the player and saves ~5x the DB load.
+// ── Challenge leaderboard aggregation ────────────────────────────────────────
+// Two-strategy pipeline designed to scale from 100 players to 1M:
+//
+//   FAST PATH  — Postgres RPC `challenge_leaderboard(start, end, min_plays,
+//                top_n)`. The GROUP BY runs inside Postgres, against the
+//                composite index on activity(created_at, wallet_address).
+//                Returns ≤ top_n rows over the wire, regardless of how big
+//                the activity table grows. One round-trip, O(log N) seek.
+//
+//   FALLBACK   — JS-side paginated aggregation. Used only when the RPC is
+//                not deployed (graceful degradation while the migration is
+//                rolling out). Aggregates in-loop into a Map so memory is
+//                O(unique wallets), never O(rows).
+//
+//   IN-MEMORY  — 10s TTL cache wraps both. Concurrent cache misses share
+//                ONE in-flight rebuild promise (thundering-herd guard).
+//                Failures preserve the last good cache rather than poison
+//                callers with partial or empty data.
+//
+// Tuning the constants:
+//   - CHALLENGE_CACHE_TTL_MS   how long a snapshot stays warm
+//   - CHALLENGE_PAGE_SIZE      Supabase row cap per request (1000 default)
+//   - CHALLENGE_TOP_LIST       how many ranked players we ship to clients
+
 const CHALLENGE_CACHE_TTL_MS = 10_000;
-let challengeCache = { at: 0, plays: null, ranked: null };
+const CHALLENGE_PAGE_SIZE    = 1000;
+const CHALLENGE_TOP_LIST     = 20;
+
+let challengeCache   = { at: 0, plays: new Map(), ranked: [] };
+let challengeRebuild = null;
+
+const isCacheFresh = () =>
+  challengeCache.plays.size > 0 &&
+  Date.now() - challengeCache.at < CHALLENGE_CACHE_TTL_MS;
 
 async function getChallengePlays() {
-  const nowMs = Date.now();
-  if (challengeCache.plays && nowMs - challengeCache.at < CHALLENGE_CACHE_TTL_MS) {
+  if (isCacheFresh()) {
     return { plays: challengeCache.plays, ranked: challengeCache.ranked };
   }
+  // Coalesce concurrent cache-misses into a single rebuild. Followers
+  // resolve from the same promise the first miss kicked off.
+  if (!challengeRebuild) {
+    challengeRebuild = rebuildChallengeCache().finally(() => {
+      challengeRebuild = null;
+    });
+  }
+  return challengeRebuild;
+}
+
+async function rebuildChallengeCache() {
   const startIso = new Date(CHALLENGE_START * 1000).toISOString();
   const endIso   = new Date(CHALLENGE_END   * 1000).toISOString();
+  try {
+    // Try the fast path first; fall back if the function isn't deployed.
+    const fresh = (await aggregateViaRpc(startIso, endIso))
+              || (await aggregateViaPagination(startIso, endIso));
+    challengeCache = { at: Date.now(), ...fresh };
+    return fresh;
+  } catch (e) {
+    console.error('challenge aggregation failed:', e?.message || e);
+    // Last-good-cache wins over wrong-data. Empty Map + array is the
+    // safe zero-state for the very first call after a cold-start failure.
+    return { plays: challengeCache.plays, ranked: challengeCache.ranked };
+  }
+}
 
-  // Supabase caps unranged selects at 1000 rows. With 2k+ activity rows in
-  // the 72-hour window, a single .select() truncates and every player's
-  // count sticks at whatever fraction of the first 1000 rows happens to be
-  // theirs. Paginate through every row in the window using .range() so
-  // the in-memory aggregation sees the full set.
-  const PAGE_SIZE = 1000;
-  const allRows = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data: page } = await supabase
+// Fast path — Postgres GROUP BY via the `challenge_leaderboard` RPC. The
+// function is defined in supabase-migrations.sql; if it has not been
+// deployed yet, this returns null and the caller falls back. Any other
+// error is rethrown so it surfaces in logs instead of silently degrading.
+async function aggregateViaRpc(startIso, endIso) {
+  const { data, error } = await supabase.rpc('challenge_leaderboard', {
+    p_start:     startIso,
+    p_end:       endIso,
+    p_min_plays: CHALLENGE_MIN_PLAYS,
+    p_top_n:     CHALLENGE_TOP_LIST,
+  });
+  if (error) {
+    if (error.code === '42883' || /does not exist/i.test(error.message || '')) {
+      return null; // function not deployed yet → use fallback
+    }
+    throw error;
+  }
+  if (!data) return null;
+  const rankings = Array.isArray(data.rankings) ? data.rankings : [];
+  const playsMap = data.plays_map && typeof data.plays_map === 'object'
+    ? data.plays_map
+    : {};
+  const plays = new Map();
+  for (const [wallet, count] of Object.entries(playsMap)) {
+    plays.set(wallet, Number(count));
+  }
+  const ranked = await Promise.all(
+    rankings.map(async (r) => ({
+      wallet:    r.wallet,
+      plays:     Number(r.plays),
+      qualified: !!r.qualified,
+      username:  await resolveUsername(r.wallet) || null,
+    }))
+  );
+  return { plays, ranked };
+}
+
+// Fallback path — paginate `activity`, aggregate in-loop into a Map. Memory
+// stays O(unique wallets) instead of O(rows). Any page error throws, which
+// the caller catches and converts to a last-good-cache return.
+async function aggregateViaPagination(startIso, endIso) {
+  const plays = new Map();
+  for (let from = 0; ; from += CHALLENGE_PAGE_SIZE) {
+    const { data: page, error } = await supabase
       .from('activity')
       .select('wallet_address')
       .gte('created_at', startIso)
       .lt('created_at', endIso)
-      .order('created_at', { ascending: true })   // deterministic paging
-      .range(from, from + PAGE_SIZE - 1);
+      .order('created_at', { ascending: true })
+      .range(from, from + CHALLENGE_PAGE_SIZE - 1);
+    if (error) throw error;
     if (!page || page.length === 0) break;
-    allRows.push(...page);
-    if (page.length < PAGE_SIZE) break;            // last page reached
+    for (const row of page) {
+      const key = row.wallet_address?.toLowerCase();
+      if (key) plays.set(key, (plays.get(key) || 0) + 1);
+    }
+    if (page.length < CHALLENGE_PAGE_SIZE) break;
   }
-  const rows = allRows;
-
-  const plays = new Map();
-  for (const row of (rows || [])) {
-    const key = row.wallet_address?.toLowerCase();
-    if (!key) continue;
-    plays.set(key, (plays.get(key) || 0) + 1);
-  }
-
   const ranked = await Promise.all(
     Array.from(plays.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
+      .slice(0, CHALLENGE_TOP_LIST)
       .map(async ([wallet, count]) => ({
         wallet,
-        plays: count,
+        plays:     count,
         qualified: count >= CHALLENGE_MIN_PLAYS,
-        username: await resolveUsername(wallet) || null,
+        username:  await resolveUsername(wallet) || null,
       }))
   );
-
-  challengeCache = { at: nowMs, plays, ranked };
   return { plays, ranked };
 }
 
@@ -1522,26 +1601,11 @@ app.get('/api/challenge', async (req, res) => {
   // if multiple concurrent requests race here they all converge on one row.
   await freezeChallengeIfNeeded(nowSec, ranked);
 
-  // My play count — query Postgres directly with a head-only count for
-  // this wallet so it is exact even if the aggregation cache is briefly
-  // stale OR the paginated scan above still missed a row. The count is
-  // O(1) on Supabase with the activity_created_at_idx + wallet_address
-  // composite filter, so this is cheap.
+  // My play count comes from the in-memory plays Map. With pagination the
+  // map is exact and worst-case staleness is 10s (the cache TTL), which is
+  // invisible to a player tapping refresh after a finished game.
   const requester = (req.query.player || '').toString().toLowerCase();
-  let myPlays = 0;
-  if (requester && active) {
-    const startIso = new Date(CHALLENGE_START * 1000).toISOString();
-    const endIso   = new Date(CHALLENGE_END   * 1000).toISOString();
-    const { count } = await supabase
-      .from('activity')
-      .select('*', { count: 'exact', head: true })
-      .eq('wallet_address', requester)
-      .gte('created_at', startIso)
-      .lt('created_at', endIso);
-    myPlays = count || 0;
-  } else if (requester) {
-    myPlays = plays.get(requester) || 0;
-  }
+  const myPlays = requester ? (plays.get(requester) || 0) : 0;
 
   res.json({
     active,

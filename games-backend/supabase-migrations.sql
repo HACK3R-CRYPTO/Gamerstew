@@ -43,3 +43,54 @@ create index if not exists challenge_winners_ends_at_idx
 
 -- ── Activity index — speeds up the challenge windowed scan ────────────────────
 create index if not exists activity_created_at_idx on activity (created_at);
+
+-- Composite index used by the challenge_leaderboard RPC. Combined with the
+-- RPC's predicate (created_at range + GROUP BY wallet_address), this turns a
+-- full table scan into an indexed range scan with in-place aggregation.
+create index if not exists activity_created_at_wallet_idx
+  on activity (created_at, wallet_address);
+
+-- ── challenge_leaderboard(start, end, min_plays, top_n) ─────────────────────
+-- Aggregates the activity table inside Postgres and returns one JSON object:
+--   {
+--     "rankings":  [ { wallet, plays, qualified } ]   // top_n ranked players
+--     "plays_map": { wallet: plays, ... }             // all wallets in window
+--   }
+--
+-- Why a function instead of querying the table directly from the app:
+--   * GROUP BY + COUNT runs against the index, no row data crosses the wire.
+--   * Returns ≤ top_n rows + one map regardless of activity volume.
+--   * Single round-trip vs. paginating thousands of rows.
+--
+-- Re-run safely: CREATE OR REPLACE means deploying never breaks anything,
+-- the app's RPC caller falls back to JS aggregation if this isn't deployed.
+create or replace function challenge_leaderboard(
+  p_start     timestamptz,
+  p_end       timestamptz,
+  p_min_plays integer,
+  p_top_n     integer
+) returns json
+language sql
+stable
+as $$
+  with counts as (
+    select lower(wallet_address) as wallet, count(*)::int as plays
+    from activity
+    where created_at >= p_start
+      and created_at <  p_end
+      and wallet_address is not null
+    group by lower(wallet_address)
+  ),
+  top as (
+    select wallet, plays, plays >= p_min_plays as qualified
+    from counts
+    order by plays desc
+    limit greatest(p_top_n, 0)
+  )
+  select json_build_object(
+    'rankings',
+    coalesce((select json_agg(t) from top t), '[]'::json),
+    'plays_map',
+    coalesce((select json_object_agg(c.wallet, c.plays) from counts c), '{}'::json)
+  );
+$$;
