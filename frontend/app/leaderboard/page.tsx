@@ -1154,6 +1154,113 @@ function LeaderboardInner() {
                   </div>
                 )}
 
+                {/* ── PAST CHALLENGES — sibling of the live cup so the cup
+                    family stays grouped (live → completed → other events).
+                    Always renders so the section telegraphs its purpose
+                    even before the first event freezes a record. */}
+                <div>
+                  <div style={{
+                    fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
+                    color: "rgba(254,215,170,0.85)", textAlign: "center",
+                    textShadow: "0 0 14px rgba(251,191,36,0.6)",
+                    marginBottom: "10px",
+                  }}>── COMPLETED CUPS ──</div>
+                  {pastChallenges.length === 0 ? (
+                    <div style={{
+                      padding: "14px 12px", borderRadius: "14px",
+                      background: "rgba(20,10,50,0.5)",
+                      border: "1px dashed rgba(251,191,36,0.3)",
+                      color: "rgba(200,180,255,0.55)",
+                      fontSize: "11px", textAlign: "center",
+                      fontWeight: 700, lineHeight: 1.5,
+                    }}>
+                      No completed cups yet. Winners freeze here once an event ends.
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "10px" }}>
+                      {pastChallenges.map(ch => {
+                        const winner = ch.winners[0] || null;
+                        const myFinish = address
+                          ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0)
+                          : 0;
+                        const placed = myFinish > 0 && myFinish <= ch.top_n;
+                        const medalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : "#a78bfa";
+                        const medal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : myFinish > 0 ? "🏅" : null;
+                        const dateLabel = new Date(ch.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                        return (
+                          <div key={ch.id} style={{
+                            borderRadius: "14px",
+                            background: "linear-gradient(180deg, rgba(40,10,80,0.8) 0%, rgba(10,2,40,0.9) 100%)",
+                            border: placed ? `1.5px solid ${medalColor}88` : "1px solid rgba(251,191,36,0.3)",
+                            boxShadow: placed
+                              ? `0 0 14px ${medalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
+                              : "0 0 10px rgba(251,191,36,0.08), 0 6px 14px rgba(0,0,0,0.5)",
+                            padding: "12px 14px",
+                          }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", marginBottom: "8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                                <span style={{ fontSize: "14px" }}>🏆</span>
+                                <span style={{
+                                  color: "#fbbf24", fontSize: "11.5px", fontWeight: 900, letterSpacing: "0.06em",
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>{ch.name.toUpperCase()}</span>
+                              </div>
+                              {medal && (
+                                <div style={{
+                                  padding: "2px 8px", borderRadius: "999px",
+                                  background: `${medalColor}1a`, border: `1px solid ${medalColor}66`,
+                                  flexShrink: 0,
+                                }}>
+                                  <span style={{ fontSize: "10px" }}>{medal}</span>
+                                  <span style={{ color: medalColor, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>
+                                    #{myFinish}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div style={{
+                              display: "flex", justifyContent: "space-between",
+                              color: "rgba(200,180,255,0.6)", fontSize: "9.5px", fontWeight: 700,
+                              letterSpacing: "0.06em", marginBottom: "8px",
+                            }}>
+                              <span>ENDED {dateLabel}</span>
+                              <span style={{ color: "#fde68a" }}>${ch.top_n * ch.prize_usdc} POOL</span>
+                            </div>
+                            {winner ? (
+                              <div style={{
+                                display: "flex", alignItems: "center", gap: "8px",
+                                padding: "6px 8px", borderRadius: "8px",
+                                background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
+                              }}>
+                                <span style={{ fontSize: "13px" }}>🥇</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
+                                  <div style={{
+                                    color: "white", fontSize: "11px", fontWeight: 800,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                  }}>
+                                    {winner.username || `${winner.wallet.slice(0,4)}…${winner.wallet.slice(-3)}`}
+                                  </div>
+                                </div>
+                                <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900 }}>
+                                  {winner.plays} plays
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{
+                                padding: "10px 8px", borderRadius: "8px",
+                                background: "rgba(0,0,0,0.25)",
+                                color: "rgba(200,180,255,0.5)", fontSize: "10px",
+                                textAlign: "center", fontWeight: 700,
+                              }}>No qualifiers</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* ── 3-WEEK COMPETITION SPECIAL EVENT — single gold accent ── */}
                 {competition && competition.weeksLeft > 0 && (
                   <div style={{
@@ -1422,105 +1529,8 @@ function LeaderboardInner() {
                   }}>LOADING SEASONS...</div>
                 )}
 
-                {/* ── PAST CHALLENGES — hosted short-burst events (72-hr
-                    Arena Cup and future ones). Rendered as a sibling block
-                    under the seasons history so every past competition
-                    lives in one place. */}
-                {pastChallenges.length > 0 && (
-                  <div style={{ marginTop: "clamp(20px, 3vh, 32px)" }}>
-                    <div style={{
-                      fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
-                      color: "rgba(254,215,170,0.9)", textAlign: "center",
-                      textShadow: "0 0 14px rgba(251,191,36,0.7)", marginBottom: "12px",
-                    }}>── PAST CHALLENGES ──</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "10px" }}>
-                      {pastChallenges.map(ch => {
-                        const winner = ch.winners[0] || null;
-                        const myFinish = address
-                          ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0)
-                          : 0;
-                        const placed = myFinish > 0 && myFinish <= ch.top_n;
-                        const medalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : "#a78bfa";
-                        const medal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : myFinish > 0 ? "🏅" : null;
-                        const dateLabel = new Date(ch.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-
-                        return (
-                          <div key={ch.id} style={{
-                            borderRadius: "14px",
-                            background: "linear-gradient(180deg, rgba(40,10,80,0.8) 0%, rgba(10,2,40,0.9) 100%)",
-                            border: placed
-                              ? `1.5px solid ${medalColor}88`
-                              : "1px solid rgba(251,191,36,0.3)",
-                            boxShadow: placed
-                              ? `0 0 14px ${medalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
-                              : "0 0 10px rgba(251,191,36,0.08), 0 6px 14px rgba(0,0,0,0.5)",
-                            padding: "12px 14px",
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", marginBottom: "8px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                                <span style={{ fontSize: "14px" }}>🏆</span>
-                                <span style={{
-                                  color: "#fbbf24", fontSize: "11.5px", fontWeight: 900, letterSpacing: "0.06em",
-                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                }}>{ch.name.toUpperCase()}</span>
-                              </div>
-                              {medal && (
-                                <div style={{
-                                  padding: "2px 8px", borderRadius: "999px",
-                                  background: `${medalColor}1a`, border: `1px solid ${medalColor}66`,
-                                  flexShrink: 0,
-                                }}>
-                                  <span style={{ fontSize: "10px" }}>{medal}</span>
-                                  <span style={{ color: medalColor, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>
-                                    #{myFinish}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div style={{
-                              display: "flex", justifyContent: "space-between",
-                              color: "rgba(200,180,255,0.6)", fontSize: "9.5px", fontWeight: 700,
-                              letterSpacing: "0.06em", marginBottom: "8px",
-                            }}>
-                              <span>ENDED {dateLabel}</span>
-                              <span style={{ color: "#fde68a" }}>${ch.top_n * ch.prize_usdc} POOL</span>
-                            </div>
-
-                            {winner ? (
-                              <div style={{
-                                display: "flex", alignItems: "center", gap: "8px",
-                                padding: "6px 8px", borderRadius: "8px",
-                                background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
-                              }}>
-                                <span style={{ fontSize: "13px" }}>🥇</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
-                                  <div style={{
-                                    color: "white", fontSize: "11px", fontWeight: 800,
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                  }}>
-                                    {winner.username || `${winner.wallet.slice(0,4)}…${winner.wallet.slice(-3)}`}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900 }}>
-                                  {winner.plays} plays
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{
-                                padding: "10px 8px", borderRadius: "8px",
-                                background: "rgba(0,0,0,0.25)",
-                                color: "rgba(200,180,255,0.5)", fontSize: "10px",
-                                textAlign: "center", fontWeight: 700,
-                              }}>No qualifiers</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* (Old "PAST CHALLENGES" block lived here. It moved up
+                    next to the live cup so the cup family stays grouped.) */}
               </div>
             )}
 
