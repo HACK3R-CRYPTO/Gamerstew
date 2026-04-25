@@ -13,6 +13,16 @@ export const metadata: Metadata = {
   description: APP_TAGLINE,
   applicationName: APP_TITLE,
   manifest: "/manifest.webmanifest",
+  // Icon set lives in /public — favicon for tabs, apple-touch-icon for
+  // iOS home-screen, plus 192/512 PNGs the manifest pulls for PWA installs.
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
   // Apple web-app meta — when a MiniPay / iOS user adds the app to home
   // screen it launches full-screen with a dark translucent status bar so
   // the gradient bg flows edge-to-edge.
@@ -22,22 +32,21 @@ export const metadata: Metadata = {
     title: APP_TITLE,
   },
   // OpenGraph + Twitter — the cards that render when gamearenahq.xyz is
-  // shared in WhatsApp, X, Telegram, Discord, etc. Falls back to the
-  // in-app hero logo for now; swap in a real 1200x630 banner when it's
-  // designed.
+  // shared in WhatsApp, X, Telegram, Discord, etc. Uses the proper 1200x630
+  // banner so previews look like a finished product, not a stretched logo.
   openGraph: {
     type: "website",
     url: APP_URL,
     siteName: APP_TITLE,
     title: APP_TITLE,
     description: APP_TAGLINE,
-    images: [{ url: "/components/game_arena_text.png", width: 1200, height: 630, alt: APP_TITLE }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: APP_TITLE }],
   },
   twitter: {
     card: "summary_large_image",
     title: APP_TITLE,
     description: APP_TAGLINE,
-    images: ["/components/game_arena_text.png"],
+    images: ["/og-image.png"],
   },
 };
 
