@@ -172,12 +172,12 @@ function PlayNowSlide() {
       color: { dark: "#0a0120", light: "#ffffff" },
     })
       .then(setDataUrl)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   return (
     <SlideFrame eyebrow="PLAY NOW">
-      <H1>Scan. Play. Win 1.3x.</H1>
+      <H1>Scan. Play. Win.</H1>
       <div style={{
         marginTop: "clamp(20px, 4vh, 48px)",
         display: "flex",
@@ -273,7 +273,7 @@ function TractionSlide() {
     fetch(`${BACKEND_URL}/api/stats`)
       .then(r => r.json())
       .then(setStats)
-      .catch(() => {});
+      .catch(() => { });
   }, [BACKEND_URL]);
 
   const fmt = (n: number) => {
@@ -799,18 +799,38 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             }}>
             PLAY NOW →
           </a>
+          {/* Telegram + X as compact icon-only chips so the row stays
+              one-line on a 390px phone instead of wrapping into a busy
+              stack. Tooltip via aria-label preserves accessibility. */}
           <a href="https://t.me/+oY4inbBoglViNmE0" target="_blank" rel="noreferrer"
+            aria-label="Join our Telegram"
             style={{
-              padding: "clamp(10px, 1.4vh, 14px) clamp(18px, 2.4vw, 28px)",
+              padding: "clamp(10px, 1.4vh, 14px)",
               borderRadius: "999px",
               background: "rgba(20,10,50,0.6)",
               border: `1.5px solid ${CYAN}`,
-              color: "white", fontWeight: 800,
-              fontSize: "clamp(13px, 1.7vw, 16px)",
-              letterSpacing: "0.08em",
+              color: "white",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
               textDecoration: "none",
             }}>
-            TELEGRAM
+            <svg width="clamp(18px, 2vw, 22px)" height="clamp(18px, 2vw, 22px)" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.367l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.192z" />
+            </svg>
+          </a>
+          <a href="https://x.com/gamearenahq" target="_blank" rel="noreferrer"
+            aria-label="Follow @gamearenahq on X"
+            style={{
+              padding: "clamp(10px, 1.4vh, 14px)",
+              borderRadius: "999px",
+              background: "rgba(20,10,50,0.6)",
+              border: "1.5px solid rgba(255,255,255,0.6)",
+              color: "white",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              textDecoration: "none",
+            }}>
+            <svg width="clamp(16px, 1.8vw, 20px)" height="clamp(16px, 1.8vw, 20px)" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
           </a>
           <span style={{
             color: "rgba(200,180,255,0.6)",
@@ -919,8 +939,8 @@ export default function PitchDeckPage() {
           }}
         >
           <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none"
-               stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-               style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
+            stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+            style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
@@ -944,8 +964,8 @@ export default function PitchDeckPage() {
           }}
         >
           <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none"
-               stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-               style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
+            stroke={GOLD} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+            style={{ filter: `drop-shadow(0 0 8px ${GOLD}aa)` }}>
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
