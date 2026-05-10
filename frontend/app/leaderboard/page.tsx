@@ -64,10 +64,10 @@ const NAV_ITEMS = [
 ];
 
 const TABS = [
-  { id: "rankings", label: "WEEKLY",   wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "alltime",  label: "ALL-TIME", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "seasons",  label: "SEASONS",  wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "pvp",      label: "PVP ARENA",wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "rankings", label: "WEEKLY",    mobileLabel: "WEEKLY",   wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "alltime",  label: "ALL-TIME",  mobileLabel: "ALL-TIME", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "seasons",  label: "SEASONS",   mobileLabel: "SEASONS",  wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "pvp",      label: "PVP ARENA", mobileLabel: "PVP",      wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
 ];
 
 const GAME_TABS = [
@@ -800,13 +800,29 @@ function LeaderboardInner() {
                 and double-count attention; leaderboard is the data home,
                 /games and /home stay the urgency surfaces. */}
 
-            {/* Juicy pill tabs — compact on mobile so all 3 fit a 360px
-                phone without the active glow bleeding off the viewport. */}
-            <div style={{ display: "flex", gap: isMobile ? "6px" : "10px", flexShrink: 0 }}>
+            {/* Juicy pill tabs — compact on mobile, with horizontal scroll
+                fallback so 4 tabs never get clipped on narrow viewports.
+                Mobile labels shorten where useful (PVP ARENA → PVP) so we
+                rarely have to scroll, but the scroll is there as a safety
+                net for any future tab additions. */}
+            <div
+              className="hide-scrollbar"
+              style={{
+                display: "flex", gap: isMobile ? "6px" : "10px",
+                flexShrink: 0,
+                overflowX: "auto",
+                overflowY: "hidden",
+                WebkitOverflowScrolling: "touch",
+                // Padding prevents the active tab's glow from being clipped
+                // by the scroll container's edges.
+                padding: "4px 2px",
+                margin: "-4px -2px",
+              }}
+            >
               {TABS.map(t => (
                 <PillTab
                   key={t.id}
-                  label={t.label}
+                  label={isMobile ? t.mobileLabel : t.label}
                   active={activeTab === t.id}
                   wallColor={t.wallColor}
                   faceGrad={t.faceGrad}

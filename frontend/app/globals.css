@@ -44,6 +44,18 @@ button[aria-label$="button"],
   touch-action: none;
 }
 
+/* Hides the scrollbar on horizontally-scrollable containers (pill tab rows
+   on /leaderboard etc.) so the scroll feels native on mobile without the
+   visual scar of a thin gray bar. Container is still keyboard + swipe
+   scrollable; only the indicator is hidden. */
+.hide-scrollbar {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / legacy Edge */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;                /* Safari / Chrome */
+}
+
 @keyframes icon-float {
   0%, 100% { transform: translateY(0px); }
   50%       { transform: translateY(-14px); }
