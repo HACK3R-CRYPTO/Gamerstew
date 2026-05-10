@@ -2093,31 +2093,20 @@ async function freezeCompetitionIfNeeded(nowSec, rankings, compEnd, compStart) {
     totalSimon: r.totalSimon,
   }));
 
-  // Write into the SAME `challenge_winners` table that the 72-hr cups use,
-  // since (a) it already exists in Supabase, (b) the frontend already reads
-  // and renders rows from it under COMPLETED EVENTS via /api/challenges/past.
-  // Schema mapping:
-  //   top_n      = 3 (3-Week Competition has 3 winners)
-  //   prize_usdc = 10 (so top_n * prize_usdc = $30 total pool, the actual sum)
-  //   min_plays  = 0 (no per-player minimum)
-  //   winners    = [{ rank, wallet, username, plays }] where plays carries
-  //                the cumulative score (rhythm + simon) for display
-  const adaptedWinners = winners.map(w => ({
-    rank: w.rank,
-    wallet: w.wallet,
-    username: w.username,
-    plays: w.total,
-  }));
-
-  const { error } = await supabase.from('challenge_winners').upsert({
+  // Write into competition_winners — the proper table for multi-week season
+  // events. Different from challenge_winners (used by 72-hr cups) because
+  // the data shape is different: scores instead of play counts, and
+  // per-rank prize breakdown ($15/$10/$5) instead of a flat per-winner amount.
+  // Frontend reads this via /api/competition/past and renders it under
+  // COMPLETED EVENTS with score-aware columns.
+  const { error } = await supabase.from('competition_winners').upsert({
     id: COMPETITION_ID,
     name: COMPETITION_NAME,
     starts_at: new Date(compStart * 1000).toISOString(),
     ends_at:   new Date(compEnd   * 1000).toISOString(),
-    min_plays: 0,
-    top_n:     3,
-    prize_usdc: 10,
-    winners: adaptedWinners,
+    weeks: COMPETITION_WEEKS,
+    prizes: { first: 15, second: 10, third: 5 },
+    winners,
   }, { onConflict: 'id' });
 
   if (error) {
@@ -2126,7 +2115,7 @@ async function freezeCompetitionIfNeeded(nowSec, rankings, compEnd, compStart) {
   }
 
   competitionFrozen = true;
-  console.log(`🏆 Froze ${COMPETITION_ID} — ${winners.length} winner(s) (via challenge_winners)`);
+  console.log(`🏆 Froze ${COMPETITION_ID} — ${winners.length} winner(s)`);
 }
 
 // ─── GET /api/competition/past — archive of frozen competition results ────────
