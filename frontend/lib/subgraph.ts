@@ -93,6 +93,135 @@ export async function fetchLeaderboard(
     .slice(0, limit);
 }
 
+// ─── All-time combined leaderboard ──────────────────────────────────────────
+// One global leaderboard combining BOTH games. Each player's score = their
+// best Rhythm + best Simon (peak across all time). The single number
+// rewards players who are skilled at both games and gives every player a
+// stable "where do I stand overall" answer that doesn't reset.
+//
+// Pulls from the Player entity which already aggregates bestRhythmScore /
+// bestSimonScore, so this is a single cheap query per refresh.
+
+type PlayerRow = {
+  id: string;
+  username: string | null;
+  bestRhythmScore: string;
+  bestSimonScore: string;
+};
+
+export type AllTimeEntry = LeaderboardEntry & {
+  bestRhythm: number;
+  bestSimon: number;
+};
+
+export async function fetchAllTimeLeaderboard(limit = 50): Promise<AllTimeEntry[]> {
+  // Pull all players who have ever scored. With a small population we can
+  // pull the lot and sort client-side. If the population grows we can swap
+  // in server-side ordering by a derived combined-best field.
+  const data = await gql<{ players: PlayerRow[] }>(
+    `query AllTime {
+      players(first: 1000) {
+        id
+        username
+        bestRhythmScore
+        bestSimonScore
+      }
+    }`,
+  );
+
+  if (!data || !data.players) return [];
+
+  return data.players
+    .map(p => {
+      const bestRhythm = Number(p.bestRhythmScore);
+      const bestSimon  = Number(p.bestSimonScore);
+      return {
+        player: p.id.toLowerCase(),
+        username: p.username || undefined,
+        score: bestRhythm + bestSimon,
+        timestamp: 0, // combined view doesn't track a single peak moment
+        bestRhythm,
+        bestSimon,
+      };
+    })
+    .filter(e => e.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+export async function fetchPlayerAllTimeCombinedStats(
+  address: string,
+): Promise<{ peak: number; rank: number; bestRhythm: number; bestSimon: number } | null> {
+  // Fetch the player's bests + count anyone whose combined best is higher.
+  // Sums are computed client-side because the subgraph doesn't index a
+  // derived combined-best field directly.
+  const me = await gql<{ player: PlayerRow | null }>(
+    `query MyBest($id: ID!) {
+      player(id: $id) {
+        id
+        username
+        bestRhythmScore
+        bestSimonScore
+      }
+    }`,
+    { id: address.toLowerCase() },
+  );
+  const p = me?.player;
+  if (!p) return null;
+  const bestRhythm = Number(p.bestRhythmScore);
+  const bestSimon  = Number(p.bestSimonScore);
+  const myCombined = bestRhythm + bestSimon;
+  if (myCombined === 0) return null;
+
+  // Pull everyone, count how many have a higher combined best.
+  const all = await gql<{ players: PlayerRow[] }>(
+    `query All { players(first: 1000) { id bestRhythmScore bestSimonScore } }`,
+  );
+  const above = (all?.players || []).filter(o => {
+    const c = Number(o.bestRhythmScore) + Number(o.bestSimonScore);
+    return c > myCombined && o.id.toLowerCase() !== address.toLowerCase();
+  }).length;
+
+  return { peak: myCombined, rank: above + 1, bestRhythm, bestSimon };
+}
+
+// ─── Player all-time stats ──────────────────────────────────────────────────
+// Returns the player's all-time peak score for the requested game AND their
+// rank vs everyone else. Used by the ALL-TIME tab to render the
+// "Your rank: #N · Your best: X" chip when they're outside the top 50.
+
+export async function fetchPlayerAllTimeStats(
+  address: string,
+  gameType: 0 | 1,
+): Promise<{ peak: number; rank: number } | null> {
+  const orderField = gameType === 0 ? "bestRhythmScore" : "bestSimonScore";
+  const data = await gql<{
+    player: { id: string; bestRhythmScore: string; bestSimonScore: string } | null;
+  }>(
+    `query MyBest($id: ID!) {
+      player(id: $id) {
+        id
+        bestRhythmScore
+        bestSimonScore
+      }
+    }`,
+    { id: address.toLowerCase() },
+  );
+  const my = data?.player;
+  if (!my) return null;
+  const myBest = gameType === 0 ? my.bestRhythmScore : my.bestSimonScore;
+  if (myBest === "0") return null;
+
+  const above = await gql<{ players: { id: string }[] }>(
+    `query Above($best: BigInt!) {
+      players(first: 1000, where: { ${orderField}_gt: $best }) { id }
+    }`,
+    { best: myBest },
+  );
+  const aboveCount = above?.players?.length ?? 0;
+  return { peak: Number(myBest), rank: aboveCount + 1 };
+}
+
 // ─── Player rank ────────────────────────────────────────────────────────────
 // Used by the post-game results screen if the backend's rank field is null.
 // Counts how many distinct players have a higher best score than the player.

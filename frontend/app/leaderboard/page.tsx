@@ -8,7 +8,7 @@ import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
 import { useChallenge } from "@/components/ChallengeBanner";
 import { HabitatChip } from "@/components/HabitatChip";
-import { fetchLeaderboard } from "@/lib/subgraph";
+import { fetchLeaderboard, fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats } from "@/lib/subgraph";
 
 // ─── Splash icons ──────────────────────────────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -64,9 +64,10 @@ const NAV_ITEMS = [
 ];
 
 const TABS = [
-  { id: "rankings", label: "RANKINGS", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "seasons", label: "SEASONS", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "pvp", label: "PVP ARENA", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "rankings", label: "WEEKLY",   wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "alltime",  label: "ALL-TIME", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "seasons",  label: "SEASONS",  wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
+  { id: "pvp",      label: "PVP ARENA",wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
 ];
 
 const GAME_TABS = [
@@ -447,9 +448,10 @@ function LeaderboardInner() {
   // is a different leaderboard entirely.
   const initialTab = (() => {
     const t = searchParams.get("tab");
-    return t === "seasons" || t === "pvp" ? t : "rankings";
+    if (t === "seasons" || t === "pvp" || t === "alltime") return t;
+    return "rankings";
   })();
-  const [activeTab, setActiveTab] = useState<"rankings" | "seasons" | "pvp">(initialTab);
+  const [activeTab, setActiveTab] = useState<"rankings" | "alltime" | "seasons" | "pvp">(initialTab);
   const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
 
   // 72-hour Arena Cup — shared hook returns null outside the event window,
@@ -556,8 +558,46 @@ function LeaderboardInner() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
+  // All-time combined leaderboard — best rhythm + best simon per player.
+  // ONE global ranking, no game split. Players see their forever standing
+  // overall instead of a per-game peak. Fetches lazily on tab activation.
+  const [allTimeEntries, setAllTimeEntries] = useState<Entry[]>([]);
+  const [allTimeLoading, setAllTimeLoading] = useState(false);
+  const fetchAllTime = useCallback(async () => {
+    setAllTimeLoading(true);
+    try {
+      const fetched = await fetchAllTimeLeaderboard(50);
+      setAllTimeEntries(fetched);
+    } catch {
+      setAllTimeEntries([]);
+    } finally {
+      setAllTimeLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (activeTab === "alltime") fetchAllTime();
+  }, [activeTab, fetchAllTime]);
+
+  // Player's own all-time combined rank + peak — fetched only when they're
+  // outside the visible top 50. Powers the "Your rank: #67 · 12,450 total"
+  // chip that mirrors the weekly tab's not-on-board treatment.
+  const [myAllTime, setMyAllTime] = useState<{ rank: number; peak: number } | null>(null);
+  useEffect(() => {
+    if (activeTab !== "alltime" || !address) { setMyAllTime(null); return; }
+    const inTop50 = allTimeEntries.find(e => e.player.toLowerCase() === address.toLowerCase());
+    if (inTop50) {
+      setMyAllTime({ rank: allTimeEntries.indexOf(inTop50) + 1, peak: inTop50.score });
+      return;
+    }
+    fetchPlayerAllTimeCombinedStats(address).then(s => {
+      if (s) setMyAllTime({ rank: s.rank, peak: s.peak });
+    });
+  }, [activeTab, address, allTimeEntries]);
+
   const podium = entries.slice(0, 3);
   const rest = entries.slice(3, 13);
+  const allTimePodium = allTimeEntries.slice(0, 3);
+  const allTimeRest = allTimeEntries.slice(3);
 
   return (
     <div style={{
@@ -719,8 +759,10 @@ function LeaderboardInner() {
             </div>
 
             {/* Game sub-tabs — stronger fill/border on mobile so the
-                active state reads as a real selection, not a ghost. */}
-            {activeTab !== "pvp" && (
+                active state reads as a real selection, not a ghost.
+                Hidden on ALL-TIME because that view combines both games
+                (best rhythm + best simon) into one global ranking. */}
+            {activeTab !== "pvp" && activeTab !== "alltime" && (
               <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
                 {GAME_TABS.map(t => {
                   const active = gameTab === t.id;
@@ -919,6 +961,100 @@ function LeaderboardInner() {
                             </div>
                           </div>
                         </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ─── ALL-TIME TAB ───────────────────────────────────────────────
+                Combined-game forever leaderboard. Best Rhythm + Best Simon
+                per player, summed. Never resets. No prizes. Pure status.
+                Rendered with the same StagePodium + PlayerRow components
+                as the WEEKLY tab so the layout is instantly familiar. */}
+            {activeTab === "alltime" && (
+              <>
+                {allTimeLoading ? (
+                  <div style={{ padding: "60px", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING...</div>
+                ) : allTimeEntries.length === 0 ? (
+                  <div style={{
+                    width: "100%", maxWidth: "440px",
+                    margin: "20px auto",
+                    padding: "32px 24px",
+                    borderRadius: "20px",
+                    background: "linear-gradient(180deg, rgba(167,139,250,0.12) 0%, rgba(20,10,50,0.8) 100%)",
+                    border: "1.5px solid rgba(167,139,250,0.4)",
+                    boxShadow: "0 0 30px rgba(167,139,250,0.2), 0 12px 30px rgba(0,0,0,0.5)",
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: "44px", marginBottom: "10px" }}>🏆</div>
+                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900, letterSpacing: "0.04em", textShadow: "0 0 12px rgba(167,139,250,0.7)" }}>
+                      Be the first on the all-time board
+                    </div>
+                    <div style={{ color: "rgba(200,180,255,0.75)", fontSize: "12px", marginTop: "10px", lineHeight: 1.6 }}>
+                      No scores recorded yet. Play a round in either game and your name lands here forever.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Subtitle so players know what this view actually shows */}
+                    <div style={{
+                      width: "100%", maxWidth: "640px",
+                      margin: "0 auto 8px",
+                      textAlign: "center",
+                      color: "rgba(200,180,255,0.7)",
+                      fontSize: "11px", lineHeight: 1.5,
+                      padding: "0 12px",
+                    }}>
+                      Best Rhythm + Best Simon, summed. Forever. No resets, no prizes.
+                    </div>
+
+                    <StagePodium podium={allTimePodium} />
+
+                    <div style={{
+                      width: "100%", maxWidth: "720px",
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
+                      gap: isMobile ? "8px" : "10px 14px",
+                      marginTop: "4px",
+                    }}>
+                      {allTimeRest.map((e, i) => {
+                        const rank = i + 4;
+                        const color = rowColorByRank(rank);
+                        const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                        return <PlayerRow key={e.player} entry={e} rank={rank} color={color} isMe={isMe} />;
+                      })}
+                    </div>
+
+                    {/* Player-not-on-board chip — shown when the connected
+                        wallet has scored at least once but isn't on the
+                        visible top 50 list. Shows their actual rank. */}
+                    {address && myAllTime && !allTimeEntries.find(e => e.player.toLowerCase() === address.toLowerCase()) && (
+                      <div style={{
+                        width: "100%", maxWidth: "520px", marginTop: "12px",
+                        padding: "12px 16px", borderRadius: "14px",
+                        background: "rgba(167,139,250,0.1)",
+                        border: "1px solid rgba(167,139,250,0.35)",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        gap: "10px", flexWrap: "wrap",
+                      }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
+                            Your rank: #{myAllTime.rank}
+                          </div>
+                          <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "10.5px", marginTop: "2px" }}>
+                            Combined best: {myAllTime.peak.toLocaleString()}
+                          </div>
+                        </div>
+                        <button onClick={() => router.push("/games")} style={{
+                          padding: "8px 16px", borderRadius: "999px",
+                          background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
+                          border: "none", color: "white",
+                          fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em",
+                          cursor: "pointer",
+                          boxShadow: "0 0 16px rgba(124,58,237,0.5)",
+                        }}>CLIMB →</button>
                       </div>
                     )}
                   </>
