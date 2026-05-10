@@ -561,12 +561,16 @@ function LeaderboardInner() {
   // All-time combined leaderboard — best rhythm + best simon per player.
   // ONE global ranking, no game split. Players see their forever standing
   // overall instead of a per-game peak. Fetches lazily on tab activation.
+  // Pulls a wide window (500) so client-side pagination has headroom even
+  // as the population grows.
+  const ALL_TIME_PAGE_SIZE = 50;
   const [allTimeEntries, setAllTimeEntries] = useState<Entry[]>([]);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
+  const [allTimePage, setAllTimePage] = useState(0);
   const fetchAllTime = useCallback(async () => {
     setAllTimeLoading(true);
     try {
-      const fetched = await fetchAllTimeLeaderboard(50);
+      const fetched = await fetchAllTimeLeaderboard(500);
       setAllTimeEntries(fetched);
     } catch {
       setAllTimeEntries([]);
@@ -578,15 +582,23 @@ function LeaderboardInner() {
     if (activeTab === "alltime") fetchAllTime();
   }, [activeTab, fetchAllTime]);
 
-  // Player's own all-time combined rank + peak — fetched only when they're
-  // outside the visible top 50. Powers the "Your rank: #67 · 12,450 total"
-  // chip that mirrors the weekly tab's not-on-board treatment.
+  // Reset to page 1 whenever the player switches into the ALL-TIME tab so
+  // the experience always opens at the top of the board.
+  useEffect(() => {
+    if (activeTab === "alltime") setAllTimePage(0);
+  }, [activeTab]);
+
+  // Player's own all-time combined rank + peak — used by the sticky
+  // "Your rank" chip that's ALWAYS visible regardless of which page is
+  // currently showing. Computed from the fetched window when possible
+  // (cheap), falls back to a dedicated subgraph query for players outside
+  // the 500-entry fetch window.
   const [myAllTime, setMyAllTime] = useState<{ rank: number; peak: number } | null>(null);
   useEffect(() => {
     if (activeTab !== "alltime" || !address) { setMyAllTime(null); return; }
-    const inTop50 = allTimeEntries.find(e => e.player.toLowerCase() === address.toLowerCase());
-    if (inTop50) {
-      setMyAllTime({ rank: allTimeEntries.indexOf(inTop50) + 1, peak: inTop50.score });
+    const idx = allTimeEntries.findIndex(e => e.player.toLowerCase() === address.toLowerCase());
+    if (idx >= 0) {
+      setMyAllTime({ rank: idx + 1, peak: allTimeEntries[idx].score });
       return;
     }
     fetchPlayerAllTimeCombinedStats(address).then(s => {
@@ -594,10 +606,23 @@ function LeaderboardInner() {
     });
   }, [activeTab, address, allTimeEntries]);
 
+  // Pagination math — the top 3 (podium) stay visible on every page so
+  // the "champions" you're chasing are always in view. Pagination only
+  // applies to ranks 4+ in the grid below the podium.
+  const allTimePodium = allTimeEntries.slice(0, 3);
+  const allTimeRestEntries = allTimeEntries.slice(3);
+  const allTimeTotalPages = Math.max(1, Math.ceil(allTimeRestEntries.length / ALL_TIME_PAGE_SIZE));
+  const allTimePageEntries = allTimeRestEntries.slice(
+    allTimePage * ALL_TIME_PAGE_SIZE,
+    (allTimePage + 1) * ALL_TIME_PAGE_SIZE,
+  );
+  // myAllTimePage = which page the player's row lives on (-1 if podium or none)
+  const myAllTimePage = myAllTime
+    ? (myAllTime.rank <= 3 ? -1 : Math.floor((myAllTime.rank - 4) / ALL_TIME_PAGE_SIZE))
+    : -1;
+
   const podium = entries.slice(0, 3);
   const rest = entries.slice(3, 13);
-  const allTimePodium = allTimeEntries.slice(0, 3);
-  const allTimeRest = allTimeEntries.slice(3);
 
   return (
     <div style={{
@@ -1010,6 +1035,48 @@ function LeaderboardInner() {
                       Best Rhythm + Best Simon, summed. Forever. No resets, no prizes.
                     </div>
 
+                    {/* Sticky "Your position" chip — ALWAYS visible regardless
+                        of which page is showing. Tells the player where they
+                        stand at a glance. If they're on a different page than
+                        their own row, JUMP TO MY ROW seeks to that page. */}
+                    {address && myAllTime && (
+                      <div style={{
+                        width: "100%", maxWidth: "520px",
+                        margin: "0 auto",
+                        padding: "10px 14px", borderRadius: "12px",
+                        background: "rgba(124,58,237,0.18)",
+                        border: "1.5px solid rgba(167,139,250,0.55)",
+                        boxShadow: "0 0 14px rgba(124,58,237,0.25)",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        gap: "10px", flexWrap: "wrap",
+                      }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
+                            You&apos;re #{myAllTime.rank}
+                          </div>
+                          <div style={{ color: "rgba(220,210,255,0.75)", fontSize: "10.5px", marginTop: "2px" }}>
+                            Combined best: {myAllTime.peak.toLocaleString()}
+                          </div>
+                        </div>
+                        {myAllTimePage >= 0 && myAllTimePage !== allTimePage && (
+                          <button
+                            onClick={() => setAllTimePage(myAllTimePage)}
+                            style={{
+                              padding: "7px 14px", borderRadius: "999px",
+                              background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
+                              border: "none", color: "white",
+                              fontSize: "10px", fontWeight: 900, letterSpacing: "0.1em",
+                              cursor: "pointer",
+                              boxShadow: "0 0 12px rgba(124,58,237,0.45)",
+                            }}
+                          >JUMP TO MY ROW</button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Podium ALWAYS visible — top 3 are the champions you're
+                        chasing, so they stay in view on every page. Keeps the
+                        aspirational target onscreen even when scrolling deeper. */}
                     <StagePodium podium={allTimePodium} />
 
                     <div style={{
@@ -1019,42 +1086,51 @@ function LeaderboardInner() {
                       gap: isMobile ? "8px" : "10px 14px",
                       marginTop: "4px",
                     }}>
-                      {allTimeRest.map((e, i) => {
-                        const rank = i + 4;
+                      {allTimePageEntries.map((e, i) => {
+                        // Page 1 (index 0): grid starts at rank 4. Page N: rank = 4 + N*50 + i
+                        const rank = 4 + allTimePage * ALL_TIME_PAGE_SIZE + i;
                         const color = rowColorByRank(rank);
                         const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
                         return <PlayerRow key={e.player} entry={e} rank={rank} color={color} isMe={isMe} />;
                       })}
                     </div>
 
-                    {/* Player-not-on-board chip — shown when the connected
-                        wallet has scored at least once but isn't on the
-                        visible top 50 list. Shows their actual rank. */}
-                    {address && myAllTime && !allTimeEntries.find(e => e.player.toLowerCase() === address.toLowerCase()) && (
+                    {/* Pagination controls — only shown when there's more than
+                        one page worth of entries. Buttons disable at boundaries
+                        so players can't seek past the ends. */}
+                    {allTimeTotalPages > 1 && (
                       <div style={{
-                        width: "100%", maxWidth: "520px", marginTop: "12px",
-                        padding: "12px 16px", borderRadius: "14px",
-                        background: "rgba(167,139,250,0.1)",
-                        border: "1px solid rgba(167,139,250,0.35)",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: "10px", flexWrap: "wrap",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        gap: "12px", marginTop: "16px",
                       }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
-                            Your rank: #{myAllTime.rank}
-                          </div>
-                          <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "10.5px", marginTop: "2px" }}>
-                            Combined best: {myAllTime.peak.toLocaleString()}
-                          </div>
-                        </div>
-                        <button onClick={() => router.push("/games")} style={{
-                          padding: "8px 16px", borderRadius: "999px",
-                          background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
-                          border: "none", color: "white",
-                          fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em",
-                          cursor: "pointer",
-                          boxShadow: "0 0 16px rgba(124,58,237,0.5)",
-                        }}>CLIMB →</button>
+                        <button
+                          onClick={() => setAllTimePage(p => Math.max(0, p - 1))}
+                          disabled={allTimePage === 0}
+                          style={{
+                            padding: "8px 14px", borderRadius: "999px",
+                            background: allTimePage === 0 ? "rgba(255,255,255,0.04)" : "rgba(124,58,237,0.18)",
+                            border: `1.5px solid ${allTimePage === 0 ? "rgba(255,255,255,0.12)" : "rgba(167,139,250,0.5)"}`,
+                            color: allTimePage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
+                            fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
+                            cursor: allTimePage === 0 ? "not-allowed" : "pointer",
+                          }}
+                        >‹ PREV</button>
+                        <span style={{
+                          color: "rgba(200,180,255,0.85)",
+                          fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
+                        }}>PAGE {allTimePage + 1} / {allTimeTotalPages}</span>
+                        <button
+                          onClick={() => setAllTimePage(p => Math.min(allTimeTotalPages - 1, p + 1))}
+                          disabled={allTimePage === allTimeTotalPages - 1}
+                          style={{
+                            padding: "8px 14px", borderRadius: "999px",
+                            background: allTimePage === allTimeTotalPages - 1 ? "rgba(255,255,255,0.04)" : "rgba(124,58,237,0.18)",
+                            border: `1.5px solid ${allTimePage === allTimeTotalPages - 1 ? "rgba(255,255,255,0.12)" : "rgba(167,139,250,0.5)"}`,
+                            color: allTimePage === allTimeTotalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
+                            fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
+                            cursor: allTimePage === allTimeTotalPages - 1 ? "not-allowed" : "pointer",
+                          }}
+                        >NEXT ›</button>
                       </div>
                     )}
                   </>
