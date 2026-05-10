@@ -1066,6 +1066,57 @@ function LeaderboardInner() {
                   }}>── EVENTS ──</div>
                 )}
 
+                {/* Empty state when no live cup AND no active competition.
+                    The header still shows because past events exist below;
+                    leaving the gap blank reads as a layout bug. Calm violet
+                    treatment (no golden glow) so it never gets mistaken for
+                    a live event. The CTA drives notification opt-ins —
+                    aligned with the "real players hear about future events
+                    first" community strategy. */}
+                {!challenge && (!competition || competition.weeksLeft === 0) && (pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                  <div style={{
+                    borderRadius: "16px",
+                    background: "linear-gradient(180deg, rgba(20,10,50,0.7) 0%, rgba(10,5,30,0.85) 100%)",
+                    border: "1px dashed rgba(167,139,250,0.35)",
+                    padding: "18px 18px",
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: "26px", marginBottom: "6px" }}>🏁</div>
+                    <div style={{
+                      color: "rgba(230,220,255,0.92)",
+                      fontSize: "13px", fontWeight: 900, letterSpacing: "0.04em",
+                    }}>
+                      No live event right now
+                    </div>
+                    <div style={{
+                      color: "rgba(200,180,255,0.6)",
+                      fontSize: "11px", fontWeight: 600,
+                      marginTop: "6px", lineHeight: 1.5,
+                      maxWidth: "320px", margin: "6px auto 0",
+                    }}>
+                      The next one drops without warning. Players with notifications on hear first.
+                    </div>
+                    <button
+                      onClick={() => router.push("/profile?tab=settings")}
+                      style={{
+                        marginTop: "12px",
+                        display: "inline-flex", alignItems: "center", gap: "6px",
+                        padding: "7px 14px", borderRadius: "999px",
+                        background: "rgba(124,58,237,0.18)",
+                        border: "1.5px solid rgba(167,139,250,0.55)",
+                        boxShadow: "0 0 12px rgba(124,58,237,0.3)",
+                        color: "rgba(230,220,255,0.95)",
+                        fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>🔔</span>
+                      <span>TURN ON NOTIFICATIONS</span>
+                      <span style={{ fontSize: "12px", lineHeight: 1 }}>›</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* ── 72-HR ARENA CUP — live participation board ──
                     Pinned above the 3-Week Competition because it's the
                     most time-bound thing on the screen. Shows the top

@@ -1973,9 +1973,12 @@ app.get('/api/challenges/past', async (_, res) => {
   res.json({ challenges: data || [] });
 });
 
-// ─── GET /api/competition — 3-week cumulative leaderboard (weeks 11-13) ────────
-// Each player's best score per week is summed. Top 3 win $15/$10/$5.
-const COMPETITION_WEEKS = [11, 12, 13];
+// ─── GET /api/competition — cumulative leaderboard (weeks 10-13) ────────────
+// Each player's best score per week is summed. Top 3 win $15/$10/$5. The
+// comp ran for 4 weeks of activity ending at the close of week 13. The
+// public-facing name stays "3-Week Competition" (the original branding the
+// community knows) while the data window covers all 4 weeks.
+const COMPETITION_WEEKS = [10, 11, 12, 13];
 
 app.get('/api/competition', async (_, res) => {
   const totals = new Map(); // wallet -> { username, rhythm, simon, weeks: { 11: n, 12: n, 13: n } }
@@ -2033,15 +2036,28 @@ app.get('/api/competition', async (_, res) => {
   // Count the current week as remaining if we're inside the competition
   // window. Without this, weeksLeft hits 0 during the final active week
   // and the frontend hides the cup card while it should still be live.
-  const weeksLeft = COMPETITION_WEEKS.filter(w => w >= current).length;
+  let weeksLeft = COMPETITION_WEEKS.filter(w => w >= current).length;
   const { start: compStart } = seasonBounds(COMPETITION_WEEKS[0]);
   const { end: compEnd }     = seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]);
 
   const nowSec = Math.floor(Date.now() / 1000);
-  // Freeze when the entire window has fully passed (current is past the last week).
-  if (current > COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]) {
-    await freezeCompetitionIfNeeded(nowSec, rankings, compEnd, compStart);
-  }
+  // Always attempt freeze. The function self-gates on (nowSec >= compEnd) so
+  // nothing happens before the window closes. Removing the outer week-number
+  // guard means a freshly-restarted process will still freeze on the first
+  // /api/competition GET after the deadline, even if no one queried during
+  // the exact handoff minute.
+  await freezeCompetitionIfNeeded(nowSec, rankings, compEnd, compStart);
+
+  // If the competition has been frozen (auto or via admin), force weeksLeft
+  // to 0 so the live card hides and only the COMPLETED EVENTS card renders.
+  // Without this, an admin force-freeze would put the same comp in both
+  // sections of the UI, which reads as a bug to the player.
+  const { data: frozenRow } = await supabase
+    .from('competition_winners')
+    .select('id')
+    .eq('id', COMPETITION_ID)
+    .limit(1);
+  if (frozenRow && frozenRow.length > 0) weeksLeft = 0;
 
   res.json({
     weeks: COMPETITION_WEEKS,
@@ -2059,7 +2075,9 @@ app.get('/api/competition', async (_, res) => {
 // Idempotent via upsert + onConflict:'id'. In-process guard avoids redundant
 // Supabase writes; cold-start re-runs are safe because upsert is a no-op.
 let competitionFrozen = false;
-const COMPETITION_ID = 'gamearena-3week-s11-13';
+// ID reflects the actual 4-week data window (10-13). Public-facing name
+// stays "3-Week Competition" because that's what the community was told.
+const COMPETITION_ID = 'gamearena-comp-s10-13';
 const COMPETITION_NAME = '3-Week Competition';
 
 async function freezeCompetitionIfNeeded(nowSec, rankings, compEnd, compStart) {
@@ -2099,6 +2117,69 @@ app.get('/api/competition/past', async (_, res) => {
     .select('*')
     .order('ends_at', { ascending: false });
   res.json({ competitions: data || [] });
+});
+
+// ─── POST /api/competition/freeze — admin force-freeze the current comp ──────
+// Escape hatch for when the time-based freeze didn't fire (process restart
+// timing, deploy gaps, manual cleanup). Computes current rankings and writes
+// the same snapshot the auto-freeze writes. Idempotent via upsert.
+//
+// Example:
+//   curl -X POST https://.../api/competition/freeze \
+//     -H "x-internal-secret: $INTERNAL_SECRET"
+app.post('/api/competition/freeze', requireSecret, async (_, res) => {
+  try {
+    // Recompute current rankings exactly the way GET /api/competition does.
+    const totals = new Map();
+    for (const week of COMPETITION_WEEKS) {
+      const { start, end } = seasonBounds(week);
+      const startIso = new Date(start * 1000).toISOString();
+      const endIso   = new Date(end   * 1000).toISOString();
+      for (const game of ['rhythm', 'simon']) {
+        const { data: rows } = await supabase
+          .from('activity')
+          .select('wallet_address, score')
+          .eq('game', game)
+          .gte('created_at', startIso)
+          .lt('created_at', endIso)
+          .order('score', { ascending: false })
+          .limit(500);
+        const weekBest = new Map();
+        for (const row of (rows || [])) {
+          const key = row.wallet_address?.toLowerCase();
+          if (!key) continue;
+          if (!weekBest.has(key) || row.score > weekBest.get(key)) {
+            weekBest.set(key, row.score);
+          }
+        }
+        for (const [wallet, score] of weekBest.entries()) {
+          if (!totals.has(wallet)) totals.set(wallet, { wallet, totalRhythm: 0, totalSimon: 0 });
+          const entry = totals.get(wallet);
+          if (game === 'rhythm') entry.totalRhythm += score;
+          else entry.totalSimon += score;
+        }
+      }
+    }
+    const rankings = await Promise.all(
+      Array.from(totals.values())
+        .map(e => ({ ...e, total: e.totalRhythm + e.totalSimon }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 20)
+        .map(async e => ({ ...e, username: await resolveUsername(e.wallet) || null }))
+    );
+
+    const { start: compStart } = seasonBounds(COMPETITION_WEEKS[0]);
+    const { end: compEnd }     = seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]);
+
+    // Force the freeze regardless of the in-memory flag or current time.
+    competitionFrozen = false;
+    await freezeCompetitionIfNeeded(Math.floor(Date.now() / 1000), rankings, compEnd, compStart);
+
+    res.json({ success: true, frozen: competitionFrozen, winners: rankings.slice(0, 3) });
+  } catch (e) {
+    console.error('Manual freeze failed:', e?.message || e);
+    res.status(500).json({ success: false, error: e?.message || 'Freeze failed' });
+  }
 });
 
 // ─── POST /api/dice-roll — disabled until Phase 2 signed oracle ──────────────
