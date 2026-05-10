@@ -562,8 +562,9 @@ function LeaderboardInner() {
   // ONE global ranking, no game split. Players see their forever standing
   // overall instead of a per-game peak. Fetches lazily on tab activation.
   // Pulls a wide window (500) so client-side pagination has headroom even
-  // as the population grows.
-  const ALL_TIME_PAGE_SIZE = 50;
+  // as the population grows. Page size of 15 keeps each page to ~1.5 mobile
+  // viewports — skim-able, not exhausting. 50 was too much scroll per page.
+  const ALL_TIME_PAGE_SIZE = 15;
   const [allTimeEntries, setAllTimeEntries] = useState<Entry[]>([]);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
   const [allTimePage, setAllTimePage] = useState(0);
