@@ -8,7 +8,7 @@ import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
 import { useChallenge } from "@/components/ChallengeBanner";
 import { HabitatChip } from "@/components/HabitatChip";
-import { fetchLeaderboard, fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats } from "@/lib/subgraph";
+import { fetchLeaderboard, fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 
 // ─── Splash icons ──────────────────────────────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -344,9 +344,26 @@ function StagePodium({ podium }: { podium: Entry[] }) {
 }
 
 // ─── Player Row (neon bordered pill) ───────────────────────────────────────────
+// Compact number formatter for the breakdown chip. Below 10k stays exact
+// because Simon scores live in single digits to low hundreds and need to
+// be readable as-is. Above 10k collapses to "Xk" so a long Rhythm score
+// doesn't push the row off-screen.
+function fmtCompact(n: number): string {
+  if (n < 10000) return n.toLocaleString();
+  return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}k`;
+}
+
 function PlayerRow({
-  entry, rank, color, isMe,
-}: { entry: Entry; rank: number; color: string; isMe: boolean }) {
+  entry, rank, color, isMe, breakdown,
+}: {
+  entry: Entry;
+  rank: number;
+  color: string;
+  isMe: boolean;
+  // Optional R/S split for the ALL-TIME tab. Renders a small line under
+  // the total so players can read "this player is rhythm-heavy" at a glance.
+  breakdown?: { rhythm: number; simon: number };
+}) {
   return (
     <div style={{
       borderRadius: "999px",
@@ -421,14 +438,26 @@ function PlayerRow({
             <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, textShadow: "0 0 6px rgba(251,191,36,0.6)" }}>{entry.streak}</span>
           </div>
         )}
-        {/* Score */}
-        <div style={{
-          color: "#fbbf24", fontSize: "11px", fontWeight: 900,
-          letterSpacing: "0.12em",
-          textShadow: "0 0 10px rgba(251,191,36,0.7)",
-          flexShrink: 0,
-        }}>
-          {entry.score}
+        {/* Score (with optional R/S breakdown for ALL-TIME) */}
+        <div style={{ flexShrink: 0, textAlign: "right" }}>
+          <div style={{
+            color: "#fbbf24", fontSize: "11px", fontWeight: 900,
+            letterSpacing: "0.12em",
+            textShadow: "0 0 10px rgba(251,191,36,0.7)",
+          }}>
+            {entry.score.toLocaleString()}
+          </div>
+          {breakdown && (
+            <div style={{
+              color: "rgba(254,215,170,0.6)",
+              fontSize: "8px", fontWeight: 800,
+              letterSpacing: "0.06em",
+              marginTop: "2px",
+              fontFeatureSettings: '"tnum" 1',
+            }}>
+              R {fmtCompact(breakdown.rhythm)} · S {fmtCompact(breakdown.simon)}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -567,7 +596,9 @@ function LeaderboardInner() {
   // at the bottom of every page. The orphan only appears now on the last
   // page when total entries aren't divisible by 16, which is expected.
   const ALL_TIME_PAGE_SIZE = 16;
-  const [allTimeEntries, setAllTimeEntries] = useState<Entry[]>([]);
+  // AllTimeEntry extends Entry with bestRhythm + bestSimon so PlayerRow's
+  // breakdown chip ("R 290k · S 768") can render under the total score.
+  const [allTimeEntries, setAllTimeEntries] = useState<AllTimeEntry[]>([]);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
   const [allTimePage, setAllTimePage] = useState(0);
   const fetchAllTime = useCallback(async () => {
@@ -1078,11 +1109,19 @@ function LeaderboardInner() {
                       marginTop: "4px",
                     }}>
                       {allTimePageEntries.map((e, i) => {
-                        // Page 1 (index 0): grid starts at rank 4. Page N: rank = 4 + N*50 + i
                         const rank = 4 + allTimePage * ALL_TIME_PAGE_SIZE + i;
                         const color = rowColorByRank(rank);
                         const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                        return <PlayerRow key={e.player} entry={e} rank={rank} color={color} isMe={isMe} />;
+                        return (
+                          <PlayerRow
+                            key={e.player}
+                            entry={e}
+                            rank={rank}
+                            color={color}
+                            isMe={isMe}
+                            breakdown={{ rhythm: e.bestRhythm, simon: e.bestSimon }}
+                          />
+                        );
                       })}
                     </div>
 
