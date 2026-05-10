@@ -562,9 +562,11 @@ function LeaderboardInner() {
   // ONE global ranking, no game split. Players see their forever standing
   // overall instead of a per-game peak. Fetches lazily on tab activation.
   // Pulls a wide window (500) so client-side pagination has headroom even
-  // as the population grows. Page size of 15 keeps each page to ~1.5 mobile
-  // viewports — skim-able, not exhausting. 50 was too much scroll per page.
-  const ALL_TIME_PAGE_SIZE = 15;
+  // as the population grows. Page size of 16 (even) so the 2-column grid
+  // on desktop fills cleanly (8 + 8) — odd page sizes left an orphan row
+  // at the bottom of every page. The orphan only appears now on the last
+  // page when total entries aren't divisible by 16, which is expected.
+  const ALL_TIME_PAGE_SIZE = 16;
   const [allTimeEntries, setAllTimeEntries] = useState<Entry[]>([]);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
   const [allTimePage, setAllTimePage] = useState(0);
@@ -1024,18 +1026,6 @@ function LeaderboardInner() {
                   </div>
                 ) : (
                   <>
-                    {/* Subtitle so players know what this view actually shows */}
-                    <div style={{
-                      width: "100%", maxWidth: "640px",
-                      margin: "0 auto 8px",
-                      textAlign: "center",
-                      color: "rgba(200,180,255,0.7)",
-                      fontSize: "11px", lineHeight: 1.5,
-                      padding: "0 12px",
-                    }}>
-                      Best Rhythm + Best Simon, summed. Forever. No resets, no prizes.
-                    </div>
-
                     {/* Sticky "Your position" chip — ALWAYS visible regardless
                         of which page is showing. Tells the player where they
                         stand at a glance. If they're on a different page than
