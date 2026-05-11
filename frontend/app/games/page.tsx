@@ -259,6 +259,18 @@ export default function GamesPage() {
   }, []);
 
 
+  // Weekly community challenge
+  const [weeklyChallenge, setWeeklyChallenge] = useState<{
+    target: number; progress: number; playersIn: number;
+    hit: boolean; daysLeft: number; rewardG: number; ubiG: number;
+  } | null>(null);
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/weekly-challenge`)
+      .then(r => r.json())
+      .then(d => setWeeklyChallenge(d))
+      .catch(() => {});
+  }, []);
+
   // EVENTS data — real season countdown + 3-week competition state
   type EventCard = { icon: string; color: string; title: string; subtitle: string; onClick?: () => void };
   const [seasonInfo, setSeasonInfo] = useState<{ season: number; endsAt: number } | null>(null);
@@ -863,6 +875,72 @@ export default function GamesPage() {
           {challenge && (
             <div style={{ width: "100%", maxWidth: "680px", flexShrink: 0 }}>
               <ChallengeBanner challenge={challenge} compact={isMobile} />
+            </div>
+          )}
+
+          {/* Weekly Community Challenge bar */}
+          {weeklyChallenge && !weeklyChallenge.hit && (
+            <div style={{
+              width: "100%", maxWidth: "680px", flexShrink: 0,
+              borderRadius: "16px", padding: "12px 16px",
+              background: "linear-gradient(135deg, rgba(6,78,32,0.4) 0%, rgba(2,20,10,0.6) 100%)",
+              border: "1.5px solid rgba(134,239,172,0.25)",
+              boxShadow: "0 0 14px rgba(34,197,94,0.1)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <div>
+                  <div style={{ color: "rgba(134,239,172,0.9)", fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em" }}>
+                    🌍 COMMUNITY CHALLENGE
+                  </div>
+                  <div style={{ color: "rgba(134,239,172,0.55)", fontSize: "9.5px", marginTop: "2px", fontWeight: 700 }}>
+                    {weeklyChallenge.playersIn} player{weeklyChallenge.playersIn !== 1 ? "s" : ""} contributing · {weeklyChallenge.daysLeft}d left
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: "#86efac", fontSize: "11px", fontWeight: 900 }}>
+                    {weeklyChallenge.progress} / {weeklyChallenge.target}
+                  </div>
+                  <div style={{ color: "rgba(134,239,172,0.5)", fontSize: "8.5px", fontWeight: 700, marginTop: "1px" }}>
+                    games this week
+                  </div>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div style={{
+                width: "100%", height: "8px", borderRadius: "999px",
+                background: "rgba(0,0,0,0.4)",
+                border: "1px solid rgba(134,239,172,0.15)",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%", borderRadius: "999px",
+                  width: `${Math.min(100, (weeklyChallenge.progress / weeklyChallenge.target) * 100)}%`,
+                  background: "linear-gradient(90deg, #22c55e 0%, #86efac 100%)",
+                  boxShadow: "0 0 8px rgba(34,197,94,0.6)",
+                  transition: "width 0.6s ease",
+                }} />
+              </div>
+              <div style={{ color: "rgba(134,239,172,0.5)", fontSize: "8.5px", fontWeight: 700, marginTop: "6px", textAlign: "center" }}>
+                Hit {weeklyChallenge.target} → {weeklyChallenge.rewardG} G$ split among all players · {weeklyChallenge.ubiG} G$ goes to verified humans
+              </div>
+            </div>
+          )}
+          {weeklyChallenge?.hit && (
+            <div style={{
+              width: "100%", maxWidth: "680px", flexShrink: 0,
+              borderRadius: "16px", padding: "12px 16px",
+              background: "linear-gradient(135deg, rgba(6,78,32,0.6) 0%, rgba(2,40,10,0.8) 100%)",
+              border: "1.5px solid rgba(134,239,172,0.5)",
+              boxShadow: "0 0 20px rgba(34,197,94,0.25)",
+              textAlign: "center",
+            }}>
+              <div style={{ fontSize: "24px", marginBottom: "4px" }}>🎉</div>
+              <div style={{ color: "#86efac", fontSize: "13px", fontWeight: 900, letterSpacing: "0.04em" }}>
+                Community milestone hit this week!
+              </div>
+              <div style={{ color: "rgba(134,239,172,0.65)", fontSize: "10px", marginTop: "4px", fontWeight: 700 }}>
+                {weeklyChallenge.rewardG} G$ split among all players who played · {weeklyChallenge.ubiG} G$ sent to verified humans
+              </div>
             </div>
           )}
 
