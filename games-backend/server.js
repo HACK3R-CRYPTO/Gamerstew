@@ -2024,14 +2024,12 @@ const WEEKLY_CHALLENGE_CAP       = 50;   // max games per player that count towa
 
 app.get('/api/weekly-challenge', async (req, res) => {
   const nowUTC = new Date();
-  // Monday 00:00 UTC of the current week
-  const dayOfWeek = nowUTC.getUTCDay(); // 0=Sun, 1=Mon...
+  const dayOfWeek = nowUTC.getUTCDay();
   const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   const monday = new Date(Date.UTC(
     nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(),
     nowUTC.getUTCDate() - daysSinceMonday, 0, 0, 0, 0,
   ));
-  // Sunday 23:59:59 UTC
   const sunday = new Date(monday.getTime() + 7 * 86400000 - 1);
 
   const { data: rows } = await supabase
@@ -2045,28 +2043,35 @@ app.get('/api/weekly-challenge', async (req, res) => {
   for (const r of (rows || [])) {
     const w = r.wallet_address?.toLowerCase();
     if (!w) continue;
-    perPlayer.set(w, Math.min(WEEKLY_CHALLENGE_CAP, (perPlayer.get(w) || 0) + 1));
+    perPlayer.set(w, (perPlayer.get(w) || 0) + 1);
   }
 
-  const totalCapped = Array.from(perPlayer.values()).reduce((s, n) => s + n, 0);
-  const playersIn   = perPlayer.size;
-  const hit         = totalCapped >= WEEKLY_CHALLENGE_TARGET;
+  const totalCapped = Array.from(perPlayer.values())
+    .reduce((s, n) => s + Math.min(WEEKLY_CHALLENGE_CAP, n), 0);
+  const playersIn = perPlayer.size;
+  const hit       = totalCapped >= WEEKLY_CHALLENGE_TARGET;
 
-  // Days left until Sunday midnight UTC
-  const msLeft    = sunday.getTime() - Date.now();
-  const daysLeft  = Math.max(0, Math.ceil(msLeft / 86400000));
+  const msLeft   = sunday.getTime() - Date.now();
+  const daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
+
+  // Per-player contribution — returned when wallet query param is present.
+  // Used by the frontend to show "Your share: X / 50" on the challenge card.
+  const wallet = req.query.wallet?.toLowerCase();
+  const myRawCount    = wallet ? (perPlayer.get(wallet) || 0) : null;
+  const myContribution = myRawCount !== null ? Math.min(WEEKLY_CHALLENGE_CAP, myRawCount) : null;
 
   res.json({
-    target:      WEEKLY_CHALLENGE_TARGET,
-    progress:    totalCapped,
+    target:       WEEKLY_CHALLENGE_TARGET,
+    progress:     totalCapped,
     playersIn,
     hit,
     daysLeft,
-    rewardG:     WEEKLY_CHALLENGE_REWARD_G,
-    ubiG:        WEEKLY_CHALLENGE_UBI_G,
+    rewardG:      WEEKLY_CHALLENGE_REWARD_G,
+    ubiG:         WEEKLY_CHALLENGE_UBI_G,
     capPerPlayer: WEEKLY_CHALLENGE_CAP,
-    windowStart: monday.toISOString(),
-    windowEnd:   sunday.toISOString(),
+    windowStart:  monday.toISOString(),
+    windowEnd:    sunday.toISOString(),
+    myContribution,   // null if no wallet param, 0-50 otherwise
   });
 });
 
