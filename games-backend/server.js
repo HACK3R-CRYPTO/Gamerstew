@@ -1559,10 +1559,49 @@ app.get('/api/user/:address', async (req, res) => {
     xpToNext: p.xpToNext,
     streak: u.play_streak || 0,
     playedToday: u.last_play_date === today,
-    // ISO date "YYYY-MM-DD" or null for never-played. Powers the pet mood
-    // derivation (sleepy/sad/worried) on the frontend without an extra round-trip.
     lastPlayDate: u.last_play_date || null,
+    claimStreak: u.claim_streak || 0,
+    lastClaimDate: u.last_claim_date || null,
   });
+});
+
+// ─── POST /api/record-claim — called by frontend after G$ claim succeeds ─────
+// Increments claim_streak if last claim was yesterday, resets to 1 otherwise.
+// Frontend calls this once claimG$() resolves successfully. No auth needed
+// beyond origin check — worst case a player calls it without claiming and
+// gets a streak count; the G$ entitlement gate on GoodDollar's end is the
+// real guard.
+app.post('/api/record-claim', async (req, res) => {
+  const { walletAddress } = req.body || {};
+  if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+    return res.status(400).json({ error: 'Missing or invalid walletAddress' });
+  }
+  const addr = walletAddress.toLowerCase();
+  const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+  const { data: rows } = await supabase
+    .from('users')
+    .select('claim_streak, last_claim_date')
+    .eq('wallet_address', addr)
+    .limit(1);
+
+  const current = rows?.[0] || {};
+
+  // Already claimed today — idempotent, don't double-increment.
+  if (current.last_claim_date === today) {
+    return res.json({ success: true, claimStreak: current.claim_streak || 1, alreadyClaimed: true });
+  }
+
+  const newStreak = current.last_claim_date === yesterday
+    ? (current.claim_streak || 0) + 1
+    : 1;
+
+  await supabase
+    .from('users')
+    .upsert({ wallet_address: addr, claim_streak: newStreak, last_claim_date: today }, { onConflict: 'wallet_address' });
+
+  res.json({ success: true, claimStreak: newStreak, alreadyClaimed: false });
 });
 
 // ─── Habitat helpers ─────────────────────────────────────────────────────
@@ -1971,6 +2010,64 @@ app.get('/api/challenges/past', async (_, res) => {
     .order('ends_at', { ascending: false })
     .limit(20);
   res.json({ challenges: data || [] });
+});
+
+// ─── GET /api/weekly-challenge — community games milestone ──────────────────
+// Returns progress toward the weekly community games target. Counts games
+// from this week's Monday 00:00 UTC. Each player's contribution is capped at
+// PER_PLAYER_CAP so no single grinder can solo the milestone.
+// Config lives as constants — bump TARGET and REWARD as community grows.
+const WEEKLY_CHALLENGE_TARGET    = 150;  // games needed to hit milestone
+const WEEKLY_CHALLENGE_REWARD_G  = 5;   // G$ each qualifying player earns
+const WEEKLY_CHALLENGE_UBI_G     = 50;  // G$ GameArena sends to GoodDollar
+const WEEKLY_CHALLENGE_CAP       = 20;  // max games per player that count
+
+app.get('/api/weekly-challenge', async (req, res) => {
+  const nowUTC = new Date();
+  // Monday 00:00 UTC of the current week
+  const dayOfWeek = nowUTC.getUTCDay(); // 0=Sun, 1=Mon...
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(Date.UTC(
+    nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(),
+    nowUTC.getUTCDate() - daysSinceMonday, 0, 0, 0, 0,
+  ));
+  // Sunday 23:59:59 UTC
+  const sunday = new Date(monday.getTime() + 7 * 86400000 - 1);
+
+  const { data: rows } = await supabase
+    .from('activity')
+    .select('wallet_address')
+    .gte('created_at', monday.toISOString())
+    .lte('created_at', sunday.toISOString());
+
+  // Count per player, cap at PER_PLAYER_CAP
+  const perPlayer = new Map();
+  for (const r of (rows || [])) {
+    const w = r.wallet_address?.toLowerCase();
+    if (!w) continue;
+    perPlayer.set(w, Math.min(WEEKLY_CHALLENGE_CAP, (perPlayer.get(w) || 0) + 1));
+  }
+
+  const totalCapped = Array.from(perPlayer.values()).reduce((s, n) => s + n, 0);
+  const playersIn   = perPlayer.size;
+  const hit         = totalCapped >= WEEKLY_CHALLENGE_TARGET;
+
+  // Days left until Sunday midnight UTC
+  const msLeft    = sunday.getTime() - Date.now();
+  const daysLeft  = Math.max(0, Math.ceil(msLeft / 86400000));
+
+  res.json({
+    target:      WEEKLY_CHALLENGE_TARGET,
+    progress:    totalCapped,
+    playersIn,
+    hit,
+    daysLeft,
+    rewardG:     WEEKLY_CHALLENGE_REWARD_G,
+    ubiG:        WEEKLY_CHALLENGE_UBI_G,
+    capPerPlayer: WEEKLY_CHALLENGE_CAP,
+    windowStart: monday.toISOString(),
+    windowEnd:   sunday.toISOString(),
+  });
 });
 
 // ─── GET /api/competition — cumulative leaderboard (weeks 10-13) ────────────
@@ -2762,6 +2859,43 @@ async function sendMissionExpiringPings() {
 }
 
 setInterval(sendMissionExpiringPings, 15 * 60 * 1000);
+
+// ─── Daily G$ claim reminder ─────────────────────────────────────────────────
+// Fires every hour. In the window 9:00-10:00 WAT (= 08:00-09:00 UTC), sends
+// one push per day to all subscribed wallets. Simple "claim your daily G$"
+// nudge — we don't check on-chain entitlement per wallet (expensive) so we
+// send to everyone. Players who aren't verified or already claimed just open
+// the app and see the "Claimed today" state. Once-per-day dedup via
+// notification_log prevents repeat fires.
+async function sendDailyClaimPings() {
+  try {
+    const hour = new Date().getUTCHours();
+    // Fire once in the 08:00-09:00 UTC window (9-10am WAT / Lagos)
+    if (hour !== 8) return;
+
+    const { data: subs } = await supabase
+      .from('push_subscriptions')
+      .select('wallet_address');
+    if (!subs || subs.length === 0) return;
+
+    const wallets = [...new Set(subs.map(s => s.wallet_address))];
+    let sent = 0;
+    for (const w of wallets) {
+      const payload = {
+        title: '💰 Daily G$ ready',
+        body: 'Open GameArena and claim your GoodDollar. It only takes a tap.',
+        tag: 'daily-g-claim',
+        url: '/profile',
+      };
+      const ok = await push.sendToWallet(supabase, w, 'daily_g_claim', payload);
+      if (ok) sent++;
+    }
+    if (sent > 0) console.log(`💰 Daily G$ claim pings sent to ${sent} wallets`);
+  } catch (e) {
+    console.warn('daily claim ping cron failed:', e?.message || e);
+  }
+}
+setInterval(sendDailyClaimPings, 60 * 60 * 1000);
 
 // ─── Re-engagement cron — lapsed-user pings ──────────────────────────────────
 // Runs every 6 hours. Targets users who last played exactly 1, 3, 7, or 14
