@@ -950,40 +950,54 @@ export default function GamesPage() {
                 </div>
               </div>
 
-              {/* Personal contribution bar — only when connected */}
-              {weeklyChallenge.myContribution !== null && (
+              {/* Personal contribution bar — shows when wallet connected.
+                  Uses ?? 0 throughout so null/undefined from the API
+                  never produce NaN in the math or empty in the display. */}
+              {weeklyChallenge.myContribution != null && (
                 <div style={{
                   borderTop: "1px solid rgba(134,239,172,0.1)",
                   paddingTop: "8px",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
-                    <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.08em" }}>
-                      YOUR SHARE
-                    </div>
-                    <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>
-                      {weeklyChallenge.myContribution} <span style={{ color: "rgba(134,239,172,0.45)" }}>/ {weeklyChallenge.capPerPlayer}</span>
-                    </div>
-                  </div>
-                  <div style={{
-                    width: "100%", height: "6px", borderRadius: "999px",
-                    background: "rgba(0,0,0,0.4)",
-                    border: "1px solid rgba(134,239,172,0.1)",
-                    overflow: "hidden",
-                  }}>
-                    <div style={{
-                      height: "100%", borderRadius: "999px",
-                      width: `${Math.min(100, (weeklyChallenge.myContribution / weeklyChallenge.capPerPlayer) * 100)}%`,
-                      background: weeklyChallenge.myContribution >= weeklyChallenge.capPerPlayer
-                        ? "linear-gradient(90deg, #fbbf24 0%, #fde68a 100%)"
-                        : "linear-gradient(90deg, #16a34a 0%, #86efac 100%)",
-                      transition: "width 0.6s ease",
-                    }} />
-                  </div>
-                  <div style={{ color: "rgba(134,239,172,0.4)", fontSize: "8px", fontWeight: 700, marginTop: "4px" }}>
-                    {weeklyChallenge.myContribution >= weeklyChallenge.capPerPlayer
-                      ? "✅ You've hit your max — others need to play too"
-                      : `${weeklyChallenge.capPerPlayer - weeklyChallenge.myContribution} more games to reach your cap`}
-                  </div>
+                  {(() => {
+                    const mine = weeklyChallenge.myContribution ?? 0;
+                    const cap  = weeklyChallenge.capPerPlayer ?? 50;
+                    const pct  = Math.min(100, Math.round((mine / cap) * 100));
+                    const atCap = mine >= cap;
+                    return (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
+                          <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                            YOUR SHARE
+                          </div>
+                          <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>
+                            {mine} <span style={{ color: "rgba(134,239,172,0.45)" }}>/ {cap}</span>
+                          </div>
+                        </div>
+                        <div style={{
+                          width: "100%", height: "6px", borderRadius: "999px",
+                          background: "rgba(0,0,0,0.4)",
+                          border: "1px solid rgba(134,239,172,0.1)",
+                          overflow: "hidden",
+                        }}>
+                          <div style={{
+                            height: "100%", borderRadius: "999px",
+                            width: `${pct}%`,
+                            background: atCap
+                              ? "linear-gradient(90deg, #fbbf24 0%, #fde68a 100%)"
+                              : "linear-gradient(90deg, #16a34a 0%, #86efac 100%)",
+                            transition: "width 0.6s ease",
+                          }} />
+                        </div>
+                        <div style={{ color: "rgba(134,239,172,0.4)", fontSize: "8px", fontWeight: 700, marginTop: "4px" }}>
+                          {atCap
+                            ? "✅ You've hit your max — others need to play too"
+                            : mine === 0
+                              ? "Play a game to start contributing"
+                              : `${cap - mine} more games to reach your cap`}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
