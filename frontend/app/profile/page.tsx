@@ -1319,6 +1319,103 @@ function ProfileInner() {
               ))}
             </div>
 
+            {/* ── DAILY G$ CLAIM — always visible above tab content ──────────
+                Moving this out of the STATS tab so players see it the
+                moment they open Profile, regardless of which tab is active.
+                Three states:
+                  1. Unverified → "Verify to earn" CTA
+                  2. Entitlement > 0 → full CLAIM card
+                  3. Verified, entitlement = 0 → "Claimed today" dimmed card
+                The third state is the retention hook that was missing —
+                "come back tomorrow" gives players a reason to return even
+                after they've claimed. The old design just hid the card,
+                which said "you're done here, leave." */}
+            {address && (
+              <div style={{ width: "100%", maxWidth: "640px", flexShrink: 0 }}>
+                {!isVerified ? (
+                  /* State 1: unverified — show value they're missing */
+                  <div style={{
+                    borderRadius: "16px", padding: "12px 16px",
+                    background: "rgba(124,58,237,0.12)",
+                    border: "1.5px dashed rgba(167,139,250,0.4)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+                  }}>
+                    <div>
+                      <div style={{ color: "rgba(220,210,255,0.9)", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
+                        Earn daily G$ free
+                      </div>
+                      <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "10px", marginTop: "2px" }}>
+                        Verify once with GoodDollar to unlock daily claims
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => router.push("/verify")}
+                      style={{
+                        padding: "8px 14px", borderRadius: "999px", border: "none",
+                        background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
+                        color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em",
+                        cursor: "pointer", flexShrink: 0,
+                        boxShadow: "0 0 14px rgba(124,58,237,0.5)",
+                      }}
+                    >VERIFY →</button>
+                  </div>
+                ) : Number(entitlement ?? 0) > 0 ? (
+                  /* State 2: G$ ready to claim */
+                  <div style={{
+                    borderRadius: "18px", background: "#003a00", paddingBottom: "5px",
+                    boxShadow: "0 0 0 2px #15803d, 0 0 30px rgba(34,197,94,0.4), 0 16px 40px rgba(0,0,0,0.6)",
+                  }}>
+                    <div style={{
+                      borderRadius: "16px 16px 14px 14px",
+                      background: "linear-gradient(180deg, #064e20 0%, #022010 100%)",
+                      border: "2px solid rgba(134,239,172,0.3)",
+                      padding: "14px 18px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+                      position: "relative", overflow: "hidden",
+                    }}>
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg, rgba(134,239,172,0.12) 0%, transparent 100%)", pointerEvents: "none" }} />
+                      <div style={{ position: "relative", zIndex: 1 }}>
+                        <div style={{ fontSize: "10px", fontWeight: 800, color: "rgba(134,239,172,0.7)", letterSpacing: "0.14em" }}>DAILY REWARD READY</div>
+                        <div style={{ fontSize: "22px", fontWeight: 900, color: "#86efac", textShadow: "0 0 16px rgba(134,239,172,0.7)", marginTop: "3px" }}>
+                          {(Number(entitlement) / 1e18).toFixed(2)} G$
+                        </div>
+                      </div>
+                      <div style={{ position: "relative", zIndex: 1 }}>
+                        <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={() => { playCoin(); claimG$(); }} />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* State 3: already claimed today — the retention hook */
+                  <div style={{
+                    borderRadius: "16px", padding: "12px 18px",
+                    background: "rgba(6,78,32,0.35)",
+                    border: "1.5px solid rgba(134,239,172,0.2)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+                  }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "14px" }}>✅</span>
+                        <span style={{ color: "rgba(134,239,172,0.85)", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
+                          Claimed today
+                        </span>
+                      </div>
+                      <div style={{ color: "rgba(134,239,172,0.45)", fontSize: "10px", marginTop: "3px", fontWeight: 700 }}>
+                        Come back tomorrow for your next G$ 🌅
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: "5px 12px", borderRadius: "999px",
+                      background: "rgba(134,239,172,0.08)",
+                      border: "1px solid rgba(134,239,172,0.2)",
+                    }}>
+                      <span style={{ color: "rgba(134,239,172,0.5)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>DAILY</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── TAB CONTENT ── */}
             <div style={{ width: "100%", maxWidth: "640px", flexShrink: 0 }}>
 
@@ -1372,36 +1469,8 @@ function ProfileInner() {
                     fontSize={13}
                   />
 
-                  {/* G$ Claim — NOTE: use explicit boolean comparison, not
-                      short-circuit on BigInt. A raw `entitlement && …` yields
-                      `0n` when entitlement is zero, which React renders as "0"
-                      between the stat gems and the game cards. */}
-                  {isVerified && Number(entitlement ?? 0) > 0 && (
-                    <div style={{
-                      borderRadius: "18px", background: "#003a00", paddingBottom: "5px",
-                      boxShadow: "0 0 0 2px #15803d, 0 0 30px rgba(34,197,94,0.4), 0 16px 40px rgba(0,0,0,0.6)",
-                    }}>
-                      <div style={{
-                        borderRadius: "16px 16px 14px 14px",
-                        background: "linear-gradient(180deg, #064e20 0%, #022010 100%)",
-                        border: "2px solid rgba(134,239,172,0.3)",
-                        padding: "14px 18px",
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
-                        position: "relative", overflow: "hidden",
-                      }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "50%", background: "linear-gradient(180deg, rgba(134,239,172,0.12) 0%, transparent 100%)", pointerEvents: "none" }} />
-                        <div style={{ position: "relative", zIndex: 1 }}>
-                          <div style={{ fontSize: "10px", fontWeight: 800, color: "rgba(134,239,172,0.7)", letterSpacing: "0.14em" }}>DAILY REWARD READY</div>
-                          <div style={{ fontSize: "22px", fontWeight: 900, color: "#86efac", textShadow: "0 0 16px rgba(134,239,172,0.7)", marginTop: "3px" }}>
-                            {(Number(entitlement) / 1e18).toFixed(2)} G$
-                          </div>
-                        </div>
-                        <div style={{ position: "relative", zIndex: 1 }}>
-                          <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={() => { playCoin(); claimG$(); }} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {/* G$ Claim card moved above the tab pills so it's always
+                      visible regardless of which tab is active. */}
 
                   {/* Game stats cards — best score per game from on-chain GamePass */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
