@@ -284,7 +284,13 @@ export default function GamesPage() {
   }, [address]);
 
   // EVENTS data — real season countdown + 3-week competition state
-  type EventCard = { icon: string; color: string; title: string; subtitle: string; onClick?: () => void };
+  type EventCard = {
+    icon: string; color: string; title: string; subtitle: string;
+    onClick?: () => void;
+    // Optional progress bar — used by the community challenge card so it
+    // shows alongside season/cup events with a live progress indicator.
+    progress?: { value: number; total: number; myShare?: number; myCap?: number };
+  };
   const [seasonInfo, setSeasonInfo] = useState<{ season: number; endsAt: number } | null>(null);
   const [compInfo, setCompInfo] = useState<{ weeksLeft: number; total: number } | null>(null);
 
@@ -571,6 +577,29 @@ export default function GamesPage() {
               onClick: () => router.push("/profile?tab=habitats"),
             });
           }
+          // Community challenge — shows as an event card exactly like
+          // the season countdown and cup events, with a live progress bar.
+          if (weeklyChallenge) {
+            const endDay = weeklyChallenge.windowEnd
+              ? new Date(weeklyChallenge.windowEnd).toLocaleDateString("en-US", { weekday: "short" })
+              : "Sun";
+            events.push({
+              icon: "🌍", color: "#22c55e",
+              title: weeklyChallenge.hit
+                ? `Community · Milestone hit! 🎉`
+                : `Community · ${weeklyChallenge.progress}/${weeklyChallenge.target} games`,
+              subtitle: weeklyChallenge.hit
+                ? `${weeklyChallenge.rewardG} G$ split · Payouts coming`
+                : `${weeklyChallenge.rewardG} G$ split · Ends ${endDay}`,
+              progress: weeklyChallenge.hit ? undefined : {
+                value: weeklyChallenge.progress,
+                total: weeklyChallenge.target,
+                myShare: weeklyChallenge.myContribution ?? 0,
+                myCap: weeklyChallenge.capPerPlayer,
+              },
+            });
+          }
+
           if (events.length === 0) {
             return <div style={{ padding: "10px 4px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "9px", fontWeight: 700 }}>No active events</div>;
           }
@@ -615,83 +644,35 @@ export default function GamesPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: "white", fontSize: "10px", fontWeight: 700, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</div>
                   <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "8px", fontWeight: 700, marginTop: "1px" }}>{e.subtitle}</div>
+                  {/* Progress bar — community challenge only */}
+                  {e.progress && (
+                    <div style={{ marginTop: "5px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                      <div style={{ height: "4px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden" }}>
+                        <div style={{
+                          width: `${Math.min(100, Math.round((e.progress.value / e.progress.total) * 100))}%`,
+                          height: "100%", borderRadius: "999px",
+                          background: `linear-gradient(90deg, ${e.color}99 0%, ${e.color} 100%)`,
+                          transition: "width 0.5s",
+                        }} />
+                      </div>
+                      {e.progress.myShare != null && e.progress.myCap && (
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ color: `${e.color}88`, fontSize: "7.5px", fontWeight: 700 }}>
+                            Your share: {e.progress.myShare}/{e.progress.myCap}
+                          </span>
+                          <span style={{ color: `${e.color}88`, fontSize: "7.5px", fontWeight: 700 }}>
+                            {e.progress.value}/{e.progress.total} total
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           });
         })()}
 
-        {/* COMMUNITY CHALLENGE — lives here in the sidebar so game cards
-            stay as the primary focus. On mobile this section renders below
-            the game cards, which is the right hierarchy: play first, then
-            see the community event. */}
-        {weeklyChallenge && (() => {
-          const ch  = weeklyChallenge;
-          const mine = ch.myContribution ?? 0;
-          const cap  = ch.capPerPlayer ?? 70;
-          const atCap = mine >= cap;
-          const pctC = Math.min(100, Math.round((ch.progress / ch.target) * 100));
-          const pctM = Math.min(100, Math.round((mine / cap) * 100));
-          const endDay = ch.windowEnd
-            ? new Date(ch.windowEnd).toLocaleDateString("en-US", { weekday: "short" })
-            : "Sun";
-
-          return (
-            <div style={{
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(167,139,250,0.22)",
-              padding: "9px 10px",
-              display: "flex", flexDirection: "column", gap: "7px",
-            }}>
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <span style={{ fontSize: "11px" }}>🌍</span>
-                  <span style={{ color: "white", fontSize: "9.5px", fontWeight: 900, letterSpacing: "0.08em" }}>COMMUNITY</span>
-                </div>
-                <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900 }}>ENDS {endDay.toUpperCase()}</span>
-              </div>
-
-              {/* Prize */}
-              <div>
-                <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{ch.rewardG} G$ </span>
-                <span style={{ color: "rgba(200,180,255,0.55)", fontSize: "8px", fontWeight: 700 }}>split · {ch.target} games needed</span>
-              </div>
-
-              {/* Community bar */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-                  <span style={{ color: "rgba(200,180,255,0.5)", fontSize: "8px", fontWeight: 700 }}>{ch.playersIn} contributing</span>
-                  <span style={{ color: "rgba(200,180,255,0.7)", fontSize: "8px", fontWeight: 900 }}>{ch.progress}/{ch.target}</span>
-                </div>
-                <div style={{ height: "5px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: "1px solid rgba(167,139,250,0.12)" }}>
-                  <div style={{ width: `${pctC}%`, height: "100%", borderRadius: "999px", background: "#22c55e", transition: "width 0.5s" }} />
-                </div>
-              </div>
-
-              {/* Your share */}
-              {ch.myContribution != null && (
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-                    <span style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 700 }}>YOUR SHARE</span>
-                    <span style={{ color: atCap ? "#fbbf24" : "rgba(200,180,255,0.8)", fontSize: "8px", fontWeight: 900 }}>{mine}/{cap}</span>
-                  </div>
-                  <div style={{ height: "4px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden" }}>
-                    <div style={{ width: `${pctM}%`, height: "100%", borderRadius: "999px", background: atCap ? "#fbbf24" : "#a78bfa", transition: "width 0.3s" }} />
-                  </div>
-                  <div style={{ color: "rgba(200,180,255,0.4)", fontSize: "7.5px", marginTop: "2px" }}>
-                    {atCap ? "✅ Max reached" : mine === 0 ? "Play to contribute" : `${cap - mine} more to cap`}
-                  </div>
-                </div>
-              )}
-
-              {ch.hit && (
-                <div style={{ textAlign: "center", color: "#86efac", fontSize: "9px", fontWeight: 900 }}>🎉 Milestone hit! Payouts coming.</div>
-              )}
-            </div>
-          );
-        })()}
 
         {/* HIGHLIGHTS */}
         <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>HIGHLIGHTS</div>
