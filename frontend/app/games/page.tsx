@@ -259,17 +259,22 @@ export default function GamesPage() {
   }, []);
 
 
-  // Weekly community challenge
+  // Weekly community challenge — includes player's personal contribution
+  // when wallet is connected so the "Your share: X/50" bar can render.
   const [weeklyChallenge, setWeeklyChallenge] = useState<{
     target: number; progress: number; playersIn: number;
     hit: boolean; daysLeft: number; rewardG: number; ubiG: number;
+    capPerPlayer: number; myContribution: number | null;
   } | null>(null);
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/weekly-challenge`)
+    const url = address
+      ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address}`
+      : `${BACKEND_URL}/api/weekly-challenge`;
+    fetch(url)
       .then(r => r.json())
       .then(d => setWeeklyChallenge(d))
       .catch(() => {});
-  }, []);
+  }, [address]);
 
   // EVENTS data — real season countdown + 3-week competition state
   type EventCard = { icon: string; color: string; title: string; subtitle: string; onClick?: () => void };
@@ -878,68 +883,127 @@ export default function GamesPage() {
             </div>
           )}
 
-          {/* Weekly Community Challenge bar */}
+          {/* Weekly Community Challenge — redesigned with two bars:
+              1. Community total bar (progress toward 300-game target)
+              2. Personal contribution bar (my games / 50 cap)
+              Without the personal bar players can't tell if their games
+              are counting or how close they are to their cap. Two bars
+              create two motivations: community pull + personal pull. */}
           {weeklyChallenge && !weeklyChallenge.hit && (
             <div style={{
               width: "100%", maxWidth: "680px", flexShrink: 0,
-              borderRadius: "16px", padding: "12px 16px",
-              background: "linear-gradient(135deg, rgba(6,78,32,0.4) 0%, rgba(2,20,10,0.6) 100%)",
-              border: "1.5px solid rgba(134,239,172,0.25)",
-              boxShadow: "0 0 14px rgba(34,197,94,0.1)",
+              borderRadius: "18px", padding: "14px 16px",
+              background: "linear-gradient(135deg, rgba(6,78,32,0.4) 0%, rgba(2,20,10,0.65) 100%)",
+              border: "1.5px solid rgba(134,239,172,0.28)",
+              boxShadow: "0 0 18px rgba(34,197,94,0.12)",
+              display: "flex", flexDirection: "column", gap: "10px",
             }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
-                  <div style={{ color: "rgba(134,239,172,0.9)", fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em" }}>
+                  <div style={{ color: "#86efac", fontSize: "11px", fontWeight: 900, letterSpacing: "0.12em" }}>
                     🌍 COMMUNITY CHALLENGE
                   </div>
-                  <div style={{ color: "rgba(134,239,172,0.55)", fontSize: "9.5px", marginTop: "2px", fontWeight: 700 }}>
-                    {weeklyChallenge.playersIn} player{weeklyChallenge.playersIn !== 1 ? "s" : ""} contributing · {weeklyChallenge.daysLeft}d left
+                  <div style={{ color: "rgba(134,239,172,0.55)", fontSize: "9px", marginTop: "2px", fontWeight: 700 }}>
+                    {weeklyChallenge.playersIn} player{weeklyChallenge.playersIn !== 1 ? "s" : ""} contributing · {weeklyChallenge.daysLeft}d left · max {weeklyChallenge.capPerPlayer} games each
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ color: "#86efac", fontSize: "11px", fontWeight: 900 }}>
-                    {weeklyChallenge.progress} / {weeklyChallenge.target}
+                  <div style={{ color: "#86efac", fontSize: "15px", fontWeight: 900, lineHeight: 1 }}>
+                    {weeklyChallenge.progress}<span style={{ color: "rgba(134,239,172,0.45)", fontSize: "11px" }}> / {weeklyChallenge.target}</span>
                   </div>
-                  <div style={{ color: "rgba(134,239,172,0.5)", fontSize: "8.5px", fontWeight: 700, marginTop: "1px" }}>
-                    games this week
-                  </div>
+                  <div style={{ color: "rgba(134,239,172,0.45)", fontSize: "8px", fontWeight: 700, marginTop: "2px" }}>GAMES</div>
                 </div>
               </div>
-              {/* Progress bar */}
-              <div style={{
-                width: "100%", height: "8px", borderRadius: "999px",
-                background: "rgba(0,0,0,0.4)",
-                border: "1px solid rgba(134,239,172,0.15)",
-                overflow: "hidden",
-              }}>
+
+              {/* Community progress bar */}
+              <div>
                 <div style={{
-                  height: "100%", borderRadius: "999px",
-                  width: `${Math.min(100, (weeklyChallenge.progress / weeklyChallenge.target) * 100)}%`,
-                  background: "linear-gradient(90deg, #22c55e 0%, #86efac 100%)",
-                  boxShadow: "0 0 8px rgba(34,197,94,0.6)",
-                  transition: "width 0.6s ease",
-                }} />
+                  width: "100%", height: "9px", borderRadius: "999px",
+                  background: "rgba(0,0,0,0.45)",
+                  border: "1px solid rgba(134,239,172,0.12)",
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%", borderRadius: "999px",
+                    width: `${Math.min(100, (weeklyChallenge.progress / weeklyChallenge.target) * 100)}%`,
+                    background: "linear-gradient(90deg, #16a34a 0%, #86efac 100%)",
+                    boxShadow: "0 0 10px rgba(34,197,94,0.55)",
+                    transition: "width 0.6s ease",
+                  }} />
+                </div>
               </div>
-              <div style={{ color: "rgba(134,239,172,0.5)", fontSize: "8.5px", fontWeight: 700, marginTop: "6px", textAlign: "center" }}>
-                Hit {weeklyChallenge.target} → {weeklyChallenge.rewardG} G$ split among all players · {weeklyChallenge.ubiG} G$ goes to verified humans
+
+              {/* Reward line */}
+              <div style={{
+                padding: "8px 12px", borderRadius: "10px",
+                background: "rgba(0,0,0,0.3)",
+                border: "1px solid rgba(134,239,172,0.15)",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+              }}>
+                <div style={{ color: "rgba(134,239,172,0.6)", fontSize: "9px", fontWeight: 700, lineHeight: 1.4 }}>
+                  Hit {weeklyChallenge.target} games together
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ color: "#86efac", fontSize: "11px", fontWeight: 900 }}>{weeklyChallenge.rewardG} G$ split</div>
+                  <div style={{ color: "rgba(134,239,172,0.45)", fontSize: "8px", fontWeight: 700 }}>+{weeklyChallenge.ubiG} G$ to humans</div>
+                </div>
               </div>
+
+              {/* Personal contribution bar — only when connected */}
+              {weeklyChallenge.myContribution !== null && (
+                <div style={{
+                  borderTop: "1px solid rgba(134,239,172,0.1)",
+                  paddingTop: "8px",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
+                    <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                      YOUR SHARE
+                    </div>
+                    <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>
+                      {weeklyChallenge.myContribution} <span style={{ color: "rgba(134,239,172,0.45)" }}>/ {weeklyChallenge.capPerPlayer}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    width: "100%", height: "6px", borderRadius: "999px",
+                    background: "rgba(0,0,0,0.4)",
+                    border: "1px solid rgba(134,239,172,0.1)",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%", borderRadius: "999px",
+                      width: `${Math.min(100, (weeklyChallenge.myContribution / weeklyChallenge.capPerPlayer) * 100)}%`,
+                      background: weeklyChallenge.myContribution >= weeklyChallenge.capPerPlayer
+                        ? "linear-gradient(90deg, #fbbf24 0%, #fde68a 100%)"
+                        : "linear-gradient(90deg, #16a34a 0%, #86efac 100%)",
+                      transition: "width 0.6s ease",
+                    }} />
+                  </div>
+                  <div style={{ color: "rgba(134,239,172,0.4)", fontSize: "8px", fontWeight: 700, marginTop: "4px" }}>
+                    {weeklyChallenge.myContribution >= weeklyChallenge.capPerPlayer
+                      ? "✅ You've hit your max — others need to play too"
+                      : `${weeklyChallenge.capPerPlayer - weeklyChallenge.myContribution} more games to reach your cap`}
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
           {weeklyChallenge?.hit && (
             <div style={{
               width: "100%", maxWidth: "680px", flexShrink: 0,
-              borderRadius: "16px", padding: "12px 16px",
-              background: "linear-gradient(135deg, rgba(6,78,32,0.6) 0%, rgba(2,40,10,0.8) 100%)",
-              border: "1.5px solid rgba(134,239,172,0.5)",
-              boxShadow: "0 0 20px rgba(34,197,94,0.25)",
+              borderRadius: "18px", padding: "16px 18px",
+              background: "linear-gradient(135deg, rgba(6,78,32,0.65) 0%, rgba(2,40,10,0.85) 100%)",
+              border: "1.5px solid rgba(134,239,172,0.55)",
+              boxShadow: "0 0 24px rgba(34,197,94,0.3)",
               textAlign: "center",
             }}>
-              <div style={{ fontSize: "24px", marginBottom: "4px" }}>🎉</div>
-              <div style={{ color: "#86efac", fontSize: "13px", fontWeight: 900, letterSpacing: "0.04em" }}>
+              <div style={{ fontSize: "28px", marginBottom: "6px" }}>🎉</div>
+              <div style={{ color: "#86efac", fontSize: "14px", fontWeight: 900, letterSpacing: "0.04em" }}>
                 Community milestone hit this week!
               </div>
-              <div style={{ color: "rgba(134,239,172,0.65)", fontSize: "10px", marginTop: "4px", fontWeight: 700 }}>
-                {weeklyChallenge.rewardG} G$ split among all players who played · {weeklyChallenge.ubiG} G$ sent to verified humans
+              <div style={{ color: "rgba(134,239,172,0.65)", fontSize: "10px", marginTop: "6px", fontWeight: 700, lineHeight: 1.5 }}>
+                {weeklyChallenge.rewardG} G$ split among all players who played · {weeklyChallenge.ubiG} G$ sent to real people via GoodDollar
               </div>
             </div>
           )}
