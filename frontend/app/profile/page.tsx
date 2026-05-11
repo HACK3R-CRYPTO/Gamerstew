@@ -904,6 +904,7 @@ function ProfileInner() {
   const [userMeta, setUserMeta] = useState<{
     xp: number; level: number; xpInLevel: number; xpToNext: number;
     streak: number; playedToday: boolean; lastPlayDate: string | null;
+    claimStreak: number;
   } | null>(null);
   useEffect(() => {
     if (!address) { setUserMeta(null); return; }
@@ -917,6 +918,7 @@ function ProfileInner() {
         streak: d.streak || 0,
         playedToday: !!d.playedToday,
         lastPlayDate: d.lastPlayDate || null,
+        claimStreak: d.claimStreak || 0,
       }))
       .catch(() => setUserMeta(null));
   }, [address]);
@@ -1381,12 +1383,27 @@ function ProfileInner() {
                         </div>
                       </div>
                       <div style={{ position: "relative", zIndex: 1 }}>
-                        <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={() => { playCoin(); claimG$(); }} />
+                        <JuicyBtn label="CLAIM" wallColor="#003a00" faceGrad="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)" glowColor="rgba(34,197,94,0.7)" onClick={async () => {
+                          playCoin();
+                          await claimG$();
+                          // Record claim streak after G$ claim succeeds
+                          if (address) {
+                            fetch(`${BACKEND_URL}/api/record-claim`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ walletAddress: address }),
+                            }).then(r => r.json()).then(d => {
+                              if (d.claimStreak && userMeta) {
+                                setUserMeta(prev => prev ? { ...prev, claimStreak: d.claimStreak } : prev);
+                              }
+                            }).catch(() => {});
+                          }
+                        }} />
                       </div>
                     </div>
                   </div>
                 ) : (
-                  /* State 3: already claimed today — the retention hook */
+                  /* State 3: already claimed today — shows streak to protect */
                   <div style={{
                     borderRadius: "16px", padding: "12px 18px",
                     background: "rgba(6,78,32,0.35)",
@@ -1404,13 +1421,20 @@ function ProfileInner() {
                         Come back tomorrow for your next G$ 🌅
                       </div>
                     </div>
-                    <div style={{
-                      padding: "5px 12px", borderRadius: "999px",
-                      background: "rgba(134,239,172,0.08)",
-                      border: "1px solid rgba(134,239,172,0.2)",
-                    }}>
-                      <span style={{ color: "rgba(134,239,172,0.5)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>DAILY</span>
-                    </div>
+                    {(userMeta?.claimStreak ?? 0) > 0 && (
+                      <div style={{
+                        padding: "5px 12px", borderRadius: "999px",
+                        background: "rgba(251,191,36,0.12)",
+                        border: "1px solid rgba(251,191,36,0.35)",
+                        display: "flex", alignItems: "center", gap: "4px",
+                        flexShrink: 0,
+                      }}>
+                        <span style={{ fontSize: "12px" }}>🔥</span>
+                        <span style={{ color: "#fbbf24", fontSize: "11px", fontWeight: 900 }}>
+                          {userMeta?.claimStreak}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

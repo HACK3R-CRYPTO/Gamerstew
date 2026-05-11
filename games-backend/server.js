@@ -2017,10 +2017,10 @@ app.get('/api/challenges/past', async (_, res) => {
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
 // PER_PLAYER_CAP so no single grinder can solo the milestone.
 // Config lives as constants — bump TARGET and REWARD as community grows.
-const WEEKLY_CHALLENGE_TARGET    = 150;  // games needed to hit milestone
-const WEEKLY_CHALLENGE_REWARD_G  = 5;   // G$ each qualifying player earns
-const WEEKLY_CHALLENGE_UBI_G     = 50;  // G$ GameArena sends to GoodDollar
-const WEEKLY_CHALLENGE_CAP       = 20;  // max games per player that count
+const WEEKLY_CHALLENGE_TARGET    = 300;   // games needed to hit milestone
+const WEEKLY_CHALLENGE_REWARD_G  = 500;  // G$ total pool split equally among qualifying players
+const WEEKLY_CHALLENGE_UBI_G     = 50;   // G$ GameArena sends to GoodDollar
+const WEEKLY_CHALLENGE_CAP       = 50;   // max games per player that count toward total
 
 app.get('/api/weekly-challenge', async (req, res) => {
   const nowUTC = new Date();
