@@ -1328,7 +1328,7 @@ function LeaderboardInner() {
                     Arena Cups, 3-Week Competition, and future events all live
                     here so players have one place to check what's running and
                     what's already ended. ── */}
-                {(challenge || (competition && competition.weeksLeft > 0) || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                {(challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
                   <div style={{
                     fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
                     color: "rgba(251,215,100,0.9)", textAlign: "center",
@@ -1343,7 +1343,7 @@ function LeaderboardInner() {
                     a live event. The CTA drives notification opt-ins —
                     aligned with the "real players hear about future events
                     first" community strategy. */}
-                {!challenge && (!competition || competition.weeksLeft === 0) && (pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                {!challenge && (!competition || competition.weeksLeft === 0) && !weeklyChallengeLB && (pastChallenges.length > 0 || pastCompetitions.length > 0) && (
                   <div style={{
                     borderRadius: "16px",
                     background: "linear-gradient(180deg, rgba(20,10,50,0.7) 0%, rgba(10,5,30,0.85) 100%)",

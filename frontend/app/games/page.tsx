@@ -944,6 +944,36 @@ export default function GamesPage() {
           )}
 
 
+          {/* Community challenge compact strip — mirrors ChallengeBanner
+              position (before stats pills) so it's always visible. One
+              row: icon + progress count + prize + days left. Tapping
+              scrolls players to the sidebar events section for more detail.
+              Only shows when challenge is active (not hit). */}
+          {weeklyChallenge && !weeklyChallenge.hit && (
+            <div style={{
+              width: "100%", maxWidth: "680px", flexShrink: 0,
+              borderRadius: "12px", padding: "9px 14px",
+              background: "linear-gradient(90deg, rgba(6,78,32,0.45) 0%, rgba(2,20,10,0.6) 100%)",
+              border: "1px solid rgba(134,239,172,0.3)",
+              boxShadow: "0 0 14px rgba(34,197,94,0.1)",
+              display: "flex", alignItems: "center", gap: "10px",
+              flexWrap: "wrap",
+            }}>
+              <span style={{ fontSize: "14px", flexShrink: 0 }}>🌍</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>Community Challenge</span>
+                <span style={{ color: "rgba(134,239,172,0.55)", fontSize: "9px", fontWeight: 700 }}> · {weeklyChallenge.progress}/{weeklyChallenge.target} games · {weeklyChallenge.daysLeft}d left</span>
+              </div>
+              <div style={{
+                padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
+                background: "rgba(251,191,36,0.12)",
+                border: "1px solid rgba(251,191,36,0.4)",
+              }}>
+                <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900 }}>{weeklyChallenge.rewardG} G$ split</span>
+              </div>
+            </div>
+          )}
+
           {/* Stats pills — compact on mobile. On mobile we also append a
               STREAK pill as the 4th member when the user is connected
               with a non-zero streak, instead of floating a separate chip
