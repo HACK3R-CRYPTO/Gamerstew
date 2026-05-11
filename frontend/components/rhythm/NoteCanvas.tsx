@@ -140,18 +140,23 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
         ctx.restore();
 
-        // Glow halo — one outer shadow layer. Multi-layer shadows like
-        // the DOM version's 3-stop box-shadow are too expensive per
-        // tile on canvas; one layer at higher blur reads the same.
+        // Glow halo — painted as an oversized semi-transparent rect instead
+        // of ctx.shadowBlur. Canvas shadow blur forces software rasterization
+        // on Android Chrome; on Redmi/budget Android at 60fps this caused
+        // visible skipping even with canvas-based tile rendering. The fake
+        // glow (extra large + transparent fill) gives the same visual without
+        // touching the GPU shadow pipeline at all.
         ctx.save();
-        ctx.shadowColor = theme.glow;
-        ctx.shadowBlur = 22;
-        ctx.shadowOffsetY = 0;
+        ctx.globalAlpha = 0.28 * alpha;
+        ctx.fillStyle = theme.glow;
+        roundRect(ctx, x - 8, y - 4, tileW + 16, tileH + 10, 18);
+        ctx.fill();
+        ctx.restore();
+
         // Wall (3D depth underneath — slightly taller, darker)
         ctx.fillStyle = theme.wall;
         roundRect(ctx, x, y + 3, tileW, tileH, 14);
         ctx.fill();
-        ctx.restore();
 
         // Face (main tile surface)
         ctx.fillStyle = theme.accent;
