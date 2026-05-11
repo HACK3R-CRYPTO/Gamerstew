@@ -2060,6 +2060,14 @@ app.get('/api/weekly-challenge', async (req, res) => {
   const myRawCount    = wallet ? (perPlayer.get(wallet) || 0) : null;
   const myContribution = myRawCount !== null ? Math.min(WEEKLY_CHALLENGE_CAP, myRawCount) : null;
 
+  // Top contributors by capped games — up to 6 wallets shown as
+  // avatars on the frontend. Social proof: players see real people
+  // already contributing and feel the FOMO pull.
+  const topContributors = Array.from(perPlayer.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([w]) => w);
+
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,
     progress:     totalCapped,
@@ -2071,7 +2079,8 @@ app.get('/api/weekly-challenge', async (req, res) => {
     capPerPlayer: WEEKLY_CHALLENGE_CAP,
     windowStart:  monday.toISOString(),
     windowEnd:    sunday.toISOString(),
-    myContribution,   // null if no wallet param, 0-50 otherwise
+    myContribution,
+    contributors: topContributors,
   });
 });
 
