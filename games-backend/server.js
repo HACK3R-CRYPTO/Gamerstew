@@ -2020,7 +2020,7 @@ app.get('/api/challenges/past', async (_, res) => {
 const WEEKLY_CHALLENGE_TARGET    = 500;   // games needed to hit milestone
 const WEEKLY_CHALLENGE_REWARD_G  = 500;  // G$ total pool split equally among qualifying players
 const WEEKLY_CHALLENGE_UBI_G     = 50;   // G$ GameArena sends to GoodDollar
-const WEEKLY_CHALLENGE_CAP       = 50;   // max games per player that count toward total
+const WEEKLY_CHALLENGE_CAP       = 70;   // max games per player that count toward total
 
 app.get('/api/weekly-challenge', async (req, res) => {
   const nowUTC = new Date();
