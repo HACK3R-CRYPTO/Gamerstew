@@ -2302,6 +2302,77 @@ app.post('/api/competition/freeze', requireSecret, async (_, res) => {
 });
 
 // ─── POST /api/dice-roll — disabled until Phase 2 signed oracle ──────────────
+// ─── GET /api/weekly-challenge/payout-list — payout list for manual distribution
+// Returns every wallet that played at least 1 game this week, their game count
+// (capped at 70), their username, and how much G$ they should receive when the
+// milestone is hit. Call this when the milestone hits to know who to pay.
+//
+// curl https://.../api/weekly-challenge/payout-list \
+//   -H "x-internal-secret: $INTERNAL_SECRET"
+app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
+  try {
+    const nowUTC = new Date();
+    const dayOfWeek = nowUTC.getUTCDay();
+    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const monday = new Date(Date.UTC(
+      nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(),
+      nowUTC.getUTCDate() - daysSinceMonday, 0, 0, 0, 0,
+    ));
+    const sunday = new Date(monday.getTime() + 7 * 86400000 - 1);
+
+    const { data: rows } = await supabase
+      .from('activity')
+      .select('wallet_address')
+      .gte('created_at', monday.toISOString())
+      .lte('created_at', sunday.toISOString());
+
+    const rawCount = new Map();
+    for (const r of (rows || [])) {
+      const w = r.wallet_address?.toLowerCase();
+      if (!w) continue;
+      rawCount.set(w, (rawCount.get(w) || 0) + 1);
+    }
+
+    const totalCapped = Array.from(rawCount.values())
+      .reduce((s, n) => s + Math.min(WEEKLY_CHALLENGE_CAP, n), 0);
+    const hit = totalCapped >= WEEKLY_CHALLENGE_TARGET;
+
+    // Per-player payout = total reward pool ÷ number of qualifying players
+    const qualifyingWallets = Array.from(rawCount.keys());
+    const perPlayerG = qualifyingWallets.length > 0
+      ? Math.floor(WEEKLY_CHALLENGE_REWARD_G / qualifyingWallets.length)
+      : 0;
+
+    const players = await Promise.all(
+      qualifyingWallets.map(async (w) => ({
+        wallet:      w,
+        username:    await resolveUsername(w) || null,
+        gamesPlayed: rawCount.get(w),
+        countedGames: Math.min(WEEKLY_CHALLENGE_CAP, rawCount.get(w)),
+        payoutG:     perPlayerG,
+      }))
+    );
+
+    players.sort((a, b) => b.countedGames - a.countedGames);
+
+    res.json({
+      milestoneHit:    hit,
+      weekStart:       monday.toISOString(),
+      weekEnd:         sunday.toISOString(),
+      totalCappedGames: totalCapped,
+      target:          WEEKLY_CHALLENGE_TARGET,
+      totalPlayers:    qualifyingWallets.length,
+      rewardPool:      WEEKLY_CHALLENGE_REWARD_G,
+      perPlayerG,
+      ubiG:            WEEKLY_CHALLENGE_UBI_G,
+      players,
+    });
+  } catch (e) {
+    console.error('payout list failed:', e?.message || e);
+    res.status(500).json({ error: e?.message || 'Failed' });
+  }
+});
+
 // app.post('/api/dice-roll', requireSecret, standardLimiter, async (_, res) => {
 //   const { randomInt } = require('crypto');
 //   res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
