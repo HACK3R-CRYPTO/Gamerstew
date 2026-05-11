@@ -262,12 +262,25 @@ export default function RhythmGamePage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   // Track scheduled drum nodes so we can cut them off if the player exits early
   const scheduledNodesRef = useRef<AudioScheduledSourceNode[]>([]);
+  // Reused hihat buffer — created once, shared across all 180+ hihat calls so we
+  // don't spike the JS heap allocating a new AudioBuffer on every eighth note.
+  // On low-RAM Android devices (Redmi etc.) repeated buffer allocation causes GC
+  // pauses that produce the "cracking" audio stutter players reported.
+  const hihatBufferRef = useRef<AudioBuffer | null>(null);
 
-  // Initialize WebAudio context lazily (needs user gesture)
+  // Initialize WebAudio context lazily (needs user gesture).
+  // Also resumes the context if Android Chrome suspended it on a touch event —
+  // suspended context causes audio scheduling to succeed silently while nothing
+  // actually plays, perceived as cracking or silence by the player.
   const getAudioCtx = useCallback(() => {
     if (!audioCtxRef.current) {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (Ctx) audioCtxRef.current = new Ctx();
+    }
+    // Resume silently suspended contexts (common on Android Chrome after
+    // background/foreground transitions or memory pressure events).
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
     }
     return audioCtxRef.current;
   }, []);
@@ -295,6 +308,7 @@ export default function RhythmGamePage() {
     gain.gain.exponentialRampToValueAtTime(0.001, when + 0.22);
     osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
     osc.start(when); osc.stop(when + 0.24);
+    osc.onended = () => { try { osc.disconnect(); filter.disconnect(); gain.disconnect(); } catch { /* already gone */ } };
     scheduledNodesRef.current.push(osc);
   }, []);
 
@@ -318,17 +332,26 @@ export default function RhythmGamePage() {
     gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
     osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
     osc.start(when); osc.stop(when + duration + 0.02);
+    osc.onended = () => { try { osc.disconnect(); filter.disconnect(); gain.disconnect(); } catch { /* already gone */ } };
     scheduledNodesRef.current.push(osc);
   }, []);
 
   const scheduleHihat = useCallback((ctx: AudioContext, when: number, volume = 0.12) => {
     const v = volume * gainsRef.current.music;
     if (v <= 0) return;
-    const bufferSize = Math.floor(ctx.sampleRate * 0.05);
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-    const noise = ctx.createBufferSource(); noise.buffer = buffer;
+    // Reuse the hihat noise buffer — create it once on first call, then reuse.
+    // Previously a new AudioBuffer was allocated on every hihat note (~180 times
+    // over a 45s game). On low-RAM devices (Redmi, budget Android) this repeated
+    // allocation causes GC pauses that produce audible cracking/stuttering.
+    if (!hihatBufferRef.current || hihatBufferRef.current.sampleRate !== ctx.sampleRate) {
+      const bufferSize = Math.floor(ctx.sampleRate * 0.05);
+      const buf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      hihatBufferRef.current = buf;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = hihatBufferRef.current;
     const filter = ctx.createBiquadFilter();
     filter.type = "highpass"; filter.frequency.value = 7000;
     const gain = ctx.createGain();
@@ -337,6 +360,9 @@ export default function RhythmGamePage() {
     gain.gain.exponentialRampToValueAtTime(0.001, when + 0.05);
     noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
     noise.start(when); noise.stop(when + 0.06);
+    // Auto-disconnect once the node finishes to release the WebAudio graph
+    // reference immediately instead of waiting for game-end cleanup.
+    noise.onended = () => { try { noise.disconnect(); } catch { /* already disconnected */ } };
     scheduledNodesRef.current.push(noise);
   }, []);
 
@@ -1226,9 +1252,12 @@ export default function RhythmGamePage() {
       WebkitUserSelect: "none",
       WebkitTouchCallout: "none",
     }}>
-      {/* Starfield — 44 twinkling points, ambient depth behind the game */}
+      {/* Starfield — paused during active gameplay (same rationale as bg icons:
+          44 animated box-shadow divs + canvas + particles = too much GPU work
+          on low-end Android). Stars are purely ambient; players don't notice
+          them mid-game. Resume on idle/finished phases. */}
       {stars.map((s, i) => (
-        <div key={i} className="dot-pulse" style={{
+        <div key={i} className={phase === "playing" || phase === "encore" ? "" : "dot-pulse"} style={{
           position: "absolute",
           top: `${s.y}%`,
           left: `${s.x}%`,

@@ -595,8 +595,11 @@ function CardBody({
               fontWeight: 900,
               lineHeight: 0.9,
               color: GOLD,
-              textShadow: `0 0 40px ${GOLD}bb, 0 0 80px ${GOLD}55, 0 6px 12px rgba(0,0,0,0.7)`,
-              WebkitTextStroke: `3px ${GOLD}`,
+              // Reduced from 80px glow which rendered as a solid blob on many
+              // Android screens (high brightness, AMOLED, non-standard color
+              // profiles). Removed WebkitTextStroke which caused hollow/blurry
+              // rendering on some devices. Simple drop shadow is more reliable.
+              textShadow: `0 4px 12px rgba(0,0,0,0.8), 0 0 20px ${GOLD}66`,
             }}>{level}</span>
           </div>
         </div>
