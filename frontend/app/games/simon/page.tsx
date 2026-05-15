@@ -8,7 +8,12 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
-import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
+import {
+  signScore, signScoreMiniPay,
+  submitScore, submitScoreMiniPay,
+  startGame as startGameAction,
+  startGameMiniPay as startGameMiniPayAction,
+} from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
@@ -238,6 +243,9 @@ export default function SimonGamePage() {
 
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
+  // Anti-cheat: server-issued session ticket. Required by /api/sign-score.
+  // Lives in a ref (not localStorage) so it dies with the component.
+  const sessionTokenRef = useRef<string | null>(null);
   type SubmitResult = {
     rank?: number;
     xpEarned?: number;
@@ -356,14 +364,22 @@ export default function SimonGamePage() {
       if (isMiniPay) {
         miniPayMsg = `GameArena|simon|${scoreToSubmit}|${Date.now()}`;
         miniPaySig = await signMessageAsync({ message: miniPayMsg });
-        sig = await signScoreMiniPay(address, miniPaySig, miniPayMsg, { game: "simon", score: scoreToSubmit });
+        sig = await signScoreMiniPay(
+          address, miniPaySig, miniPayMsg,
+          { game: "simon", score: scoreToSubmit },
+          sessionTokenRef.current ?? "",
+        );
       } else {
         authToken = await getAccessToken();
         if (!authToken) {
           setSubmitError("Not signed in — score not recorded");
           return;
         }
-        sig = await signScore(authToken, address, { game: "simon", score: scoreToSubmit });
+        sig = await signScore(
+          authToken, address,
+          { game: "simon", score: scoreToSubmit },
+          sessionTokenRef.current ?? "",
+        );
       }
 
       if (!sig.success) {
@@ -526,7 +542,7 @@ export default function SimonGamePage() {
   }, [phase, isShowingSequence, playBell, haptic, handleGameOver, addNext, bonusUnlocked, firePetEvent]);
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
-  const startGame = useCallback(() => {
+  const startGame = useCallback(async () => {
     // Reset everything for a fresh run
     patternRef.current = [];
     userPatternRef.current = [];
@@ -534,6 +550,7 @@ export default function SimonGamePage() {
     sequencesRef.current = 0;
     colorsRef.current = BASE_COLORS;
     submittedRef.current = false;
+    sessionTokenRef.current = null;
     setScore(0);
     setSequences(0);
     setTappedCount(0);
@@ -545,10 +562,39 @@ export default function SimonGamePage() {
     setSubmitError(null);
     setTxError(null);
     setGameTimeMs(0);
+
+    // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
+    // No ticket = backend refuses to sign the score at submit time.
+    if (address) {
+      try {
+        let res;
+        if (isMiniPay) {
+          const msg = `GameArena|start|simon|${Date.now()}`;
+          const sig = await signMessageAsync({ message: msg });
+          res = await startGameMiniPayAction(address, sig, msg, "simon");
+        } else {
+          const token = await getAccessToken();
+          if (!token) {
+            setSubmitError("Sign in required to start a run.");
+            return;
+          }
+          res = await startGameAction(token, address, "simon");
+        }
+        if (!res.success) {
+          setSubmitError(res.error || "Couldn't start session. Try again.");
+          return;
+        }
+        sessionTokenRef.current = res.sessionToken;
+      } catch {
+        setSubmitError("Couldn't start session. Try again.");
+        return;
+      }
+    }
+
     setPhase("countdown");
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
-  }, [getAudioCtx]);
+  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken]);
 
   // Countdown ticks (same pattern as rhythm)
   useEffect(() => {
