@@ -3,6 +3,12 @@ const express = require('express');
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const {
+  physicsCheck:  rhythmPhysicsCheck,
+  jitterCheck:   rhythmJitterCheck,
+  computeScore:  rhythmComputeScore,
+} = require('./lib/rhythmScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -849,29 +855,132 @@ app.post('/api/start-session', gameSubmitLimiter, async (req, res) => {
   }
 });
 
+// ─── POST /api/start-game ────────────────────────────────────────────────────
+// Issues a server-side session token at game start. The token is required
+// by /api/sign-score later — no token, no signing. This is the load-bearing
+// piece of the anti-cheat: it forces every signed score to be tied to a
+// real /api/start-game call, which only legit players make.
+//
+// The session row also captures started_at, used later to enforce min/max
+// game duration. Single-use: marked used=true after sign-score consumes it.
+app.post('/api/start-game', requireSecret, async (req, res) => {
+  const { wallet, game } = req.body;
+  if (!wallet || !game) {
+    return res.status(400).json({ error: 'Missing wallet or game' });
+  }
+  if (!['rhythm', 'simon'].includes(game)) {
+    return res.status(400).json({ error: 'Unknown game' });
+  }
+
+  // 32 random bytes → 64 hex chars. Unguessable.
+  const token = crypto.randomBytes(32).toString('hex');
+
+  const { error } = await supabase
+    .from('game_sessions')
+    .insert({
+      token,
+      wallet: wallet.toLowerCase(),
+      game,
+    });
+
+  if (error) {
+    console.error('start-game insert error:', error.message);
+    return res.status(500).json({ error: 'Failed to start session' });
+  }
+
+  return res.json({ success: true, sessionToken: token });
+});
+
 // ─── POST /api/sign-score ────────────────────────────────────────────────────
 // Called by the Next.js server action before the player submits on-chain.
 // Returns an EIP-712 BackendApproval signature + current scoreNonce.
 // The frontend then calls recordScoreWithBackendSig(gameType, score, nonce, sig).
+//
+// SECURITY: the score in the EIP-712 payload is the SERVER-COMPUTED score from
+// the player's tap log (rhythm only — simon still trusts the client number for
+// now, but requires the session ticket so direct PoC submissions are blocked).
+// The client-provided `score` field is no longer trusted; for rhythm, whatever
+// the replay computes is what gets signed.
 app.post('/api/sign-score', requireSecret, async (req, res) => {
   if (!validator || !passContract) {
     return res.status(503).json({ error: 'Validator not configured' });
   }
 
-  const { playerAddress, game, score } = req.body;
-  if (!playerAddress || !game || score === undefined) {
-    return res.status(400).json({ error: 'Missing playerAddress, game, or score' });
+  const { playerAddress, game, score, sessionToken, tapLog } = req.body;
+  if (!playerAddress || !game) {
+    return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
   if (!['rhythm', 'simon'].includes(game)) {
     return res.status(400).json({ error: 'Unknown game' });
   }
-  // Match /api/submit-score's upper bound (1M). Rhythm encore + precision bonus
-  // can legitimately push scores into the 10k-100k range, so the old 5000 cap
-  // was truncating real skill. Security still holds: the score value is bound
-  // inside the EIP-712 payload the validator signs, and the on-chain nonce is
-  // single-use, so a hacker can't tamper with or replay this voucher.
-  if (typeof score !== 'number' || score < 0 || score > 1_000_000) {
-    return res.status(400).json({ error: 'Score out of range (max 1000000)' });
+  if (!sessionToken) {
+    return res.status(400).json({ error: 'Missing sessionToken' });
+  }
+
+  // ── Session validation ────────────────────────────────────────────────────
+  const { data: session, error: sessionErr } = await supabase
+    .from('game_sessions')
+    .select('*')
+    .eq('token', sessionToken)
+    .single();
+
+  if (sessionErr || !session) {
+    return res.status(403).json({ error: 'Invalid session token' });
+  }
+  if (session.used) {
+    return res.status(403).json({ error: 'Session already used' });
+  }
+  if (session.wallet.toLowerCase() !== playerAddress.toLowerCase()) {
+    return res.status(403).json({ error: 'Session wallet mismatch' });
+  }
+  if (session.game !== game) {
+    return res.status(403).json({ error: 'Session game mismatch' });
+  }
+
+  const sessionElapsedMs = Date.now() - new Date(session.started_at).getTime();
+  // Session expiry: 10 minutes. Plenty for encore survivors, blocks
+  // long-wait cap-inflation attacks.
+  if (sessionElapsedMs > 10 * 60 * 1000) {
+    return res.status(403).json({ error: 'Session expired' });
+  }
+  // Min duration: 5 seconds. Shorter than the 30s I considered earlier
+  // since the score-vs-elapsed bound (via replay) is the real gate.
+  if (sessionElapsedMs < 5_000) {
+    return res.status(403).json({ error: 'Session too short' });
+  }
+
+  // ── Score determination ──────────────────────────────────────────────────
+  // For rhythm: server replays the tap log and the COMPUTED score is what
+  // gets signed. The client-provided `score` is ignored.
+  //
+  // For simon: replay validation isn't implemented yet, so fall back to the
+  // client's claimed score. Session ticket still blocks the demonstrated PoC.
+  let serverScore;
+
+  if (game === 'rhythm') {
+    if (!Array.isArray(tapLog)) {
+      return res.status(400).json({ error: 'Missing tapLog (required for rhythm)' });
+    }
+
+    const physics = rhythmPhysicsCheck(tapLog, sessionElapsedMs);
+    if (!physics.ok) {
+      return res.status(403).json({ error: 'Physics check failed', reason: physics.reason });
+    }
+
+    const replay = rhythmComputeScore(tapLog, sessionElapsedMs);
+
+    const jitter = rhythmJitterCheck(replay.hits);
+    if (!jitter.ok) {
+      return res.status(403).json({ error: 'Jitter check failed', reason: jitter.reason });
+    }
+
+    serverScore = replay.score;
+  } else {
+    // Simon — same session-ticket protection, score still client-claimed
+    if (typeof score !== 'number' || score < 0 || score > 1_000_000) {
+      return res.status(400).json({ error: 'Score out of range (max 1000000)' });
+    }
+    serverScore = score;
   }
 
   const gameType = game === 'rhythm' ? 0 : 1;
@@ -885,12 +994,31 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       {
         player: playerAddress,
         gameType,
-        score: BigInt(score),
+        score: BigInt(serverScore),
         nonce,
       },
     );
 
-    return res.json({ success: true, signature, nonce: nonce.toString(), gameType });
+    // Mark session used + record forensic data. Best-effort; failure here
+    // shouldn't block the signing response (the signature is already
+    // committed cryptographically).
+    await supabase
+      .from('game_sessions')
+      .update({
+        used: true,
+        used_at: new Date().toISOString(),
+        computed_score: serverScore,
+        tap_count: Array.isArray(tapLog) ? tapLog.length : null,
+      })
+      .eq('token', sessionToken);
+
+    return res.json({
+      success:   true,
+      signature,
+      nonce:     nonce.toString(),
+      gameType,
+      score:     serverScore, // ← client uses this number, not their claim
+    });
   } catch (e) {
     console.error('sign-score error:', e.message);
     return res.status(500).json({ error: 'Failed to sign score' });

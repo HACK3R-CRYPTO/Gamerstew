@@ -96,7 +96,24 @@ export type ScoreData = {
 };
 
 type SignScoreResult =
-  | { success: true;  signature: string; nonce: string; gameType: number }
+  | {
+      success:    true;
+      signature:  string;
+      nonce:      string;
+      gameType:   number;
+      // Server-computed score (rhythm only). Client uses this as the canonical
+      // on-chain score — the client's local count is just for live display.
+      score?:     number;
+    }
+  | { success: false; error: string };
+
+// Tap log row — every player input recorded by the client during a rhythm
+// session. The server replays these to compute the score; the client never
+// claims a number. lane: 0-3, time: seconds since game start.
+export type RhythmTap = { lane: number; time: number };
+
+type StartGameResult =
+  | { success: true;  sessionToken: string }
   | { success: false; error: string };
 
 type SubmitScoreResult =
@@ -116,13 +133,70 @@ type SubmitScoreResult =
     }
   | { success: false; error: string };
 
+// ─── startGame — issue a server-side session token ───────────────────────────
+// Player calls this when they tap PLAY. Backend records started_at and
+// returns a single-use token. The token MUST be passed to signScore later;
+// without it the backend refuses to sign anything.
+//
+// Privy auth is required to bind the session to a real verified wallet —
+// blocks "request a token for someone else's wallet" attacks.
+export async function startGame(
+  accessToken:   string,
+  playerAddress: string,
+  game:          GameId,
+): Promise<StartGameResult> {
+  if (!await verifyUser(accessToken, playerAddress)) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  try {
+    const { ok, data } = await internalFetch('/api/start-game', {
+      wallet: playerAddress,
+      game,
+    });
+    if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
+    return { success: true, sessionToken: data.sessionToken };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+// MiniPay variant of startGame — wallet-sig auth instead of Privy JWT.
+// Same as the JWT version otherwise.
+export async function startGameMiniPay(
+  playerAddress: string,
+  walletSig:     string,
+  signedMessage: string,
+  game:          GameId,
+): Promise<StartGameResult> {
+  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  try {
+    const { ok, data } = await internalFetch('/api/start-game', {
+      wallet: playerAddress,
+      game,
+    });
+    if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
+    return { success: true, sessionToken: data.sessionToken };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
 // ─── signScore — Privy users ─────────────────────────────────────────────────
 // Call BEFORE the on-chain tx. Returns an EIP-712 BackendApproval voucher that
 // the player's wallet passes to recordScoreWithBackendSig on GamePass.
+//
+// For rhythm: pass the full tapLog. Server replays it and the SERVER-COMPUTED
+// score is what gets signed. The `score` arg becomes informational only.
+// For simon: tapLog is unused; client-claimed score is signed (session ticket
+// still blocks the demonstrated PoC).
 export async function signScore(
   accessToken:   string,
   playerAddress: string,
   scoreData:     { game: GameId; score: number },
+  sessionToken:  string,
+  tapLog?:       RhythmTap[],
 ): Promise<SignScoreResult> {
   if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -132,9 +206,17 @@ export async function signScore(
       playerAddress,
       game:  scoreData.game,
       score: scoreData.score,
+      sessionToken,
+      tapLog: tapLog ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
-    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
+    return {
+      success:   true,
+      signature: data.signature,
+      nonce:     data.nonce,
+      gameType:  data.gameType,
+      score:     typeof data.score === 'number' ? data.score : scoreData.score,
+    };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
@@ -146,6 +228,8 @@ export async function signScoreMiniPay(
   walletSig:      string,
   signedMessage:  string,
   scoreData:      { game: GameId; score: number },
+  sessionToken:   string,
+  tapLog?:        RhythmTap[],
 ): Promise<SignScoreResult> {
   if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -155,9 +239,17 @@ export async function signScoreMiniPay(
       playerAddress,
       game:  scoreData.game,
       score: scoreData.score,
+      sessionToken,
+      tapLog: tapLog ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
-    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType };
+    return {
+      success:   true,
+      signature: data.signature,
+      nonce:     data.nonce,
+      gameType:  data.gameType,
+      score:     typeof data.score === 'number' ? data.score : scoreData.score,
+    };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }

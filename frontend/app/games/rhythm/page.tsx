@@ -7,7 +7,13 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
-import { signScore, signScoreMiniPay, submitScore, submitScoreMiniPay } from "@/app/actions/game";
+import {
+  signScore, signScoreMiniPay,
+  submitScore, submitScoreMiniPay,
+  startGame as startGameAction,
+  startGameMiniPay as startGameMiniPayAction,
+  type RhythmTap,
+} from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
@@ -607,6 +613,16 @@ export default function RhythmGamePage() {
   // completing the chart cleanly, not surviving encore perfectly.
   const mainTrackStatsRef = useRef<{ misses: number; goods: number }>({ misses: 0, goods: 0 });
 
+  // ═══ Anti-cheat session state ═══
+  // Server-issued session ticket from /api/start-game. Required by the
+  // backend before it'll sign any score. Lives in a ref (not localStorage)
+  // so it dies with the component — closing the tab forces a fresh session
+  // next time, and it's invisible to other tabs / browser extensions.
+  const sessionTokenRef = useRef<string | null>(null);
+  // Full tap log captured during play. The server replays this to compute
+  // the authoritative score — the client never claims a number.
+  const tapLogRef = useRef<RhythmTap[]>([]);
+
   // ═══ Score submission (via server actions) ═══
   // Writes go through @/app/actions/game so the games-backend URL and
   // INTERNAL_SECRET are never shipped to the browser. Verification of the
@@ -686,15 +702,48 @@ export default function RhythmGamePage() {
     setComboToast(null);
     setFlashLane(null);
     setFeedback(null);
+    // Anti-cheat: clear session + tap log so a new run gets a fresh ticket
+    sessionTokenRef.current = null;
+    tapLogRef.current = [];
   }, []);
 
   // Countdown → playing
-  const startGame = () => {
+  const startGame = async () => {
     reset();
     // Reset submission bookkeeping — a fresh run is a fresh submit
     submittedRef.current = false;
     setSubmitResult(null);
     setSubmitError(null);
+
+    // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
+    // No ticket = backend refuses to sign the score at submit time. If we
+    // can't get one, surface a quiet error and don't enter the run.
+    if (address) {
+      try {
+        let res;
+        if (isMiniPay) {
+          const msg = `GameArena|start|rhythm|${Date.now()}`;
+          const sig = await signMessageAsync({ message: msg });
+          res = await startGameMiniPayAction(address, sig, msg, "rhythm");
+        } else {
+          const token = await getAccessToken();
+          if (!token) {
+            setSubmitError("Sign in required to start a run.");
+            return;
+          }
+          res = await startGameAction(token, address, "rhythm");
+        }
+        if (!res.success) {
+          setSubmitError(res.error || "Couldn't start session. Try again.");
+          return;
+        }
+        sessionTokenRef.current = res.sessionToken;
+      } catch {
+        setSubmitError("Couldn't start session. Try again.");
+        return;
+      }
+    }
+
     setPhase("countdown");
     setCountdown(3);
     // Warm up audio context (needs user gesture, so do it on START tap)
@@ -784,33 +833,56 @@ export default function RhythmGamePage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; signature: string; nonce: string; gameType: number }
+          | { success: true; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
         let miniPayMsg: string | null = null;
         let miniPaySig: string | null = null;
 
+        // Anti-cheat: the session ticket from /api/start-game is required.
+        // Without it the backend refuses to sign. If we somehow got here
+        // without one (shouldn't happen — startGame() guards entry), abort.
+        const sessionToken = sessionTokenRef.current;
+        if (!sessionToken) {
+          setSubmitError("Session missing. Tap PLAY AGAIN to start a fresh run.");
+          return;
+        }
+        // Snapshot the tap log so any late RAF tick after we read it won't
+        // change the array the server replays.
+        const tapLogSnapshot = tapLogRef.current.slice();
+
         if (isMiniPay) {
           miniPayMsg = `GameArena|rhythm|${scoreToSubmit}|${Date.now()}`;
           miniPaySig = await signMessageAsync({ message: miniPayMsg });
-          sig = await signScoreMiniPay(address, miniPaySig, miniPayMsg, {
-            game: "rhythm", score: scoreToSubmit,
-          });
+          sig = await signScoreMiniPay(
+            address, miniPaySig, miniPayMsg,
+            { game: "rhythm", score: scoreToSubmit },
+            sessionToken,
+            tapLogSnapshot,
+          );
         } else {
           authToken = await getAccessToken();
           if (!authToken) {
             setSubmitError("Not signed in — score not recorded");
             return;
           }
-          sig = await signScore(authToken, address, {
-            game: "rhythm", score: scoreToSubmit,
-          });
+          sig = await signScore(
+            authToken, address,
+            { game: "rhythm", score: scoreToSubmit },
+            sessionToken,
+            tapLogSnapshot,
+          );
         }
 
         if (!sig.success) {
           setSubmitError(sig.error || "Voucher signing failed");
           return;
         }
+
+        // Server-authoritative score. The backend replays the tap log and
+        // returns the canonical number — use that for on-chain submit and
+        // the leaderboard, not the locally-counted display value.
+        const officialScore = typeof sig.score === "number" ? sig.score : scoreToSubmit;
 
         // ── STEP 2: on-chain tx — THE SIGNATURE GATE ──
         let txHash: string | null = null;
@@ -820,7 +892,9 @@ export default function RhythmGamePage() {
             address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
             abi: GAME_PASS_ABI,
             functionName: "recordScoreWithBackendSig",
-            args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            // Server-authoritative score — must match the value the backend
+            // signed inside the EIP-712 voucher, or the contract reverts.
+            args: [sig.gameType, BigInt(officialScore), BigInt(sig.nonce), sig.signature as `0x${string}`],
             ...(isEmbeddedWallet ? { gas: 300000n } : {}),
             // MiniPay users have no CELO — pay the network fee in USDC via
             // Celo's fee-currency adapter. Non-MiniPay callers get {} here
@@ -872,13 +946,21 @@ export default function RhythmGamePage() {
         }
 
         // ── STEP 3: save off-chain (Supabase + XP + achievements + rank) ──
+        // Replace the locally-claimed score with the server-authoritative
+        // one so leaderboard / XP / achievements all reflect what the backend
+        // actually signed. Also surface it to the UI in case the local count
+        // drifted (e.g. encore scoring on the server differs by a few points).
         let result;
-        const fullScoreData = { ...baseScoreData, txHash };
+        const fullScoreData = { ...baseScoreData, score: officialScore, txHash };
         if (isMiniPay && miniPaySig && miniPayMsg) {
           result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, fullScoreData);
         } else if (authToken) {
           result = await submitScore(authToken, address, fullScoreData);
         }
+        // Reflect the server's number on the finish screen — never higher
+        // than the local count for a real player; may be lower if the replay
+        // disagreed about a borderline tap.
+        if (officialScore !== score) setScore(officialScore);
 
         if (result?.success) {
           setSubmitResult({
@@ -950,6 +1032,11 @@ export default function RhythmGamePage() {
 
     // Mark as hit (so game loop doesn't flag it as miss)
     missedRef.current.add(note.id);
+
+    // Anti-cheat: append every accepted tap to the log the server will replay.
+    // `now` is seconds since startRef (game-start anchor), matching the chart
+    // coords the server uses. Lane is 0-3.
+    tapLogRef.current.push({ lane, time: now });
 
     const type: "perfect" | "good" = diff <= PERFECT_WINDOW ? "perfect" : "good";
 
