@@ -114,32 +114,41 @@ function physicsCheck(tapLog, elapsedMs) {
 // Catches "constructed perfect tap log" attacks. Real human play has timing
 // variance; synthesized perfect taps don't. We compute the precision distribution
 // of hits AFTER the replay and reject inhuman patterns.
+//
+// Only main-track hits are analyzed. Encore notes are dynamically spawned
+// client-side and the server marks every encore hit with diff=0 (since it
+// can't reconstruct the dynamic spawn timing). Including encore hits in
+// the analysis would flag real long-encore survivors as bots — they'd
+// accumulate too many "sub-5ms" entries just from playing encore. Main-track
+// hits already give us a strong signal: a cheater has to fake those too,
+// and faking main-track hits requires hitting the timing windows we can verify.
 function jitterCheck(hits) {
-  if (hits.length < 10) return { ok: true }; // too few to analyze
+  const mainHits = hits.filter(h => !h.encore);
+  if (mainHits.length < 10) return { ok: true }; // too few to analyze
 
   let zeroish = 0;
   let totalDiff = 0;
-  for (const h of hits) {
+  for (const h of mainHits) {
     totalDiff += h.diff;
     if (h.diff < 0.005) zeroish++; // sub-5ms is inhuman precision
   }
-  const avgDiff = totalDiff / hits.length;
-  const zeroishRatio = zeroish / hits.length;
+  const avgDiff = totalDiff / mainHits.length;
+  const zeroishRatio = zeroish / mainHits.length;
 
   // Hard reject — almost every tap at sub-5ms diff means a bot
   if (zeroishRatio > 0.7) {
     return { ok: false, reason: 'Inhuman timing precision' };
   }
   // Hard reject — average diff below 15ms across long sessions means a bot
-  if (hits.length > 50 && avgDiff < 0.015) {
+  if (mainHits.length > 50 && avgDiff < 0.015) {
     return { ok: false, reason: 'Timing too precise to be human' };
   }
 
   // Variance check — humans have a spread of timing errors
   let varianceSum = 0;
-  for (const h of hits) varianceSum += (h.diff - avgDiff) ** 2;
-  const variance = varianceSum / hits.length;
-  if (hits.length > 30 && variance < 0.0001) {
+  for (const h of mainHits) varianceSum += (h.diff - avgDiff) ** 2;
+  const variance = varianceSum / mainHits.length;
+  if (mainHits.length > 30 && variance < 0.0001) {
     return { ok: false, reason: 'Timing has no human variance' };
   }
 
@@ -166,7 +175,7 @@ function computeScore(tapLog, elapsedMs) {
   const consumed = new Set();
   const hits = []; // for jitter analysis
 
-  const mainNotes = chart.filter(n => true);
+  const mainNotes = chart;
 
   for (const tap of tapLog) {
     // Try to match this tap to an unconsumed main-track note in the same lane
