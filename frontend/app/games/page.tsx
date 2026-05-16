@@ -271,7 +271,7 @@ export default function GamesPage() {
     target: number; progress: number; playersIn: number;
     hit: boolean; daysLeft: number; rewardG: number; ubiG: number;
     capPerPlayer: number; myContribution: number | null;
-    contributors: string[]; windowEnd: string;
+    contributors: { wallet: string; username: string | null; games: number }[]; windowEnd: string;
   } | null>(null);
   useEffect(() => {
     const url = address

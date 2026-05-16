@@ -2188,13 +2188,23 @@ app.get('/api/weekly-challenge', async (req, res) => {
   const myRawCount    = wallet ? (perPlayer.get(wallet) || 0) : null;
   const myContribution = myRawCount !== null ? Math.min(WEEKLY_CHALLENGE_CAP, myRawCount) : null;
 
-  // Top contributors by capped games — up to 6 wallets shown as
-  // avatars on the frontend. Social proof: players see real people
-  // already contributing and feel the FOMO pull.
-  const topContributors = Array.from(perPlayer.entries())
+  // All contributors ranked by capped games. Each entry has wallet,
+  // resolved username, and the capped game count. Used by:
+  //  - games page sidebar (just needs wallet for avatars)
+  //  - leaderboard community-challenge card (renders the full list with
+  //    rank + username + games as a leaderboard view of participants)
+  // Capped at 50 to bound response size and chain-lookup latency. A typical
+  // week will be well under that.
+  const topContributorWallets = Array.from(perPlayer.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([w]) => w);
+    .slice(0, 50);
+  const topContributors = await Promise.all(
+    topContributorWallets.map(async ([w, count]) => ({
+      wallet:   w,
+      username: await resolveUsername(w),
+      games:    Math.min(WEEKLY_CHALLENGE_CAP, count),
+    })),
+  );
 
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,

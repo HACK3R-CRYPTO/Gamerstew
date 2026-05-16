@@ -504,6 +504,7 @@ function LeaderboardInner() {
     target: number; progress: number; playersIn: number;
     hit: boolean; daysLeft: number; rewardG: number; ubiG: number;
     capPerPlayer: number; myContribution: number | null; windowEnd: string;
+    contributors: { wallet: string; username: string | null; games: number }[];
   } | null>(null);
 
   // Seasons + competition data (for SEASONS tab)
@@ -1448,6 +1449,70 @@ function LeaderboardInner() {
                         <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: "10px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)" }}>
                           <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>YOUR SHARE</span>
                           <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{weeklyChallengeLB.myContribution} / {weeklyChallengeLB.capPerPlayer}</span>
+                        </div>
+                      )}
+
+                      {/* All contributors — mirrors the 72-hr cup row pattern
+                          (rank · medal · name · count). Backend returns up to
+                          50; we render every row the server sends. Long lists
+                          scroll inside a max-height container. */}
+                      {Array.isArray(weeklyChallengeLB.contributors) && weeklyChallengeLB.contributors.length > 0 && (
+                        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <div style={{
+                            color: "rgba(134,239,172,0.7)",
+                            fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
+                          }}>CONTRIBUTORS · {weeklyChallengeLB.contributors.length} PLAYING · {weeklyChallengeLB.capPerPlayer} GAMES MAX</div>
+                          <div style={{
+                            display: "flex", flexDirection: "column", gap: "6px",
+                            maxHeight: "360px", overflowY: "auto", paddingRight: "2px",
+                          }}>
+                          {weeklyChallengeLB.contributors.map((rawC, i) => {
+                            // Defensive: backend may briefly return the old shape (string[])
+                            // during the rolling deploy. Normalize either way.
+                            const c = typeof rawC === "string"
+                              ? { wallet: rawC, username: null, games: 0 }
+                              : rawC;
+                            if (!c?.wallet) return null;
+                            const isMe = !!address && c.wallet.toLowerCase() === address.toLowerCase();
+                            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🏅";
+                            return (
+                              <div key={c.wallet} style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                gap: "10px",
+                                padding: "8px 10px", borderRadius: "10px",
+                                background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
+                                border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                              }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                                  <span style={{
+                                    fontSize: "12px",
+                                    color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
+                                    fontWeight: 900, letterSpacing: "0.05em",
+                                    flexShrink: 0, minWidth: "22px",
+                                  }}>#{i + 1}</span>
+                                  <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
+                                  <span style={{
+                                    color: isMe ? "#fde68a" : "rgba(255,255,255,0.92)",
+                                    fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
+                                    fontWeight: isMe ? 900 : 700,
+                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                  }}>
+                                    {c.username || `${c.wallet.slice(0, 4)}…${c.wallet.slice(-3)}`}
+                                    {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
+                                  </span>
+                                </span>
+                                <span style={{
+                                  color: "#86efac",
+                                  fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
+                                  fontFamily: "monospace",
+                                  flexShrink: 0,
+                                }}>
+                                  {c.games}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          </div>
                         </div>
                       )}
                     </div>
