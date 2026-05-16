@@ -16,6 +16,7 @@ import { HabitatBackground } from "@/components/HabitatBackground";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useHabitats } from "@/hooks/useHabitats";
 import { UnblockNotificationsModal } from "@/components/UnblockNotificationsModal";
+import { WalletSheet } from "@/components/WalletSheet";
 import { moodFor, bubblesFor, idleClassFor, filterFor, overlayFor, sceneOverlayFor, postureFor, type PetMood } from "@/lib/petMood";
 import { CONTRACT_ADDRESSES, ERC20_ABI } from "@/lib/contracts";
 import { formatUnits } from "viem";
@@ -271,15 +272,29 @@ function PillTab({ label, icon, active, onClick, compact = false, iconOnly = fal
 // treatment as StatGem but with a prominent currency symbol — the symbol
 // is the primary read (is this G$ or CELO?) and the number is the value.
 function BalanceChip({
-  symbol, value, sub, color, wall, face,
+  symbol, value, sub, color, wall, face, onClick,
 }: {
   symbol: string; value: string; sub: string;
   color: string; wall: string; face: string;
+  // Optional — when set, the chip becomes a tap target that opens the
+  // WalletSheet. Used on the G$ chip to expose Send/Receive. Tapping just
+  // for "view balance" doesn't need the action, so this stays optional.
+  onClick?: () => void;
 }) {
   return (
-    <div style={{
+    <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onMouseDown={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(2px)"; } : undefined}
+      onMouseUp={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.transform = ""; } : undefined}
+      onMouseLeave={onClick ? (e) => { (e.currentTarget as HTMLDivElement).style.transform = ""; } : undefined}
+      style={{
       borderRadius: "16px", background: wall, paddingBottom: "5px",
       boxShadow: `0 8px 22px -4px ${color}66, 0 0 0 1.5px ${color}55, 0 0 18px ${color}22`,
+      cursor: onClick ? "pointer" : undefined,
+      userSelect: onClick ? "none" : undefined,
+      transition: "transform 0.12s",
     }}>
       <div style={{
         borderRadius: "14px 14px 12px 12px",
@@ -894,6 +909,10 @@ function ProfileInner() {
   // Shareable player card — modal opens on demand so we never pay the
   // html-to-image cost until the player actually wants to export.
   const [shareOpen, setShareOpen] = useState(false);
+  // Wallet sheet — opens when a player taps the G$ balance chip. Closes
+  // the "earn but can't spend" gap by exposing Send / Receive without
+  // adding a new page.
+  const [walletOpen, setWalletOpen] = useState(false);
   // Help modal that shows browser-aware unblock steps when push permission
   // is denied — browsers won't let us re-prompt programmatically.
   const [unblockHelpOpen, setUnblockHelpOpen] = useState(false);
@@ -1456,10 +1475,11 @@ function ProfileInner() {
                     <BalanceChip
                       symbol="G$"
                       value={gDisplay}
-                      sub="GoodDollar"
+                      sub="Tap to send"
                       color="#fbbf24"
                       wall="#7c2d00"
                       face="linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)"
+                      onClick={() => setWalletOpen(true)}
                     />
                     <BalanceChip
                       symbol="CELO"
@@ -1891,21 +1911,29 @@ function ProfileInner() {
           every other profile chrome. Only mounts when the player opens it,
           so html-to-image and QR generation are paid lazily. */}
       {address && (
-        <ShareCard
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          username={username}
-          address={address}
-          level={playerLevel}
-          rhythmBest={Number(rhythmBest || 0)}
-          simonBest={Number(simonBest || 0)}
-          streak={streak?.streak ?? 0}
-          goldBadges={badgeData?.summary.totalGold ?? 0}
-          tierLabel={`${tier.name}${division ? ` ${division}` : ""}`}
-          petSrc={petForLevel(playerLevel).src}
-          petName={petForLevel(playerLevel).name}
-          avatarUrl={avatarUrl(address, username)}
-        />
+        <>
+          <ShareCard
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            username={username}
+            address={address}
+            level={playerLevel}
+            rhythmBest={Number(rhythmBest || 0)}
+            simonBest={Number(simonBest || 0)}
+            streak={streak?.streak ?? 0}
+            goldBadges={badgeData?.summary.totalGold ?? 0}
+            tierLabel={`${tier.name}${division ? ` ${division}` : ""}`}
+            petSrc={petForLevel(playerLevel).src}
+            petName={petForLevel(playerLevel).name}
+            avatarUrl={avatarUrl(address, username)}
+          />
+
+          <WalletSheet
+            open={walletOpen}
+            onClose={() => setWalletOpen(false)}
+            address={address as `0x${string}`}
+          />
+        </>
       )}
       {unblockHelpOpen && (
         <UnblockNotificationsModal onClose={() => setUnblockHelpOpen(false)} />
