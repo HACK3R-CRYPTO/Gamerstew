@@ -99,7 +99,7 @@ const GAMES = [
     artGrad: "linear-gradient(160deg, #0e4f6b 0%, #075985 55%, #0c3f5e 100%)",
     glow: "#06b6d4",
     accent: "#67e8f9",
-    showWager: false,
+    showWager: true,
     borderColor: "#22c55e",
     startWall: "#003a00",
     startGrad: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
@@ -1143,23 +1143,34 @@ export default function GamesPage() {
             }}
           />
 
-          {/* Game cards — desktop = horizontal scroller with snap (scales
-              cleanly as the roster grows), mobile = vertical stack with the
-              coming-soon teaser as a shorter card at the bottom. Fade-edge
-              gradient on the right of the desktop scroller hints at content
-              beyond the viewport. */}
-          <div style={{ position: "relative", width: "100%", maxWidth: "920px" }}>
+          {/* Game cards — Apple-Arcade-style peek slider on desktop. Shows
+              3 cards fully + a half-peek of the 4th that hints "there's
+              more, scroll right". scroll-snap-align: start makes each
+              flick land cleanly on a card. scroll-padding-left keeps the
+              snap respecting the left gutter so the first card never gets
+              clipped on initial load. Mobile keeps the vertical stack. */}
+          <div style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: isMobile ? "680px" : "920px",
+          }}>
             <div className="hide-scrollbar" style={{
               display: "flex",
               flexDirection: isMobile ? "column" : "row",
-              gap: isMobile ? "12px" : "16px",
+              gap: isMobile ? "12px" : "14px",
               width: "100%",
               height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
               overflowX: isMobile ? "visible" : "auto",
               overflowY: isMobile ? "visible" : "hidden",
               scrollSnapType: isMobile ? "none" : "x mandatory",
-              paddingBottom: isMobile ? 0 : 8,
-              paddingRight: isMobile ? 0 : 40, // room for the fade gradient
+              scrollPaddingLeft: isMobile ? 0 : "14px",
+              scrollPaddingRight: isMobile ? 0 : "60px",
+              paddingLeft: isMobile ? 0 : "14px",
+              // Generous right padding so the last card can fully snap
+              // into view AND the peek gradient sits in dedicated space
+              // (no card content awkwardly cut by the gradient).
+              paddingRight: isMobile ? 0 : "60px",
+              paddingBottom: isMobile ? 0 : "4px",
             }}>
               {GAMES.map(g => (
                 <GameCard
@@ -1172,13 +1183,19 @@ export default function GamesPage() {
                 />
               ))}
             </div>
-            {/* Desktop-only right-edge fade — signals scrollability. */}
+
+            {/* Right-edge fade — desktop only. Sits OVER the rightmost
+                visible card by a few px so the peek looks deliberate
+                instead of clipped. Wider gradient (90px) so the fade
+                is soft, not a hard wall. */}
             {!isMobile && (
               <div aria-hidden style={{
-                position: "absolute", top: 0, right: 0, bottom: 8, width: 60,
-                background: "linear-gradient(90deg, transparent, rgba(8,2,32,0.85))",
+                position: "absolute",
+                top: 0, right: 0, bottom: 4,
+                width: 90,
                 pointerEvents: "none",
-                borderRadius: "0 8px 8px 0",
+                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.55) 35%, rgba(8,2,32,0.95) 100%)",
+                borderRadius: "0 14px 14px 0",
               }} />
             )}
           </div>
