@@ -116,8 +116,8 @@ export type WagerTierId = "warmup" | "staked" | "highroller";
 // Each tier represents one MARKOV persona. The visual fields map directly to
 // the arena-style design: a portrait (`art`) framed inside a circle tinted by
 // `portraitBg` with `rim` as the ring color. `multi` is the display payout
-// (1.9× = 1.9× the wager after the 5% protocol fee). `lines` are the four
-// canned voice lines played during the match (ready / win / lose / tie).
+// (1.96× = winner gets pot minus the contract's 2% protocol fee). `lines`
+// are the four canned voice lines played during the match.
 export type WagerTier = {
   id:           WagerTierId;
   name:         string;
@@ -132,7 +132,7 @@ export type WagerTier = {
   rimSoft:      string;       // lighter accent for stat bar gradients and titles
   portraitBg:   string;       // radial-gradient string for the portrait disc
   difficulty:   string;       // label shown on the cards: EASY / MEDIUM / HARD
-  multi:        number;       // display payout multiplier (1.9 across tiers — 5% protocol fee)
+  multi:        number;       // display payout multiplier (1.96 across tiers — 2% protocol fee)
   // Persona identity
   persona:      string;       // display name (MARKOV-Junior, etc.)
   title:        string;       // short subtitle ("Cadet Bot · v0.1")
@@ -179,7 +179,7 @@ export const WAGER_TIERS: WagerTier[] = [
     rimSoft:      "#86efac",
     portraitBg:   "radial-gradient(ellipse at 50% 35%, #22c55e44 0%, #052e16 65%, #020a06 100%)",
     difficulty:   "EASY",
-    multi:        1.9,
+    multi:        1.96,
     persona:      "MARKOV-Junior",
     title:        "Cadet Bot · v0.1",
     epithet:      "The Apprentice · learning your patterns",
@@ -211,7 +211,7 @@ export const WAGER_TIERS: WagerTier[] = [
     rimSoft:      "#fbbf24",
     portraitBg:   "radial-gradient(ellipse at 50% 35%, #f59e0b55 0%, #7c2d00 60%, #1a0a00 100%)",
     difficulty:   "MEDIUM",
-    multi:        1.9,
+    multi:        1.96,
     persona:      "MARKOV-Prime",
     title:        "Combat Frame · v2.4",
     epithet:      "The Reader · transition-probability counter",
@@ -243,7 +243,7 @@ export const WAGER_TIERS: WagerTier[] = [
     rimSoft:      "#ddd6fe",
     portraitBg:   "radial-gradient(ellipse at 50% 35%, #a78bfa88 0%, #1e1b4b 55%, #050010 100%)",
     difficulty:   "HARD",
-    multi:        1.9,
+    multi:        1.96,
     persona:      "MARKOV-Ω",
     title:        "Crystal Sovereign · v7.0",
     epithet:      "The Oracle · your seventh move already mine",

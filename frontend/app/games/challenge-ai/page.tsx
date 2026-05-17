@@ -753,7 +753,7 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
           color: "rgba(220,210,255,0.65)", fontSize: 12, lineHeight: 1.45,
           margin: 0, maxWidth: 380, marginLeft: "auto", marginRight: "auto",
         }}>
-          Single round on Celo. Tie goes to you. Winner takes 1.9× the pot (5% protocol fee).
+          Single round on Celo. Tie goes to you. Winner takes 1.96× the pot (2% protocol fee).
         </p>
       </div>
 
