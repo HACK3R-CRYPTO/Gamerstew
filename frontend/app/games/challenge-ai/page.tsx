@@ -279,18 +279,32 @@ export default function ChallengeAi() {
   );
 
   // On mount, if we land on the page WITH an in-flight match, skip the lobby.
-  // Once a match has been seen-through-to-result and the player has tapped
-  // "Pick another AI" or "REMATCH", we add it to this set. Any subsequent
-  // useEffect that would otherwise resume or replay that match's result
-  // checks this set first. Permanent guard against the "bounced back to
-  // result" bug — even if the multicall briefly returns the dismissed
-  // match as the latest activeMatch (e.g. during the gap between a new
-  // tx and the new match showing up on chain), the effects stay silent.
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Dismissed-match guard. When the player taps Pick-another-AI / REMATCH
+  // (or hits the page on a stale completed match), the match id gets added
+  // here and every effect / render that would resume or replay that match
+  // bails out.
+  //
+  // CRITICAL: the lookup is backed by a useRef, not state. When
+  // activeMatch flips on mount, BOTH the resume-on-mount and the
+  // auto-result effects fire on the same batch. State updates queued by
+  // dismissMatch in resume-on-mount don't apply until the next render, so
+  // if auto-result reads from React state, it sees the old dismissed set
+  // and proceeds to schedule setPhase('result') anyway. A ref is updated
+  // synchronously by dismissMatch, so the in-batch effect order does the
+  // right thing: resume fires → marks the match dismissed → auto-result
+  // fires immediately after and reads the updated ref → skips.
+  //
+  // The state alongside the ref is purely so React re-renders correctly
+  // when dismissals propagate to UI (e.g. the lobby's recent-fights
+  // strip needs to recompute).
+  const dismissedRef = useRef<Set<string>>(new Set());
+  const [, setDismissedTick] = useState(0);
   const dismissMatch = (m: ArenaMatch | null) => {
-    if (m) setDismissed(s => { const n = new Set(s); n.add(String(m.id)); return n; });
+    if (!m) return;
+    dismissedRef.current.add(String(m.id));
+    setDismissedTick(t => t + 1);
   };
-  const isDismissed = (m: ArenaMatch | null) => !!m && dismissed.has(String(m.id));
+  const isDismissed = (m: ArenaMatch | null) => !!m && dismissedRef.current.has(String(m.id));
 
   // Resume from URL — drives the refreshing-mid-match behavior. Only fires
   // once on mount per active match. Three branches:
