@@ -118,6 +118,16 @@ export type WagerTier = {
   wall:       string;
   face:       string;
   glow:       string;
+  // Visual persona — three "moods" of MARKOV-1, swapped by tier. All three
+  // map to the same on-chain wallet (CONTRACT_ADDRESSES.AI_AGENT); the
+  // persona is purely UI. The portrait path is the file the player drops in;
+  // if missing, the hub falls back to a color-block placeholder.
+  persona:    string;       // display name shown above the portrait
+  epithet:    string;       // one-line subtitle under the persona name
+  portrait:   string;       // /public path to the portrait image
+  // Visible stats — flavor numbers shown as bars. Not used by the agent's
+  // actual strategy; that's wager-tier driven on the backend.
+  stats:      { aggression: number; adaptability: number; difficulty: number };
 };
 
 // Helpers — parseUnits would do this at runtime but the values are static.
@@ -135,24 +145,32 @@ export const WAGER_TIERS: WagerTier[] = [
     name:       "WARM-UP",
     amount:     "0.1",
     amountWei:  WAGER_WARMUP_WEI,
-    blurb:      "Easy entry. MARKOV-1 plays loose.",
+    blurb:      "Easy entry. MARKOV plays loose.",
     agentMode:  "half-random pattern, easy to read",
     color:      "#86efac",
     wall:       "#003a00",
     face:       "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
     glow:       "rgba(34,197,94,0.55)",
+    persona:    "MARKOV-Junior",
+    epithet:    "The Apprentice · learning your patterns",
+    portrait:   "/characters/markov-junior.png",
+    stats:      { aggression: 35, adaptability: 40, difficulty: 25 },
   },
   {
     id:         "staked",
     name:       "STAKED",
     amount:     "1",
     amountWei:  WAGER_STAKED_WEI,
-    blurb:      "Real stakes. MARKOV-1 adapts.",
+    blurb:      "Real stakes. MARKOV adapts.",
     agentMode:  "transition-probability counter from history",
     color:      "#fbbf24",
     wall:       "#7c2d00",
     face:       "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
     glow:       "rgba(245,158,11,0.65)",
+    persona:    "MARKOV-Prime",
+    epithet:    "The Reader · transition-probability counter",
+    portrait:   "/characters/markov-prime.png",
+    stats:      { aggression: 60, adaptability: 80, difficulty: 65 },
   },
   {
     id:         "highroller",
@@ -165,6 +183,10 @@ export const WAGER_TIERS: WagerTier[] = [
     wall:       "#4a006b",
     face:       "linear-gradient(160deg, #d8b4fe 0%, #9333ea 50%, #6b21a8 100%)",
     glow:       "rgba(167,139,250,0.7)",
+    persona:    "MARKOV-Ω",
+    epithet:    "The Oracle · your seventh move already mine",
+    portrait:   "/characters/markov-omega.png",
+    stats:      { aggression: 85, adaptability: 95, difficulty: 100 },
   },
 ];
 
@@ -193,7 +215,7 @@ export type TauntPool = {
   tie:  Taunt[];   // tie (player wins by rule, but AI can comment)
 };
 
-const TAUNTS_BY_TIER: Record<WagerTierId, TauntPool> = {
+export const TAUNTS_BY_TIER: Record<WagerTierId, TauntPool> = {
   warmup: {
     win:  [
       "Lucky read. Try again.",
