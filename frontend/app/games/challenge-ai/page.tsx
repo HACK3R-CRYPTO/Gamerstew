@@ -1283,6 +1283,21 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
     ? (playerMove === aiMove ? "tie" : youWon ? "win" : "lose")
     : null;
 
+  // Live AI hand cycling — Rael's feedback: the AI feels invisible during
+  // LOCK because the hand stays as "?". This cycles the AI's pick slot
+  // through the available moves at ~180ms so the player feels the AI is
+  // actively choosing in real-time. When the chain confirms and we enter
+  // REVEAL, the real move replaces the cycling emoji with a satisfying
+  // lock-in pop.
+  const [aiCycleIdx, setAiCycleIdx] = useState(0);
+  useEffect(() => {
+    if (!locked || revealing || completed) return;
+    const moveCount = game.moves.length;
+    const i = setInterval(() => setAiCycleIdx(x => (x + 1) % moveCount), 180);
+    return () => clearInterval(i);
+  }, [locked, revealing, completed, game.moves.length]);
+  const aiCyclingMove = locked && !revealing ? aiCycleIdx % game.moves.length : null;
+
   return (
     <div style={{
       maxWidth: 540, margin: "0 auto",
@@ -1305,6 +1320,7 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
         <CombatantStage
           side="ai" tier={tier} gameId={game.id}
           pick={revealing || (completed && !revealing) ? aiMove : null}
+          cyclingMove={aiCyclingMove}
           revealing={!!revealing} outcome={roundOutcome}
           taunt={!revealing ? taunt : null}
           isThinking={aiThinking}
@@ -1478,10 +1494,14 @@ function CombatantHUD({ side, tier, stake }: { side: "player" | "ai"; tier: Wage
   );
 }
 
-function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, isThinking, pet }: {
+function CombatantStage({ side, tier, gameId, pick, cyclingMove, revealing, outcome, taunt, isThinking, pet }: {
   side: "player" | "ai"; tier: WagerTier;
   gameId: 0 | 3;
   pick: number | null;
+  // Live-cycling move index for the AI during LOCK — animates the pick
+  // slot through the available moves so the AI feels like it's actively
+  // choosing instead of sitting on a static "?".
+  cyclingMove?: number | null;
   revealing: boolean;
   outcome: "win" | "lose" | "tie" | null;
   taunt?: string | null;
@@ -1536,28 +1556,53 @@ function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, i
         )}
       </div>
 
-      {/* Pick slot */}
-      <div style={{
-        width: 92, height: 92, borderRadius: 18,
-        background: pick !== null
-          ? `linear-gradient(180deg, ${accent}33, rgba(0,0,0,0.55))`
-          : "rgba(255,255,255,0.03)",
-        border: `1.5px solid ${pick !== null ? `${accent}aa` : "rgba(255,255,255,0.1)"}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: pick !== null ? `0 0 28px ${accent}55` : "none",
-        animation: pick !== null && revealing ? "pick-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1)" : "none",
-        flexShrink: 0,
-      }}>
-        {pick !== null && (isPlayer || revealing) ? (
-          <span style={{ fontSize: 46, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.5))" }}>
-            {moveDisplay(gameId, pick).emoji}
-          </span>
-        ) : (
-          <span style={{ color: "rgba(220,210,255,0.4)", fontSize: 34, fontWeight: 900 }}>
-            {isPlayer && pick === null ? "?" : "?"}
-          </span>
-        )}
-      </div>
+      {/* Pick slot — three states:
+            1. revealed/locked-in: real emoji, lit border, pop animation
+            2. cycling (AI mid-LOCK): live-cycling emoji at ~180ms, glowing
+               border, subtle pulse — the player FEELS the AI deciding
+            3. idle: "?" placeholder */}
+      {(() => {
+        const hasRealMove = pick !== null && (isPlayer || revealing);
+        const hasCyclingMove = !hasRealMove && cyclingMove !== null && cyclingMove !== undefined;
+        return (
+          <div style={{
+            width: 92, height: 92, borderRadius: 18,
+            background: hasRealMove || hasCyclingMove
+              ? `linear-gradient(180deg, ${accent}33, rgba(0,0,0,0.55))`
+              : "rgba(255,255,255,0.03)",
+            border: `1.5px solid ${hasRealMove ? `${accent}aa` : hasCyclingMove ? `${accent}88` : "rgba(255,255,255,0.1)"}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: hasRealMove
+              ? `0 0 28px ${accent}55`
+              : hasCyclingMove ? `0 0 18px ${accent}33` : "none",
+            animation: hasRealMove && revealing
+              ? "pick-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1)"
+              : hasCyclingMove ? "pulse-soft 0.4s ease-in-out infinite" : "none",
+            flexShrink: 0,
+            transition: "background 0.2s, border-color 0.2s, box-shadow 0.2s",
+          }}>
+            {hasRealMove ? (
+              <span style={{ fontSize: 46, filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.5))" }}>
+                {moveDisplay(gameId, pick).emoji}
+              </span>
+            ) : hasCyclingMove ? (
+              // Lower opacity + scale so the cycling read distinct from
+              // the locked-in pop: this is the AI deliberating, not the
+              // final choice yet.
+              <span style={{
+                fontSize: 42,
+                opacity: 0.72,
+                filter: `drop-shadow(0 0 8px ${accent}aa)`,
+                transition: "transform 0.08s",
+              }}>
+                {moveDisplay(gameId, cyclingMove as number).emoji}
+              </span>
+            ) : (
+              <span style={{ color: "rgba(220,210,255,0.4)", fontSize: 34, fontWeight: 900 }}>?</span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Speech bubble (AI only) */}
       {!isPlayer && taunt && !revealing && (
