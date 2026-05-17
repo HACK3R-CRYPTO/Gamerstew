@@ -392,10 +392,20 @@ export default function ChallengeAi() {
     }
   }, [aiMove, activeMatch?.id]);
   const currentId = activeMatch?.id;
-  const phpMirror = phpMirrorState.id === currentId ? phpMirrorState.v : false;
-  const ahpMirror = ahpMirrorState.id === currentId ? ahpMirrorState.v : false;
-  const pmMirror  = pmMirrorState.id  === currentId ? pmMirrorState.v  : null;
-  const amMirror  = amMirrorState.id  === currentId ? amMirrorState.v  : null;
+  // Stale guard — even if a mirror IS valid for the current activeMatch.id,
+  // if that match has been dismissed (player tapped Pick-another-AI /
+  // REMATCH and we're waiting for the new match to show up on chain), we
+  // shouldn't surface ANY of its data. That was the source of the lingering
+  // "TIE" / stale-pre-game flash: phase already transitioned to 'match' but
+  // activeMatch was briefly still the OLD dismissed completed match, and
+  // CombatantStage's `completed && aiMove` condition rendered the old
+  // hand. Force-null these to keep the UI in a clean placeholder state
+  // until the new match's data arrives.
+  const stale = !!activeMatch && isDismissed(activeMatch);
+  const phpMirror = !stale && phpMirrorState.id === currentId ? phpMirrorState.v : false;
+  const ahpMirror = !stale && ahpMirrorState.id === currentId ? ahpMirrorState.v : false;
+  const pmMirror  = !stale && pmMirrorState.id  === currentId ? pmMirrorState.v  : null;
+  const amMirror  = !stale && amMirrorState.id  === currentId ? amMirrorState.v  : null;
 
   // Agent staleness — if MARKOV doesn't accept / play within the expected
   // window, the agent process is probably offline. Surface that honestly.
@@ -1414,7 +1424,15 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
             <div style={{
               color: "rgba(220,210,255,0.55)", fontSize: 9.5, fontWeight: 800, letterSpacing: "0.24em",
             }}>
-              {proposed ? "MARKOV LOCKING IN…" : locked ? "REVEAL INCOMING" : "MAKE YOUR MOVE"}
+              {proposed
+                ? "MARKOV LOCKING IN…"
+                : locked
+                ? "REVEAL INCOMING"
+                : completed
+                ? "PREPARING NEXT MATCH…"
+                : accepted
+                ? "MAKE YOUR MOVE"
+                : "WAITING FOR MATCH…"}
             </div>
           )}
         </div>
