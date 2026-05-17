@@ -113,6 +113,75 @@ function useAgentStale(activeMatch: ArenaMatch | null, playerHasPlayed: boolean,
   return { proposedStale: false, lockStale: false };
 }
 
+// ─── useAgentLiveness ───────────────────────────────────────────────────────
+// Pre-challenge gate: is MARKOV's off-chain agent process actually running?
+//
+// We use on-chain state as a proxy, not a heartbeat endpoint — that way we
+// don't need new infra and the check works regardless of where the agent is
+// deployed. Two signals combined:
+//   1. The MOST RECENT global match on the contract. If it's been in PROPOSED
+//      status for > 45s, the agent didn't accept it — process is dead.
+//   2. The agent wallet's G$ balance. If it can't fund the smallest tier
+//      (0.1 G$), it's out of money even if the process is alive.
+//
+// Polled every 5s. Conservative defaults so a brand-new contract reads as
+// "online" until proven otherwise.
+function useAgentLiveness(): { online: boolean; reason: "offline" | "out-of-funds" | "online" | "unknown" } {
+  // Latest global match id.
+  const { data: counterRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
+    abi: ARENA_PLATFORM_ABI,
+    functionName: "matchCounter",
+    query: { refetchInterval: 5000 },
+  });
+  const latestId = counterRaw ? (counterRaw as bigint) : 0n;
+
+  const { data: latestMatchTuple } = useReadContract({
+    address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
+    abi: ARENA_PLATFORM_ABI,
+    functionName: "matches",
+    args: [latestId],
+    query: { enabled: latestId > 0n, refetchInterval: 5000 },
+  });
+
+  // Agent's G$ balance — must cover at least the warmup tier (0.1 G$ = 1e17).
+  const { data: agentBalanceRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [CONTRACT_ADDRESSES.AI_AGENT as `0x${string}`],
+    query: { refetchInterval: 15000 },
+  });
+
+  // Force re-evaluation every 3s so the time-based check stays fresh.
+  const [, force] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => force(x => x + 1), 3000);
+    return () => clearInterval(i);
+  }, []);
+
+  return useMemo(() => {
+    // Out-of-funds check is unambiguous — block challenge regardless.
+    if (agentBalanceRaw != null) {
+      const bal = agentBalanceRaw as bigint;
+      if (bal < 10n ** 17n) return { online: false, reason: "out-of-funds" as const };
+    }
+    // Brand-new contract — no signal to judge from, assume online.
+    if (latestId === 0n || !latestMatchTuple) return { online: true, reason: "online" as const };
+
+    const t = latestMatchTuple as unknown as readonly [bigint, `0x${string}`, `0x${string}`, bigint, number, number, `0x${string}`, bigint];
+    const status = t[5];
+    const createdAt = Number(t[7]);
+    const ageSec = Date.now() / 1000 - createdAt;
+
+    // Latest match still PROPOSED + old = agent didn't accept = process down.
+    if (status === MATCH_STATUS.PROPOSED && ageSec > 45) {
+      return { online: false, reason: "offline" as const };
+    }
+    return { online: true, reason: "online" as const };
+  }, [agentBalanceRaw, latestId, latestMatchTuple]);
+}
+
 export default function ChallengeAi() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -120,6 +189,7 @@ export default function ChallengeAi() {
   const { writeContractAsync } = useWriteContract();
   const isDesktop = useIsDesktop();
   const pet = usePlayerPet(address as `0x${string}` | undefined);
+  const agentLiveness = useAgentLiveness();
 
   // ─── Selection ───────────────────────────────────────────────────────────
   const [tier, setTier] = useState<WagerTier>(WAGER_TIERS[1]);
@@ -482,6 +552,7 @@ export default function ChallengeAi() {
             busy={submittingChallenge}
             error={error}
             isDesktop={isDesktop}
+            agentLiveness={agentLiveness}
           />
         )}
         {phase === "vs" && <ArenaVS tier={tier} game={game} pet={pet} />}
@@ -528,7 +599,7 @@ export default function ChallengeAi() {
 }
 
 // ─── ArenaLobby ──────────────────────────────────────────────────────────────
-function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error, isDesktop }: {
+function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error, isDesktop, agentLiveness }: {
   tier: WagerTier; setTier: (t: WagerTier) => void;
   game: GameType; setGame: (g: GameType) => void;
   records: Record<string, { wins: number; losses: number; streak: number }>;
@@ -537,6 +608,7 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
   busy: boolean;
   error: string | null;
   isDesktop: boolean;
+  agentLiveness: { online: boolean; reason: "offline" | "out-of-funds" | "online" | "unknown" };
 }) {
   const record = records[tier.id] ?? { wins: 0, losses: 0, streak: 0 };
   const total = record.wins + record.losses;
@@ -636,21 +708,41 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
           })}
         </div>
 
-        {/* ENTER ARENA button */}
-        <button onClick={busy ? undefined : onStart} disabled={busy} style={{
-          padding: "16px 18px", borderRadius: 14, cursor: busy ? "wait" : "pointer",
-          border: `1.5px solid ${tier.rim}`,
-          background: `linear-gradient(180deg, ${tier.rim}, ${tier.rim}cc)`,
-          boxShadow: `0 12px 26px -6px ${tier.rim}cc, inset 0 1px 0 rgba(255,255,255,0.45)`,
-          color: "#04001a", fontWeight: 900, fontSize: 15, letterSpacing: "0.08em",
-          opacity: busy ? 0.7 : 1,
-          transition: "opacity 0.12s, transform 0.1s",
-        }}
-          onMouseDown={e => { if (!busy) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(2px)"; }}
+        {/* Agent offline / out-of-funds banner — blocks the challenge */}
+        {!agentLiveness.online && (
+          <AgentLivenessBanner reason={agentLiveness.reason} />
+        )}
+
+        {/* ENTER ARENA button — gated on agent being online */}
+        <button
+          onClick={busy || !agentLiveness.online ? undefined : onStart}
+          disabled={busy || !agentLiveness.online}
+          style={{
+            padding: "16px 18px", borderRadius: 14,
+            cursor: busy ? "wait" : !agentLiveness.online ? "not-allowed" : "pointer",
+            border: !agentLiveness.online
+              ? "1.5px solid rgba(255,255,255,0.12)"
+              : `1.5px solid ${tier.rim}`,
+            background: !agentLiveness.online
+              ? "rgba(255,255,255,0.06)"
+              : `linear-gradient(180deg, ${tier.rim}, ${tier.rim}cc)`,
+            boxShadow: !agentLiveness.online
+              ? "none"
+              : `0 12px 26px -6px ${tier.rim}cc, inset 0 1px 0 rgba(255,255,255,0.45)`,
+            color: !agentLiveness.online ? "rgba(220,210,255,0.55)" : "#04001a",
+            fontWeight: 900, fontSize: 15, letterSpacing: "0.08em",
+            opacity: busy ? 0.7 : !agentLiveness.online ? 0.7 : 1,
+            transition: "opacity 0.12s, transform 0.1s, background 0.2s, border-color 0.2s",
+          }}
+          onMouseDown={e => { if (!busy && agentLiveness.online) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(2px)"; }}
           onMouseUp={e => { (e.currentTarget as HTMLButtonElement).style.transform = ""; }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ""; }}
         >
-          {busy ? "OPENING…" : `▶ ENTER ARENA · ${tier.amount} G$`}
+          {busy
+            ? "OPENING…"
+            : !agentLiveness.online
+              ? "⚠ MARKOV-1 UNAVAILABLE"
+              : `▶ ENTER ARENA · ${tier.amount} G$`}
         </button>
 
         <div style={{
@@ -1697,6 +1789,39 @@ function BalanceChip({ balance }: { balance: string }) {
     }}>
       <span style={{ color: "rgba(134,239,172,0.8)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em" }}>G$</span>
       <span style={{ color: "#86efac", fontSize: 12, fontWeight: 900, fontFamily: "monospace" }}>{balance}</span>
+    </div>
+  );
+}
+
+// ─── AgentLivenessBanner ────────────────────────────────────────────────────
+// Pre-challenge warning. Sits above a disabled ENTER ARENA button when the
+// agent is offline / out of funds, so the player never wagers into a match
+// that won't be accepted.
+function AgentLivenessBanner({ reason }: { reason: "offline" | "out-of-funds" | "online" | "unknown" }) {
+  const headline =
+    reason === "out-of-funds" ? "MARKOV-1 is out of funds."
+    : reason === "offline"    ? "MARKOV-1 is offline right now."
+    :                           "MARKOV-1 is not responding.";
+  const sub =
+    reason === "out-of-funds"
+      ? "The agent wallet can't match a wager. The operator has been notified — check back in a few minutes."
+      : "The agent process isn't accepting matches. Check back in a few minutes — no stake gets locked while it's down.";
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 12,
+      background: "rgba(251,191,36,0.10)",
+      border: "1px solid rgba(251,191,36,0.45)",
+      display: "flex", flexDirection: "column", gap: 4,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 14 }}>⚠️</span>
+        <span style={{
+          color: "#fde68a", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em",
+        }}>{headline}</span>
+      </div>
+      <div style={{
+        color: "rgba(254,243,199,0.7)", fontSize: 10.5, fontWeight: 600, lineHeight: 1.4,
+      }}>{sub}</div>
     </div>
   );
 }
