@@ -331,9 +331,6 @@ export default function ChallengeAi() {
     query: { enabled: matchEnabled, refetchInterval: 3000 },
   });
 
-  // Agent staleness — if MARKOV doesn't accept / play within the expected
-  // window, the agent process is probably offline. Surface that honestly.
-  const { proposedStale, lockStale } = useAgentStale(activeMatch, !!playerHasPlayed, !!aiHasPlayed);
   const { data: playerMove, refetch: refetchPlayerMove } = useReadContract({
     address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
     abi: ARENA_PLATFORM_ABI,
@@ -348,6 +345,37 @@ export default function ChallengeAi() {
     args: matchEnabled ? [matchId, aiAddress] : undefined,
     query: { enabled: matchEnabled && !!aiHasPlayed, refetchInterval: 2000, staleTime: 0, gcTime: 0 },
   });
+
+  // Per-match local mirror — wagmi/react-query briefly retains the old
+  // match's data while refetching with the new matchId. That caused the
+  // AI hand to start cycling before the player had even moved (because
+  // `playerHasPlayed` read true from the previous match's cache, so
+  // `locked = accepted && playerHasPlayed` evaluated true). We reset
+  // these mirrors when activeMatch.id changes, and only update them
+  // when fresh chain values arrive. Render the mirrors, not the raw
+  // wagmi values.
+  const [phpMirror, setPhpMirror] = useState<boolean>(false);
+  const [ahpMirror, setAhpMirror] = useState<boolean>(false);
+  const [pmMirror, setPmMirror] = useState<number | null>(null);
+  const [amMirror, setAmMirror] = useState<number | null>(null);
+  const lastMatchIdRef = useRef<bigint | null>(null);
+  useEffect(() => {
+    if (lastMatchIdRef.current !== (activeMatch?.id ?? null)) {
+      lastMatchIdRef.current = activeMatch?.id ?? null;
+      setPhpMirror(false);
+      setAhpMirror(false);
+      setPmMirror(null);
+      setAmMirror(null);
+    }
+  }, [activeMatch?.id]);
+  useEffect(() => { if (typeof playerHasPlayed === "boolean") setPhpMirror(playerHasPlayed); }, [playerHasPlayed]);
+  useEffect(() => { if (typeof aiHasPlayed === "boolean") setAhpMirror(aiHasPlayed); }, [aiHasPlayed]);
+  useEffect(() => { if (typeof playerMove === "number") setPmMirror(playerMove); }, [playerMove]);
+  useEffect(() => { if (typeof aiMove === "number") setAmMirror(aiMove); }, [aiMove]);
+
+  // Agent staleness — if MARKOV doesn't accept / play within the expected
+  // window, the agent process is probably offline. Surface that honestly.
+  const { proposedStale, lockStale } = useAgentStale(activeMatch, phpMirror, ahpMirror);
 
   // ─── Hold-reveal: after status=COMPLETED, hold the REVEAL animation briefly
   // before dropping into RESULT, and double-refetch the moves to win the RPC
@@ -520,8 +548,7 @@ export default function ChallengeAi() {
   // ─── Derived for sub-screens ─────────────────────────────────────────────
   const youWon = activeMatch?.status === MATCH_STATUS.COMPLETED && !!address
     && activeMatch.winner.toLowerCase() === address.toLowerCase();
-  const movesEqual = phase === "result" && typeof playerMove === "number"
-    && typeof aiMove === "number" && playerMove === aiMove;
+  const movesEqual = phase === "result" && pmMirror !== null && amMirror !== null && pmMirror === amMirror;
   const tieByRule = movesEqual && youWon;
 
   // Win streak chip in the top bar — sum of streaks across all tiers (latest
@@ -597,10 +624,10 @@ export default function ChallengeAi() {
             game={game}
             pet={pet}
             activeMatch={activeMatch}
-            playerHasPlayed={!!playerHasPlayed}
-            aiHasPlayed={!!aiHasPlayed}
-            playerMove={typeof playerMove === "number" ? playerMove : null}
-            aiMove={typeof aiMove === "number" ? aiMove : null}
+            playerHasPlayed={phpMirror}
+            aiHasPlayed={ahpMirror}
+            playerMove={pmMirror}
+            aiMove={amMirror}
             holdingReveal={holdingReveal}
             tierHistory={tierHistory}
             onPick={onPick}
@@ -620,8 +647,8 @@ export default function ChallengeAi() {
             wager={activeMatch.wager}
             youWon={youWon}
             tieByRule={tieByRule}
-            playerMove={typeof playerMove === "number" ? playerMove : null}
-            aiMove={typeof aiMove === "number" ? aiMove : null}
+            playerMove={pmMirror}
+            aiMove={amMirror}
             record={records[tier.id] ?? { wins: 0, losses: 0, streak: 0 }}
             onAgain={onRematch}
             onLobby={onLobby}
