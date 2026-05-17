@@ -564,15 +564,20 @@ function ResolvePanel({ youWon, wager, tierId, playerMove, aiMove, gameType, onR
   gameType: number;
   onReturn: () => void;
 }) {
-  // Was it a tie? Same move at the contract level (player still wins by rule,
-  // but the taunt and copy should reflect the tie).
-  const wasTie = playerMove !== null && aiMove !== null && playerMove === aiMove;
+  // Tie semantics. Two flavors:
+  //   - movesAreEqual: both sides picked the same emoji
+  //   - tieByRule:     equal moves AND the chain awarded the challenger
+  //                    (player-first rule was applied correctly)
+  // If moves are equal but the chain says AI won, that's a resolver bug we
+  // shouldn't dress up as a tie. Render it as a straight AI win so the prize
+  // figure and the headline don't contradict each other.
+  const movesAreEqual = playerMove !== null && aiMove !== null && playerMove === aiMove;
+  const tieByRule     = movesAreEqual && youWon;
 
-  // Pick one taunt for this render (kept stable in a ref so it doesn't flip
-  // on every re-render).
+  // Pick one taunt for this render (stable in a ref so it doesn't flip).
   const tauntRef = useRef<string>("");
   if (tauntRef.current === "") {
-    const outcome = wasTie ? "tie" : youWon ? "lose" : "win";
+    const outcome = tieByRule ? "tie" : youWon ? "lose" : "win";
     tauntRef.current = tauntFor(tierId, outcome);
   }
 
@@ -614,7 +619,7 @@ function ResolvePanel({ youWon, wager, tierId, playerMove, aiMove, gameType, onR
           fontSize: 11, fontWeight: 900, letterSpacing: "0.2em",
           textShadow: youWon ? "0 2px 4px rgba(0,0,0,0.4)" : "none",
           position: "relative", zIndex: 1,
-        }}>{wasTie ? "TIE — PLAYER-FIRST RULE" : youWon ? "YOU WIN" : "MARKOV-1 WINS"}</div>
+        }}>{tieByRule ? "TIE — PLAYER-FIRST RULE" : youWon ? "YOU WIN" : "MARKOV-1 WINS"}</div>
 
         <div style={{
           color: "white", fontSize: 32, fontWeight: 900, lineHeight: 1,
