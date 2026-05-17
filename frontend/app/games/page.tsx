@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import BottomNav from "@/components/BottomNav";
 import LevelUpToast from "@/components/LevelUpToast";
 import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
@@ -140,6 +141,35 @@ const GAMES = [
       </div>
     ),
   },
+  // Coming-soon teaser — deliberately muted vs active games. The chassis
+  // stays consistent (border / shadow / dimensions) but the wager fields are
+  // empty and the START button is replaced with a NOTIFY pill that hooks
+  // into the existing push opt-in flow. Slot is permanent — when a real game
+  // ships, this card stays at the bottom signaling further roster growth.
+  {
+    id: "coming-soon",
+    title: "MORE COMING",
+    wager: "—",
+    payout: "—",
+    path: "",
+    active: false,
+    artGrad: "linear-gradient(160deg, #3a2a5e 0%, #2a1d4a 55%, #1a1235 100%)",
+    glow: "#7c6db8",
+    accent: "#a89dd1",
+    showWager: false,
+    borderColor: "#6d5db0",
+    startWall: "#2a1d4a",
+    startGrad: "linear-gradient(160deg, #b9a7e8 0%, #7c6db8 50%, #4b3a85 100%)",
+    startGlow: "rgba(124,109,184,0.55)",
+    art: (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/games/coming-soon.png" alt="More games coming soon"
+        style={{
+          width: "100%", height: "100%", objectFit: "contain",
+          filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.6))",
+        }} />
+    ),
+  },
 ];
 
 // ─── Nav sidebar icons ─────────────────────────────────────────────────────────
@@ -211,6 +241,34 @@ export default function GamesPage() {
   // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
   const isMobile = useIsMobile();
   const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
+
+  // Push notifications — wired to the "MORE COMING" NOTIFY pill so players
+  // can opt-in for the next-game-drop ping with a single tap.
+  const { state: pushState, subscribe: subscribePush } = usePushNotifications(address);
+  const [notifyToast, setNotifyToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  async function onComingSoonNotify() {
+    if (!address) {
+      setNotifyToast({ msg: "Connect your wallet first.", ok: false });
+      setTimeout(() => setNotifyToast(null), 2400);
+      return;
+    }
+    if (pushState === "subscribed") {
+      setNotifyToast({ msg: "✅ You're already on the list — we'll ping you.", ok: true });
+      setTimeout(() => setNotifyToast(null), 2400);
+      return;
+    }
+    if (pushState === "denied" || pushState === "unsupported") {
+      setNotifyToast({ msg: "Notifications blocked. Enable in your browser settings.", ok: false });
+      setTimeout(() => setNotifyToast(null), 3000);
+      return;
+    }
+    const ok = await subscribePush();
+    setNotifyToast({
+      msg: ok ? "🔔 You're in — we'll ping you on every new game drop." : "Couldn't subscribe right now. Try again later.",
+      ok,
+    });
+    setTimeout(() => setNotifyToast(null), 2800);
+  }
 
   useEffect(() => {
     if (!address) { setStreak(null); return; }
@@ -1085,27 +1143,63 @@ export default function GamesPage() {
             }}
           />
 
-          {/* Game cards — desktop shows a 3-column row with fixed height,
-              mobile stacks horizontal cards (art left, info right) so each
-              game gets real estate and all three fit without cramping. */}
-          <div style={{
-            display: isMobile ? "flex" : "grid",
-            flexDirection: isMobile ? "column" : undefined,
-            gridTemplateColumns: isMobile ? undefined : "repeat(3, 1fr)",
-            gap: isMobile ? "12px" : "14px",
-            width: "100%",
-            maxWidth: "680px",
-            height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
-          }}>
-            {GAMES.map(g => (
-              <GameCard
-                key={g.id}
-                game={g}
-                isMobile={isMobile}
-                onStart={() => g.path && router.push(g.path)}
-              />
-            ))}
+          {/* Game cards — desktop = horizontal scroller with snap (scales
+              cleanly as the roster grows), mobile = vertical stack with the
+              coming-soon teaser as a shorter card at the bottom. Fade-edge
+              gradient on the right of the desktop scroller hints at content
+              beyond the viewport. */}
+          <div style={{ position: "relative", width: "100%", maxWidth: "920px" }}>
+            <div className="hide-scrollbar" style={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              gap: isMobile ? "12px" : "16px",
+              width: "100%",
+              height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
+              overflowX: isMobile ? "visible" : "auto",
+              overflowY: isMobile ? "visible" : "hidden",
+              scrollSnapType: isMobile ? "none" : "x mandatory",
+              paddingBottom: isMobile ? 0 : 8,
+              paddingRight: isMobile ? 0 : 40, // room for the fade gradient
+            }}>
+              {GAMES.map(g => (
+                <GameCard
+                  key={g.id}
+                  game={g}
+                  isMobile={isMobile}
+                  onStart={() => g.path && router.push(g.path)}
+                  onNotify={onComingSoonNotify}
+                  pushState={pushState}
+                />
+              ))}
+            </div>
+            {/* Desktop-only right-edge fade — signals scrollability. */}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute", top: 0, right: 0, bottom: 8, width: 60,
+                background: "linear-gradient(90deg, transparent, rgba(8,2,32,0.85))",
+                pointerEvents: "none",
+                borderRadius: "0 8px 8px 0",
+              }} />
+            )}
           </div>
+
+          {/* Notify toast — fixed-position pill so it doesn't shift layout */}
+          {notifyToast && (
+            <div style={{
+              position: "fixed",
+              bottom: isMobile ? "calc(78px + env(safe-area-inset-bottom))" : "32px",
+              left: "50%", transform: "translateX(-50%)",
+              zIndex: 80,
+              padding: "12px 18px", borderRadius: 14,
+              background: notifyToast.ok ? "rgba(134,239,172,0.16)" : "rgba(251,191,36,0.16)",
+              border: `1px solid ${notifyToast.ok ? "rgba(134,239,172,0.55)" : "rgba(251,191,36,0.55)"}`,
+              boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
+              backdropFilter: "blur(12px)",
+              color: notifyToast.ok ? "#86efac" : "#fde68a",
+              fontSize: 12.5, fontWeight: 800, letterSpacing: "0.04em",
+              maxWidth: "min(90vw, 360px)", textAlign: "center", lineHeight: 1.35,
+            }}>{notifyToast.msg}</div>
+          )}
 
           {/* Mobile activity panel — same card as the desktop sidebar,
               rendered inside the scrollable center so it fills what was
@@ -1155,11 +1249,89 @@ function GameCard({
   game,
   isMobile,
   onStart,
+  onNotify,
+  pushState,
 }: {
   game: typeof GAMES[number];
   isMobile: boolean;
   onStart: () => void;
+  onNotify?: () => void;
+  pushState?: "unsupported" | "default" | "granted" | "denied" | "subscribing" | "subscribed";
 }) {
+  const isComingSoon = game.id === "coming-soon";
+  const notifySubscribed = pushState === "subscribed";
+  // ─── Mobile: coming-soon variant ─────────────────────────────────────────
+  // Shorter, muted card. Same chassis (border, shadow, dimensions language)
+  // but ~70% the height of active cards and the START button is replaced
+  // with a 🔔 NOTIFY pill that wires into push subscriptions.
+  if (isMobile && isComingSoon) {
+    const notifyLabel = pushState === "subscribing"
+      ? "SUBSCRIBING…"
+      : notifySubscribed
+        ? "🔔 SUBSCRIBED"
+        : "🔔 NOTIFY ME";
+    return (
+      <div style={{
+        borderRadius: "18px",
+        padding: "2px",
+        background: `linear-gradient(135deg, ${game.borderColor}aa 0%, ${game.borderColor}44 100%)`,
+        boxShadow: `0 6px 18px -6px ${game.glow}55, 0 0 0 1px ${game.borderColor}22`,
+      }}>
+        <div style={{
+          borderRadius: "16px",
+          background: "linear-gradient(135deg, #1b1240 0%, #0b0626 80%)",
+          display: "flex", alignItems: "stretch", overflow: "hidden",
+          minHeight: "76px",
+        }}>
+          <div style={{
+            width: "76px", flexShrink: 0,
+            background: game.artGrad,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "relative", overflow: "hidden",
+          }}>
+            <div style={{ width: "84%", height: "84%", opacity: 0.85, filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" }}>
+              {game.art}
+            </div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 0,
+            padding: "10px 12px",
+            display: "flex", flexDirection: "column", justifyContent: "space-between",
+          }}>
+            <div>
+              <div style={{
+                color: "rgba(232,225,255,0.95)",
+                fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.15,
+                textShadow: `0 0 10px ${game.borderColor}66`,
+              }}>{game.title}</div>
+              <div style={{
+                color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700,
+                letterSpacing: "0.04em", marginTop: 3,
+              }}>Dice · Strategy · PVP RPS</div>
+            </div>
+            <div
+              role="button" tabIndex={0}
+              onClick={e => { e.stopPropagation(); onNotify?.(); }}
+              style={{
+                alignSelf: "flex-end",
+                padding: "6px 11px", borderRadius: 999,
+                background: notifySubscribed
+                  ? "rgba(134,239,172,0.16)"
+                  : "rgba(255,255,255,0.07)",
+                border: notifySubscribed
+                  ? "1px solid rgba(134,239,172,0.5)"
+                  : `1px solid ${game.borderColor}aa`,
+                color: notifySubscribed ? "#86efac" : "rgba(232,225,255,0.92)",
+                fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.12em",
+                cursor: "pointer", userSelect: "none",
+              }}
+            >{notifyLabel}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Mobile: horizontal layout — art left (fixed), info column right.
   // Keeps each card compact (~120px tall) so all 3 games fit without
   // forcing long scrolls, and each one reads as a clean list item.
@@ -1299,11 +1471,17 @@ function GameCard({
     );
   }
 
-  // Desktop: unchanged 3-column tall cards.
+  // Desktop: tall cards inside a horizontal scroller (set by the parent).
+  // Fixed min-width + scroll-snap means the layout grows cleanly as more
+  // games are added — no grid refactor needed.
   return (
     <div
       style={{
         height: "100%",
+        flex: "0 0 auto",
+        minWidth: "232px",
+        maxWidth: "232px",
+        scrollSnapAlign: "start",
         transition: "transform 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         cursor: game.active ? "pointer" : "default",
       }}
@@ -1458,6 +1636,37 @@ function GameCard({
                     }}>START</span>
                   </div>
                 </div>
+              </div>
+            ) : isComingSoon ? (
+              // Coming-soon card swaps START for a 🔔 NOTIFY pill wired to
+              // the push opt-in flow. Visually still "card-shaped" so it
+              // doesn't break the row rhythm, but tinted muted-green when
+              // already subscribed so the player gets clear feedback.
+              <div
+                role="button" tabIndex={0}
+                onClick={onNotify}
+                style={{
+                  cursor: "pointer", userSelect: "none",
+                  borderRadius: "14px", padding: "11px",
+                  textAlign: "center",
+                  background: notifySubscribed
+                    ? "rgba(134,239,172,0.14)"
+                    : "rgba(124,109,184,0.18)",
+                  border: notifySubscribed
+                    ? "1px solid rgba(134,239,172,0.5)"
+                    : `1px solid ${game.borderColor}aa`,
+                  color: notifySubscribed ? "#86efac" : "rgba(232,225,255,0.9)",
+                  fontSize: "12.5px", fontWeight: 900, letterSpacing: "0.14em",
+                  transition: "background 0.18s, color 0.18s",
+                }}
+                onMouseEnter={e => { if (!notifySubscribed) (e.currentTarget as HTMLDivElement).style.background = "rgba(124,109,184,0.28)"; }}
+                onMouseLeave={e => { if (!notifySubscribed) (e.currentTarget as HTMLDivElement).style.background = "rgba(124,109,184,0.18)"; }}
+              >
+                {pushState === "subscribing"
+                  ? "SUBSCRIBING…"
+                  : notifySubscribed
+                    ? "🔔 SUBSCRIBED"
+                    : "🔔 NOTIFY ME"}
               </div>
             ) : (
               <div style={{
