@@ -2,6 +2,7 @@ import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther
 import { privateKeyToAccount } from 'viem/accounts';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
+import * as fs from 'fs';
 import { MoltbookService } from './services/MoltbookService.js';
 
 dotenv.config();
@@ -245,6 +246,140 @@ const model = new OpponentModel();
 const respondedMatches = new Set<string>();
 const processingAcceptance = new Set<string>();
 const completedMatches = new Set<string>(); // Skip these on future scans
+
+// ─── LossCapTracker ─────────────────────────────────────────────────────────
+// Two-layer circuit breaker against draining the agent wallet:
+//
+//   1. Global daily loss cap. If MARKOV has lost > GLOBAL_DAILY_LOSS_CAP
+//      across ALL matches today (UTC), agent refuses to accept any new
+//      match until the next UTC day rolls over. Protects against cold
+//      streaks and coordinated multi-wallet sharks.
+//
+//   2. Per-wallet daily loss cap. If a SINGLE wallet has won more than
+//      WALLET_DAILY_LOSS_CAP from MARKOV today, agent refuses to accept
+//      further matches from that wallet. Protects against a single shark
+//      farming the agent.
+//
+// State is persisted to disk every recordOutcome() call so an agent
+// restart can't be used to reset the caps. File: ./.loss-cap-state.json
+// (gitignored). On boot, state is loaded only if it's still today's day-
+// key — yesterday's snapshot is discarded and counters start fresh.
+class LossCapTracker {
+    // Defaults — tunable via env vars without redeploy.
+    private readonly GLOBAL_CAP_WEI: bigint = parseEther(process.env.GLOBAL_DAILY_LOSS_CAP ?? "100");
+    private readonly WALLET_CAP_WEI: bigint = parseEther(process.env.WALLET_DAILY_LOSS_CAP ?? "50");
+    private readonly STATE_FILE = "./.loss-cap-state.json";
+
+    private currentDayKey: string = "";
+    private totalLossWei: bigint = 0n;
+    private walletLossWei: Map<string, bigint> = new Map();
+    // Track which matches we've already counted so a duplicate
+    // recordOutcome (e.g. on retry) can't double-charge the counters.
+    private countedMatches: Set<string> = new Set();
+
+    constructor() {
+        this.rolloverIfNeeded();
+        this.load();
+    }
+
+    private dayKey(): string {
+        return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    }
+
+    private rolloverIfNeeded(): void {
+        const key = this.dayKey();
+        if (key !== this.currentDayKey) {
+            if (this.currentDayKey !== "") {
+                console.log(chalk.cyan(`📅 New day (${key}) — loss caps reset.`));
+            }
+            this.currentDayKey = key;
+            this.totalLossWei = 0n;
+            this.walletLossWei.clear();
+            this.countedMatches.clear();
+        }
+    }
+
+    private load(): void {
+        try {
+            if (!fs.existsSync(this.STATE_FILE)) return;
+            const raw = fs.readFileSync(this.STATE_FILE, "utf-8");
+            const data = JSON.parse(raw);
+            if (data?.day !== this.dayKey()) {
+                // Stale day — discard.
+                return;
+            }
+            this.currentDayKey = data.day;
+            this.totalLossWei = BigInt(data.totalLossWei ?? "0");
+            this.walletLossWei = new Map(
+                Object.entries(data.walletLossWei ?? {}).map(([k, v]) => [k, BigInt(v as string)])
+            );
+            this.countedMatches = new Set(data.countedMatches ?? []);
+            console.log(chalk.gray(`Loaded loss-cap state: today's total = ${formatEther(this.totalLossWei)} G$ across ${this.walletLossWei.size} wallets.`));
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Could not load loss-cap state: ${e.message}`));
+        }
+    }
+
+    private persist(): void {
+        try {
+            const data = {
+                day: this.currentDayKey,
+                totalLossWei: this.totalLossWei.toString(),
+                walletLossWei: Object.fromEntries(
+                    Array.from(this.walletLossWei.entries()).map(([k, v]) => [k, v.toString()])
+                ),
+                countedMatches: Array.from(this.countedMatches),
+            };
+            fs.writeFileSync(this.STATE_FILE, JSON.stringify(data));
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Could not persist loss-cap state: ${e.message}`));
+        }
+    }
+
+    /**
+     * Called before acceptMatch. Returns null if the match can be accepted,
+     * or a reason string if a cap would be exceeded by this wager.
+     */
+    canAccept(challenger: string, wager: bigint): string | null {
+        this.rolloverIfNeeded();
+
+        // Global cap — would this match push us past the daily ceiling?
+        if (this.totalLossWei + wager > this.GLOBAL_CAP_WEI) {
+            return `GLOBAL daily loss cap reached (${formatEther(this.totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$ lost today). Pausing until next UTC day.`;
+        }
+
+        const lcChal = challenger.toLowerCase();
+        const walletLoss = this.walletLossWei.get(lcChal) ?? 0n;
+        if (walletLoss + wager > this.WALLET_CAP_WEI) {
+            return `WALLET cap reached for ${challenger.slice(0, 8)}.. (${formatEther(walletLoss)}/${formatEther(this.WALLET_CAP_WEI)} G$ won from MARKOV today).`;
+        }
+
+        return null;
+    }
+
+    /**
+     * Called after resolveMatch on chain. Charges the agent's loss against
+     * both caps only when the player won (i.e. agent lost its wager).
+     */
+    recordOutcome(matchId: bigint, challenger: string, agentWon: boolean, wager: bigint): void {
+        this.rolloverIfNeeded();
+
+        const key = matchId.toString();
+        if (this.countedMatches.has(key)) return;
+        this.countedMatches.add(key);
+
+        if (!agentWon) {
+            this.totalLossWei += wager;
+            const lcChal = challenger.toLowerCase();
+            this.walletLossWei.set(lcChal, (this.walletLossWei.get(lcChal) ?? 0n) + wager);
+            console.log(chalk.gray(`📊 Loss cap: +${formatEther(wager)} G$ (player ${challenger.slice(0, 8)}..). Today total = ${formatEther(this.totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$. This wallet = ${formatEther(this.walletLossWei.get(lcChal) ?? 0n)}/${formatEther(this.WALLET_CAP_WEI)} G$.`));
+        }
+
+        this.persist();
+    }
+}
+
+const lossCap = new LossCapTracker();
 let lastKnownMatchCount = 0n;
 const moltbook = new MoltbookService();
 // Cache of moves the agent itself submitted, keyed by matchId. Populated by
@@ -504,6 +639,17 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
         return;
     }
 
+    // Loss-cap circuit breaker — global + per-wallet. Cheap in-memory check
+    // before we burn gas on the acceptMatch tx. If a cap is hit, the match
+    // sits on chain in PROPOSED state; the frontend's useAgentLiveness will
+    // detect the staleness within ~45s and surface 'MARKOV is offline'.
+    const capReject = lossCap.canAccept(challenger, wager);
+    if (capReject) {
+        console.log(chalk.yellow(`Match #${matchId} not accepted: ${capReject}`));
+        processingAcceptance.delete(matchId.toString());
+        return;
+    }
+
     try {
         const encodedArgs = encodeAbiParameters(
             [{ type: 'uint8' }, { type: 'uint256' }],
@@ -672,6 +818,11 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         const hash = await walletClient.writeContract(request);
         console.log(chalk.green(`✅ Match #${matchId} Resolved! Winner: ${winner === m.challenger ? 'Challenger' : 'Opponent'} (${winner})`));
 
+        // Loss-cap accounting. Compare winner to the agent's own address to
+        // decide if the agent won this match. recordOutcome only counts when
+        // the agent lost (player won), so cap state stays accurate.
+        const agentWon = winner.toLowerCase() === account.address.toLowerCase();
+        lossCap.recordOutcome(matchId, m.challenger, agentWon, m.wager);
 
         // Social Update: Match Result
         await moltbook.postMatchResult(

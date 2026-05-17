@@ -2,3 +2,4 @@ node_modules/
 *.log
 .env
 arena_token_address.txt
+.loss-cap-state.json
