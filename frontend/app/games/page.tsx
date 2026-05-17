@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -241,6 +241,40 @@ export default function GamesPage() {
   // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
   const isMobile = useIsMobile();
   const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
+
+  // Slider scroll state — tracks whether the slider can scroll further
+  // left / right so the chevron buttons fade in and out cleanly. Without
+  // this, you'd see two dead buttons always rendered.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 6);
+    // 6px slack so a tiny rounding error doesn't keep the chevron alive
+    // when the player is already at the right edge.
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 6);
+  }, []);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState]);
+  // Scroll by one card-width per chevron click. Matches scroll-snap so
+  // the slider lands cleanly on a card every time.
+  const scrollByCard = useCallback((dir: "left" | "right") => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const step = 246; // 232px card + 14px gap
+    el.scrollBy({ left: dir === "left" ? -step : step, behavior: "smooth" });
+  }, []);
 
   // Push notifications — wired to the "MORE COMING" NOTIFY pill so players
   // can opt-in for the next-game-drop ping with a single tap.
@@ -1143,35 +1177,53 @@ export default function GamesPage() {
             }}
           />
 
-          {/* Game cards — Apple-Arcade-style peek slider on desktop. Shows
-              3 cards fully + a half-peek of the 4th that hints "there's
-              more, scroll right". scroll-snap-align: start makes each
-              flick land cleanly on a card. scroll-padding-left keeps the
-              snap respecting the left gutter so the first card never gets
-              clipped on initial load. Mobile keeps the vertical stack. */}
+          {/* Game cards — desktop = contained slider tray with explicit
+              ◀ ▶ chevrons + Apple-Arcade-style peek. The tray's own dark
+              backdrop isolates the slider from the decorative animated
+              icons (dice/gamepad/joystick) on the page background, so
+              nothing leaks through the gaps between cards. Chevrons fade
+              in/out based on actual scroll position. Mobile keeps the
+              vertical stack with no tray (cards already define their own
+              chassis on phones). */}
           <div style={{
             position: "relative",
             width: "100%",
             maxWidth: isMobile ? "680px" : "920px",
+            // Contained tray ONLY on desktop. The dark frosted backdrop
+            // blocks the page's animated decoration icons from showing
+            // through gaps between cards — the "glowing colors" leak the
+            // earlier version had.
+            ...(isMobile ? {} : {
+              padding: "14px 14px 10px",
+              borderRadius: "22px",
+              background: "linear-gradient(180deg, rgba(20,8,52,0.72) 0%, rgba(8,2,32,0.92) 100%)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04), 0 24px 50px -20px rgba(0,0,0,0.55)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }),
           }}>
-            <div className="hide-scrollbar" style={{
-              display: "flex",
-              flexDirection: isMobile ? "column" : "row",
-              gap: isMobile ? "12px" : "14px",
-              width: "100%",
-              height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
-              overflowX: isMobile ? "visible" : "auto",
-              overflowY: isMobile ? "visible" : "hidden",
-              scrollSnapType: isMobile ? "none" : "x mandatory",
-              scrollPaddingLeft: isMobile ? 0 : "14px",
-              scrollPaddingRight: isMobile ? 0 : "60px",
-              paddingLeft: isMobile ? 0 : "14px",
-              // Generous right padding so the last card can fully snap
-              // into view AND the peek gradient sits in dedicated space
-              // (no card content awkwardly cut by the gradient).
-              paddingRight: isMobile ? 0 : "60px",
-              paddingBottom: isMobile ? 0 : "4px",
-            }}>
+            <div
+              ref={scrollerRef}
+              className="hide-scrollbar"
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? "12px" : "14px",
+                width: "100%",
+                height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
+                overflowX: isMobile ? "visible" : "auto",
+                overflowY: isMobile ? "visible" : "hidden",
+                scrollSnapType: isMobile ? "none" : "x mandatory",
+                scrollPaddingLeft: isMobile ? 0 : "4px",
+                scrollPaddingRight: isMobile ? 0 : "60px",
+                // Generous right padding so the peek gradient sits in
+                // dedicated space (no card content awkwardly cut).
+                paddingRight: isMobile ? 0 : "60px",
+                paddingBottom: isMobile ? 0 : "4px",
+                scrollBehavior: "smooth",
+              }}
+            >
               {GAMES.map(g => (
                 <GameCard
                   key={g.id}
@@ -1184,19 +1236,92 @@ export default function GamesPage() {
               ))}
             </div>
 
-            {/* Right-edge fade — desktop only. Sits OVER the rightmost
-                visible card by a few px so the peek looks deliberate
-                instead of clipped. Wider gradient (90px) so the fade
-                is soft, not a hard wall. */}
+            {/* Right-edge soft peek fade — sits inside the tray padding,
+                tells the eye "more lives here" without looking like a clip. */}
             {!isMobile && (
               <div aria-hidden style={{
                 position: "absolute",
-                top: 0, right: 0, bottom: 4,
-                width: 90,
+                top: 14, right: 14, bottom: 14,
+                width: 80,
                 pointerEvents: "none",
-                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.55) 35%, rgba(8,2,32,0.95) 100%)",
+                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.6) 40%, rgba(8,2,32,0.98) 100%)",
                 borderRadius: "0 14px 14px 0",
+                opacity: canScrollRight ? 1 : 0,
+                transition: "opacity 0.25s",
               }} />
+            )}
+            {/* Left-edge fade — only when scrolled (mirrors right side) */}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute",
+                top: 14, left: 14, bottom: 14,
+                width: 60,
+                pointerEvents: "none",
+                background: "linear-gradient(270deg, transparent 0%, rgba(8,2,32,0.6) 40%, rgba(8,2,32,0.98) 100%)",
+                borderRadius: "14px 0 0 14px",
+                opacity: canScrollLeft ? 1 : 0,
+                transition: "opacity 0.25s",
+              }} />
+            )}
+
+            {/* ◀ ▶ chevron buttons — desktop only. The explicit "I am a
+                slider" affordance. Fades in only when scroll is possible
+                in that direction; smooth scroll-by-one-card per click. */}
+            {!isMobile && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous games"
+                  onClick={() => scrollByCard("left")}
+                  style={{
+                    position: "absolute",
+                    top: "50%", left: "8px",
+                    transform: "translateY(-50%)",
+                    width: 38, height: 38,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    background: "rgba(8,2,32,0.85)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    color: "white",
+                    fontSize: 18, fontWeight: 900,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(6px)",
+                    opacity: canScrollLeft ? 1 : 0,
+                    pointerEvents: canScrollLeft ? "auto" : "none",
+                    transition: "opacity 0.25s, transform 0.15s",
+                    zIndex: 3,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1.08)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1)"; }}
+                >‹</button>
+                <button
+                  type="button"
+                  aria-label="More games"
+                  onClick={() => scrollByCard("right")}
+                  style={{
+                    position: "absolute",
+                    top: "50%", right: "8px",
+                    transform: "translateY(-50%)",
+                    width: 38, height: 38,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    background: "rgba(8,2,32,0.85)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    color: "white",
+                    fontSize: 18, fontWeight: 900,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(6px)",
+                    opacity: canScrollRight ? 1 : 0,
+                    pointerEvents: canScrollRight ? "auto" : "none",
+                    transition: "opacity 0.25s, transform 0.15s",
+                    zIndex: 3,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1.08)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1)"; }}
+                >›</button>
+              </>
             )}
           </div>
 
