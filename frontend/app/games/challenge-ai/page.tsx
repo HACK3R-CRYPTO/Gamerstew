@@ -490,14 +490,19 @@ export default function ChallengeAi() {
   }
 
   // After result, "rematch" runs another challenge with the same stake.
+  // We DON'T clear revealHoldStartRef — the new match will have a different
+  // id, so the auto-result effect's guard `ref.current === activeMatch.id`
+  // naturally fires for the new match. Clearing the ref would let the OLD
+  // match re-trigger the reveal sequence on the next multicall refresh,
+  // bouncing the player back into the result screen they just dismissed.
   async function onRematch() {
-    revealHoldStartRef.current = null;
     armedRef.current = false;
     setPhase("vs");
     await onChallenge();
   }
   function onLobby() {
-    revealHoldStartRef.current = null;
+    // Same reasoning — keep revealHoldStartRef set so the dismissed
+    // completed match doesn't re-trigger result on the next refresh.
     armedRef.current = true; // don't auto-resume from result match
     setPhase("lobby");
   }
