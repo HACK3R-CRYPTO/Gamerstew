@@ -1275,52 +1275,76 @@ export default function GamesPage() {
                   onClick={() => scrollByCard("left")}
                   style={{
                     position: "absolute",
-                    top: "50%", left: "8px",
+                    top: "50%", left: "10px",
                     transform: "translateY(-50%)",
-                    width: 38, height: 38,
+                    width: 42, height: 42,
                     borderRadius: 999,
                     cursor: "pointer",
-                    background: "rgba(8,2,32,0.85)",
-                    border: "1px solid rgba(255,255,255,0.18)",
+                    padding: 0,
+                    background: "rgba(8,2,32,0.88)",
+                    border: "1px solid rgba(255,255,255,0.22)",
                     color: "white",
-                    fontSize: 18, fontWeight: 900,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.5)",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.55)",
                     backdropFilter: "blur(6px)",
                     opacity: canScrollLeft ? 1 : 0,
                     pointerEvents: canScrollLeft ? "auto" : "none",
-                    transition: "opacity 0.25s, transform 0.15s",
+                    transition: "opacity 0.25s, transform 0.15s, background 0.15s",
                     zIndex: 3,
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1.08)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1)"; }}
-                >‹</button>
+                  onMouseEnter={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1.08)";
+                    el.style.background = "rgba(20,8,52,0.95)";
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1)";
+                    el.style.background = "rgba(8,2,32,0.88)";
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="15 6 9 12 15 18" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   aria-label="More games"
                   onClick={() => scrollByCard("right")}
                   style={{
                     position: "absolute",
-                    top: "50%", right: "8px",
+                    top: "50%", right: "10px",
                     transform: "translateY(-50%)",
-                    width: 38, height: 38,
+                    width: 42, height: 42,
                     borderRadius: 999,
                     cursor: "pointer",
-                    background: "rgba(8,2,32,0.85)",
-                    border: "1px solid rgba(255,255,255,0.18)",
+                    padding: 0,
+                    background: "rgba(8,2,32,0.88)",
+                    border: "1px solid rgba(255,255,255,0.22)",
                     color: "white",
-                    fontSize: 18, fontWeight: 900,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.5)",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.55)",
                     backdropFilter: "blur(6px)",
                     opacity: canScrollRight ? 1 : 0,
                     pointerEvents: canScrollRight ? "auto" : "none",
-                    transition: "opacity 0.25s, transform 0.15s",
+                    transition: "opacity 0.25s, transform 0.15s, background 0.15s",
                     zIndex: 3,
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1.08)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-50%) scale(1)"; }}
-                >›</button>
+                  onMouseEnter={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1.08)";
+                    el.style.background = "rgba(20,8,52,0.95)";
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1)";
+                    el.style.background = "rgba(8,2,32,0.88)";
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                </button>
               </>
             )}
           </div>
@@ -1627,21 +1651,21 @@ function GameCard({
         transition: "transform 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         cursor: game.active ? "pointer" : "default",
       }}
-      onMouseEnter={e => { if (game.active) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.04) translateY(-6px)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
+      // Hover stays in-bounds — brightness + filter shift instead of scale/
+      // translate. The scroller has overflowY:hidden (forced by the auto on
+      // overflowX), so any transform that grows the card visibly got clipped.
+      onMouseEnter={e => { if (game.active) (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.08) saturate(1.05)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.filter = "none"; }}
     >
-      {/* Neon border wrapper — gradient border + glow */}
+      {/* Tinted border — keeps the per-game identity color (orange for
+          Rhythm Rush, green for Simon, etc) but drops the heavy neon halo
+          shadows that competed with the new contained tray surface. */}
       <div style={{
         height: "100%",
         borderRadius: "22px",
-        padding: "3px",
-        background: `linear-gradient(180deg, ${game.borderColor} 0%, ${game.borderColor}88 100%)`,
-        boxShadow: [
-          `0 0 0 1px ${game.borderColor}44`,
-          `0 0 20px ${game.borderColor}88`,
-          `0 0 50px ${game.borderColor}33`,
-          `0 20px 50px -10px ${game.glow}88`,
-        ].join(", "),
+        padding: "2px",
+        background: `linear-gradient(180deg, ${game.borderColor}cc 0%, ${game.borderColor}55 100%)`,
+        boxShadow: "0 14px 32px -12px rgba(0,0,0,0.55)",
       }}>
         {/* Card inner — flex column filling full height */}
         <div style={{
