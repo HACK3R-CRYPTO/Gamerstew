@@ -73,20 +73,35 @@ export default function MatchPage() {
     query: { refetchInterval: 3000, enabled: matchId > 0n },
   });
 
-  // Move reveals — fetched only once both have moved so the suspense holds.
+  // Move reveals — kept FRESH (no caching) so the value we render is what
+  // the contract has right now, not whatever was first read when the match
+  // hit ACCEPTED. Solidity mappings return 0 by default and a stale read can
+  // briefly show the AI as ROCK before the real move propagates. staleTime:0
+  // + faster polling closes that window; the explicit refetch on the
+  // COMPLETED status flip (below) is the belt-and-braces final pull.
   const { data: playerMove, refetch: refetchPlayerMove } = useReadContract({
     address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
     abi: ARENA_PLATFORM_ABI,
     functionName: "playerMoves",
     args: address ? [matchId, address] : undefined,
-    query: { enabled: !!address && !!playerHasPlayed && matchId > 0n, refetchInterval: 4000 },
+    query: {
+      enabled: !!address && !!playerHasPlayed && matchId > 0n,
+      refetchInterval: 2000,
+      staleTime: 0,
+      gcTime:    0,
+    },
   });
   const { data: aiMove, refetch: refetchAiMove } = useReadContract({
     address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
     abi: ARENA_PLATFORM_ABI,
     functionName: "playerMoves",
     args: [matchId, aiAddress],
-    query: { enabled: !!aiHasPlayed && matchId > 0n, refetchInterval: 4000 },
+    query: {
+      enabled: !!aiHasPlayed && matchId > 0n,
+      refetchInterval: 2000,
+      staleTime: 0,
+      gcTime:    0,
+    },
   });
 
   // ─── UI phase machine ─────────────────────────────────────────────────────
@@ -103,26 +118,36 @@ export default function MatchPage() {
 
   // Suspense hold — fires only when the contract status flips to COMPLETED
   // (the AI agent's resolveMatch call). At that point both moves are
-  // guaranteed final on-chain, so the reveal animation can read them safely.
-  //
-  // Doing this on `hasPlayed` flags was racy — playerMoves can briefly read
-  // as 0 (= ROCK by default) before the actual move propagates through RPC.
-  // Status-COMPLETED is the only signal that's authoritative.
+  // guaranteed final on-chain, but the RPC / wagmi cache can still serve a
+  // stale read for a moment. We hold the LOCK animation longer than needed,
+  // explicitly refetch both moves twice (with a short delay between), and
+  // only THEN release the hold so the reveal renders the correct emojis.
   useEffect(() => {
-    if (match?.status === MATCH_STATUS.COMPLETED && revealHoldStartRef.current === null) {
-      revealHoldStartRef.current = Date.now();
-      setHoldingReveal(true);
-      // Re-fetch both moves right before the reveal animation kicks in so the
-      // emojis we render are the final, finalized values — belt + braces on
-      // top of the status check.
-      refetchPlayerMove();
-      refetchAiMove();
-      // Lock duration scales with wager tier so HIGH ROLLER feels weightier.
-      const tier = wagerTierFromAmount(match.wager);
-      const ms = tier === "highroller" ? 2000 : tier === "staked" ? 1500 : 1200;
-      const t = setTimeout(() => setHoldingReveal(false), ms);
-      return () => clearTimeout(t);
-    }
+    if (match?.status !== MATCH_STATUS.COMPLETED) return;
+    if (revealHoldStartRef.current !== null) return;
+    revealHoldStartRef.current = Date.now();
+    setHoldingReveal(true);
+
+    // Force-refetch twice — once immediately, once after 800ms — so we win
+    // any race with RPC indexing the latest block. The second refetch
+    // catches the value if the first one missed.
+    let cancelled = false;
+    const run = async () => {
+      try { await Promise.all([refetchPlayerMove(), refetchAiMove()]); } catch {}
+      if (cancelled) return;
+      await new Promise(r => setTimeout(r, 800));
+      if (cancelled) return;
+      try { await Promise.all([refetchPlayerMove(), refetchAiMove()]); } catch {}
+    };
+    void run();
+
+    // Hold duration scales with wager tier so HIGH ROLLER feels weightier.
+    // Bumped from earlier values to give the two refetches time to complete
+    // BEFORE the reveal animation runs.
+    const tier = wagerTierFromAmount(match.wager);
+    const ms = tier === "highroller" ? 2400 : tier === "staked" ? 1900 : 1600;
+    const t = setTimeout(() => setHoldingReveal(false), ms);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [match?.status, match?.wager, refetchPlayerMove, refetchAiMove]);
 
   // ─── Move submission ─────────────────────────────────────────────────────

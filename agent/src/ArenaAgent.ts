@@ -437,40 +437,42 @@ async function tryPlayMove(matchId: bigint, m: any) {
 
     if (!isChallenger && !isOpponent) return;
 
-
-    // Check if we already played
-    const hasPlayed = await withRetry(() => publicClient.readContract({
-        address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, account.address]
-    }), "hasPlayed") as boolean;
-
-    if (hasPlayed) return;
-
-    // FAIRNESS: If we are the opponent (accepted someone's challenge),
-    // wait for the challenger to play first so they can't see our move
-    if (isOpponent) {
-        const challengerPlayed = await withRetry(() => publicClient.readContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, m.challenger]
-        }), "challengerPlayed") as boolean;
-
-        console.log(chalk.gray(`Match #${matchId}: challengerPlayed=${challengerPlayed}, waiting...`));
-        if (!challengerPlayed) return; // Wait for challenger to go first
-    }
-
-
-
+    // CRITICAL: claim the lock SYNCHRONOUSLY before any await so a parallel
+    // poll cycle for the same match can't sneak through the has-check and
+    // submit a duplicate playMove. Was previously set after the on-chain
+    // reads below, which let two pollers race to playMove with different
+    // (mathematically pre-determined) moves — only one mined but the second
+    // briefly polluted the visible state and made debugging confusing.
     activeGameLocks.add(matchIdStr);
+
     try {
+        // Check if we already played
+        const hasPlayed = await withRetry(() => publicClient.readContract({
+            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, account.address]
+        }), "hasPlayed") as boolean;
+
+        if (hasPlayed) return;
+
+        // FAIRNESS: If we are the opponent (accepted someone's challenge),
+        // wait for the challenger to play first so they can't see our move
+        if (isOpponent) {
+            const challengerPlayed = await withRetry(() => publicClient.readContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, m.challenger]
+            }), "challengerPlayed") as boolean;
+
+            console.log(chalk.gray(`Match #${matchId}: challengerPlayed=${challengerPlayed}, waiting...`));
+            if (!challengerPlayed) return; // Wait for challenger to go first
+        }
+
+        // Pick + submit our move
         const gameType = m.gameType;
         const opponentAddr = isChallenger ? m.opponent : m.challenger;
 
-
         console.log(chalk.magenta(`🤖 Agent playing move for Match #${matchId} (${GAME_NAMES[gameType]})...`));
 
-        // Predict move based on opponent
         const aiMove = model.predict(gameType, opponentAddr);
         let moveToSend = aiMove;
 
-        // Visual Logging
         let moveLabel = 'Strategic';
         if (gameType === 0) moveLabel = ['Rock', 'Paper', 'Scissors'][aiMove] || 'Unknown';
         else if (gameType === 1) { moveLabel = `Dice ${aiMove + 1}`; moveToSend = aiMove + 1; }
@@ -489,6 +491,8 @@ async function tryPlayMove(matchId: bigint, m: any) {
     } catch (e: any) {
         console.error(chalk.red(`Failed to play move for #${matchId}:`), e.shortMessage || e.message);
     } finally {
+        // Release the lock on every exit path — early return, success, or error.
+        // The next poll cycle is the right time to retry if this attempt failed.
         activeGameLocks.delete(matchIdStr);
     }
 }
