@@ -1217,15 +1217,20 @@ export default function GamesPage() {
                 overflowX: isMobile ? "visible" : "auto",
                 overflowY: isMobile ? "visible" : "hidden",
                 scrollSnapType: isMobile ? "none" : "x mandatory",
-                scrollPaddingLeft: isMobile ? 0 : "4px",
+                // scroll-padding-left matches paddingLeft so snap lands
+                // the first card at the visual gutter, not flush against
+                // the clip edge (which was the source of the left clip).
+                scrollPaddingLeft: isMobile ? 0 : "20px",
                 scrollPaddingRight: isMobile ? 0 : "60px",
+                // Horizontal breathing room. The first card needs room
+                // to scale-grow leftward on hover (~8px each side) —
+                // without paddingLeft the leftmost card's hover gets
+                // clipped by overflow:hidden the same way the top was.
+                paddingLeft: isMobile ? 0 : "20px",
                 paddingRight: isMobile ? 0 : "60px",
                 // Vertical breathing room. Hover does translateY(-8) +
                 // scale(1.04), which extends the card up to ~16px above
-                // its rest position. We need at least that much padding,
-                // plus buffer for the soft drop-shadow.
-                //   top:    24 → lift(8) + scale-grow(~8) + 8px buffer
-                //   bottom: 24 → shadow needs room to render fully
+                // its rest position. Symmetric buffers across both axes.
                 paddingTop: isMobile ? 0 : "24px",
                 paddingBottom: isMobile ? 0 : "24px",
                 scrollBehavior: "smooth",
