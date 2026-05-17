@@ -73,11 +73,13 @@ export const GAME_TYPES: GameType[] = [
       { id: 0, emoji: "🪙", label: "HEADS" },
       { id: 1, emoji: "🦅", label: "TAILS" },
     ],
-    // Coin flip mechanic: both players call heads or tails, then the contract
-    // runs an oracle coin flip. Whoever called the side matching the oracle
-    // wins. If both called right OR both called wrong → tie → player wins by
-    // the player-first rule.
-    rules: "Call heads or tails. MARKOV-1 calls too. The coin flips after — whoever guessed it correctly wins. If you both guess right or both guess wrong, the tie goes to you.",
+    // Coin flip mechanic: both players call heads or tails, then the agent
+    // runs an oracle coin flip. Asymmetric tie rule keeps the economics
+    // sustainable:
+    //   - Both wrong → tie → player wins (consolation)
+    //   - Both right → MARKOV wins (house edge)
+    //   - Otherwise  → whoever called the oracle correctly wins
+    rules: "Call heads or tails. MARKOV-1 calls too. The coin flips after — whoever guessed it correctly wins. If you both miss, the tie goes to you. If you both call it right, MARKOV claims the win.",
   },
 ];
 

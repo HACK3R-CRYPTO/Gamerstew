@@ -722,18 +722,41 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
         if (m1 === m2) isTie = true;
         else if (m1 > m2) p1Wins = true;
     } else if (gameType === 3) { // Coin Flip
-        // Oracle Flip logic - re-simulated for determination 
-        // NOTE: Ideally, the Agent should store the flip result OR use blockhash randomness. 
-        // For this hackathon version, we act as the random oracle at resolution time.
+        // Oracle Flip — the third hand of coin flip. Both players call a
+        // side, the oracle "flips," whoever matched it wins. For sustainable
+        // house economics:
+        //   - Both right     → AI (p2) wins. Both made the correct call, but
+        //                       the house keeps the edge — otherwise every
+        //                       same-side call would tie to the player and
+        //                       drain the treasury.
+        //   - Both wrong     → tie → player (p1) wins. Consolation prize
+        //                       for both missing — preserves the player-
+        //                       first feel on collective failure.
+        //   - p1 right only  → player wins.
+        //   - p2 right only  → AI wins.
+        //
+        // NOTE: This currently uses Math.random() as the oracle. Ideally
+        // we'd use a verifiable on-chain source (blockhash, VRF) so the
+        // outcome is auditable. Tracked as post-hackathon work.
         const oracleFlip = Math.random() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
         console.log(chalk.gray(`🔮 Oracle Flip: ${oracleFlip === 0 ? 'Heads' : 'Tails'}`));
 
         const p1Correct = m1 === oracleFlip;
         const p2Correct = m2 === oracleFlip;
 
-        if (p1Correct && !p2Correct) p1Wins = true;
-        else if (!p1Correct && p2Correct) p1Wins = false;
-        else isTie = true; // Both correct or both wrong
+        if (p1Correct && p2Correct) {
+            // Both called the oracle correctly. House takes it.
+            p1Wins = false;
+            console.log(chalk.gray(`Both correct — AI wins on house-edge tie rule.`));
+        } else if (!p1Correct && !p2Correct) {
+            // Both missed. Player-first consolation.
+            isTie = true;
+            console.log(chalk.gray(`Both wrong — player wins on consolation tie rule.`));
+        } else if (p1Correct) {
+            p1Wins = true;
+        } else {
+            p1Wins = false;
+        }
     }
 
     if (isTie) {

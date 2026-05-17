@@ -1384,21 +1384,21 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
   }, [locked, revealing, completed, game.moves.length]);
   const aiCyclingMove = locked && !revealing ? aiCycleIdx % game.moves.length : null;
 
-  // Oracle coin flip — coin-game only. Both players call a side; the
-  // contract / agent runs a coin flip ("oracle"); whoever called the
-  // oracle's side wins. We never showed the oracle to the player — they
-  // had no way to see why they won or lost. This animates a visible coin
-  // flip during the reveal phase so the determinative moment is on screen.
-  //
-  // We derive the oracle's landing side from the chain result:
+  // Oracle coin flip — coin-game only. We derive the oracle's landing
+  // side from the chain result so the visible coin matches what actually
+  // determined the outcome:
   //   - Different picks → the winner's call matched the oracle.
-  //   - Same picks → tie (player wins by rule). We show the player's
-  //     shared call as the "oracle" for narrative coherence; the actual
-  //     oracle in that case doesn't change the outcome.
+  //   - Same picks + you won → both were wrong (consolation tie rule).
+  //                            Oracle landed on the OPPOSITE side from
+  //                            your shared call.
+  //   - Same picks + AI won → both were right (house-edge tie rule).
+  //                            Oracle landed on your shared call.
   const oracleSide: number | null = useMemo(() => {
     if (game.id !== GAME_TYPE_COIN) return null;
     if (playerMove === null || aiMove === null) return null;
-    if (playerMove === aiMove) return playerMove;
+    if (playerMove === aiMove) {
+      return youWon ? (1 - playerMove) : playerMove;
+    }
     return youWon ? playerMove : aiMove;
   }, [game.id, playerMove, aiMove, youWon]);
 
