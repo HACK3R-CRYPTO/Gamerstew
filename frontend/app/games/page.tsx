@@ -1177,36 +1177,38 @@ export default function GamesPage() {
             }}
           />
 
-          {/* Game cards — desktop = contained slider tray with explicit
-              ◀ ▶ chevrons + Apple-Arcade-style peek. The tray's own dark
-              backdrop isolates the slider from the decorative animated
-              icons (dice/gamepad/joystick) on the page background, so
-              nothing leaks through the gaps between cards. Chevrons fade
-              in/out based on actual scroll position. Mobile keeps the
-              vertical stack with no tray (cards already define their own
-              chassis on phones). */}
+          {/* Game cards — no tray. Cards live directly on the page
+              atmosphere (Apple Arcade / PSN / Stake pattern). The bg
+              icons that used to leak through gaps are dimmed by a soft
+              radial vignette behind the slider — same protection, no
+              visible frame. Chevrons appear over the cards on demand
+              and fade based on scroll position. */}
           <div style={{
             position: "relative",
             width: "100%",
             maxWidth: isMobile ? "680px" : "920px",
-            // Contained tray ONLY on desktop. The dark frosted backdrop
-            // blocks the page's animated decoration icons from showing
-            // through gaps between cards — the "glowing colors" leak the
-            // earlier version had.
-            ...(isMobile ? {} : {
-              padding: "14px 14px 10px",
-              borderRadius: "22px",
-              background: "linear-gradient(180deg, rgba(20,8,52,0.72) 0%, rgba(8,2,32,0.92) 100%)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04), 0 24px 50px -20px rgba(0,0,0,0.55)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-            }),
           }}>
+            {/* Soft atmospheric dim — kills the decorative-icon noise
+                under the slider area without putting the slider in a
+                visible box. Sits behind the cards, blurred + low
+                opacity so it reads as ambient, not as a container. */}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute",
+                inset: "-30px -50px -20px -50px",
+                background: "radial-gradient(ellipse at center, rgba(8,2,32,0.62) 0%, rgba(8,2,32,0.42) 45%, rgba(8,2,32,0.12) 78%, transparent 100%)",
+                pointerEvents: "none",
+                filter: "blur(18px)",
+                zIndex: 0,
+              }} />
+            )}
+
             <div
               ref={scrollerRef}
               className="hide-scrollbar"
               style={{
+                position: "relative",
+                zIndex: 1,
                 display: "flex",
                 flexDirection: isMobile ? "column" : "row",
                 gap: isMobile ? "12px" : "14px",
@@ -1217,8 +1219,6 @@ export default function GamesPage() {
                 scrollSnapType: isMobile ? "none" : "x mandatory",
                 scrollPaddingLeft: isMobile ? 0 : "4px",
                 scrollPaddingRight: isMobile ? 0 : "60px",
-                // Generous right padding so the peek gradient sits in
-                // dedicated space (no card content awkwardly cut).
                 paddingRight: isMobile ? 0 : "60px",
                 paddingBottom: isMobile ? 0 : "4px",
                 scrollBehavior: "smooth",
@@ -1236,31 +1236,31 @@ export default function GamesPage() {
               ))}
             </div>
 
-            {/* Right-edge soft peek fade — sits inside the tray padding,
-                tells the eye "more lives here" without looking like a clip. */}
+            {/* Right-edge peek — softer, no border-radius (no tray to
+                follow). Fades a moving piece of the next card into the
+                page atmosphere. */}
             {!isMobile && (
               <div aria-hidden style={{
                 position: "absolute",
-                top: 14, right: 14, bottom: 14,
+                top: 0, right: 0, bottom: 4,
                 width: 80,
                 pointerEvents: "none",
-                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.6) 40%, rgba(8,2,32,0.98) 100%)",
-                borderRadius: "0 14px 14px 0",
+                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.55) 45%, rgba(8,2,32,0.92) 100%)",
                 opacity: canScrollRight ? 1 : 0,
                 transition: "opacity 0.25s",
+                zIndex: 2,
               }} />
             )}
-            {/* Left-edge fade — only when scrolled (mirrors right side) */}
             {!isMobile && (
               <div aria-hidden style={{
                 position: "absolute",
-                top: 14, left: 14, bottom: 14,
+                top: 0, left: 0, bottom: 4,
                 width: 60,
                 pointerEvents: "none",
-                background: "linear-gradient(270deg, transparent 0%, rgba(8,2,32,0.6) 40%, rgba(8,2,32,0.98) 100%)",
-                borderRadius: "14px 0 0 14px",
+                background: "linear-gradient(270deg, transparent 0%, rgba(8,2,32,0.55) 45%, rgba(8,2,32,0.92) 100%)",
                 opacity: canScrollLeft ? 1 : 0,
                 transition: "opacity 0.25s",
+                zIndex: 2,
               }} />
             )}
 
