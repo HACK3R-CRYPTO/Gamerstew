@@ -228,6 +228,16 @@ export default function ChallengeAi() {
   });
 
   const [matches, setMatches] = useState<ArenaMatch[]>([]);
+  // Ticker to force the multicall to re-run on a fixed interval. Without
+  // this, the effect only re-fires when matchIds changes — which means
+  // STATUS changes on existing matches (e.g. PROPOSED → ACCEPTED → COMPLETED
+  // as the agent processes them) never propagate to the UI and the
+  // staleness banner mis-fires on matches the agent has already accepted.
+  const [matchesTick, setMatchesTick] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => setMatchesTick(t => t + 1), 4000);
+    return () => clearInterval(i);
+  }, []);
   useEffect(() => {
     if (!matchIds || !publicClient || (matchIds as readonly bigint[]).length === 0) {
       setMatches([]); return;
@@ -260,7 +270,7 @@ export default function ChallengeAi() {
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [matchIds, publicClient]);
+  }, [matchIds, publicClient, matchesTick]);
 
   // Active match = most recent non-cancelled match.
   const activeMatch = useMemo(() =>
