@@ -123,19 +123,32 @@ export type WagerTier = {
   // `rim` is the same value (used as the ring color in the new design).
   color:        string;
   rim:          string;
+  rimSoft:      string;       // lighter accent for stat bar gradients and titles
   portraitBg:   string;       // radial-gradient string for the portrait disc
   difficulty:   string;       // label shown on the cards: EASY / MEDIUM / HARD
-  multi:        number;       // display payout multiplier (1.9 / 1.9 / 1.9 ≈ 1.9×)
+  multi:        number;       // display payout multiplier (1.9 across tiers — 5% protocol fee)
   // Persona identity
   persona:      string;       // display name (MARKOV-Junior, etc.)
-  title:        string;       // short subtitle ("Cadet Bot", "Combat Frame", …)
-  epithet:      string;       // longer one-line subtitle (kept for hover)
+  title:        string;       // short subtitle ("Cadet Bot · v0.1")
+  epithet:      string;       // longer one-line subtitle
   art:          string;       // /public path to the bot image
   portrait:     string;       // legacy alias of `art` for older callers
+  // Behavior context — Pokédex-style spec card for the hero panel
+  behavior:     string;       // one-word label (RANDOM / COUNTER / META)
+  behaviorDesc: string;       // sentence on what the AI does
+  flavor:       string;       // longer flavor text
+  // Spec sheet — Pokémon-style bars (NEURAL / MEMORY / FORESIGHT)
+  specs:        { neural: number; memory: number; foresight: number };
   // Canned voice lines
-  lines:        { ready: string; win: string; lose: string; tie: string };
-  // Visible stat bars — flavor numbers (UI only).
-  stats:        { aggression: number; adaptability: number; difficulty: number };
+  lines: {
+    ready:     string;
+    taunt:     string[];   // rotating taunts while waiting on the player
+    winRound:  string[];   // AI's reaction when it wins the round
+    loseRound: string[];   // AI's reaction when it loses the round
+    matchWin:  string;     // final line if AI takes the match
+    matchLose: string;     // final line if AI loses the match
+    tie:       string;     // tie line (player wins by rule)
+  };
 };
 
 // Helpers — parseUnits would do this at runtime but the values are static.
@@ -149,79 +162,100 @@ const WAGER_HIGHROLLER_WEI = pow10(G_DECIMALS) * 5n;                      // 5e1
 
 export const WAGER_TIERS: WagerTier[] = [
   {
-    id:         "warmup",
-    name:       "WARM-UP",
-    amount:     "0.1",
-    amountWei:  WAGER_WARMUP_WEI,
-    blurb:      "Easy entry. MARKOV plays loose.",
-    agentMode:  "half-random pattern, easy to read",
-    color:      "#22c55e",
-    rim:        "#22c55e",
-    portraitBg: "radial-gradient(circle at 35% 30%, #22c55e88, #0a4221)",
-    difficulty: "EASY",
-    multi:      1.9,
-    persona:    "MARKOV-Junior",
-    title:      "Cadet Bot",
-    epithet:    "The Apprentice · learning your patterns",
-    art:        "/games/challenge-ai/ai-bot-easy.png",
-    portrait:   "/games/challenge-ai/ai-bot-easy.png",
+    id:           "warmup",
+    name:         "WARM-UP",
+    amount:       "0.1",
+    amountWei:    WAGER_WARMUP_WEI,
+    blurb:        "Easy entry. MARKOV plays loose.",
+    agentMode:    "half-random pattern, easy to read",
+    color:        "#22c55e",
+    rim:          "#22c55e",
+    rimSoft:      "#86efac",
+    portraitBg:   "radial-gradient(ellipse at 50% 35%, #22c55e44 0%, #052e16 65%, #020a06 100%)",
+    difficulty:   "EASY",
+    multi:        1.9,
+    persona:      "MARKOV-Junior",
+    title:        "Cadet Bot · v0.1",
+    epithet:      "The Apprentice · learning your patterns",
+    art:          "/games/challenge-ai/ai-bot-easy.png",
+    portrait:     "/games/challenge-ai/ai-bot-easy.png",
+    behavior:     "RANDOM",
+    behaviorDesc: "Picks moves uniformly. No memory, no patterns. Yours to lose.",
+    flavor:       "A training sparring partner running stock RPS. Easy money — usually.",
+    specs:        { neural: 12, memory: 0, foresight: 0 },
     lines: {
-      ready: "Beep! Ready when you are.",
-      win:   "I called it. Don't tilt.",
-      lose:  "You got me — pattern broken.",
-      tie:   "Spooky! Same brain.",
+      ready:     "Initializing… ready when you are!",
+      taunt:     ["BEEP! Let's do this.", "Pick anything — I have no plan.", "Training mode online!"],
+      winRound:  ["Whoops, lucky guess!", "Did not see that coming!", "Recalculating… nope, still wrong!"],
+      loseRound: ["You got me!", "Good move, good move.", "I'll try harder."],
+      matchWin:  "Even random gets lucky sometimes!",
+      matchLose: "Logged for training. You're tough!",
+      tie:       "Spooky! Same brain.",
     },
-    stats:      { aggression: 35, adaptability: 40, difficulty: 25 },
   },
   {
-    id:         "staked",
-    name:       "STAKED",
-    amount:     "1",
-    amountWei:  WAGER_STAKED_WEI,
-    blurb:      "Real stakes. MARKOV adapts.",
-    agentMode:  "transition-probability counter from history",
-    color:      "#f59e0b",
-    rim:        "#f59e0b",
-    portraitBg: "radial-gradient(circle at 35% 30%, #f59e0b88, #7c2d00)",
-    difficulty: "MEDIUM",
-    multi:      1.9,
-    persona:    "MARKOV-Prime",
-    title:      "Combat Frame",
-    epithet:    "The Reader · transition-probability counter",
-    art:        "/games/challenge-ai/ai-bot-medium.jpeg",
-    portrait:   "/games/challenge-ai/ai-bot-medium.jpeg",
+    id:           "staked",
+    name:         "STAKED",
+    amount:       "1",
+    amountWei:    WAGER_STAKED_WEI,
+    blurb:        "Real stakes. MARKOV adapts.",
+    agentMode:    "transition-probability counter from history",
+    color:        "#f59e0b",
+    rim:          "#f59e0b",
+    rimSoft:      "#fbbf24",
+    portraitBg:   "radial-gradient(ellipse at 50% 35%, #f59e0b55 0%, #7c2d00 60%, #1a0a00 100%)",
+    difficulty:   "MEDIUM",
+    multi:        1.9,
+    persona:      "MARKOV-Prime",
+    title:        "Combat Frame · v2.4",
+    epithet:      "The Reader · transition-probability counter",
+    art:          "/games/challenge-ai/ai-bot-medium.png",
+    portrait:     "/games/challenge-ai/ai-bot-medium.png",
+    behavior:     "COUNTER",
+    behaviorDesc: "Builds a histogram of your picks. Plays the counter to your most-used move.",
+    flavor:       "Tactical AI. Will exploit any bias in your play. Mix it up to survive.",
+    specs:        { neural: 48, memory: 32, foresight: 16 },
     lines: {
-      ready: "Analyzing tactical profile…",
-      win:   "Predicted. Pattern locked.",
-      lose:  "Calibration error. Recompiling.",
-      tie:   "Mirror match. Recalibrating.",
+      ready:     "Analyzing tactical profile…",
+      taunt:     ["Pattern detected.", "Probability: 67%.", "I've been watching.", "Predictable."],
+      winRound:  ["As calculated.", "Histogram updated.", "Continue, please."],
+      loseRound: ["Anomaly. Recompiling.", "Variance detected. Adjusting.", "Once is luck."],
+      matchWin:  "Tactical superiority confirmed.",
+      matchLose: "Recalibrating. Next round, the data favors me.",
+      tie:       "Mirror match. Recalibrating.",
     },
-    stats:      { aggression: 60, adaptability: 80, difficulty: 65 },
   },
   {
-    id:         "highroller",
-    name:       "HIGH ROLLER",
-    amount:     "5",
-    amountWei:  WAGER_HIGHROLLER_WEI,
-    blurb:      "Peak adversary. Player-first ties still apply.",
-    agentMode:  "peak prediction + taunts",
-    color:      "#c4b5fd",
-    rim:        "#c4b5fd",
-    portraitBg: "radial-gradient(circle at 35% 30%, #a78bfacc, #1e1b4b)",
-    difficulty: "HARD",
-    multi:      1.9,
-    persona:    "MARKOV-Ω",
-    title:      "Crystal Sovereign",
-    epithet:    "The Oracle · your seventh move already mine",
-    art:        "/games/challenge-ai/ai-bot-hard.jpeg",
-    portrait:   "/games/challenge-ai/ai-bot-hard.jpeg",
+    id:           "highroller",
+    name:         "HIGH ROLLER",
+    amount:       "5",
+    amountWei:    WAGER_HIGHROLLER_WEI,
+    blurb:        "Peak adversary. Player-first ties still apply.",
+    agentMode:    "peak prediction + taunts",
+    color:        "#c4b5fd",
+    rim:          "#c4b5fd",
+    rimSoft:      "#ddd6fe",
+    portraitBg:   "radial-gradient(ellipse at 50% 35%, #a78bfa88 0%, #1e1b4b 55%, #050010 100%)",
+    difficulty:   "HARD",
+    multi:        1.9,
+    persona:      "MARKOV-Ω",
+    title:        "Crystal Sovereign · v7.0",
+    epithet:      "The Oracle · your seventh move already mine",
+    art:          "/games/challenge-ai/ai-bot-hard.png",
+    portrait:     "/games/challenge-ai/ai-bot-hard.png",
+    behavior:     "META",
+    behaviorDesc: "Models your meta-counter. Predicts what you'll think it plays — and plays the counter to that.",
+    flavor:       "The end-game opponent. Mind games stacked three layers deep.",
+    specs:        { neural: 96, memory: 128, foresight: 256 },
     lines: {
-      ready: "I have already seen this outcome.",
-      win:   "The pattern reveals itself.",
-      lose:  "A glitch in the matrix. Recalibrating.",
-      tie:   "Convergence. Inevitable.",
+      ready:     "I have already seen this outcome.",
+      taunt:     ["Convergence approaches.", "Your move is already chosen.", "The pattern reveals itself.", "Determined."],
+      winRound:  ["As foreseen.", "The vision holds.", "You played the only move you could."],
+      loseRound: ["A glitch in the matrix.", "Anomaly. Stochastic noise.", "Even I, sometimes."],
+      matchWin:  "The future is fixed.",
+      matchLose: "You disrupted the pattern. Impressive.",
+      tie:       "Convergence. The protocol favors flesh.",
     },
-    stats:      { aggression: 85, adaptability: 95, difficulty: 100 },
   },
 ];
 

@@ -270,6 +270,14 @@ button[aria-label$="button"],
   0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor; }
   50%      { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor; }
 }
+@keyframes thinking-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
 
 @keyframes bounce-scale-in {
   0%   { transform: scale(0);   }
