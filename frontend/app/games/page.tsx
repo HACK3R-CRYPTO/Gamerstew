@@ -1213,14 +1213,18 @@ export default function GamesPage() {
                 flexDirection: isMobile ? "column" : "row",
                 gap: isMobile ? "12px" : "14px",
                 width: "100%",
-                height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
+                height: isMobile ? "auto" : "clamp(304px, 52vh, 452px)",
                 overflowX: isMobile ? "visible" : "auto",
                 overflowY: isMobile ? "visible" : "hidden",
                 scrollSnapType: isMobile ? "none" : "x mandatory",
                 scrollPaddingLeft: isMobile ? 0 : "4px",
                 scrollPaddingRight: isMobile ? 0 : "60px",
                 paddingRight: isMobile ? 0 : "60px",
-                paddingBottom: isMobile ? 0 : "4px",
+                // Vertical breathing room so a hovered card can lift +
+                // scale into the padding instead of getting clipped by
+                // overflowY (which is forced to auto by overflowX).
+                paddingTop: isMobile ? 0 : "12px",
+                paddingBottom: isMobile ? 0 : "16px",
                 scrollBehavior: "smooth",
               }}
             >
@@ -1652,11 +1656,20 @@ function GameCard({
         transition: "transform 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         cursor: game.active ? "pointer" : "default",
       }}
-      // Hover stays in-bounds — brightness + filter shift instead of scale/
-      // translate. The scroller has overflowY:hidden (forced by the auto on
-      // overflowX), so any transform that grows the card visibly got clipped.
-      onMouseEnter={e => { if (game.active) (e.currentTarget as HTMLDivElement).style.filter = "brightness(1.08) saturate(1.05)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.filter = "none"; }}
+      // Hover lifts + scales the card with a brightness boost. The
+      // scroller has top/bottom padding so the grown box has room to
+      // breathe inside the overflowY:hidden clip area.
+      onMouseEnter={e => {
+        if (!game.active) return;
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform = "translateY(-8px) scale(1.04)";
+        el.style.filter = "brightness(1.08) saturate(1.05)";
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform = "translateY(0) scale(1)";
+        el.style.filter = "none";
+      }}
     >
       {/* Tinted border — keeps the per-game identity color (orange for
           Rhythm Rush, green for Simon, etc) but drops the heavy neon halo
