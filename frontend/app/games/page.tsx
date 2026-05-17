@@ -109,23 +109,35 @@ const GAMES = [
     ),
   },
   {
-    id: "coming-soon",
-    title: "COMING SOON",
+    id: "challenge-ai",
+    title: "CHALLENGE AI",
     wager: "—",
     payout: "—",
-    path: "",
-    active: false,
-    artGrad: "linear-gradient(160deg, #2a1860 0%, #1a0c40 55%, #0a0420 100%)",
+    path: "/games/challenge-ai",
+    active: true,
+    artGrad: "linear-gradient(160deg, #4a006b 0%, #6b21a8 55%, #312e81 100%)",
     glow: "#a78bfa",
-    accent: "#a78bfa",
+    accent: "#d8b4fe",
     showWager: false,
     borderColor: "#a78bfa",
-    startWall: "#1a0550",
-    startGrad: "linear-gradient(160deg, #6b7280 0%, #4b5563 50%, #1f2937 100%)",
-    startGlow: "rgba(107,114,128,0.4)",
+    startWall: "#4a006b",
+    startGrad: "linear-gradient(160deg, #d8b4fe 0%, #9333ea 50%, #6b21a8 100%)",
+    startGlow: "rgba(167,139,250,0.75)",
     art: (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src="/games/coming-soon.png" alt="Coming Soon" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+      // 3 AI personality emojis stacked — gives a "roster" feel without
+      // a new asset. Players see the visual cue that this is a multi-opponent
+      // hub, not a single game.
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 4, height: "100%",
+        filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))",
+      }}>
+        <div style={{ fontSize: 48 }}>🔮</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ fontSize: 24 }}>🪞</div>
+          <div style={{ fontSize: 24 }}>🎲</div>
+        </div>
+      </div>
     ),
   },
 ];

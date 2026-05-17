@@ -756,16 +756,15 @@ export default function HomePage() {
               label: "CHALLENGE\nAI",
               icon: <RobotIcon size={isMobile ? 54 : 80} />,
               iconDark: "#6b0000", // Deep red inset color
-              path: "/connect?next=/games/coinflip",
+              path: "/connect?next=/games/challenge-ai",
               gradient: "linear-gradient(160deg, #ffc76b 0%, #ff5232 50%, #cc0c0c 100%)",
               wall: "#800000",
               shadowGlow: "rgba(216, 17, 17, 0.6)",
-              // Coin-flip AI route isn't shipped yet — dim the whole
-              // button and block the tap so users can't end up at a
-              // dead route. Visual language matches the "LOCKED" state
-              // on the Coming Soon game card.
-              disabled: true,
-              comingSoon: true,
+              // Challenge AI shipped May 2026 — 3 AI personalities playing RPS
+              // with a simultaneous-reveal match flow. Hub at /games/challenge-ai,
+              // game at /games/challenge-ai/rps?opp=<id>.
+              disabled: false,
+              comingSoon: false,
             },
           ].map((btn) => (
             <div
