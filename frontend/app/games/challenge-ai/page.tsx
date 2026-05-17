@@ -293,17 +293,25 @@ export default function ChallengeAi() {
   const isDismissed = (m: ArenaMatch | null) => !!m && dismissed.has(String(m.id));
 
   // Resume from URL — drives the refreshing-mid-match behavior. Only fires
-  // once on mount per active match. If the player has dismissed this match
-  // already (Pick-another-AI / REMATCH), don't re-resume.
+  // once on mount per active match. Three branches:
+  //   - in-progress (PROPOSED or ACCEPTED): resume into the match phase.
+  //   - COMPLETED: auto-dismiss + stay on lobby. Don't drag the player back
+  //     into the result screen of a match they already saw — that's stale.
+  //     The visible-on-result-completion flow is handled by the separate
+  //     auto-result effect below (which only fires for status transitions
+  //     happening while the user is on this page).
+  //   - already dismissed: no-op.
   const armedRef = useRef(false);
   useEffect(() => {
     if (armedRef.current || !activeMatch || isDismissed(activeMatch)) return;
     armedRef.current = true;
     if (activeMatch.status === MATCH_STATUS.COMPLETED) {
-      setPhase("result");
-    } else {
-      setPhase("match");
+      // Stale completed match from a previous session — silently dismiss
+      // and stay on the lobby. The player came here to start fresh.
+      dismissMatch(activeMatch);
+      return;
     }
+    setPhase("match");
     const matchedTier = WAGER_TIERS.find(t => t.amountWei === activeMatch.wager);
     if (matchedTier) setTier(matchedTier);
     const matchedGame = gameTypeById(activeMatch.gameType);
