@@ -163,8 +163,8 @@ export const WAGER_TIERS: WagerTier[] = [
     persona:    "MARKOV-Junior",
     title:      "Cadet Bot",
     epithet:    "The Apprentice · learning your patterns",
-    art:        "/games/challenge-ai/ai-bot-easy.jpeg",
-    portrait:   "/games/challenge-ai/ai-bot-easy.jpeg",
+    art:        "/games/challenge-ai/ai-bot-easy.png",
+    portrait:   "/games/challenge-ai/ai-bot-easy.png",
     lines: {
       ready: "Beep! Ready when you are.",
       win:   "I called it. Don't tilt.",
