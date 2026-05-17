@@ -42,6 +42,37 @@ const imgMask = {
 
 type Phase = "lobby" | "vs" | "match" | "result";
 
+// ─── Player pet — mirrors the data from /games/{simon,rhythm}/page.tsx ──────
+// Pet stage drives the player avatar everywhere we'd otherwise show a 🧑
+// emoji (VS sting intro, combatant portrait, tie face on result).
+type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
+const PET_STAGES: PetStage[] = [
+  { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  color: "#e2e8f0" },
+  { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  color: "#22c55e" },
+  { id: "teen",    name: "Teen Slime",    src: "/pets/stage-3-teen.png",    minLevel: 15, color: "#a78bfa" },
+  { id: "crystal", name: "Crystal Slime", src: "/pets/stage-4-crystal.png", minLevel: 30, color: "#06b6d4" },
+  { id: "king",    name: "King Slime",    src: "/pets/stage-5-king.png",    minLevel: 50, color: "#fbbf24" },
+];
+function petForLevel(level: number): PetStage {
+  let stage = PET_STAGES[0]!;
+  for (const s of PET_STAGES) if (level >= s.minLevel) stage = s;
+  return stage;
+}
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+
+function usePlayerPet(address: `0x${string}` | undefined): PetStage {
+  const [level, setLevel] = useState(1);
+  useEffect(() => {
+    if (!address) return;
+    fetch(`${BACKEND_URL}/api/user/${address}`)
+      .then(r => r.json())
+      .then(d => setLevel(d.level || 1))
+      .catch(() => {});
+  }, [address]);
+  return petForLevel(level);
+}
+
 // Viewport hook — keeps the layout in sync on resize without spamming renders.
 // 760px breakpoint matches the design's mobile/desktop split.
 function useIsDesktop(): boolean {
@@ -88,6 +119,7 @@ export default function ChallengeAi() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const isDesktop = useIsDesktop();
+  const pet = usePlayerPet(address as `0x${string}` | undefined);
 
   // ─── Selection ───────────────────────────────────────────────────────────
   const [tier, setTier] = useState<WagerTier>(WAGER_TIERS[1]);
@@ -452,11 +484,12 @@ export default function ChallengeAi() {
             isDesktop={isDesktop}
           />
         )}
-        {phase === "vs" && <ArenaVS tier={tier} game={game} />}
+        {phase === "vs" && <ArenaVS tier={tier} game={game} pet={pet} />}
         {phase === "match" && (
           <ArenaMatch
             tier={tier}
             game={game}
+            pet={pet}
             activeMatch={activeMatch}
             playerHasPlayed={!!playerHasPlayed}
             aiHasPlayed={!!aiHasPlayed}
@@ -477,6 +510,7 @@ export default function ChallengeAi() {
           <ArenaResult
             tier={tier}
             game={game}
+            pet={pet}
             wager={activeMatch.wager}
             youWon={youWon}
             tieByRule={tieByRule}
@@ -949,7 +983,7 @@ function RecentFights({ matches, setTier }: {
 }
 
 // ─── ArenaVS ─────────────────────────────────────────────────────────────────
-function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
+function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: PetStage }) {
   const [phase, setPhase] = useState(0);
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 900);
@@ -973,13 +1007,19 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
         animation: "vs-slide-in-left 0.7s cubic-bezier(0.16, 1, 0.3, 1) both",
       }}>
         <div style={{
+          position: "relative",
           width: 132, height: 132, borderRadius: "50%",
-          background: "radial-gradient(circle at 35% 30%, rgba(167,139,250,0.7), rgba(99,102,241,0.2))",
-          border: "2.5px solid #a78bfa",
-          boxShadow: "0 0 36px rgba(167,139,250,0.5)",
+          background: `radial-gradient(circle at 35% 30%, ${pet.color}99, rgba(99,102,241,0.18))`,
+          border: `2.5px solid ${pet.color}`,
+          boxShadow: `0 0 36px ${pet.color}77`,
           display: "flex", alignItems: "center", justifyContent: "center",
+          overflow: "hidden",
         }}>
-          <span style={{ fontSize: 72 }}>🧑</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pet.src} alt={pet.name} style={{
+            width: "80%", height: "80%", objectFit: "contain",
+            filter: `drop-shadow(0 4px 10px ${pet.color}aa)`,
+          }} />
         </div>
         <div style={{
           color: "white", fontSize: 26, fontWeight: 900, marginTop: 10,
@@ -1081,8 +1121,8 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
 }
 
 // ─── ArenaMatch ──────────────────────────────────────────────────────────────
-function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, playerMove, aiMove, holdingReveal, tierHistory, onPick, submitting, youWon, error, proposedStale, lockStale, onLobby }: {
-  tier: WagerTier; game: GameType;
+function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed, playerMove, aiMove, holdingReveal, tierHistory, onPick, submitting, youWon, error, proposedStale, lockStale, onLobby }: {
+  tier: WagerTier; game: GameType; pet: PetStage;
   activeMatch: ArenaMatch | null;
   playerHasPlayed: boolean; aiHasPlayed: boolean;
   playerMove: number | null; aiMove: number | null;
@@ -1190,6 +1230,7 @@ function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, pla
           side="player" tier={tier} gameId={game.id}
           pick={playerMove !== null ? playerMove : null}
           revealing={!!revealing} outcome={roundOutcome}
+          pet={pet}
         />
       </div>
 
@@ -1320,7 +1361,7 @@ function CombatantHUD({ side, tier, stake }: { side: "player" | "ai"; tier: Wage
   );
 }
 
-function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, isThinking }: {
+function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, isThinking, pet }: {
   side: "player" | "ai"; tier: WagerTier;
   gameId: 0 | 3;
   pick: number | null;
@@ -1328,9 +1369,11 @@ function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, i
   outcome: "win" | "lose" | "tie" | null;
   taunt?: string | null;
   isThinking?: boolean;
+  pet?: PetStage;
 }) {
   const isPlayer = side === "player";
-  const accent = isPlayer ? "#a78bfa" : tier.rim;
+  const playerAccent = pet?.color ?? "#a78bfa";
+  const accent = isPlayer ? playerAccent : tier.rim;
   const winSide = outcome === (isPlayer ? "win" : "lose");
   const loseSide = outcome === (isPlayer ? "lose" : "win");
   return (
@@ -1343,7 +1386,7 @@ function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, i
         position: "relative", flexShrink: 0,
         width: 92, height: 92, borderRadius: "50%",
         background: isPlayer
-          ? "radial-gradient(circle at 35% 30%, rgba(167,139,250,0.75), rgba(99,102,241,0.18))"
+          ? `radial-gradient(circle at 35% 30%, ${playerAccent}99, rgba(99,102,241,0.18))`
           : tier.portraitBg,
         border: `2.5px solid ${accent}`,
         boxShadow: `0 0 22px ${accent}66, inset 0 -2px 8px rgba(0,0,0,0.4)`,
@@ -1351,7 +1394,13 @@ function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, i
         display: "flex", alignItems: "center", justifyContent: "center",
         animation: winSide ? "combatant-cheer 0.55s ease-out" : loseSide ? "combatant-hit 0.55s ease-out" : "none",
       }}>
-        {isPlayer ? (
+        {isPlayer && pet ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={pet.src} alt={pet.name} style={{
+            width: "80%", height: "80%", objectFit: "contain",
+            filter: `drop-shadow(0 3px 8px ${pet.color}aa)`,
+          }} />
+        ) : isPlayer ? (
           <span style={{ fontSize: 54 }}>🧑</span>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
@@ -1410,8 +1459,8 @@ function CombatantStage({ side, tier, gameId, pick, revealing, outcome, taunt, i
 }
 
 // ─── ArenaResult ────────────────────────────────────────────────────────────
-function ArenaResult({ tier, game, wager, youWon, tieByRule, playerMove, aiMove, record, onAgain, onLobby, busy }: {
-  tier: WagerTier; game: GameType;
+function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, playerMove, aiMove, record, onAgain, onLobby, busy }: {
+  tier: WagerTier; game: GameType; pet: PetStage;
   wager: bigint;
   youWon: boolean; tieByRule: boolean;
   playerMove: number | null; aiMove: number | null;
@@ -1497,14 +1546,21 @@ function ArenaResult({ tier, game, wager, youWon, tieByRule, playerMove, aiMove,
             }} />
           ) : tieByRule ? (
             <div style={{
+              position: "relative",
               width: 152, height: 152, borderRadius: "50%",
               background: "radial-gradient(circle at 35% 30%, rgba(251,191,36,0.55), rgba(180,83,9,0.2))",
               border: "3px solid #fbbf24",
               boxShadow: "0 0 36px rgba(251,191,36,0.5)",
               display: "flex", alignItems: "center", justifyContent: "center",
+              overflow: "hidden",
               animation: "popIn 0.55s cubic-bezier(0.34, 1.56, 0.64, 1)",
             }}>
-              <span style={{ fontSize: 78 }}>🤝</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pet.src} alt={pet.name} style={{
+                width: "75%", height: "75%", objectFit: "contain",
+                filter: "drop-shadow(0 6px 14px rgba(251,191,36,0.6))",
+              }} />
+              <span style={{ position: "absolute", bottom: -2, right: -2, fontSize: 36 }}>🤝</span>
             </div>
           ) : (
             <div style={{
