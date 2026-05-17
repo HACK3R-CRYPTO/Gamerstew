@@ -279,22 +279,36 @@ export default function ChallengeAi() {
   );
 
   // On mount, if we land on the page WITH an in-flight match, skip the lobby.
-  // Drives the resume-from-URL behavior — refreshing mid-match goes back to
-  // exactly where the player left off.
+  // Once a match has been seen-through-to-result and the player has tapped
+  // "Pick another AI" or "REMATCH", we add it to this set. Any subsequent
+  // useEffect that would otherwise resume or replay that match's result
+  // checks this set first. Permanent guard against the "bounced back to
+  // result" bug — even if the multicall briefly returns the dismissed
+  // match as the latest activeMatch (e.g. during the gap between a new
+  // tx and the new match showing up on chain), the effects stay silent.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const dismissMatch = (m: ArenaMatch | null) => {
+    if (m) setDismissed(s => { const n = new Set(s); n.add(String(m.id)); return n; });
+  };
+  const isDismissed = (m: ArenaMatch | null) => !!m && dismissed.has(String(m.id));
+
+  // Resume from URL — drives the refreshing-mid-match behavior. Only fires
+  // once on mount per active match. If the player has dismissed this match
+  // already (Pick-another-AI / REMATCH), don't re-resume.
   const armedRef = useRef(false);
   useEffect(() => {
-    if (armedRef.current || !activeMatch) return;
+    if (armedRef.current || !activeMatch || isDismissed(activeMatch)) return;
     armedRef.current = true;
     if (activeMatch.status === MATCH_STATUS.COMPLETED) {
       setPhase("result");
     } else {
       setPhase("match");
     }
-    // Lock the tier/game selection to whatever the active match was created with.
     const matchedTier = WAGER_TIERS.find(t => t.amountWei === activeMatch.wager);
     if (matchedTier) setTier(matchedTier);
     const matchedGame = gameTypeById(activeMatch.gameType);
     if (matchedGame) setGame(matchedGame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatch]);
 
   // ─── Active match move + hasPlayed reads ────────────────────────────────
@@ -342,6 +356,7 @@ export default function ChallengeAi() {
   const revealHoldStartRef = useRef<bigint | null>(null);
   useEffect(() => {
     if (!activeMatch || activeMatch.status !== MATCH_STATUS.COMPLETED) return;
+    if (isDismissed(activeMatch)) return; // player already dismissed this match
     if (revealHoldStartRef.current === activeMatch.id) return;
     revealHoldStartRef.current = activeMatch.id;
     setHoldingReveal(true);
@@ -489,21 +504,16 @@ export default function ChallengeAi() {
     }
   }
 
-  // After result, "rematch" runs another challenge with the same stake.
-  // We DON'T clear revealHoldStartRef — the new match will have a different
-  // id, so the auto-result effect's guard `ref.current === activeMatch.id`
-  // naturally fires for the new match. Clearing the ref would let the OLD
-  // match re-trigger the reveal sequence on the next multicall refresh,
-  // bouncing the player back into the result screen they just dismissed.
+  // Both dismissal paths add the completed match to the dismissed set so
+  // neither the resume-on-mount nor the auto-result effects can replay
+  // it. armedRef stays true so resume-on-mount stays dormant for the
+  // rest of this session.
   async function onRematch() {
-    armedRef.current = false;
-    setPhase("vs");
+    dismissMatch(activeMatch);
     await onChallenge();
   }
   function onLobby() {
-    // Same reasoning — keep revealHoldStartRef set so the dismissed
-    // completed match doesn't re-trigger result on the next refresh.
-    armedRef.current = true; // don't auto-resume from result match
+    dismissMatch(activeMatch);
     setPhase("lobby");
   }
 
