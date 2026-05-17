@@ -101,20 +101,29 @@ export default function MatchPage() {
     return derivePhase(match.status, !!playerHasPlayed, !!aiHasPlayed, holdingReveal);
   }, [match, playerHasPlayed, aiHasPlayed, holdingReveal]);
 
-  // The moment both moves land on-chain, kick off the suspense hold so the
-  // reveal animation triggers cleanly instead of mid-render.
+  // Suspense hold — fires only when the contract status flips to COMPLETED
+  // (the AI agent's resolveMatch call). At that point both moves are
+  // guaranteed final on-chain, so the reveal animation can read them safely.
+  //
+  // Doing this on `hasPlayed` flags was racy — playerMoves can briefly read
+  // as 0 (= ROCK by default) before the actual move propagates through RPC.
+  // Status-COMPLETED is the only signal that's authoritative.
   useEffect(() => {
-    if (playerHasPlayed && aiHasPlayed && revealHoldStartRef.current === null) {
+    if (match?.status === MATCH_STATUS.COMPLETED && revealHoldStartRef.current === null) {
       revealHoldStartRef.current = Date.now();
       setHoldingReveal(true);
-      // Use the wager tier to pick the suspense hold (longer for higher tier).
-      // Default to 1500ms if we can't derive it.
-      const tier = wagerTierFromAmount(match?.wager ?? 0n);
+      // Re-fetch both moves right before the reveal animation kicks in so the
+      // emojis we render are the final, finalized values — belt + braces on
+      // top of the status check.
+      refetchPlayerMove();
+      refetchAiMove();
+      // Lock duration scales with wager tier so HIGH ROLLER feels weightier.
+      const tier = wagerTierFromAmount(match.wager);
       const ms = tier === "highroller" ? 2000 : tier === "staked" ? 1500 : 1200;
       const t = setTimeout(() => setHoldingReveal(false), ms);
       return () => clearTimeout(t);
     }
-  }, [playerHasPlayed, aiHasPlayed, match?.wager]);
+  }, [match?.status, match?.wager, refetchPlayerMove, refetchAiMove]);
 
   // ─── Move submission ─────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);

@@ -305,30 +305,41 @@ export type MatchPhase =
   | "CANCELLED";
 
 // Derives the UI phase from on-chain match state + per-player hasPlayed flags.
-// Pure function so tests can cover the transition table without rendering.
+//
+// IMPORTANT: REVEAL is only triggered by `status === COMPLETED` (set by the
+// AI agent's resolveMatch call). Before that, even if both hasPlayed flags
+// are true, we stay in LOCK — because Solidity mappings return 0 by default
+// and a `playerMoves` read can briefly return 0 (= ROCK in RPS) before the
+// actual move propagates through RPC. Tying the reveal to COMPLETED ensures
+// both moves are finalized on-chain before we ever show them.
+//
+// Phase machine:
+//   PROPOSED  → WAITING_OPPONENT
+//   ACCEPTED + !playerHasPlayed → PICK
+//   ACCEPTED + playerHasPlayed   → LOCK   (stays here even if AI has played;
+//                                          only flips when COMPLETED fires)
+//   COMPLETED + recentlyResolved → REVEAL (suspense hold from page component)
+//   COMPLETED + !recentlyResolved → RESOLVE
+//   CANCELLED → CANCELLED
 export function derivePhase(
   status:   number,
   playerHasPlayed: boolean,
-  aiHasPlayed:     boolean,
-  // Optional client-side flag — when the UI just sent the player's move and
-  // is waiting for the chain to confirm, we hold REVEAL/RESOLVE off briefly.
+  _aiHasPlayed:    boolean, // unused — kept in signature for clarity / future
   recentlyResolved?: boolean,
 ): MatchPhase {
   if (status === MATCH_STATUS.CANCELLED) return "CANCELLED";
   if (status === MATCH_STATUS.PROPOSED)  return "WAITING_OPPONENT";
 
   if (status === MATCH_STATUS.COMPLETED) {
-    // Brief delay before showing RESOLVE so the REVEAL animation gets its
-    // ~400ms beat first.
+    // Page component holds `recentlyResolved` true for ~1.5-2s after the
+    // status flips, giving the simultaneous reveal animation its dramatic
+    // beat before the outcome panel takes over.
     if (recentlyResolved) return "REVEAL";
     return "RESOLVE";
   }
 
-  // ACCEPTED — both players are in. Phase depends on who has moved.
+  // ACCEPTED. Either the player still needs to move, or they've moved and
+  // we're waiting for the agent to play + resolve.
   if (!playerHasPlayed) return "PICK";
-  if (playerHasPlayed && !aiHasPlayed) return "LOCK";
-  // Both played but contract hasn't resolved yet — same as LOCK visually,
-  // but flipping straight to REVEAL feels better. We'll hold here briefly
-  // in the page component to time the reveal animation.
-  return "REVEAL";
+  return "LOCK";
 }
