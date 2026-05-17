@@ -79,7 +79,7 @@ const GAMES = [
     artGrad: "linear-gradient(160deg, #7e22ce 0%, #a21caf 55%, #6d28d9 100%)",
     glow: "#c026d3",
     accent: "#e879f9",
-    showWager: true,
+    showWager: false,
     borderColor: "#f59e0b",
     startWall: "#7c2d00",
     startGrad: "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
@@ -99,7 +99,7 @@ const GAMES = [
     artGrad: "linear-gradient(160deg, #0e4f6b 0%, #075985 55%, #0c3f5e 100%)",
     glow: "#06b6d4",
     accent: "#67e8f9",
-    showWager: true,
+    showWager: false,
     borderColor: "#22c55e",
     startWall: "#003a00",
     startGrad: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
@@ -1473,7 +1473,7 @@ function GameCard({
               <div style={{
                 color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700,
                 letterSpacing: "0.04em", marginTop: 3,
-              }}>Dice · Strategy · PVP RPS</div>
+              }}>Tap to get pinged when they drop</div>
             </div>
             <div
               role="button" tabIndex={0}
@@ -1560,9 +1560,10 @@ function GameCard({
               }}>
                 {game.title}
               </div>
-              {/* Wager pill sits under the title — more prominent than a
-                  tiny corner chip, and balances the START button below. */}
-              {game.active && (
+              {/* Wager pill — only shown for games that actually wager. Rhythm
+                  Rush and Simon are skill-based earners (no wager), so they
+                  read as cleaner without a misleading BET pill. */}
+              {game.active && game.showWager && (
                 <div style={{
                   display: "inline-flex", alignItems: "baseline", gap: "5px",
                   padding: "2px 9px",
