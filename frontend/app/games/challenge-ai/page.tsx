@@ -42,11 +42,52 @@ const imgMask = {
 
 type Phase = "lobby" | "vs" | "match" | "result";
 
+// Viewport hook — keeps the layout in sync on resize without spamming renders.
+// 760px breakpoint matches the design's mobile/desktop split.
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 760px)");
+    const handler = () => setIsDesktop(mq.matches);
+    handler();
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isDesktop;
+}
+
+// Agent staleness — if the on-chain match is sitting in PROPOSED with no
+// acceptance for > 30s, or in ACCEPTED with player moved + AI still waiting
+// for > 20s, we treat the agent as offline and surface that to the player.
+function useAgentStale(activeMatch: ArenaMatch | null, playerHasPlayed: boolean, aiHasPlayed: boolean): {
+  proposedStale: boolean;
+  lockStale: boolean;
+} {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => force(x => x + 1), 2000);
+    return () => clearInterval(i);
+  }, []);
+  if (!activeMatch) return { proposedStale: false, lockStale: false };
+  const ageSec = Date.now() / 1000 - Number(activeMatch.createdAt);
+  if (activeMatch.status === MATCH_STATUS.PROPOSED) {
+    return { proposedStale: ageSec > 30, lockStale: false };
+  }
+  if (activeMatch.status === MATCH_STATUS.ACCEPTED && playerHasPlayed && !aiHasPlayed) {
+    // Use createdAt + some baseline; not perfect since we don't have move
+    // timestamp on-chain, but >60s total age past your move is a strong signal.
+    return { proposedStale: false, lockStale: ageSec > 60 };
+  }
+  return { proposedStale: false, lockStale: false };
+}
+
 export default function ChallengeAi() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const isDesktop = useIsDesktop();
 
   // ─── Selection ───────────────────────────────────────────────────────────
   const [tier, setTier] = useState<WagerTier>(WAGER_TIERS[1]);
@@ -153,6 +194,10 @@ export default function ChallengeAi() {
     args: matchEnabled ? [matchId, aiAddress] : undefined,
     query: { enabled: matchEnabled, refetchInterval: 3000 },
   });
+
+  // Agent staleness — if MARKOV doesn't accept / play within the expected
+  // window, the agent process is probably offline. Surface that honestly.
+  const { proposedStale, lockStale } = useAgentStale(activeMatch, !!playerHasPlayed, !!aiHasPlayed);
   const { data: playerMove, refetch: refetchPlayerMove } = useReadContract({
     address: CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`,
     abi: ARENA_PLATFORM_ABI,
@@ -404,6 +449,7 @@ export default function ChallengeAi() {
             onStart={onChallenge}
             busy={submittingChallenge}
             error={error}
+            isDesktop={isDesktop}
           />
         )}
         {phase === "vs" && <ArenaVS tier={tier} game={game} />}
@@ -422,6 +468,9 @@ export default function ChallengeAi() {
             submitting={submittingMove}
             youWon={youWon}
             error={error}
+            proposedStale={proposedStale}
+            lockStale={lockStale}
+            onLobby={onLobby}
           />
         )}
         {phase === "result" && activeMatch && (
@@ -445,7 +494,7 @@ export default function ChallengeAi() {
 }
 
 // ─── ArenaLobby ──────────────────────────────────────────────────────────────
-function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error }: {
+function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error, isDesktop }: {
   tier: WagerTier; setTier: (t: WagerTier) => void;
   game: GameType; setGame: (g: GameType) => void;
   records: Record<string, { wins: number; losses: number; streak: number }>;
@@ -453,6 +502,7 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
   onStart: () => void;
   busy: boolean;
   error: string | null;
+  isDesktop: boolean;
 }) {
   const record = records[tier.id] ?? { wins: 0, losses: 0, streak: 0 };
   const total = record.wins + record.losses;
@@ -462,9 +512,9 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
 
   return (
     <div style={{
-      maxWidth: 540, margin: "0 auto",
-      padding: "60px 14px 20px",
-      display: "flex", flexDirection: "column", gap: 14,
+      maxWidth: isDesktop ? 1080 : 540, margin: "0 auto",
+      padding: isDesktop ? "70px 32px 28px" : "60px 14px 20px",
+      display: "flex", flexDirection: "column", gap: isDesktop ? 18 : 14,
     }}>
       {/* Header */}
       <div style={{ textAlign: "center" }}>
@@ -490,11 +540,16 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
         </p>
       </div>
 
-      {/* HERO PANEL */}
-      <HeroPanel tier={tier} record={record} winrate={winrate} />
-
-      {/* SELECTOR RAIL */}
-      <SelectorRail tier={tier} setTier={setTier} records={records} />
+      {/* HERO PANEL + SELECTOR RAIL — side-by-side on desktop, stacked on mobile */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: isDesktop ? "1.4fr 1fr" : "1fr",
+        gap: isDesktop ? 18 : 12,
+        alignItems: "stretch",
+      }}>
+        <HeroPanel tier={tier} record={record} winrate={winrate} isDesktop={isDesktop} />
+        <SelectorRail tier={tier} setTier={setTier} records={records} />
+      </div>
 
       {/* Stake + game + WIN PAYS + ENTER ARENA */}
       <div style={{
@@ -587,10 +642,11 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
 }
 
 // ─── HeroPanel ──────────────────────────────────────────────────────────────
-function HeroPanel({ tier, record, winrate }: {
+function HeroPanel({ tier, record, winrate, isDesktop }: {
   tier: WagerTier;
   record: { wins: number; losses: number; streak: number };
   winrate: number | null;
+  isDesktop?: boolean;
 }) {
   const wlColor = winrate === null ? "rgba(220,210,255,0.6)"
     : winrate >= 60 ? "#86efac"
@@ -603,7 +659,7 @@ function HeroPanel({ tier, record, winrate }: {
       borderRadius: 22,
       border: `1.5px solid ${tier.rim}88`,
       boxShadow: `0 24px 60px -16px ${tier.rim}77, inset 0 1px 0 rgba(255,255,255,0.08)`,
-      minHeight: 320,
+      minHeight: isDesktop ? 420 : 320,
       display: "flex", flexDirection: "column",
     }}>
       {/* Layered backdrop */}
@@ -1025,7 +1081,7 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
 }
 
 // ─── ArenaMatch ──────────────────────────────────────────────────────────────
-function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, playerMove, aiMove, holdingReveal, tierHistory, onPick, submitting, youWon, error }: {
+function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, playerMove, aiMove, holdingReveal, tierHistory, onPick, submitting, youWon, error, proposedStale, lockStale, onLobby }: {
   tier: WagerTier; game: GameType;
   activeMatch: ArenaMatch | null;
   playerHasPlayed: boolean; aiHasPlayed: boolean;
@@ -1036,6 +1092,9 @@ function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, pla
   submitting: boolean;
   youWon: boolean;
   error: string | null;
+  proposedStale: boolean;
+  lockStale: boolean;
+  onLobby: () => void;
 }) {
   // Drive the right inner state from the chain.
   const proposed   = activeMatch?.status === MATCH_STATUS.PROPOSED;
@@ -1075,6 +1134,11 @@ function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, pla
     }}>
       {/* AI HUD */}
       <CombatantHUD side="ai" tier={tier} stake={activeMatch?.wager} />
+
+      {/* Agent-offline warning — honest UX when MARKOV isn't responding */}
+      {(proposedStale || lockStale) && (
+        <AgentOfflineWarning kind={proposedStale ? "accept" : "play"} matchId={activeMatch?.id ?? null} onLobby={onLobby} />
+      )}
 
       <div style={{
         flex: 1, display: "flex", flexDirection: "column",
@@ -1577,6 +1641,52 @@ function BalanceChip({ balance }: { balance: string }) {
     }}>
       <span style={{ color: "rgba(134,239,172,0.8)", fontSize: 9, fontWeight: 800, letterSpacing: "0.14em" }}>G$</span>
       <span style={{ color: "#86efac", fontSize: 12, fontWeight: 900, fontFamily: "monospace" }}>{balance}</span>
+    </div>
+  );
+}
+
+// ─── AgentOfflineWarning ────────────────────────────────────────────────────
+// Honest UX when MARKOV-1's off-chain agent isn't running. The on-chain match
+// is still open and will resume automatically when the agent comes back; the
+// player just shouldn't be staring at an infinite spinner in the meantime.
+function AgentOfflineWarning({ kind, matchId, onLobby }: {
+  kind: "accept" | "play";
+  matchId: bigint | null;
+  onLobby: () => void;
+}) {
+  const text = kind === "accept"
+    ? "MARKOV-1's agent is taking longer than usual to accept this match."
+    : "MARKOV-1 hasn't submitted its move yet. The agent may be offline.";
+  const sub = "Your stake is safe on-chain. The match resumes automatically when the agent is back online.";
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 12,
+      background: "rgba(251,191,36,0.10)",
+      border: "1px solid rgba(251,191,36,0.45)",
+      display: "flex", flexDirection: "column", gap: 6,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 14 }}>⚠️</span>
+        <span style={{ color: "#fde68a", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.3 }}>
+          {text}
+        </span>
+      </div>
+      <div style={{
+        color: "rgba(254,243,199,0.7)", fontSize: 10.5, fontWeight: 600, lineHeight: 1.4,
+      }}>{sub}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        {matchId !== null && (
+          <span style={{
+            color: "rgba(254,243,199,0.45)", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em",
+          }}>MATCH #{String(matchId)}</span>
+        )}
+        <button onClick={onLobby} style={{
+          padding: "5px 11px", borderRadius: 999,
+          background: "rgba(251,191,36,0.22)", border: "1px solid rgba(251,191,36,0.55)",
+          color: "#fde68a", fontSize: 10, fontWeight: 900, letterSpacing: "0.12em",
+          cursor: "pointer",
+        }}>← BACK TO LOBBY</button>
+      </div>
     </div>
   );
 }
