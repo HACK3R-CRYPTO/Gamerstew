@@ -207,6 +207,12 @@ export default function ChallengeAi() {
   const [game, setGame] = useState<GameType>(GAME_TYPES[0]);
   const [phase, setPhase] = useState<Phase>("lobby");
   const [error, setError] = useState<string | null>(null);
+  // Two gates for VS → match transition:
+  //   - vsCinematicDone: the FIGHT reveal has had ~2.8s on screen.
+  //   - the on-chain match has reached ACCEPTED (AI agent took the challenge).
+  // We only flip to "match" when both are true so the player never sees a
+  // blank/waiting picker between the cinematic and the actual game.
+  const [vsCinematicDone, setVsCinematicDone] = useState(false);
 
   // ─── Wallet + chain reads ────────────────────────────────────────────────
   const { data: gBalanceRaw } = useReadContract({
@@ -457,6 +463,30 @@ export default function ChallengeAi() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [activeMatch?.id, activeMatch?.status, tier.id, refetchPlayerMove, refetchAiMove, activeMatch]);
 
+  // VS → match gate. Hold on the cinematic until BOTH:
+  //   - cinematic minimum playback elapsed (vsCinematicDone)
+  //   - the freshly-created match has reached ACCEPTED on-chain (AI agent
+  //     took the challenge — the picker won't work before this).
+  // Hard fallback at 15s so the player is never stuck on VS if the agent
+  // is slow/down. An error in onChallenge would already have flipped phase
+  // away from "vs", so this only runs on the happy path.
+  useEffect(() => {
+    if (phase !== "vs") return;
+    const isFreshAccepted = !!activeMatch
+      && activeMatch.status === MATCH_STATUS.ACCEPTED
+      && !!address
+      && activeMatch.challenger.toLowerCase() === address.toLowerCase()
+      && activeMatch.wager === tier.amountWei;
+    if (vsCinematicDone && isFreshAccepted) {
+      setPhase("match");
+      return;
+    }
+    const cap = setTimeout(() => {
+      setPhase("match");
+    }, 15000);
+    return () => clearTimeout(cap);
+  }, [phase, vsCinematicDone, activeMatch, address, tier.amountWei]);
+
   // ─── Per-tier history (record + tactical hint) ──────────────────────────
   // Compute wins/losses against each tier from the player's match history.
   // The hint pulls the most-recent 3 moves vs the focused tier on each side.
@@ -546,9 +576,13 @@ export default function ChallengeAi() {
       });
       if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
       await refetchIds();
-      // Kick into the VS sting; transition to match after the sting plays.
+      // Kick into the VS sting. Don't blindly time out into match — the
+      // chain match isn't ACCEPTED yet until the AI agent picks up the
+      // event. A separate effect transitions to "match" once both gates
+      // open: cinematic minimum elapsed AND match is ACCEPTED on-chain.
+      setVsCinematicDone(false);
       setPhase("vs");
-      setTimeout(() => setPhase("match"), 2800);
+      setTimeout(() => setVsCinematicDone(true), 2800);
     } catch (e: unknown) {
       const msg = (e as { shortMessage?: string; message?: string })?.shortMessage
               ?? (e as { message?: string })?.message
@@ -1186,12 +1220,22 @@ function RecentFights({ matches, setTier }: {
 }
 
 // ─── ArenaVS ─────────────────────────────────────────────────────────────────
+// Composition rules:
+//   - Tier+game info lives in a TOP chip so it never collides with the
+//     center VS art (the old layout overlapped them).
+//   - Player content hugs the TOP of its half, AI content hugs the BOTTOM of
+//     its half — both pushed *away* from the center seam by generous inner
+//     padding. The center 30% of the screen stays clear for VS/FIGHT.
+//   - At phase 3 the FIGHT word REPLACES the VS art in the same center slot
+//     (this is how fighting games do it; stacking them looks broken).
+//   - Name ribbons (rim-colored bars flanking the text) replace plain text
+//     labels so they read as nameplates instead of floating type.
 function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: PetStage }) {
   const [phase, setPhase] = useState(0);
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 900);
-    const t2 = setTimeout(() => setPhase(2), 1800);
-    const t3 = setTimeout(() => setPhase(3), 2400);
+    const t1 = setTimeout(() => setPhase(1), 700);   // AI slides in
+    const t2 = setTimeout(() => setPhase(2), 1400);  // VS art appears
+    const t3 = setTimeout(() => setPhase(3), 2400);  // FIGHT slams in (replaces VS art)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []);
 
@@ -1201,17 +1245,39 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
       display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
-      {/* Player side */}
+      {/* Stakes chip — sits high so it never overlaps the center art. */}
+      <div style={{
+        position: "absolute", top: 72, left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 8, pointerEvents: "none",
+        padding: "7px 16px",
+        background: "rgba(15,11,38,0.72)",
+        border: "1px solid rgba(167,139,250,0.45)",
+        borderRadius: 999,
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+        animation: "chip-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both",
+        whiteSpace: "nowrap",
+      }}>
+        <span style={{
+          color: "rgba(220,210,255,0.95)", fontSize: 10.5, fontWeight: 800,
+          letterSpacing: "0.28em",
+          textShadow: "0 0 8px rgba(167,139,250,0.5)",
+        }}>{tier.amount} G$ · {game.shortName} · 1 ROUND</span>
+      </div>
+
+      {/* Player side (top half) */}
       <div style={{
         flex: 1, position: "relative",
-        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-        padding: "40px 20px 20px",
-        background: "linear-gradient(180deg, rgba(167,139,250,0.14) 0%, transparent 50%)",
+        display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center",
+        padding: "120px 20px 90px", // top clears the chip; bottom pushes content off the seam
+        background: "linear-gradient(180deg, rgba(167,139,250,0.18) 0%, transparent 70%)",
         animation: "vs-slide-in-left 0.7s cubic-bezier(0.16, 1, 0.3, 1) both",
       }}>
         <div style={{
           position: "relative",
-          width: 132, height: 132, borderRadius: "50%",
+          width: 128, height: 128, borderRadius: "50%",
           background: `radial-gradient(circle at 35% 30%, ${pet.color}99, rgba(99,102,241,0.18))`,
           border: `2.5px solid ${pet.color}`,
           boxShadow: `0 0 36px ${pet.color}77`,
@@ -1224,77 +1290,83 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
             filter: `drop-shadow(0 4px 10px ${pet.color}aa)`,
           }} />
         </div>
-        <div style={{
-          color: "white", fontSize: 26, fontWeight: 900, marginTop: 10,
-          textShadow: "0 0 16px rgba(167,139,250,0.5)",
-        }}>CHALLENGER</div>
-        <div style={{
-          color: "rgba(220,210,255,0.55)", fontSize: 10, fontWeight: 800,
-          letterSpacing: "0.18em", marginTop: 2,
-        }}>YOU · TIE WINS</div>
+        <NameRibbon label="CHALLENGER" rim="rgba(167,139,250,0.9)" delay="0.15s" />
+        <Badge label="YOU · TIE WINS" rim="rgba(167,139,250,0.55)" delay="0.3s" />
       </div>
 
+      {/* Diagonal seam — adds energy vs a flat horizontal line. */}
       <div aria-hidden style={{
-        position: "absolute", top: "50%", left: 0, right: 0, height: 1,
-        background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
-        transform: "translateY(-0.5px)",
+        position: "absolute", top: "50%", left: "-10%", right: "-10%", height: 2,
+        background: "linear-gradient(90deg, transparent, rgba(167,139,250,0.55) 22%, rgba(255,255,255,0.8) 50%, rgba(56,189,248,0.55) 78%, transparent)",
+        boxShadow: "0 0 18px rgba(255,255,255,0.35)",
+        transform: "translateY(-1px) rotate(-2.5deg)",
+        zIndex: 4,
       }} />
 
+      {/* Center art slot — burst + VS art, swapped for FIGHT at phase 3. */}
       {phase >= 2 && (
         <div style={{
           position: "absolute", top: "50%", left: "50%",
           transform: "translate(-50%, -50%)", zIndex: 6,
           pointerEvents: "none",
+          width: 280, height: 280,
+          display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/games/challenge-ai-v2/ai-burst.png" alt="" style={{
             position: "absolute", top: "50%", left: "50%",
             transform: "translate(-50%, -50%)",
-            width: 460, height: 460, objectFit: "contain",
-            opacity: 0.55, mixBlendMode: "screen",
-            animation: "vs-burst 1s ease-out both",
-          }} />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/games/challenge-ai-v2/ai-vs.png" alt="VS" style={{
-            width: 220, height: 220, objectFit: "contain",
-            filter: "drop-shadow(0 0 36px rgba(56,189,248,0.85)) drop-shadow(0 0 12px rgba(56,189,248,0.6))",
-            // mixBlendMode: screen knocks any subtle grey artifacts out of
-            // the transparent PNG. Black/grey becomes invisible, neon glow stays.
+            width: 480, height: 480, objectFit: "contain",
+            opacity: phase >= 3 ? 0.42 : 0.55,
             mixBlendMode: "screen",
-            animation: "vs-zoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
-            position: "relative", zIndex: 2,
+            animation: "vs-burst 1s ease-out both",
+            transition: "opacity 0.25s ease-out",
           }} />
+
+          {phase < 3 && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/games/challenge-ai-v2/ai-vs.png" alt="VS" style={{
+              width: 220, height: 220, objectFit: "contain",
+              filter: "drop-shadow(0 0 36px rgba(56,189,248,0.85)) drop-shadow(0 0 12px rgba(56,189,248,0.6))",
+              // screen blend knocks out any subtle grey halo in the PNG.
+              mixBlendMode: "screen",
+              animation: "vs-zoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
+              position: "relative", zIndex: 2,
+            }} />
+          )}
+
+          {phase >= 3 && (
+            <div style={{
+              position: "relative", zIndex: 2,
+              color: "white",
+              fontSize: 76, fontWeight: 900,
+              letterSpacing: "0.04em",
+              fontStyle: "italic",
+              textShadow:
+                "0 0 32px rgba(167,139,250,0.9)," +
+                "0 0 16px rgba(56,189,248,0.7)," +
+                "0 3px 0 rgba(0,0,0,0.55)," +
+                "0 0 4px rgba(0,0,0,0.9)",
+              animation: "fight-slam 0.55s cubic-bezier(0.16, 1, 0.3, 1) both",
+            }}>FIGHT!</div>
+          )}
         </div>
       )}
 
-      {phase >= 3 && (
-        <div style={{
-          position: "absolute", bottom: "12%", left: 0, right: 0,
-          textAlign: "center", zIndex: 7,
-          animation: "reveal-text 0.4s ease-out both",
-        }}>
-          <div style={{
-            color: "rgba(220,210,255,0.55)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.32em",
-          }}>SINGLE ROUND · {tier.amount} G$ · {game.shortName}</div>
-          <div style={{
-            color: "white", fontSize: 36, fontWeight: 900, marginTop: 4,
-            textShadow: "0 0 24px rgba(167,139,250,0.7)",
-          }}>FIGHT</div>
-        </div>
-      )}
-
-      {/* AI side */}
+      {/* AI side (bottom half) */}
       <div style={{
         flex: 1, position: "relative",
-        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-        padding: "20px 20px 40px",
+        display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center",
+        padding: "90px 20px 56px", // top pushes content off the seam
         opacity: phase >= 1 ? 1 : 0,
-        background: `linear-gradient(0deg, ${tier.rim}22 0%, transparent 50%)`,
+        background: `linear-gradient(0deg, ${tier.rim}26 0%, transparent 70%)`,
         animation: phase >= 1 ? "vs-slide-in-right 0.7s cubic-bezier(0.16, 1, 0.3, 1) both" : "none",
       }}>
+        <Badge label={`${tier.difficulty.toUpperCase()} · ${tier.behavior.toUpperCase()}`} rim={`${tier.rim}99`} delay="0.85s" />
+        <NameRibbon label={tier.persona.toUpperCase()} rim={tier.rim} delay="0.7s" />
         <div style={{
           position: "relative",
-          width: 156, height: 156,
+          width: 152, height: 152, marginTop: 8,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           <div aria-hidden style={{
@@ -1310,16 +1382,57 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
             ...imgMask,
           }} />
         </div>
-        <div style={{
-          color: "white", fontSize: 26, fontWeight: 900, marginTop: 10,
-          textShadow: `0 0 16px ${tier.rim}66`,
-        }}>{tier.persona.toUpperCase()}</div>
-        <div style={{
-          color: tier.rimSoft, fontSize: 10, fontWeight: 800,
-          letterSpacing: "0.18em", marginTop: 2,
-        }}>{tier.difficulty} · {tier.behavior}</div>
       </div>
     </div>
+  );
+}
+
+// Name ribbon: rim-colored bars flank the name so it reads as a nameplate,
+// not floating text. Mirrors the title-card pattern from fighting games.
+function NameRibbon({ label, rim, delay }: { label: string; rim: string; delay: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      marginTop: 12,
+      animation: `ribbon-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) ${delay} both`,
+      maxWidth: "92vw",
+    }}>
+      <span aria-hidden style={{
+        flex: "0 0 28px", height: 2,
+        background: `linear-gradient(90deg, transparent, ${rim})`,
+        boxShadow: `0 0 8px ${rim}`,
+      }} />
+      <span style={{
+        color: "white", fontSize: 22, fontWeight: 900,
+        letterSpacing: "0.06em",
+        textShadow: `0 0 14px ${rim}, 0 1px 2px rgba(0,0,0,0.7)`,
+        whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
+      }}>{label}</span>
+      <span aria-hidden style={{
+        flex: "0 0 28px", height: 2,
+        background: `linear-gradient(270deg, transparent, ${rim})`,
+        boxShadow: `0 0 8px ${rim}`,
+      }} />
+    </div>
+  );
+}
+
+function Badge({ label, rim, delay }: { label: string; rim: string; delay: string }) {
+  return (
+    <div style={{
+      marginTop: 8,
+      padding: "5px 11px",
+      background: "rgba(8,6,22,0.55)",
+      border: `1px solid ${rim}`,
+      borderRadius: 999,
+      color: "rgba(235,230,255,0.92)",
+      fontSize: 9.5, fontWeight: 800,
+      letterSpacing: "0.22em",
+      textShadow: "0 0 6px rgba(0,0,0,0.85)",
+      animation: `chip-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${delay} both`,
+      whiteSpace: "nowrap",
+    }}>{label}</div>
   );
 }
 

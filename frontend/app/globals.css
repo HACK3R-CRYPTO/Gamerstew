@@ -194,6 +194,21 @@ button[aria-label$="button"],
   50%  { opacity: 1; transform: scale(1.18); }
   100% { opacity: 1; transform: scale(1); }
 }
+@keyframes fight-slam {
+  0%   { opacity: 0; transform: scale(2.4)   skewX(-12deg); filter: blur(8px); }
+  45%  { opacity: 1; transform: scale(0.92)  skewX(2deg);   filter: blur(0); }
+  60%  { transform: translateX(-6px) scale(1.02) skewX(-1deg); }
+  72%  { transform: translateX(5px)  scale(1)    skewX(0); }
+  100% { opacity: 1; transform: scale(1)     skewX(0); }
+}
+@keyframes ribbon-in {
+  0%   { opacity: 0; transform: translateY(8px) scaleX(0.7); }
+  100% { opacity: 1; transform: translateY(0)   scaleX(1); }
+}
+@keyframes chip-in {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
 @keyframes pick-pop {
   0%   { transform: scale(0.4)  rotate(-8deg); opacity: 0; }
   65%  { transform: scale(1.15) rotate(4deg);  opacity: 1; }
