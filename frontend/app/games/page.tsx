@@ -1213,18 +1213,21 @@ export default function GamesPage() {
                 flexDirection: isMobile ? "column" : "row",
                 gap: isMobile ? "12px" : "14px",
                 width: "100%",
-                height: isMobile ? "auto" : "clamp(304px, 52vh, 452px)",
+                height: isMobile ? "auto" : "clamp(328px, 56vh, 488px)",
                 overflowX: isMobile ? "visible" : "auto",
                 overflowY: isMobile ? "visible" : "hidden",
                 scrollSnapType: isMobile ? "none" : "x mandatory",
                 scrollPaddingLeft: isMobile ? 0 : "4px",
                 scrollPaddingRight: isMobile ? 0 : "60px",
                 paddingRight: isMobile ? 0 : "60px",
-                // Vertical breathing room so a hovered card can lift +
-                // scale into the padding instead of getting clipped by
-                // overflowY (which is forced to auto by overflowX).
-                paddingTop: isMobile ? 0 : "12px",
-                paddingBottom: isMobile ? 0 : "16px",
+                // Vertical breathing room. Hover does translateY(-8) +
+                // scale(1.04), which extends the card up to ~16px above
+                // its rest position. We need at least that much padding,
+                // plus buffer for the soft drop-shadow.
+                //   top:    24 → lift(8) + scale-grow(~8) + 8px buffer
+                //   bottom: 24 → shadow needs room to render fully
+                paddingTop: isMobile ? 0 : "24px",
+                paddingBottom: isMobile ? 0 : "24px",
                 scrollBehavior: "smooth",
               }}
             >
