@@ -107,27 +107,35 @@ export function moveDisplay(gameType: GameTypeId, move: Move | null | undefined)
 
 export type WagerTierId = "warmup" | "staked" | "highroller";
 
+// Each tier represents one MARKOV persona. The visual fields map directly to
+// the arena-style design: a portrait (`art`) framed inside a circle tinted by
+// `portraitBg` with `rim` as the ring color. `multi` is the display payout
+// (1.9× = 1.9× the wager after the 5% protocol fee). `lines` are the four
+// canned voice lines played during the match (ready / win / lose / tie).
 export type WagerTier = {
-  id:         WagerTierId;
-  name:       string;
-  amount:     string;       // decimal string, e.g. "0.1"
-  amountWei:  bigint;       // pre-computed 18-decimal wei (set below)
-  blurb:      string;       // sub-label shown on the tier chip
-  agentMode:  string;       // descriptor for the AI's behavior at this tier
-  color:      string;
-  wall:       string;
-  face:       string;
-  glow:       string;
-  // Visual persona — three "moods" of MARKOV-1, swapped by tier. All three
-  // map to the same on-chain wallet (CONTRACT_ADDRESSES.AI_AGENT); the
-  // persona is purely UI. The portrait path is the file the player drops in;
-  // if missing, the hub falls back to a color-block placeholder.
-  persona:    string;       // display name shown above the portrait
-  epithet:    string;       // one-line subtitle under the persona name
-  portrait:   string;       // /public path to the portrait image
-  // Visible stats — flavor numbers shown as bars. Not used by the agent's
-  // actual strategy; that's wager-tier driven on the backend.
-  stats:      { aggression: number; adaptability: number; difficulty: number };
+  id:           WagerTierId;
+  name:         string;
+  amount:       string;       // decimal string, e.g. "0.1"
+  amountWei:    bigint;       // pre-computed 18-decimal wei
+  blurb:        string;       // sub-label
+  agentMode:    string;       // descriptor for the AI's behavior at this tier
+  // Arena visuals — keyed to the bot portrait. `color` is the legacy alias,
+  // `rim` is the same value (used as the ring color in the new design).
+  color:        string;
+  rim:          string;
+  portraitBg:   string;       // radial-gradient string for the portrait disc
+  difficulty:   string;       // label shown on the cards: EASY / MEDIUM / HARD
+  multi:        number;       // display payout multiplier (1.9 / 1.9 / 1.9 ≈ 1.9×)
+  // Persona identity
+  persona:      string;       // display name (MARKOV-Junior, etc.)
+  title:        string;       // short subtitle ("Cadet Bot", "Combat Frame", …)
+  epithet:      string;       // longer one-line subtitle (kept for hover)
+  art:          string;       // /public path to the bot image
+  portrait:     string;       // legacy alias of `art` for older callers
+  // Canned voice lines
+  lines:        { ready: string; win: string; lose: string; tie: string };
+  // Visible stat bars — flavor numbers (UI only).
+  stats:        { aggression: number; adaptability: number; difficulty: number };
 };
 
 // Helpers — parseUnits would do this at runtime but the values are static.
@@ -147,13 +155,22 @@ export const WAGER_TIERS: WagerTier[] = [
     amountWei:  WAGER_WARMUP_WEI,
     blurb:      "Easy entry. MARKOV plays loose.",
     agentMode:  "half-random pattern, easy to read",
-    color:      "#86efac",
-    wall:       "#003a00",
-    face:       "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
-    glow:       "rgba(34,197,94,0.55)",
+    color:      "#22c55e",
+    rim:        "#22c55e",
+    portraitBg: "radial-gradient(circle at 35% 30%, #22c55e88, #0a4221)",
+    difficulty: "EASY",
+    multi:      1.9,
     persona:    "MARKOV-Junior",
+    title:      "Cadet Bot",
     epithet:    "The Apprentice · learning your patterns",
-    portrait:   "/characters/markov-junior.png",
+    art:        "/games/challenge-ai/ai-bot-easy.jpeg",
+    portrait:   "/games/challenge-ai/ai-bot-easy.jpeg",
+    lines: {
+      ready: "Beep! Ready when you are.",
+      win:   "I called it. Don't tilt.",
+      lose:  "You got me — pattern broken.",
+      tie:   "Spooky! Same brain.",
+    },
     stats:      { aggression: 35, adaptability: 40, difficulty: 25 },
   },
   {
@@ -163,13 +180,22 @@ export const WAGER_TIERS: WagerTier[] = [
     amountWei:  WAGER_STAKED_WEI,
     blurb:      "Real stakes. MARKOV adapts.",
     agentMode:  "transition-probability counter from history",
-    color:      "#fbbf24",
-    wall:       "#7c2d00",
-    face:       "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
-    glow:       "rgba(245,158,11,0.65)",
+    color:      "#f59e0b",
+    rim:        "#f59e0b",
+    portraitBg: "radial-gradient(circle at 35% 30%, #f59e0b88, #7c2d00)",
+    difficulty: "MEDIUM",
+    multi:      1.9,
     persona:    "MARKOV-Prime",
+    title:      "Combat Frame",
     epithet:    "The Reader · transition-probability counter",
-    portrait:   "/characters/markov-prime.png",
+    art:        "/games/challenge-ai/ai-bot-medium.jpeg",
+    portrait:   "/games/challenge-ai/ai-bot-medium.jpeg",
+    lines: {
+      ready: "Analyzing tactical profile…",
+      win:   "Predicted. Pattern locked.",
+      lose:  "Calibration error. Recompiling.",
+      tie:   "Mirror match. Recalibrating.",
+    },
     stats:      { aggression: 60, adaptability: 80, difficulty: 65 },
   },
   {
@@ -179,13 +205,22 @@ export const WAGER_TIERS: WagerTier[] = [
     amountWei:  WAGER_HIGHROLLER_WEI,
     blurb:      "Peak adversary. Player-first ties still apply.",
     agentMode:  "peak prediction + taunts",
-    color:      "#a78bfa",
-    wall:       "#4a006b",
-    face:       "linear-gradient(160deg, #d8b4fe 0%, #9333ea 50%, #6b21a8 100%)",
-    glow:       "rgba(167,139,250,0.7)",
+    color:      "#c4b5fd",
+    rim:        "#c4b5fd",
+    portraitBg: "radial-gradient(circle at 35% 30%, #a78bfacc, #1e1b4b)",
+    difficulty: "HARD",
+    multi:      1.9,
     persona:    "MARKOV-Ω",
+    title:      "Crystal Sovereign",
     epithet:    "The Oracle · your seventh move already mine",
-    portrait:   "/characters/markov-omega.png",
+    art:        "/games/challenge-ai/ai-bot-hard.jpeg",
+    portrait:   "/games/challenge-ai/ai-bot-hard.jpeg",
+    lines: {
+      ready: "I have already seen this outcome.",
+      win:   "The pattern reveals itself.",
+      lose:  "A glitch in the matrix. Recalibrating.",
+      tie:   "Convergence. Inevitable.",
+    },
     stats:      { aggression: 85, adaptability: 95, difficulty: 100 },
   },
 ];

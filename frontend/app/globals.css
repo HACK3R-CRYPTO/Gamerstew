@@ -154,6 +154,74 @@ button[aria-label$="button"],
   to   { transform: scale(1);    opacity: 1; }
 }
 
+/* ─── Challenge AI arena animations ────────────────────────────────────────
+   Used by the lobby / VS / match / result screens for the on-chain MARKOV-1
+   opponent flow. Lifted from the claude.ai/design handoff prototype. */
+@keyframes popIn {
+  0%   { transform: scale(0.3);  opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+@keyframes vs-burst {
+  0%   { opacity: 0;    transform: translate(-50%, -50%) scale(0.4)  rotate(0deg); }
+  40%  { opacity: 0.7;  transform: translate(-50%, -50%) scale(1.05) rotate(20deg); }
+  100% { opacity: 0.45; transform: translate(-50%, -50%) scale(1.15) rotate(40deg); }
+}
+@keyframes vs-zoom {
+  0%   { transform: scale(0.2)  rotate(-15deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(5deg);   opacity: 1; }
+  100% { transform: scale(1)    rotate(0);      opacity: 1; }
+}
+@keyframes vs-slide-in-left {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  100% { transform: translateX(0);     opacity: 1; }
+}
+@keyframes vs-slide-in-right {
+  0%   { transform: translateX(120%); opacity: 0; }
+  100% { transform: translateX(0);    opacity: 1; }
+}
+@keyframes reveal-burst {
+  0%   { opacity: 0;   transform: scale(0.4); }
+  50%  { opacity: 0.8; transform: scale(1.1); }
+  100% { opacity: 0;   transform: scale(1.4); }
+}
+@keyframes reveal-text {
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes pick-pop {
+  0%   { transform: scale(0.4)  rotate(-8deg); opacity: 0; }
+  65%  { transform: scale(1.15) rotate(4deg);  opacity: 1; }
+  100% { transform: scale(1)    rotate(0);     opacity: 1; }
+}
+@keyframes combatant-cheer {
+  0%, 100% { transform: translateY(0); }
+  30%      { transform: translateY(-8px) scale(1.06); }
+  60%      { transform: translateY(0)    scale(1); }
+}
+@keyframes combatant-hit {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-8px); }
+  40%  { transform: translateX(8px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); filter: brightness(0.6) saturate(0.5); }
+  100% { transform: translateX(0); filter: none; }
+}
+@keyframes coin-spin {
+  0%   { transform: scale(0.3) rotateY(540deg); opacity: 0; }
+  60%  { transform: scale(1.1) rotateY(0deg);   opacity: 1; }
+  100% { transform: scale(1)   rotateY(0deg);   opacity: 1; }
+}
+@keyframes result-rays {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 @keyframes bounce-scale-in {
   0%   { transform: scale(0);   }
   60%  { transform: scale(1.18);  }
