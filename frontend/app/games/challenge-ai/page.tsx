@@ -170,8 +170,18 @@ function useAgentLiveness(): { online: boolean; reason: "offline" | "out-of-fund
     if (latestId === 0n || !latestMatchTuple) return { online: true, reason: "online" as const };
 
     const t = latestMatchTuple as unknown as readonly [bigint, `0x${string}`, `0x${string}`, bigint, number, number, `0x${string}`, bigint];
+    const challenger = t[1];
     const status = t[5];
     const createdAt = Number(t[7]);
+
+    // Ghost slot — matchCounter incremented but no match struct was
+    // actually written (createdAt == 0 + zero-address challenger). The
+    // contract returns the default zero tuple. Don't false-positive a
+    // ~56-year age against the unix epoch; treat as "no signal".
+    if (createdAt === 0 || challenger === "0x0000000000000000000000000000000000000000") {
+      return { online: true, reason: "online" as const };
+    }
+
     const ageSec = Date.now() / 1000 - createdAt;
 
     // Latest match still PROPOSED + old = agent didn't accept = process down.
