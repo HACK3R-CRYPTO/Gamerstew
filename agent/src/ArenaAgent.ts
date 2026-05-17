@@ -515,11 +515,50 @@ async function tryResolveMatch(matchId: bigint, m: any) {
     try {
         console.log(chalk.cyan(`⚖️ Resolving Match #${matchId} (Global Referee Mode)...`));
 
-        // specific game logic fetching
-        const [challengerMove, opponentMove] = await withRetry(() => Promise.all([
-            publicClient.readContract({ address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.challenger] }),
-            publicClient.readContract({ address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.opponent] })
-        ]), "fetchMoves") as [number, number];
+        // CRITICAL: hasPlayed flipping to true at block N doesn't guarantee
+        // playerMoves at block N-1 will return the real value. Two parallel
+        // readContract calls can hit different RPC nodes (or the same node
+        // at different snapshot heights), so one move can come back stale
+        // (0 = ROCK by Solidity default) even though the other is fresh.
+        //
+        // Symptom we hit during testing: agent reads both moves as 0,
+        // determineWinner sees a tie, awards challenger by player-first
+        // rule — even though one side actually played scissors and the
+        // other played rock (AI should have won).
+        //
+        // Fix: pin both reads to a SINGLE block via multicall so they
+        // share the same snapshot, AND give RPC a beat to index the AI's
+        // own move tx before we sample. If we still see both-zero, retry
+        // once more before computing.
+        await sleep(1500);
+
+        const blockNumber = await publicClient.getBlockNumber();
+        const readMovesAt = async (atBlock: bigint): Promise<[number, number]> => {
+            const calls = await publicClient.multicall({
+                contracts: [
+                    { address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.challenger] },
+                    { address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.opponent] },
+                ],
+                blockNumber: atBlock,
+                allowFailure: false,
+            });
+            return [Number(calls[0]), Number(calls[1])];
+        };
+
+        let [challengerMove, opponentMove] = await readMovesAt(blockNumber);
+
+        // Sanity: if both came back 0 and the game is RPS, that's almost
+        // certainly a stale read (real games rarely have both players pick
+        // rock 0-0 — but if they did, the player-first tie still works).
+        // Wait + re-read at the latest block.
+        if (m.gameType === 0 && challengerMove === 0 && opponentMove === 0) {
+            console.log(chalk.gray(`Match #${matchId}: both moves read as 0, retrying after delay...`));
+            await sleep(2000);
+            const latestBlock = await publicClient.getBlockNumber();
+            [challengerMove, opponentMove] = await readMovesAt(latestBlock);
+        }
+
+        console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove}`));
 
         const winner = determineWinner(m.gameType, m.challenger, Number(challengerMove), m.opponent, Number(opponentMove));
 
