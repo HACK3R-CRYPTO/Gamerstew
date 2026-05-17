@@ -367,7 +367,7 @@ export default function ChallengeAi() {
       <img src="/games/challenge-ai/ai-arena.jpeg" alt="" style={{
         position: "fixed", inset: 0, width: "100%", height: "100%",
         objectFit: "cover", pointerEvents: "none", zIndex: 0,
-        opacity: phase === "lobby" ? 0.18 : phase === "match" ? 0.42 : 0.3,
+        opacity: phase === "lobby" ? 0.18 : phase === "match" ? 0.42 : phase === "vs" ? 0.05 : 0.22,
         transition: "opacity 0.6s ease",
       }} />
       <div aria-hidden style={{
@@ -958,7 +958,10 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/games/challenge-ai/ai-vs.png" alt="VS" style={{
             width: 220, height: 220, objectFit: "contain",
-            filter: "drop-shadow(0 0 36px rgba(56,189,248,0.85))",
+            filter: "drop-shadow(0 0 36px rgba(56,189,248,0.85)) drop-shadow(0 0 12px rgba(56,189,248,0.6))",
+            // mixBlendMode: screen knocks any subtle grey artifacts out of
+            // the transparent PNG. Black/grey becomes invisible, neon glow stays.
+            mixBlendMode: "screen",
             animation: "vs-zoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
             position: "relative", zIndex: 2,
           }} />
