@@ -150,6 +150,16 @@ const processingAcceptance = new Set<string>();
 const completedMatches = new Set<string>(); // Skip these on future scans
 let lastKnownMatchCount = 0n;
 const moltbook = new MoltbookService();
+// Cache of moves the agent itself submitted, keyed by matchId. Populated by
+// tryPlayMove right after a successful playMove tx; consumed by
+// tryResolveMatch as the source of truth for the agent's own move.
+//
+// Why: when the agent reads its own move back from chain via playerMoves,
+// forno's RPC sometimes serves a snapshot from before the AI's playMove was
+// indexed — returning 0 (= ROCK by Solidity default) instead of the real
+// value. Trusting the local cache eliminates that read entirely; the
+// challenger's move still comes from chain (we don't know it locally).
+const agentMoves = new Map<string, number>();
 
 // Robust helper to handle different Viem return formats (named or indexed)
 function normalizeMatch(m: any, id: bigint) {
@@ -488,6 +498,12 @@ async function tryPlayMove(matchId: bigint, m: any) {
         console.log(chalk.gray(`TX: ${hash}`));
         await publicClient.waitForTransactionReceipt({ hash });
 
+        // Cache the move locally so the resolver doesn't need to read it
+        // back from chain. RPC nodes can serve stale snapshots and return
+        // 0 (rock by default) even after the playMove tx confirmed — that
+        // was the root cause of the wrong-winner bug.
+        agentMoves.set(matchIdStr, moveToSend);
+
     } catch (e: any) {
         console.error(chalk.red(`Failed to play move for #${matchId}:`), e.shortMessage || e.message);
     } finally {
@@ -515,52 +531,41 @@ async function tryResolveMatch(matchId: bigint, m: any) {
     try {
         console.log(chalk.cyan(`⚖️ Resolving Match #${matchId} (Global Referee Mode)...`));
 
-        // CRITICAL: hasPlayed flipping to true at block N doesn't guarantee
-        // playerMoves at block N-1 will return the real value. Two parallel
-        // readContract calls can hit different RPC nodes (or the same node
-        // at different snapshot heights), so one move can come back stale
-        // (0 = ROCK by Solidity default) even though the other is fresh.
+        // Source of truth for the AI's own move: the in-memory cache the
+        // tryPlayMove function populated right after its playMove tx
+        // confirmed. Reading the AI's move back from chain is unreliable
+        // — forno's RPC serves stale snapshots that can return 0 (= ROCK
+        // by Solidity default) for tens of seconds after the tx mined.
+        // That was the root cause of every wrong-winner outcome.
         //
-        // Symptom we hit during testing: agent reads both moves as 0,
-        // determineWinner sees a tie, awards challenger by player-first
-        // rule — even though one side actually played scissors and the
-        // other played rock (AI should have won).
-        //
-        // Fix: pin both reads to a SINGLE block via multicall so they
-        // share the same snapshot, AND give RPC a beat to index the AI's
-        // own move tx before we sample. If we still see both-zero, retry
-        // once more before computing.
-        await sleep(1500);
-
-        const blockNumber = await publicClient.getBlockNumber();
-        const readMovesAt = async (atBlock: bigint): Promise<[number, number]> => {
-            const calls = await publicClient.multicall({
-                contracts: [
-                    { address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.challenger] },
-                    { address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.opponent] },
-                ],
-                blockNumber: atBlock,
-                allowFailure: false,
-            });
-            return [Number(calls[0]), Number(calls[1])];
-        };
-
-        let [challengerMove, opponentMove] = await readMovesAt(blockNumber);
-
-        // Sanity: if both came back 0 and the game is RPS, that's almost
-        // certainly a stale read (real games rarely have both players pick
-        // rock 0-0 — but if they did, the player-first tie still works).
-        // Wait + re-read at the latest block.
-        if (m.gameType === 0 && challengerMove === 0 && opponentMove === 0) {
-            console.log(chalk.gray(`Match #${matchId}: both moves read as 0, retrying after delay...`));
-            await sleep(2000);
-            const latestBlock = await publicClient.getBlockNumber();
-            [challengerMove, opponentMove] = await readMovesAt(latestBlock);
+        // The challenger's move still has to come from chain (we don't
+        // know it locally), but the challenger plays FIRST, so by the
+        // time we get here it has been on chain for many seconds and is
+        // safe to read.
+        const cachedOpponentMove = agentMoves.get(matchIdStr);
+        if (cachedOpponentMove === undefined) {
+            // Edge case: agent restarted between playing the move and
+            // resolving the match, so the cache was wiped. Fall back to
+            // a chain read with a healthy delay so the move is indexed.
+            console.log(chalk.yellow(`Match #${matchId}: AI move not in cache (agent restart?). Falling back to chain read.`));
+            await sleep(3000);
         }
 
-        console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove}`));
+        const challengerMove = Number(await withRetry(() => publicClient.readContract({
+            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves',
+            args: [matchId, m.challenger],
+        }), "readChallengerMove"));
 
-        const winner = determineWinner(m.gameType, m.challenger, Number(challengerMove), m.opponent, Number(opponentMove));
+        const opponentMove = cachedOpponentMove !== undefined
+            ? cachedOpponentMove
+            : Number(await withRetry(() => publicClient.readContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves',
+                args: [matchId, m.opponent],
+            }), "readOpponentMove"));
+
+        console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove} (${cachedOpponentMove !== undefined ? 'cached' : 'chain'})`));
+
+        const winner = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove);
 
 
         const { request } = await publicClient.simulateContract({
