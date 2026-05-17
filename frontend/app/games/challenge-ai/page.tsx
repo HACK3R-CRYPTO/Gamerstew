@@ -29,6 +29,7 @@ import { encodeAbiParameters, formatUnits } from "viem";
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC20_ABI } from "@/lib/contracts";
 import {
   GAME_TYPES, WAGER_TIERS, MATCH_STATUS,
+  GAME_TYPE_COIN,
   gameTypeById, moveDisplay,
   type ArenaMatch, type GameType, type WagerTier,
 } from "@/lib/challengeAi";
@@ -1383,6 +1384,41 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
   }, [locked, revealing, completed, game.moves.length]);
   const aiCyclingMove = locked && !revealing ? aiCycleIdx % game.moves.length : null;
 
+  // Oracle coin flip — coin-game only. Both players call a side; the
+  // contract / agent runs a coin flip ("oracle"); whoever called the
+  // oracle's side wins. We never showed the oracle to the player — they
+  // had no way to see why they won or lost. This animates a visible coin
+  // flip during the reveal phase so the determinative moment is on screen.
+  //
+  // We derive the oracle's landing side from the chain result:
+  //   - Different picks → the winner's call matched the oracle.
+  //   - Same picks → tie (player wins by rule). We show the player's
+  //     shared call as the "oracle" for narrative coherence; the actual
+  //     oracle in that case doesn't change the outcome.
+  const oracleSide: number | null = useMemo(() => {
+    if (game.id !== GAME_TYPE_COIN) return null;
+    if (playerMove === null || aiMove === null) return null;
+    if (playerMove === aiMove) return playerMove;
+    return youWon ? playerMove : aiMove;
+  }, [game.id, playerMove, aiMove, youWon]);
+
+  const [oracleSpinIdx, setOracleSpinIdx] = useState(0);
+  const [oracleLanded, setOracleLanded] = useState(false);
+  useEffect(() => {
+    if (!revealing || oracleSide === null) {
+      setOracleLanded(false);
+      return;
+    }
+    setOracleLanded(false);
+    // Fast alternation (90ms) reads as a true coin flip.
+    const spin = setInterval(() => setOracleSpinIdx(x => (x + 1) % 2), 90);
+    // Land at 650ms into the reveal hold — leaves room for the outcome
+    // text to play in the remaining hold time.
+    const land = setTimeout(() => { clearInterval(spin); setOracleLanded(true); }, 650);
+    return () => { clearInterval(spin); clearTimeout(land); };
+  }, [revealing, oracleSide]);
+  const oracleDisplay = oracleLanded ? oracleSide : oracleSpinIdx % 2;
+
   return (
     <div style={{
       maxWidth: 540, margin: "0 auto",
@@ -1411,12 +1447,55 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
           isThinking={aiThinking}
         />
 
-        {/* Center reveal area */}
+        {/* Center reveal area — taller on coin flip so the visible oracle
+            coin has room to spin and land. */}
         <div style={{
-          position: "relative", height: 62,
+          position: "relative",
+          height: revealing && game.id === GAME_TYPE_COIN ? 110 : 62,
           display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "height 0.25s",
         }}>
-          {revealing && (
+          {revealing && game.id === GAME_TYPE_COIN ? (
+            // Coin flip reveal — the oracle is the third hand. Spinning
+            // emoji for ~650ms, then lands on the side that matched the
+            // winner's call. Outcome text appears with the landing.
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+              animation: "reveal-text 0.4s ease-out both",
+              position: "relative", zIndex: 2,
+            }}>
+              <div style={{
+                color: oracleLanded
+                  ? (roundOutcome === "win" ? "#86efac" : roundOutcome === "lose" ? "#fda4af" : "#fde68a")
+                  : "rgba(220,210,255,0.6)",
+                fontSize: 9.5, fontWeight: 900, letterSpacing: "0.24em",
+                textShadow: oracleLanded
+                  ? `0 0 12px ${roundOutcome === "win" ? "#22c55e" : roundOutcome === "lose" ? "#f43f5e" : "#fbbf24"}`
+                  : "none",
+                transition: "color 0.2s, text-shadow 0.2s",
+              }}>
+                {oracleLanded ? "THE COIN LANDED" : "FLIPPING…"}
+              </div>
+              <div style={{
+                fontSize: 56,
+                filter: `drop-shadow(0 6px 14px rgba(0,0,0,0.55))`,
+                animation: oracleLanded
+                  ? "coin-spin 0.6s cubic-bezier(0.16, 1, 0.3, 1)"
+                  : undefined,
+              }}>
+                {oracleDisplay === 0 ? "🪙" : "🦅"}
+              </div>
+              {oracleLanded && (
+                <div style={{
+                  color: roundOutcome === "win" ? "#22c55e" : roundOutcome === "lose" ? "#f43f5e" : "#fbbf24",
+                  fontSize: 22, fontWeight: 900, letterSpacing: "0.06em",
+                  textShadow: `0 0 18px ${roundOutcome === "win" ? "#22c55e" : roundOutcome === "lose" ? "#f43f5e" : "#fbbf24"}`,
+                  animation: "reveal-text 0.45s ease-out both",
+                  marginTop: 2,
+                }}>{roundOutcome === "win" ? "YOU WIN" : roundOutcome === "lose" ? "MARKOV WINS" : "TIE — YOURS"}</div>
+              )}
+            </div>
+          ) : revealing && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/games/challenge-ai-v2/ai-glitch.png" alt="" style={{
