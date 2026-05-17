@@ -354,32 +354,48 @@ export default function ChallengeAi() {
     query: { enabled: matchEnabled && !!aiHasPlayed, refetchInterval: 2000, staleTime: 0, gcTime: 0 },
   });
 
-  // Per-match local mirror — wagmi/react-query briefly retains the old
-  // match's data while refetching with the new matchId. That caused the
-  // AI hand to start cycling before the player had even moved (because
-  // `playerHasPlayed` read true from the previous match's cache, so
-  // `locked = accepted && playerHasPlayed` evaluated true). We reset
-  // these mirrors when activeMatch.id changes, and only update them
-  // when fresh chain values arrive. Render the mirrors, not the raw
-  // wagmi values.
-  const [phpMirror, setPhpMirror] = useState<boolean>(false);
-  const [ahpMirror, setAhpMirror] = useState<boolean>(false);
-  const [pmMirror, setPmMirror] = useState<number | null>(null);
-  const [amMirror, setAmMirror] = useState<number | null>(null);
-  const lastMatchIdRef = useRef<bigint | null>(null);
+  // Per-match local mirror — tagged with the match id it was captured for.
+  //
+  // The previous untagged version still flashed stale data for one render:
+  // when activeMatch.id flips to the new match, mirror state hasn't been
+  // reset yet (state changes happen between renders via useEffect). So the
+  // OLD match's playerHasPlayed=true + the OLD playerMove/aiMove values
+  // briefly rendered against the NEW activeMatch — UI showed "TIE" before
+  // the player had even moved.
+  //
+  // Fix: each mirror stores { id, value }. We expose a `safe` reading that
+  // returns the neutral default whenever the mirror's id doesn't match the
+  // current activeMatch.id. So even on the one-render gap before the next
+  // useEffect runs, the mirror evaluates to null/false. No stale leakage.
+  const [phpMirrorState, setPhpMirrorState] = useState<{ id: bigint | null; v: boolean }>({ id: null, v: false });
+  const [ahpMirrorState, setAhpMirrorState] = useState<{ id: bigint | null; v: boolean }>({ id: null, v: false });
+  const [pmMirrorState,  setPmMirrorState]  = useState<{ id: bigint | null; v: number | null }>({ id: null, v: null });
+  const [amMirrorState,  setAmMirrorState]  = useState<{ id: bigint | null; v: number | null }>({ id: null, v: null });
   useEffect(() => {
-    if (lastMatchIdRef.current !== (activeMatch?.id ?? null)) {
-      lastMatchIdRef.current = activeMatch?.id ?? null;
-      setPhpMirror(false);
-      setAhpMirror(false);
-      setPmMirror(null);
-      setAmMirror(null);
+    if (typeof playerHasPlayed === "boolean" && activeMatch?.id !== undefined) {
+      setPhpMirrorState({ id: activeMatch.id, v: playerHasPlayed });
     }
-  }, [activeMatch?.id]);
-  useEffect(() => { if (typeof playerHasPlayed === "boolean") setPhpMirror(playerHasPlayed); }, [playerHasPlayed]);
-  useEffect(() => { if (typeof aiHasPlayed === "boolean") setAhpMirror(aiHasPlayed); }, [aiHasPlayed]);
-  useEffect(() => { if (typeof playerMove === "number") setPmMirror(playerMove); }, [playerMove]);
-  useEffect(() => { if (typeof aiMove === "number") setAmMirror(aiMove); }, [aiMove]);
+  }, [playerHasPlayed, activeMatch?.id]);
+  useEffect(() => {
+    if (typeof aiHasPlayed === "boolean" && activeMatch?.id !== undefined) {
+      setAhpMirrorState({ id: activeMatch.id, v: aiHasPlayed });
+    }
+  }, [aiHasPlayed, activeMatch?.id]);
+  useEffect(() => {
+    if (typeof playerMove === "number" && activeMatch?.id !== undefined) {
+      setPmMirrorState({ id: activeMatch.id, v: playerMove });
+    }
+  }, [playerMove, activeMatch?.id]);
+  useEffect(() => {
+    if (typeof aiMove === "number" && activeMatch?.id !== undefined) {
+      setAmMirrorState({ id: activeMatch.id, v: aiMove });
+    }
+  }, [aiMove, activeMatch?.id]);
+  const currentId = activeMatch?.id;
+  const phpMirror = phpMirrorState.id === currentId ? phpMirrorState.v : false;
+  const ahpMirror = ahpMirrorState.id === currentId ? ahpMirrorState.v : false;
+  const pmMirror  = pmMirrorState.id  === currentId ? pmMirrorState.v  : null;
+  const amMirror  = amMirrorState.id  === currentId ? amMirrorState.v  : null;
 
   // Agent staleness — if MARKOV doesn't accept / play within the expected
   // window, the agent process is probably offline. Surface that honestly.
