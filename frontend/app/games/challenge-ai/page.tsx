@@ -409,7 +409,7 @@ export default function ChallengeAi() {
     }}>
       {/* Arena floor — opacity varies with phase */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/games/challenge-ai/ai-arena.jpeg" alt="" style={{
+      <img src="/games/challenge-ai-v2/ai-arena.png" alt="" style={{
         position: "fixed", inset: 0, width: "100%", height: "100%",
         objectFit: "cover", pointerEvents: "none", zIndex: 0,
         opacity: phase === "lobby" ? 0.18 : phase === "match" ? 0.42 : phase === "vs" ? 0.05 : 0.22,
@@ -665,7 +665,7 @@ function HeroPanel({ tier, record, winrate, isDesktop }: {
       {/* Layered backdrop */}
       <div aria-hidden style={{ position: "absolute", inset: 0, background: tier.portraitBg }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/games/challenge-ai/ai-arena.jpeg" alt="" style={{
+      <img src="/games/challenge-ai-v2/ai-arena.png" alt="" style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
         objectFit: "cover", opacity: 0.32, mixBlendMode: "overlay",
         pointerEvents: "none",
@@ -1004,7 +1004,7 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
           pointerEvents: "none",
         }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/games/challenge-ai/ai-burst.png" alt="" style={{
+          <img src="/games/challenge-ai-v2/ai-burst.png" alt="" style={{
             position: "absolute", top: "50%", left: "50%",
             transform: "translate(-50%, -50%)",
             width: 460, height: 460, objectFit: "contain",
@@ -1012,7 +1012,7 @@ function ArenaVS({ tier, game }: { tier: WagerTier; game: GameType }) {
             animation: "vs-burst 1s ease-out both",
           }} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/games/challenge-ai/ai-vs.png" alt="VS" style={{
+          <img src="/games/challenge-ai-v2/ai-vs.png" alt="VS" style={{
             width: 220, height: 220, objectFit: "contain",
             filter: "drop-shadow(0 0 36px rgba(56,189,248,0.85)) drop-shadow(0 0 12px rgba(56,189,248,0.6))",
             // mixBlendMode: screen knocks any subtle grey artifacts out of
@@ -1161,7 +1161,7 @@ function ArenaMatch({ tier, game, activeMatch, playerHasPlayed, aiHasPlayed, pla
           {revealing && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/games/challenge-ai/ai-glitch.png" alt="" style={{
+              <img src="/games/challenge-ai-v2/ai-glitch.png" alt="" style={{
                 position: "absolute", width: 280, height: 280, objectFit: "contain",
                 opacity: 0.6, mixBlendMode: "screen",
                 animation: "reveal-burst 0.8s ease-out both",
@@ -1478,7 +1478,7 @@ function ArenaResult({ tier, game, wager, youWon, tieByRule, playerMove, aiMove,
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {youWon && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/games/challenge-ai/ai-burst.png" alt="" style={{
+            <img src="/games/challenge-ai-v2/ai-burst.png" alt="" style={{
               position: "absolute", inset: -30,
               width: "calc(100% + 60px)", height: "calc(100% + 60px)",
               objectFit: "contain", opacity: 0.7, mixBlendMode: "screen",
@@ -1487,7 +1487,7 @@ function ArenaResult({ tier, game, wager, youWon, tieByRule, playerMove, aiMove,
           )}
           {youWon ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/games/challenge-ai/ai-coin.jpeg" alt="" style={{
+            <img src="/games/challenge-ai-v2/ai-coin.png" alt="" style={{
               width: 156, height: 156, borderRadius: "50%",
               objectFit: "cover",
               boxShadow: "0 0 44px rgba(251,191,36,0.7), 0 16px 30px rgba(0,0,0,0.5)",
