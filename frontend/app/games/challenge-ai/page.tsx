@@ -1497,6 +1497,26 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
         </>
       )}
 
+      {/* Rules hint — surfaced above move buttons during PICK so the player
+          understands what determines the outcome before they wager their
+          move. Pulled from lib so RPS / Coin / future game types stay in
+          sync with their canonical rules text. */}
+      {showPickButtons && (
+        <div style={{
+          marginTop: 10,
+          padding: "9px 12px",
+          borderRadius: 12,
+          background: "rgba(167,139,250,0.08)",
+          border: "1px solid rgba(167,139,250,0.25)",
+          color: "rgba(220,210,255,0.85)",
+          fontSize: 11, lineHeight: 1.4, fontWeight: 600,
+          display: "flex", gap: 8, alignItems: "flex-start",
+        }}>
+          <span style={{ fontSize: 13, flexShrink: 0 }}>💡</span>
+          <span>{game.rules}</span>
+        </div>
+      )}
+
       {/* Move buttons */}
       {showPickButtons && (
         <div style={{

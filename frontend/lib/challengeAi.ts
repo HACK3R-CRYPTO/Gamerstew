@@ -61,7 +61,7 @@ export const GAME_TYPES: GameType[] = [
       { id: 1, emoji: "✋", label: "PAPER",    hint: "Covers rock"      },
       { id: 2, emoji: "✌️", label: "SCISSORS", hint: "Cuts paper"       },
     ],
-    rules: "Pick a move. MARKOV-1 picks too. Ties go to you.",
+    rules: "Pick rock, paper, or scissors. MARKOV-1 picks too. Standard rules — rock crushes scissors, scissors cut paper, paper covers rock. Ties go to you.",
   },
   {
     id:        GAME_TYPE_COIN,
@@ -73,7 +73,11 @@ export const GAME_TYPES: GameType[] = [
       { id: 0, emoji: "🪙", label: "HEADS" },
       { id: 1, emoji: "🦅", label: "TAILS" },
     ],
-    rules: "Call the coin. MARKOV-1 calls too. Ties go to you.",
+    // Coin flip mechanic: both players call heads or tails, then the contract
+    // runs an oracle coin flip. Whoever called the side matching the oracle
+    // wins. If both called right OR both called wrong → tie → player wins by
+    // the player-first rule.
+    rules: "Call heads or tails. MARKOV-1 calls too. The coin flips after — whoever guessed it correctly wins. If you both guess right or both guess wrong, the tie goes to you.",
   },
 ];
 
