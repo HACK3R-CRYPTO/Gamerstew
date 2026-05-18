@@ -629,10 +629,54 @@ export default function ChallengeAi() {
   }
 
   // ─── Derived for sub-screens ─────────────────────────────────────────────
-  const youWon = activeMatch?.status === MATCH_STATUS.COMPLETED && !!address
+  // Agent-side outcome read. The contract emits AI as winner on every tie
+  // (we route resolveMatch(agent) for symmetry and the agent refunds the
+  // player from its own wallet), so chain state alone reports a tie as a
+  // clean loss. /api/match-outcome reads agent_match_state in Supabase
+  // and tells us whether this match was actually a tie + refunded.
+  const [matchOutcome, setMatchOutcome] = useState<null | {
+    outcome: "ai_won" | "player_won" | "tie" | null;
+    tieReason: string | null;
+    tieRefundWei: string | null;
+    refundPending: boolean;
+    refundTxHash: string | null;
+  }>(null);
+  useEffect(() => {
+    if (!activeMatch || activeMatch.status !== MATCH_STATUS.COMPLETED) {
+      setMatchOutcome(null);
+      return;
+    }
+    let cancelled = false;
+    const matchKey = activeMatch.id.toString();
+    const fetchOnce = async () => {
+      try {
+        const r = await fetch(`/api/match-outcome/${matchKey}`, { cache: "no-store" });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (cancelled) return;
+        setMatchOutcome(j);
+      } catch {}
+    };
+    void fetchOnce();
+    // The agent writes the row immediately after resolveMatch but the
+    // refund tx may still be in flight. Poll a few times so the UI
+    // updates when refund_pending flips false.
+    const t = setInterval(fetchOnce, 2500);
+    const stop = setTimeout(() => clearInterval(t), 20000);
+    return () => { cancelled = true; clearInterval(t); clearTimeout(stop); };
+  }, [activeMatch?.id, activeMatch?.status, activeMatch]);
+
+  const winnerIsAddress = activeMatch?.status === MATCH_STATUS.COMPLETED && !!address
     && activeMatch.winner.toLowerCase() === address.toLowerCase();
-  const movesEqual = phase === "result" && pmMirror !== null && amMirror !== null && pmMirror === amMirror;
-  const tieByRule = movesEqual && youWon;
+  // tieByRefund: agent says this resolved as a tie. Strictly more accurate
+  // than the old movesEqual heuristic (which only fired for RPS same-move
+  // ties and missed coin-flip ties entirely).
+  const tieByRefund = matchOutcome?.outcome === "tie";
+  const youWon = winnerIsAddress && !tieByRefund;
+  const tieByRule = tieByRefund;
+  const tieRefundG = tieByRefund && matchOutcome?.tieRefundWei
+    ? Number(matchOutcome.tieRefundWei) / 1e18
+    : 0;
 
   // Win streak chip in the top bar — sum of streaks across all tiers (latest
   // run of wins, regardless of tier).
@@ -730,6 +774,8 @@ export default function ChallengeAi() {
             wager={activeMatch.wager}
             youWon={youWon}
             tieByRule={tieByRule}
+            tieRefundG={tieRefundG}
+            refundPending={!!matchOutcome?.refundPending}
             playerMove={pmMirror}
             aiMove={amMirror}
             record={records[tier.id] ?? { wins: 0, losses: 0, streak: 0 }}
@@ -1926,10 +1972,12 @@ function CombatantStage({ side, tier, gameId, pick, cyclingMove, revealing, outc
 }
 
 // ─── ArenaResult ────────────────────────────────────────────────────────────
-function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, playerMove, aiMove, record, onAgain, onLobby, busy }: {
+function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, tieRefundG, refundPending, playerMove, aiMove, record, onAgain, onLobby, busy }: {
   tier: WagerTier; game: GameType; pet: PetStage;
   wager: bigint;
   youWon: boolean; tieByRule: boolean;
+  tieRefundG: number;       // G$ amount the agent refunded on a tie. 0 if not a tie.
+  refundPending: boolean;   // true if agent_match_state.refund_pending is still set
   playerMove: number | null; aiMove: number | null;
   record: { wins: number; losses: number; streak: number };
   onAgain: () => void; onLobby: () => void;
@@ -1937,7 +1985,10 @@ function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, playerMove, ai
 }) {
   const wagerN  = Number(formatUnits(wager, 18));
   const prizeN  = wagerN * tier.multi;
-  const netN    = youWon ? (prizeN - wagerN) : tieByRule ? 0 : -wagerN;
+  // On a tie the player loses (wager - refund) — that's the protocol fee
+  // share. ~2% of the stake on the standard 0.98× refund policy.
+  const tieNet = tieRefundG - wagerN;
+  const netN    = youWon ? (prizeN - wagerN) : tieByRule ? tieNet : -wagerN;
 
   // Tick the payout number up.
   const [shown, setShown] = useState(0);
@@ -1954,7 +2005,8 @@ function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, playerMove, ai
     return () => cancelAnimationFrame(raf);
   }, [youWon, netN]);
 
-  // Updated record numbers
+  // Updated record numbers. Ties don't bank a win, don't add a loss,
+  // and don't break the streak.
   const newWins   = record.wins + (youWon ? 1 : 0);
   const newLosses = record.losses + (!youWon && !tieByRule ? 1 : 0);
   const newStreak = youWon ? (record.streak >= 0 ? record.streak + 1 : 1) : (!tieByRule ? 0 : record.streak);
@@ -1967,7 +2019,9 @@ function ArenaResult({ tier, game, pet, wager, youWon, tieByRule, playerMove, ai
   const subtext = youWon
     ? `You bested ${tier.persona} for ${tier.multi}× return on your ${wagerN.toFixed(2)} G$ stake.`
     : tieByRule
-    ? "Equal move. Player-first rule applied. Your stake is returned."
+    ? (refundPending
+        ? `Tie. Refund of ${tieRefundG.toFixed(2)} G$ in flight — it'll land in your wallet shortly.`
+        : `Tie. ${tieRefundG.toFixed(2)} G$ refunded to your wallet. Both sides split the 2% protocol fee.`)
     : `${tier.persona} read your pattern. 30% of your stake funds UBI.`;
 
   const playerEmoji = playerMove !== null ? moveDisplay(game.id, playerMove).emoji : "?";

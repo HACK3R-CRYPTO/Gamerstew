@@ -44,7 +44,11 @@ const USER_ADDRESS = '0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d';
 const G_TOKEN_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' as `0x${string}`;
 const REGISTRY_ADDRESS = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432' as `0x${string}`; // ERC-8004 on Celo Mainnet
 
-const ERC20_ABI = parseAbi(["function transferAndCall(address to, uint256 value, bytes data) external returns (bool)", "function balanceOf(address account) external view returns (uint256)"]);
+const ERC20_ABI = parseAbi([
+    "function transferAndCall(address to, uint256 value, bytes data) external returns (bool)",
+    "function transfer(address to, uint256 value) external returns (bool)",
+    "function balanceOf(address account) external view returns (uint256)",
+]);
 
 if (!process.env.PRIVATE_KEY) {
     console.error(chalk.red("FATAL: PRIVATE_KEY environment variable is not set."));
@@ -802,28 +806,67 @@ async function tryResolveMatch(matchId: bigint, m: any) {
 
         console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove} (${cachedOpponentMove !== undefined ? 'cached' : 'chain'})`));
 
-        const winner = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove);
-
+        const outcome = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove, m.wager);
 
         const { request } = await publicClient.simulateContract({
             address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
-            args: [matchId, winner as `0x${string}`], account
+            args: [matchId, outcome.winner], account
         });
         const hash = await walletClient.writeContract(request);
-        console.log(chalk.green(`✅ Match #${matchId} Resolved! Winner: ${winner === m.challenger ? 'Challenger' : 'Opponent'} (${winner})`));
+        await publicClient.waitForTransactionReceipt({ hash });
+        console.log(chalk.green(`✅ Match #${matchId} Resolved! ${outcome.isTie ? `TIE (${outcome.tieReason}) → AI on chain, refund pending` : `Winner: ${outcome.winner === m.challenger ? 'Challenger' : 'Opponent'} (${outcome.winner})`}`));
 
-        // Loss-cap accounting. Compare winner to the agent's own address to
-        // decide if the agent won this match. recordOutcome only counts when
-        // the agent lost (player won), so cap state stays accurate.
-        const agentWon = winner.toLowerCase() === account.address.toLowerCase();
-        await lossCap.recordOutcome(matchId, m.challenger, agentWon, m.wager);
+        // Persist the resolve outcome to Supabase so the frontend can
+        // tell a tied match apart from a clean loss (the contract emits
+        // MatchCompleted with AI as winner in both cases). The refund
+        // tx hash is filled in by sendTieRefund below.
+        const matchOutcome = outcome.isTie ? 'tie' : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 'ai_won' : 'player_won');
+        try {
+            await supabase.from('agent_match_state').upsert({
+                match_id: matchId.toString(),
+                challenger: m.challenger.toLowerCase(),
+                wager_wei: m.wager.toString(),
+                game_type: m.gameType,
+                ai_move: opponentMove,
+                player_move: challengerMove,
+                resolved_at: new Date().toISOString(),
+                ai_won: outcome.winner.toLowerCase() === account.address.toLowerCase(),
+                outcome: matchOutcome,
+                tie_reason: outcome.isTie ? outcome.tieReason : null,
+                tie_refund_wei: outcome.isTie ? outcome.tieRefundWei.toString() : null,
+                refund_pending: outcome.isTie,
+            }, { onConflict: 'match_id' });
+        } catch (e: any) {
+            console.warn(chalk.yellow(`agent_match_state upsert failed for #${matchId}: ${e?.message ?? e}`));
+        }
+
+        // Tie refund. Send 0.98× wager from the agent's wallet to the
+        // challenger. Best-effort with chain-level retry. Failure is
+        // logged loudly; the refund_pending row in Supabase surfaces
+        // it for manual reconciliation.
+        if (outcome.isTie) {
+            await sendTieRefund(matchId, m.challenger as `0x${string}`, outcome.tieRefundWei);
+        }
+
+        // Loss-cap accounting. On a clean loss the agent paid `wager` to
+        // the player. On a tie the agent paid `tieRefundWei` to the
+        // player out of its own wallet. Either is a real outflow against
+        // the daily cap. On a clean AI win, no charge.
+        const lossWei = outcome.isTie
+            ? outcome.tieRefundWei
+            : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 0n : m.wager);
+        if (lossWei > 0n) {
+            await lossCap.recordOutcome(matchId, m.challenger, false, lossWei);
+        } else {
+            await lossCap.recordOutcome(matchId, m.challenger, true, 0n);
+        }
 
         // Social Update: Match Result
         await moltbook.postMatchResult(
             matchId.toString(),
             m.challenger,
             m.opponent,
-            winner,
+            outcome.winner,
             formatEther(m.wager * 2n),
             GAME_NAMES[m.gameType] || 'Unknown'
         );
@@ -856,33 +899,81 @@ async function tryResolveMatch(matchId: bigint, m: any) {
     }
 }
 
-function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number): string {
+// Sends the tie refund to the challenger from the agent's wallet. Called
+// only after a successful resolveMatch tx has assigned the prize to the
+// AI on chain. Failure is logged but doesn't throw — the caller flagged
+// refund_pending=true in agent_match_state so ops can reconcile.
+async function sendTieRefund(matchId: bigint, player: `0x${string}`, amountWei: bigint): Promise<void> {
+    const matchKey = matchId.toString();
+    try {
+        console.log(chalk.gray(`💸 Refund #${matchId}: ${formatEther(amountWei)} G$ → ${player.slice(0, 8)}..`));
+
+        const { request } = await publicClient.simulateContract({
+            address: G_TOKEN_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: 'transfer',
+            args: [player, amountWei],
+            account,
+        });
+        const hash = await walletClient.writeContract(request);
+        await publicClient.waitForTransactionReceipt({ hash });
+
+        try {
+            await supabase
+                .from('agent_match_state')
+                .update({ refund_pending: false, refund_tx_hash: hash })
+                .eq('match_id', matchKey);
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Refund tx ${hash} succeeded but agent_match_state update failed for #${matchId}: ${e?.message ?? e}`));
+        }
+
+        console.log(chalk.green(`✅ Refund tx ${hash} for match #${matchId}`));
+    } catch (e: any) {
+        console.error(chalk.red(`❌ Tie refund FAILED for #${matchId} → ${player}: ${e?.shortMessage ?? e?.message ?? e}. agent_match_state.refund_pending stays true; reconcile manually.`));
+    }
+}
+
+// Resolution outcome for one match. `winner` is the address that
+// resolveMatch is called with (the contract pays it 1.96× the pot).
+// On a tie we route the on-chain win to the AI and refund the player
+// `tieRefundWei` G$ from the agent's wallet in a follow-up tx — gives
+// each side a symmetric "each pays half the protocol fee" outcome
+// without changing the contract.
+interface ResolveOutcome {
+    winner: `0x${string}`;
+    isTie: boolean;
+    tieRefundWei: bigint;
+    tieReason: string; // empty if not a tie
+}
+
+// Refund 98% of the wager on ties. The 2% fee already taken at
+// resolveMatch is split evenly between both sides this way (AI keeps
+// 0.98× of the pot, refunds the other 0.98× to the player).
+function tieRefundFor(wager: bigint): bigint {
+    return (wager * 98n) / 100n;
+}
+
+function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number, wager: bigint): ResolveOutcome {
     let p1Wins = false;
     let isTie = false;
+    let tieReason = '';
 
     if (gameType === 0) { // RPS
-        if (m1 === m2) isTie = true;
+        if (m1 === m2) { isTie = true; tieReason = 'rps_same'; }
         else if ((m1 === 0 && m2 === 2) || (m1 === 1 && m2 === 0) || (m1 === 2 && m2 === 1)) p1Wins = true;
     } else if (gameType === 1) { // Dice
-        if (m1 === m2) isTie = true;
+        if (m1 === m2) { isTie = true; tieReason = 'dice_same'; }
         else if (m1 > m2) p1Wins = true;
     } else if (gameType === 3) { // Coin Flip
-        // Oracle Flip — the third hand of coin flip. Both players call a
-        // side, the oracle "flips," whoever matched it wins. For sustainable
-        // house economics:
-        //   - Both right     → AI (p2) wins. Both made the correct call, but
-        //                       the house keeps the edge — otherwise every
-        //                       same-side call would tie to the player and
-        //                       drain the treasury.
-        //   - Both wrong     → tie → player (p1) wins. Consolation prize
-        //                       for both missing — preserves the player-
-        //                       first feel on collective failure.
-        //   - p1 right only  → player wins.
-        //   - p2 right only  → AI wins.
+        // Oracle flip decides which side called correctly. Outcomes:
+        //   - p1 only correct → player wins
+        //   - p2 only correct → AI wins
+        //   - both correct    → tie (was "house wins"; now refunds)
+        //   - both wrong      → tie (was "player wins"; now refunds)
         //
-        // NOTE: This currently uses Math.random() as the oracle. Ideally
-        // we'd use a verifiable on-chain source (blockhash, VRF) so the
-        // outcome is auditable. Tracked as post-hackathon work.
+        // NOTE: still Math.random(). On-chain VRF / blockhash is tracked
+        // as post-hackathon work and would let us emit the oracle result
+        // on chain for full auditability.
         const oracleFlip = Math.random() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
         console.log(chalk.gray(`🔮 Oracle Flip: ${oracleFlip === 0 ? 'Heads' : 'Tails'}`));
 
@@ -890,13 +981,11 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
         const p2Correct = m2 === oracleFlip;
 
         if (p1Correct && p2Correct) {
-            // Both called the oracle correctly. House takes it.
-            p1Wins = false;
-            console.log(chalk.gray(`Both correct — AI wins on house-edge tie rule.`));
+            isTie = true; tieReason = 'coin_both_right';
+            console.log(chalk.gray(`Both correct — tie, refund pending.`));
         } else if (!p1Correct && !p2Correct) {
-            // Both missed. Player-first consolation.
-            isTie = true;
-            console.log(chalk.gray(`Both wrong — player wins on consolation tie rule.`));
+            isTie = true; tieReason = 'coin_both_wrong';
+            console.log(chalk.gray(`Both wrong — tie, refund pending.`));
         } else if (p1Correct) {
             p1Wins = true;
         } else {
@@ -905,13 +994,20 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
     }
 
     if (isTie) {
-        // On a tie, award the challenger (p1) — the human player initiates challenges,
-        // so this avoids the confusing "you tied but lost" experience.
-        console.log(chalk.yellow(`🤝 TIE detected! Awarding challenger (p1) on tie.`));
-        return p1;
+        // Route every tie to AI on chain. Caller sends `tieRefundWei` G$
+        // to the player after the resolveMatch tx confirms. Each side
+        // ends up net -2% (the protocol fee), no asymmetric edge either way.
+        const refund = tieRefundFor(wager);
+        console.log(chalk.yellow(`🤝 TIE (${tieReason}). On chain → AI; refund ${formatEther(refund)} G$ to player.`));
+        return { winner: p2 as `0x${string}`, isTie: true, tieRefundWei: refund, tieReason };
     }
 
-    return p1Wins ? p1 : p2;
+    return {
+        winner: (p1Wins ? p1 : p2) as `0x${string}`,
+        isTie: false,
+        tieRefundWei: 0n,
+        tieReason: '',
+    };
 }
 
 startAgent();
