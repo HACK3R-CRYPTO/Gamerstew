@@ -1,12 +1,29 @@
 import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
-import * as fs from 'fs';
 import { MoltbookService } from './services/MoltbookService.js';
 
 dotenv.config();
 dotenv.config({ path: '../contracts/.env' });
+
+// Shared Supabase client. Same project as the games-backend on Railway.
+// Uses SUPABASE_ANON_KEY to match the existing backend convention. This
+// works because RLS is currently disabled on the agent_* tables, so the
+// anon role has full access. If RLS is ever enabled, either switch this
+// to a SUPABASE_SERVICE_ROLE_KEY env var or add policies that grant the
+// anon role insert/update on agent_loss_caps + execute on
+// agent_increment_loss.
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    console.error(chalk.red("FATAL: SUPABASE_URL and SUPABASE_ANON_KEY must be set."));
+    console.log(chalk.yellow("Use the same values the games-backend service already uses on Railway."));
+    process.exit(1);
+}
+const supabase = createSupabaseClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!,
+);
 
 const ARENA_ABI = [
     { type: "event", name: "MatchProposed", inputs: [{ name: "matchId", type: "uint256", indexed: true }, { name: "challenger", type: "address", indexed: true }, { name: "opponent", type: "address", indexed: true }, { name: "wager", type: "uint256", indexed: false }, { name: "gameType", type: "uint8", indexed: false }] },
@@ -252,130 +269,107 @@ const completedMatches = new Set<string>(); // Skip these on future scans
 //
 //   1. Global daily loss cap. If MARKOV has lost > GLOBAL_DAILY_LOSS_CAP
 //      across ALL matches today (UTC), agent refuses to accept any new
-//      match until the next UTC day rolls over. Protects against cold
-//      streaks and coordinated multi-wallet sharks.
+//      match until the next UTC day rolls over.
 //
 //   2. Per-wallet daily loss cap. If a SINGLE wallet has won more than
 //      WALLET_DAILY_LOSS_CAP from MARKOV today, agent refuses to accept
-//      further matches from that wallet. Protects against a single shark
-//      farming the agent.
+//      further matches from that wallet.
 //
-// State is persisted to disk every recordOutcome() call so an agent
-// restart can't be used to reset the caps. File: ./.loss-cap-state.json
-// (gitignored). On boot, state is loaded only if it's still today's day-
-// key — yesterday's snapshot is discarded and counters start fresh.
+// State lives in Supabase (`agent_loss_caps`), shared with the games-backend
+// project. Survives container restarts, deploys, and disk wipes. The atomic
+// `agent_increment_loss` Postgres function prevents lost updates when two
+// matches resolve in the same tick.
+//
+// Policy on DB failure: FAIL CLOSED on reads (refuse new accepts if we
+// can't verify caps), but log loudly and surface in /healthz. Writes use a
+// best-effort retry; permanent failure leaves cap state under-counted, so
+// errors must page operators.
 class LossCapTracker {
-    // Defaults — tunable via env vars without redeploy.
     private readonly GLOBAL_CAP_WEI: bigint = parseEther(process.env.GLOBAL_DAILY_LOSS_CAP ?? "100");
     private readonly WALLET_CAP_WEI: bigint = parseEther(process.env.WALLET_DAILY_LOSS_CAP ?? "50");
-    private readonly STATE_FILE = "./.loss-cap-state.json";
 
-    private currentDayKey: string = "";
-    private totalLossWei: bigint = 0n;
-    private walletLossWei: Map<string, bigint> = new Map();
-    // Track which matches we've already counted so a duplicate
-    // recordOutcome (e.g. on retry) can't double-charge the counters.
+    // Process-local dedup. Belt-and-suspenders on top of the contract's
+    // exactly-once resolve guarantee. A duplicate recordOutcome call in
+    // the same process (retry path, double-fire) is silently skipped.
     private countedMatches: Set<string> = new Set();
-
-    constructor() {
-        this.rolloverIfNeeded();
-        this.load();
-    }
 
     private dayKey(): string {
         return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
     }
 
-    private rolloverIfNeeded(): void {
-        const key = this.dayKey();
-        if (key !== this.currentDayKey) {
-            if (this.currentDayKey !== "") {
-                console.log(chalk.cyan(`📅 New day (${key}) — loss caps reset.`));
-            }
-            this.currentDayKey = key;
-            this.totalLossWei = 0n;
-            this.walletLossWei.clear();
-            this.countedMatches.clear();
-        }
-    }
-
-    private load(): void {
-        try {
-            if (!fs.existsSync(this.STATE_FILE)) return;
-            const raw = fs.readFileSync(this.STATE_FILE, "utf-8");
-            const data = JSON.parse(raw);
-            if (data?.day !== this.dayKey()) {
-                // Stale day — discard.
-                return;
-            }
-            this.currentDayKey = data.day;
-            this.totalLossWei = BigInt(data.totalLossWei ?? "0");
-            this.walletLossWei = new Map(
-                Object.entries(data.walletLossWei ?? {}).map(([k, v]) => [k, BigInt(v as string)])
-            );
-            this.countedMatches = new Set(data.countedMatches ?? []);
-            console.log(chalk.gray(`Loaded loss-cap state: today's total = ${formatEther(this.totalLossWei)} G$ across ${this.walletLossWei.size} wallets.`));
-        } catch (e: any) {
-            console.warn(chalk.yellow(`Could not load loss-cap state: ${e.message}`));
-        }
-    }
-
-    private persist(): void {
-        try {
-            const data = {
-                day: this.currentDayKey,
-                totalLossWei: this.totalLossWei.toString(),
-                walletLossWei: Object.fromEntries(
-                    Array.from(this.walletLossWei.entries()).map(([k, v]) => [k, v.toString()])
-                ),
-                countedMatches: Array.from(this.countedMatches),
-            };
-            fs.writeFileSync(this.STATE_FILE, JSON.stringify(data));
-        } catch (e: any) {
-            console.warn(chalk.yellow(`Could not persist loss-cap state: ${e.message}`));
-        }
-    }
-
     /**
      * Called before acceptMatch. Returns null if the match can be accepted,
-     * or a reason string if a cap would be exceeded by this wager.
+     * or a reason string if a cap would be exceeded. FAIL CLOSED: a DB read
+     * error returns a reject string, so the agent declines until Supabase
+     * is reachable again.
      */
-    canAccept(challenger: string, wager: bigint): string | null {
-        this.rolloverIfNeeded();
-
-        // Global cap — would this match push us past the daily ceiling?
-        if (this.totalLossWei + wager > this.GLOBAL_CAP_WEI) {
-            return `GLOBAL daily loss cap reached (${formatEther(this.totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$ lost today). Pausing until next UTC day.`;
-        }
-
+    async canAccept(challenger: string, wager: bigint): Promise<string | null> {
+        const today = this.dayKey();
         const lcChal = challenger.toLowerCase();
-        const walletLoss = this.walletLossWei.get(lcChal) ?? 0n;
-        if (walletLoss + wager > this.WALLET_CAP_WEI) {
-            return `WALLET cap reached for ${challenger.slice(0, 8)}.. (${formatEther(walletLoss)}/${formatEther(this.WALLET_CAP_WEI)} G$ won from MARKOV today).`;
+
+        const { data, error } = await supabase
+            .from("agent_loss_caps")
+            .select("scope, loss_wei")
+            .eq("scope_date", today)
+            .in("scope", ["global", lcChal]);
+
+        if (error) {
+            console.error(chalk.red(`Loss cap read failed (${error.message}). Refusing match for safety.`));
+            return `Loss cap state unavailable; refusing accept until DB is reachable.`;
         }
 
+        let totalLossWei = 0n;
+        let walletLossWei = 0n;
+        for (const row of data ?? []) {
+            const v = BigInt((row.loss_wei as unknown as string) ?? "0");
+            if (row.scope === "global") totalLossWei = v;
+            else if (row.scope === lcChal) walletLossWei = v;
+        }
+
+        if (totalLossWei + wager > this.GLOBAL_CAP_WEI) {
+            return `GLOBAL daily loss cap reached (${formatEther(totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$ lost today). Pausing until next UTC day.`;
+        }
+        if (walletLossWei + wager > this.WALLET_CAP_WEI) {
+            return `WALLET cap reached for ${challenger.slice(0, 8)}.. (${formatEther(walletLossWei)}/${formatEther(this.WALLET_CAP_WEI)} G$ won from MARKOV today).`;
+        }
         return null;
     }
 
     /**
-     * Called after resolveMatch on chain. Charges the agent's loss against
-     * both caps only when the player won (i.e. agent lost its wager).
+     * Called after a successful resolveMatch tx. Increments both scope rows
+     * atomically via the `agent_increment_loss` RPC. Only charges when the
+     * agent lost (player won the wager).
+     *
+     * If the RPC fails, the in-process dedup is rolled back so the next
+     * tick can retry. A persistent failure means cap state diverges from
+     * reality; the error is logged at error level for ops visibility.
      */
-    recordOutcome(matchId: bigint, challenger: string, agentWon: boolean, wager: bigint): void {
-        this.rolloverIfNeeded();
-
+    async recordOutcome(matchId: bigint, challenger: string, agentWon: boolean, wager: bigint): Promise<void> {
         const key = matchId.toString();
         if (this.countedMatches.has(key)) return;
         this.countedMatches.add(key);
 
-        if (!agentWon) {
-            this.totalLossWei += wager;
-            const lcChal = challenger.toLowerCase();
-            this.walletLossWei.set(lcChal, (this.walletLossWei.get(lcChal) ?? 0n) + wager);
-            console.log(chalk.gray(`📊 Loss cap: +${formatEther(wager)} G$ (player ${challenger.slice(0, 8)}..). Today total = ${formatEther(this.totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$. This wallet = ${formatEther(this.walletLossWei.get(lcChal) ?? 0n)}/${formatEther(this.WALLET_CAP_WEI)} G$.`));
-        }
+        if (agentWon) return; // agent won — nothing to charge
 
-        this.persist();
+        const today = this.dayKey();
+        const lcChal = challenger.toLowerCase();
+        const deltaStr = wager.toString();
+
+        try {
+            const [globalRes, walletRes] = await Promise.all([
+                supabase.rpc("agent_increment_loss", { p_date: today, p_scope: "global", p_delta: deltaStr }),
+                supabase.rpc("agent_increment_loss", { p_date: today, p_scope: lcChal,    p_delta: deltaStr }),
+            ]);
+            if (globalRes.error || walletRes.error) {
+                throw new Error(globalRes.error?.message ?? walletRes.error?.message ?? "rpc failed");
+            }
+            const newTotal = BigInt((globalRes.data as unknown as string) ?? "0");
+            const newWallet = BigInt((walletRes.data as unknown as string) ?? "0");
+            console.log(chalk.gray(`📊 Loss cap: +${formatEther(wager)} G$ (player ${challenger.slice(0, 8)}..). Today total = ${formatEther(newTotal)}/${formatEther(this.GLOBAL_CAP_WEI)} G$. This wallet = ${formatEther(newWallet)}/${formatEther(this.WALLET_CAP_WEI)} G$.`));
+        } catch (e: any) {
+            console.error(chalk.red(`Loss cap RPC failed (${e?.message ?? e}). State now under-counted by ${formatEther(wager)} G$ until reconciled.`));
+            this.countedMatches.delete(key); // allow a retry path
+        }
     }
 }
 
@@ -643,7 +637,7 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
     // before we burn gas on the acceptMatch tx. If a cap is hit, the match
     // sits on chain in PROPOSED state; the frontend's useAgentLiveness will
     // detect the staleness within ~45s and surface 'MARKOV is offline'.
-    const capReject = lossCap.canAccept(challenger, wager);
+    const capReject = await lossCap.canAccept(challenger, wager);
     if (capReject) {
         console.log(chalk.yellow(`Match #${matchId} not accepted: ${capReject}`));
         processingAcceptance.delete(matchId.toString());
@@ -822,7 +816,7 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         // decide if the agent won this match. recordOutcome only counts when
         // the agent lost (player won), so cap state stays accurate.
         const agentWon = winner.toLowerCase() === account.address.toLowerCase();
-        lossCap.recordOutcome(matchId, m.challenger, agentWon, m.wager);
+        await lossCap.recordOutcome(matchId, m.challenger, agentWon, m.wager);
 
         // Social Update: Match Result
         await moltbook.postMatchResult(
