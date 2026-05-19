@@ -424,6 +424,41 @@ export default function GamesPage() {
   // and returns null when the event is not active, so the banner below
   // only renders during the window.
   const challenge = useChallenge(address);
+
+  // Season 1 — Team Wars + Solo Ladder. Same poll cadence as the other
+  // events panel data sources; null while there is no active season so
+  // the cards just don't render.
+  const [season1, setSeason1] = useState<{
+    endsAt: string;
+    targetPerTeam: number;
+    topTeam: { team: string; counted: number } | null;
+    topSolo: { wallet: string; points: number } | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSeason = async () => {
+      try {
+        const r = await fetch("/api/season/leaderboard", { cache: "no-store" });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (cancelled) return;
+        if (!j?.meta?.endsAt) { setSeason1(null); return; }
+        const teams = (j.teams ?? []) as { team: string; counted: number }[];
+        const top = teams.length > 0 ? teams[0] : null;
+        const solo = (j.soloTop10 ?? [])[0] ?? null;
+        setSeason1({
+          endsAt: j.meta.endsAt,
+          targetPerTeam: j.meta.targetPerTeam ?? 500,
+          topTeam: top ? { team: top.team, counted: top.counted } : null,
+          topSolo: solo ? { wallet: solo.wallet, points: solo.points } : null,
+        });
+      } catch {}
+    };
+    void fetchSeason();
+    const i = setInterval(fetchSeason, 30000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, []);
+
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/seasons`)
       .then(r => r.json())
@@ -646,6 +681,38 @@ export default function GamesPage() {
               subtitle: "Top 3 win · View →",
               onClick: () => router.push("/leaderboard"),
             });
+          }
+          // Season 1 — Team Wars + Solo Ladder. Both link into the
+          // Seasons tab on /leaderboard where the full hero, standings,
+          // and Solo Ladder live, matching how the 3-Week Cup card
+          // already routes there.
+          if (season1) {
+            const seasonEndSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
+            const left = seasonEndSec - now;
+            if (left > 0) {
+              events.push({
+                icon: "🏟️", color: "#f97316",
+                title: `Team Wars — ${fmtShortCountdown(left)} left`,
+                subtitle: season1.topTeam
+                  ? `Leader: Team ${season1.topTeam.team.toUpperCase()} · ${season1.topTeam.counted}/${season1.targetPerTeam} games`
+                  : "Pick your team · 4,800 G$ pool",
+                onClick: () => router.push("/leaderboard?tab=seasons"),
+                ...(season1.topTeam ? {
+                  progress: {
+                    value: season1.topTeam.counted,
+                    total: season1.targetPerTeam,
+                  },
+                } : {}),
+              });
+              events.push({
+                icon: "📊", color: "#fbbf24",
+                title: `Solo Ladder — ${fmtShortCountdown(left)} left`,
+                subtitle: season1.topSolo
+                  ? `${season1.topSolo.wallet.slice(0, 4)}…${season1.topSolo.wallet.slice(-3)} · ${season1.topSolo.points.toLocaleString()} pts · View →`
+                  : "Every action counts · 1,200 G$ pool",
+                onClick: () => router.push("/leaderboard?tab=seasons"),
+              });
+            }
           }
           if (compInfo) {
             // weeksLeft counts the current week as remaining, so "1" means

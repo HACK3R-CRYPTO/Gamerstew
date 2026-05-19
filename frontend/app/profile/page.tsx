@@ -836,6 +836,41 @@ function ProfileInner() {
   })();
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
+  // Season 1 referral context for the stats-tab share card. Light poll
+  // (every 60s) — this isn't a leaderboard, just whether the season is
+  // active and how many qualified referees the player has so far.
+  const [season1Status, setSeason1Status] = useState<{
+    active: boolean;
+    referralCount: number;
+    maxReferrals: number;
+  } | null>(null);
+  const [season1CopiedAt, setSeason1CopiedAt] = useState<number>(0);
+  useEffect(() => {
+    if (!address) { setSeason1Status(null); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [lbR, meR] = await Promise.all([
+          fetch("/api/season/leaderboard", { cache: "no-store" }),
+          fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" }),
+        ]);
+        if (cancelled) return;
+        const lbJ = lbR.ok ? await lbR.json() : null;
+        const meJ = meR.ok ? await meR.json() : null;
+        if (!lbJ?.meta?.endsAt) { setSeason1Status(null); return; }
+        const ended = new Date(lbJ.meta.endsAt).getTime() <= Date.now();
+        setSeason1Status({
+          active: !ended,
+          referralCount: meJ?.referralCount ?? 0,
+          maxReferrals: 10,
+        });
+      } catch { /* leave null */ }
+    };
+    void load();
+    const i = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, [address]);
+
   // Settings — persisted in localStorage via useAudioSettings hook.
   // Every game on the platform reads from the same source, so changes here
   // take effect immediately the next time the player starts a round.
@@ -1503,15 +1538,57 @@ function ProfileInner() {
                       poster of their profile, one tap to download or share to
                       X/WhatsApp. Lives right after the stat gems since that
                       is the moment a player sees the numbers worth sharing. */}
-                  <JuicyBtn
-                    label="🎴 SHARE MY CARD"
-                    wallColor="#2a1800"
-                    faceGrad="linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #b45309 100%)"
-                    glowColor="rgba(251,191,36,0.55)"
-                    onClick={() => setShareOpen(true)}
-                    fullWidth
-                    fontSize={13}
-                  />
+                  {/* Share row — Share My Card + Invite Friends sit side by
+                      side as a single "share yourself" group. Two compact
+                      JuicyBtns instead of two stacked full-width ones cuts
+                      the vertical bulk on stats by ~80px and reads as one
+                      semantic category instead of two competing CTAs. The
+                      Invite button only renders when a wallet is connected
+                      (the referral link needs the wallet to be meaningful). */}
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: address ? "1fr 1fr" : "1fr",
+                    gap: "8px",
+                  }}>
+                    <JuicyBtn
+                      label="🎴 SHARE CARD"
+                      wallColor="#2a1800"
+                      faceGrad="linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #b45309 100%)"
+                      glowColor="rgba(251,191,36,0.55)"
+                      onClick={() => setShareOpen(true)}
+                      fullWidth
+                      fontSize={12}
+                      padding="11px 10px"
+                    />
+                    {address && (() => {
+                      const recentlyCopied = Date.now() - season1CopiedAt < 2000;
+                      const count = season1Status?.referralCount ?? 0;
+                      const label = recentlyCopied
+                        ? "✓ COPIED"
+                        : count > 0
+                          ? `🔗 INVITE · ${count}`
+                          : "🔗 INVITE FRIENDS";
+                      return (
+                        <JuicyBtn
+                          label={label}
+                          wallColor="#064e3b"
+                          faceGrad={recentlyCopied
+                            ? "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #065f46 100%)"
+                            : "linear-gradient(160deg, #a7f3d0 0%, #10b981 50%, #047857 100%)"}
+                          glowColor="rgba(34,197,94,0.55)"
+                          onClick={() => {
+                            if (typeof window === "undefined") return;
+                            const url = `${window.location.origin}/leaderboard?tab=seasons&ref=${address.toLowerCase()}`;
+                            void navigator.clipboard?.writeText(url);
+                            setSeason1CopiedAt(Date.now());
+                          }}
+                          fullWidth
+                          fontSize={12}
+                          padding="11px 10px"
+                        />
+                      );
+                    })()}
+                  </div>
 
                   {/* G$ Claim card moved above the tab pills so it's always
                       visible regardless of which tab is active. */}

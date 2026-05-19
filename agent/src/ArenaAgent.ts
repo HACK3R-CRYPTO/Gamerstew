@@ -1035,6 +1035,34 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         agentModes.delete(matchIdStr);
         moveSeeder.forget(matchId);
 
+        // Season 1 Solo Ladder hook. Award the challenger 10 points for
+        // playing a match, plus 20 bonus points if they won the wager.
+        // Idempotent via the unique match_id used as `ref`. Best-effort:
+        // failures are logged but never block the resolve flow.
+        try {
+            const challengerLc = m.challenger.toLowerCase();
+            const { data: enrolled } = await supabase
+                .from('season_v1_players')
+                .select('wallet')
+                .ilike('wallet', challengerLc)
+                .maybeSingle();
+            if (enrolled) {
+                const rows: { wallet: string; action_type: string; points: number; ref: string }[] = [
+                    { wallet: challengerLc, action_type: 'game_played', points: 10, ref: `cai:${matchIdStr}` },
+                ];
+                // Rebalanced 20 → 15 so the win bonus is "significant but not
+                // dominant". Combined with the base 10 for playing, a wager
+                // win is worth 25 pts (2.5× a regular game), which rewards
+                // risk-taking without crowding out grinders.
+                if (matchOutcome === 'player_won') {
+                    rows.push({ wallet: challengerLc, action_type: 'wager_won', points: 15, ref: `cai:${matchIdStr}` });
+                }
+                await supabase.from('season_v1_points').insert(rows);
+            }
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Season 1 points hook (challenge-ai) failed for #${matchId}: ${e?.message ?? e}`));
+        }
+
         // Tie refund. Send 0.98× wager from the agent's wallet to the
         // challenger. Best-effort with chain-level retry. Failure is
         // logged loudly; the refund_pending row in Supabase surfaces

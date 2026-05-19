@@ -1012,6 +1012,52 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       })
       .eq('token', sessionToken);
 
+    // Season 1 Solo Ladder hook. Points now scale with the score the
+    // player actually earned in the round, so "open game → game over →
+    // claim point" is not a viable farm — that run scores ~0 and
+    // earns 0 Solo Ladder points. Real play (hits, sequences, runs)
+    // earns 1-15 points depending on effort.
+    //
+    // Formula: pts = clamp(floor(score / divisor), 0, MAX_PTS).
+    //   - Rhythm divisor 100: a real session (~500-3000 score) earns
+    //     5-15 pts. Score < 100 (no real play) earns 0.
+    //   - Simon divisor 20:   a real session (~100-300 score) earns
+    //     5-15 pts. Score < 20 (game over round 1) earns 0.
+    //
+    // Plus an 8s duration gate on top of the 5s sign-score floor. Same
+    // idempotency: one ledger row per session token. Best-effort write.
+    const MAX_SEASON_PTS_PER_GAME = 15;
+    const SCORE_DIVISOR = game === 'rhythm' ? 100 : 20;
+    const MIN_DURATION_MS = 8_000;
+    const passesDuration = sessionElapsedMs >= MIN_DURATION_MS;
+    const seasonPts = passesDuration
+      ? Math.max(0, Math.min(MAX_SEASON_PTS_PER_GAME, Math.floor(serverScore / SCORE_DIVISOR)))
+      : 0;
+    if (seasonPts > 0) {
+      try {
+        const { data: enrolled } = await supabase
+          .from('season_v1_players')
+          .select('wallet')
+          .ilike('wallet', playerAddress)
+          .maybeSingle();
+        if (enrolled) {
+          await supabase
+            .from('season_v1_points')
+            .insert({
+              wallet: playerAddress.toLowerCase(),
+              action_type: 'game_played',
+              points: seasonPts,
+              ref: sessionToken,
+            });
+        }
+      } catch (e) {
+        console.warn('Season 1 points hook (game_played) failed:', e.message);
+      }
+    } else {
+      // Quiet diagnostic — useful for tuning the divisor without spamming.
+      console.log(`Season 1 pts skipped: ${playerAddress.slice(0, 8)}.. game=${game} score=${serverScore} elapsed=${sessionElapsedMs}ms`);
+    }
+
     return res.json({
       success:   true,
       signature,
@@ -1728,6 +1774,29 @@ app.post('/api/record-claim', async (req, res) => {
   await supabase
     .from('users')
     .upsert({ wallet_address: addr, claim_streak: newStreak, last_claim_date: today }, { onConflict: 'wallet_address' });
+
+  // Season 1 Solo Ladder hook. Award 5 points per daily claim if the
+  // player is enrolled in the active season. Idempotent via the
+  // wallet:date ref — repeated calls in the same day won't double-count.
+  try {
+    const { data: enrolled } = await supabase
+      .from('season_v1_players')
+      .select('wallet')
+      .ilike('wallet', addr)
+      .maybeSingle();
+    if (enrolled) {
+      await supabase
+        .from('season_v1_points')
+        .insert({
+          wallet: addr,
+          action_type: 'daily_claim',
+          points: 5,
+          ref: `claim:${today}`,
+        });
+    }
+  } catch (e) {
+    console.warn('Season 1 points hook (daily_claim) failed:', e.message);
+  }
 
   res.json({ success: true, claimStreak: newStreak, alreadyClaimed: false });
 });
