@@ -1532,9 +1532,9 @@ function LeaderboardInner() {
                           color: "rgba(230,220,255,0.9)",
                           fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
                         }}>
-                          Three teams race to <strong style={{ color: "#fde68a" }}>500 games</strong>. Every team
-                          that hits target wins <strong style={{ color: "#fde68a" }}>1,200 G$</strong>.
-                          Top scorer team takes a <strong style={{ color: "#fde68a" }}>1,200 G$</strong> bonus.
+                          1st team takes <strong style={{ color: "#fde68a" }}>2,400 G$</strong> — first is first.
+                          2nd wins <strong style={{ color: "#fde68a" }}>1,200 G$</strong> and 3rd wins <strong style={{ color: "#fde68a" }}>600 G$</strong>,
+                          but only if they hit <strong style={{ color: "#fde68a" }}>500 games</strong>.
                         </div>
 
                         {/* Mini standings — three progress bars, compact */}
