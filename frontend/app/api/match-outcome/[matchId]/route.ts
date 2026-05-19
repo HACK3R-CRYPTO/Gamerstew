@@ -28,7 +28,7 @@ export async function GET(
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { data, error } = await supabase
     .from("agent_match_state")
-    .select("outcome, tie_reason, tie_refund_wei, refund_pending, refund_tx_hash, commit_hash, seed, resolved_at, ai_move, player_move, game_type")
+    .select("outcome, tie_reason, tie_refund_wei, refund_pending, refund_tx_hash, commit_hash, seed, resolved_at, ai_move, player_move, game_type, mode")
     .eq("match_id", matchId)
     .maybeSingle();
 
@@ -55,6 +55,8 @@ export async function GET(
     gameType: data.game_type ?? null,
     aiMove: seedReleased ? (data.ai_move ?? null) : null,
     playerMove: seedReleased ? (data.player_move ?? null) : null,
+    // 'markov' | 'random' | 'cold_start' — revealed alongside the seed.
+    mode: seedReleased ? (data.mode ?? null) : null,
   }, {
     headers: {
       "Cache-Control": "no-store",

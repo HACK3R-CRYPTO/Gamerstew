@@ -184,106 +184,180 @@ class MoveSeeder {
 
 const moveSeeder = new MoveSeeder();
 
+// Fraction of matches that run the Markov branch. The remainder play
+// uniformly random. The mix is decided by a seeded coin per match, so
+// the player can't tell which mode any given match is in without the
+// seed (revealed at resolve time). 0.7 = 70% Markov / 30% random.
+// Override via env without redeploy.
+const MARKOV_PCT = Math.min(1, Math.max(0, Number(process.env.MARKOV_PCT ?? "0.7")));
+
 class OpponentModel {
-    // transitions[gameType][playerAddress][prevMove][nextMove] = count
-    transitions: Record<number, Record<string, number[][]>> = {};
-    history: Record<number, Record<string, number>> = {};
-    // Player's overall move histogram (not just transitions). Used as a
-    // fallback signal when the transition row is empty.
+    // Markov-1: transitions1[gameType][player][prevMove][nextMove]
+    transitions1: Record<number, Record<string, number[][]>> = {};
+    // Markov-2: transitions2[gameType][player][prev2Move][prev1Move][nextMove]
+    transitions2: Record<number, Record<string, number[][][]>> = {};
+    // Rolling last-N moves per player. Capped at HISTORY_CAP to keep memory
+    // bounded; Markov-2 only ever needs the last two.
+    history: Record<number, Record<string, number[]>> = {};
+    // Player's overall move histogram. Last-resort signal when neither
+    // Markov-2 nor Markov-1 has enough rows.
     histograms: Record<number, Record<string, number[]>> = {};
-    // Total matches we've seen per player — gates cold-start fallback.
+    // Total moves we've observed per player — gates the cold-start branch.
     seen: Record<number, Record<string, number>> = {};
     matchCount: number = 0;
     wins: Record<string, number> = {};
 
-    update(gameType: number, player: string, move: number) {
-        if (!this.transitions[gameType]) this.transitions[gameType] = {};
-        if (!this.history[gameType])     this.history[gameType] = {};
-        if (!this.histograms[gameType])  this.histograms[gameType] = {};
-        if (!this.seen[gameType])        this.seen[gameType] = {};
+    private readonly HISTORY_CAP = 8;
+    private readonly MARKOV2_MIN_OBS = 3; // need 3 hits in a (p2,p1) bucket
+    private readonly MARKOV1_MIN_OBS = 2; // need 2 hits in a p1 bucket
 
-        // Game type move counts: RPS=3, Dice=6, Coin=2
+    update(gameType: number, player: string, move: number) {
+        if (!this.transitions1[gameType]) this.transitions1[gameType] = {};
+        if (!this.transitions2[gameType]) this.transitions2[gameType] = {};
+        if (!this.history[gameType])      this.history[gameType] = {};
+        if (!this.histograms[gameType])   this.histograms[gameType] = {};
+        if (!this.seen[gameType])         this.seen[gameType] = {};
+
         const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
 
-        if (!this.transitions[gameType][player]) {
-            this.transitions[gameType][player] = Array.from({ length: size }, () => Array(size).fill(0));
+        if (!this.transitions1[gameType][player]) {
+            this.transitions1[gameType][player] = Array.from({ length: size }, () => Array(size).fill(0));
+        }
+        if (!this.transitions2[gameType][player]) {
+            this.transitions2[gameType][player] = Array.from({ length: size }, () =>
+                Array.from({ length: size }, () => Array(size).fill(0))
+            );
         }
         if (!this.histograms[gameType][player]) {
             this.histograms[gameType][player] = Array(size).fill(0);
         }
+        if (!this.history[gameType][player]) {
+            this.history[gameType][player] = [];
+        }
 
-        // Always update the histogram (every move counts).
+        // Histogram is unconditional — every observed move counts.
         if (move < size) {
             const histRow = this.histograms[gameType]![player]!;
             histRow[move] = (histRow[move] ?? 0) + 1;
             this.seen[gameType]![player] = (this.seen[gameType]![player] ?? 0) + 1;
         }
 
-        // Update transitions only after we have a previous move.
-        const lastMove = this.history[gameType][player];
-        if (lastMove !== undefined && lastMove < size && move < size) {
-            const p = this.transitions[gameType]![player];
-            if (p) {
-                const row = p[lastMove];
-                if (row) {
-                    row[move] = (row[move] || 0) + 1;
-                }
+        const playerHistory = this.history[gameType]![player]!;
+
+        // Markov-1: increment transitions1[lastMove][move] when we have one prior move.
+        if (playerHistory.length >= 1 && move < size) {
+            const lastMove = playerHistory[playerHistory.length - 1]!;
+            if (lastMove < size) {
+                const row = this.transitions1[gameType]![player]![lastMove]!;
+                row[move] = (row[move] || 0) + 1;
             }
             this.matchCount++;
             if (!this.wins[player]) this.wins[player] = 0;
         }
-        this.history[gameType][player] = move;
-    }
 
-    // Returns the player's predicted next move, OR null when we don't have
-    // enough signal (prediction quality too low). Callers should fall back to
-    // a noise distribution in that case.
-    predictNext(gameType: number, player: string): { move: number; confidence: number } | null {
-        const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
-        const lastMove = this.history[gameType]?.[player];
-        const trans = this.transitions[gameType]?.[player];
-        const hist = this.histograms[gameType]?.[player];
-        const totalSeen = this.seen[gameType]?.[player] ?? 0;
-
-        // Try transition-based prediction first.
-        if (lastMove !== undefined && trans && trans[lastMove]) {
-            const counts = trans[lastMove]!;
-            const total = counts.reduce((a, b) => a + b, 0);
-            if (total >= 2) {
-                let best = 0;
-                for (let i = 1; i < size; i++) {
-                    if (counts[i]! > counts[best]!) best = i;
-                }
-                return { move: best, confidence: counts[best]! / total };
+        // Markov-2: increment transitions2[prev2][prev1][move] when we have two prior moves.
+        if (playerHistory.length >= 2 && move < size) {
+            const prev2 = playerHistory[playerHistory.length - 2]!;
+            const prev1 = playerHistory[playerHistory.length - 1]!;
+            if (prev2 < size && prev1 < size) {
+                const row = this.transitions2[gameType]![player]![prev2]![prev1]!;
+                row[move] = (row[move] || 0) + 1;
             }
         }
 
-        // Fall back to histogram (overall bias).
+        playerHistory.push(move);
+        if (playerHistory.length > this.HISTORY_CAP) playerHistory.shift();
+    }
+
+    // Predicts the player's next move via cascading lookups: Markov-2 first,
+    // then Markov-1, then the overall histogram. Returns null when none have
+    // enough signal — callers fall through to coldStart in that case.
+    predictNext(gameType: number, player: string): { move: number; confidence: number; depth: 1 | 2 | 0 } | null {
+        const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
+        const playerHistory = this.history[gameType]?.[player] ?? [];
+        const trans1 = this.transitions1[gameType]?.[player];
+        const trans2 = this.transitions2[gameType]?.[player];
+        const hist = this.histograms[gameType]?.[player];
+        const totalSeen = this.seen[gameType]?.[player] ?? 0;
+
+        // Markov-2: condition on the last two moves.
+        if (playerHistory.length >= 2 && trans2) {
+            const prev2 = playerHistory[playerHistory.length - 2]!;
+            const prev1 = playerHistory[playerHistory.length - 1]!;
+            const counts = trans2[prev2]?.[prev1];
+            if (counts) {
+                const total = counts.reduce((a, b) => a + b, 0);
+                if (total >= this.MARKOV2_MIN_OBS) {
+                    let best = 0;
+                    for (let i = 1; i < size; i++) {
+                        if (counts[i]! > counts[best]!) best = i;
+                    }
+                    return { move: best, confidence: counts[best]! / total, depth: 2 };
+                }
+            }
+        }
+
+        // Markov-1 fallback: condition on the last move only.
+        if (playerHistory.length >= 1 && trans1) {
+            const lastMove = playerHistory[playerHistory.length - 1]!;
+            const counts = trans1[lastMove];
+            if (counts) {
+                const total = counts.reduce((a, b) => a + b, 0);
+                if (total >= this.MARKOV1_MIN_OBS) {
+                    let best = 0;
+                    for (let i = 1; i < size; i++) {
+                        if (counts[i]! > counts[best]!) best = i;
+                    }
+                    return { move: best, confidence: counts[best]! / total, depth: 1 };
+                }
+            }
+        }
+
+        // Histogram (overall move bias) is a weak last signal.
         if (hist && totalSeen >= 3) {
             let best = 0;
             for (let i = 1; i < size; i++) {
                 if (hist[i]! > hist[best]!) best = i;
             }
-            return { move: best, confidence: hist[best]! / totalSeen };
+            return { move: best, confidence: hist[best]! / totalSeen, depth: 0 };
         }
 
         return null;
     }
 
-    // Main decision function. Returns a 0-indexed move suitable for the
-    // contract (caller converts to Dice 1-6 if needed). Pass a seeded
-    // `rand` to make every randomness draw verifiable after the match
-    // (MoveSeeder.rand for production, Math.random for tests/fallback).
-    predict(gameType: number, player: string, rand: () => number = Math.random): number {
+    // Main decision function. Returns the agent's 0-indexed move plus the
+    // strategy mode used to pick it ('markov' / 'random' / 'cold_start').
+    // Pass a seeded `rand` to make every randomness draw verifiable after
+    // the match (MoveSeeder.rand for production, Math.random for fallback).
+    //
+    // The mix coin is drawn FIRST so its position in the seeded RNG stream
+    // is deterministic. Even if the Markov branch never executes (e.g. the
+    // player has no history yet), the coin still consumes one rand counter
+    // so the verifier can replay the stream in lockstep.
+    predict(gameType: number, player: string, rand: () => number = Math.random, markovPct = MARKOV_PCT): { move: number; mode: 'markov' | 'random' | 'cold_start' } {
         const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
         const prediction = this.predictNext(gameType, player);
+        const modeCoin = rand();
+        const wantMarkov = modeCoin < markovPct;
 
         // ─── Cold start ────────────────────────────────────────────────────
+        // No history yet, so no Markov branch to mix against. coldStart is
+        // a fixed opening-bias distribution; force-mixing random on top
+        // would just degrade the cold-start edge.
         if (!prediction) {
-            return this.coldStart(gameType, size, rand);
+            return { move: this.coldStart(gameType, size, rand), mode: 'cold_start' };
         }
 
-        // ─── RPS — the main game ───────────────────────────────────────────
+        // ─── Random mode ───────────────────────────────────────────────────
+        // The coin landed in the random pocket. Play a uniformly random
+        // move regardless of what Markov would have done. Player can't
+        // tell from outside the agent whether this match is markov or
+        // random; that obscuration is the whole point of the mix.
+        if (!wantMarkov) {
+            return { move: Math.floor(rand() * size), mode: 'random' };
+        }
+
+        // ─── Markov mode — RPS ─────────────────────────────────────────────
         if (gameType === 0) {
             const counter      = (prediction.move + 1) % 3;   // beats predicted
             const metaCounter  = (prediction.move + 2) % 3;   // beats the counter
@@ -295,25 +369,24 @@ class OpponentModel {
             const r = rand();
             if (prediction.confidence >= 0.6) {
                 // High confidence: 75% counter, 15% meta, 10% random
-                return r < 0.75 ? counter : r < 0.90 ? metaCounter : random;
+                return { move: r < 0.75 ? counter : r < 0.90 ? metaCounter : random, mode: 'markov' };
             }
             // Lower confidence: 60% counter, 20% meta, 20% random
-            return r < 0.60 ? counter : r < 0.80 ? metaCounter : random;
+            return { move: r < 0.60 ? counter : r < 0.80 ? metaCounter : random, mode: 'markov' };
         }
 
-        // ─── Coin flip — pick opposite of predicted ──────────────────────
+        // ─── Markov mode — Coin flip ──────────────────────────────────────
         if (gameType === 3) {
             const opposite = 1 - prediction.move;
-            // 80% opposite, 20% random — entropy floor against pattern exploiters.
-            return rand() < 0.80 ? opposite : Math.floor(rand() * 2);
+            return { move: rand() < 0.80 ? opposite : Math.floor(rand() * 2), mode: 'markov' };
         }
 
-        // ─── Dice — kept from previous strategy, favor high ──────────────
+        // ─── Markov mode — Dice ───────────────────────────────────────────
         if (gameType === 1) {
-            return rand() > 0.3 ? 5 : Math.floor(rand() * 6);
+            return { move: rand() > 0.3 ? 5 : Math.floor(rand() * 6), mode: 'markov' };
         }
 
-        return Math.floor(rand() * size);
+        return { move: Math.floor(rand() * size), mode: 'markov' };
     }
 
     // Cold-start strategy when we have no prior signal on this player.
@@ -461,6 +534,10 @@ const moltbook = new MoltbookService();
 // value. Trusting the local cache eliminates that read entirely; the
 // challenger's move still comes from chain (we don't know it locally).
 const agentMoves = new Map<string, number>();
+// The mode predict() returned for this match — written to agent_match_state
+// at resolve time so the verifier can confirm the seed-derived coin flip
+// landed in the mode the agent claims.
+const agentModes = new Map<string, 'markov' | 'random' | 'cold_start'>();
 
 // Robust helper to handle different Viem return formats (named or indexed)
 function normalizeMatch(m: any, id: bigint) {
@@ -815,7 +892,9 @@ async function tryPlayMove(matchId: bigint, m: any) {
         // flip) consumes from the same counter, so the entire match is
         // verifiable from the seed alone.
         const rand = moveSeeder.rand(matchId);
-        const aiMove = model.predict(gameType, opponentAddr, rand);
+        const { move: aiMove, mode: aiMode } = model.predict(gameType, opponentAddr, rand);
+        agentModes.set(matchIdStr, aiMode);
+        console.log(chalk.gray(`Strategy mode: ${aiMode}${aiMode === 'random' ? ' (this match is non-counter — Markov-vs-random mix)' : ''}`));
         let moveToSend = aiMove;
 
         let moveLabel = 'Strategic';
@@ -900,6 +979,14 @@ async function tryResolveMatch(matchId: bigint, m: any) {
 
         console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove} (${cachedOpponentMove !== undefined ? 'cached' : 'chain'})`));
 
+        // Train the model with the player's observed move BEFORE we
+        // resolve. Each call ticks the histogram, Markov-1 transitions,
+        // and Markov-2 transitions. Without this the model never learns
+        // and predict() always hits the cold-start branch.
+        if (challengerMove !== undefined && challengerMove !== null) {
+            model.update(m.gameType, m.challenger, challengerMove);
+        }
+
         // Continue the same seeded RNG stream that predict() started
         // during tryPlayMove. determineWinner's coin-flip oracle picks
         // up at the next counter value, so play-time and resolve-time
@@ -924,6 +1011,7 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         // restarted mid-match and this row is unverifiable.
         const matchOutcome = outcome.isTie ? 'tie' : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 'ai_won' : 'player_won');
         const revealedSeed = moveSeeder.reveal(matchId);
+        const recordedMode = agentModes.get(matchIdStr) ?? null;
         try {
             await supabase.from('agent_match_state').upsert({
                 match_id: matchId.toString(),
@@ -939,10 +1027,12 @@ async function tryResolveMatch(matchId: bigint, m: any) {
                 tie_refund_wei: outcome.isTie ? outcome.tieRefundWei.toString() : null,
                 refund_pending: outcome.isTie,
                 seed: revealedSeed,
+                mode: recordedMode,
             }, { onConflict: 'match_id' });
         } catch (e: any) {
             console.warn(chalk.yellow(`agent_match_state upsert failed for #${matchId}: ${e?.message ?? e}`));
         }
+        agentModes.delete(matchIdStr);
         moveSeeder.forget(matchId);
 
         // Tie refund. Send 0.98× wager from the agent's wallet to the
