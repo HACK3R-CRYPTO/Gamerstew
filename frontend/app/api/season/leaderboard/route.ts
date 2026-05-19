@@ -54,7 +54,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: gameErr.message }, { status: 500 });
   }
 
-  type Row = { team: string; wallet: string; counted: number };
+  // v2 of season_v1_counted_games returns every team-joined player with a
+  // `qualified` flag (instead of pre-filtering by >= p_min). That keeps
+  // team progress bars visible from game 1 — under the old shape the
+  // total stayed at 0/500 until somebody hit 40 games, which made the
+  // event look dead during launch week.
+  type Row = { team: string; wallet: string; counted: number; qualified: boolean };
   const rows: Row[] = (perPlayer as Row[] | null) ?? [];
 
   const teamTotals: Record<string, { counted: number; players: number; qualifiers: number }> =
@@ -66,7 +71,7 @@ export async function GET(req: Request) {
     const t = teamTotals[r.team];
     if (!t) continue;
     t.counted += r.counted;
-    t.qualifiers += 1;
+    if (r.qualified) t.qualifiers += 1;
   }
 
   // Team headcount (all players who joined, not just qualifiers).

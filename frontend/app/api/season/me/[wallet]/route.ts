@@ -66,13 +66,20 @@ export async function GET(
     }
   } catch { /* fall through with null username — UI shows short wallet */ }
 
-  // Raw game count for this wallet inside the window.
+  // Completed-game count for this wallet — same source the team-total RPC
+  // now uses: season_v1_points rows with action_type='game_played'. The
+  // points ledger only records games that passed the 8s duration gate in
+  // /api/sign-score, so it represents real completed plays. The old
+  // implementation counted game_sessions starts which include abandoned
+  // and double-fired sessions, inflating the displayed count beyond what
+  // the user remembers playing.
   const { count: rawGames } = await supabase
-    .from("game_sessions")
-    .select("token", { count: "exact", head: true })
+    .from("season_v1_points")
+    .select("id", { count: "exact", head: true })
     .ilike("wallet", wallet)
-    .gte("started_at", meta.starts_at)
-    .lte("started_at", meta.ends_at);
+    .eq("action_type", "game_played")
+    .gte("occurred_at", meta.starts_at)
+    .lte("occurred_at", meta.ends_at);
 
   const games = rawGames ?? 0;
   const counted = Math.min(games, MAX_COUNTED);
