@@ -103,11 +103,19 @@ export async function GET(req: Request) {
   const rawLadder: LadderRow[] = (ladder as LadderRow[] | null) ?? [];
   let enrichedLadder: LadderRow[] = rawLadder;
   if (rawLadder.length > 0) {
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:3005";
+    // Server-to-server call: backend gates no-origin requests behind the
+    // shared INTERNAL_SECRET, so we use the server-only BACKEND_URL +
+    // header (same pattern as app/actions/game.ts). NEXT_PUBLIC_BACKEND_URL
+    // is the dev fallback so localhost still works without the prod env.
+    const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    const secret = process.env.INTERNAL_SECRET || "";
     const wallets = rawLadder.map(r => r.wallet.toLowerCase()).join(",");
     let nameMap = new Map<string, string | null>();
     try {
-      const r = await fetch(`${backend}/api/usernames?wallets=${wallets}`, { cache: "no-store" });
+      const r = await fetch(`${backend}/api/usernames?wallets=${wallets}`, {
+        cache: "no-store",
+        headers: { "x-internal-secret": secret },
+      });
       if (r.ok) {
         const j = (await r.json()) as { usernames: Record<string, string | null> };
         nameMap = new Map(Object.entries(j.usernames || {}));

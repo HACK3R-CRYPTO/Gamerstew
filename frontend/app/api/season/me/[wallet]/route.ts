@@ -50,8 +50,16 @@ export async function GET(
   // character — and the same DiceBear avatar — across the app.
   let username: string | null = null;
   try {
-    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:3005";
-    const r = await fetch(`${backend}/api/usernames?wallets=${wallet}`, { cache: "no-store" });
+    // Server-to-server: backend gates no-origin requests on INTERNAL_SECRET
+    // (see app/actions/game.ts). Without the header Railway returns 403,
+    // we'd swallow it, and the ladder would show short wallets instead of
+    // real names.
+    const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    const secret = process.env.INTERNAL_SECRET || "";
+    const r = await fetch(`${backend}/api/usernames?wallets=${wallet}`, {
+      cache: "no-store",
+      headers: { "x-internal-secret": secret },
+    });
     if (r.ok) {
       const j = (await r.json()) as { usernames: Record<string, string | null> };
       username = j.usernames?.[wallet] ?? null;
