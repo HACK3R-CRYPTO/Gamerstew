@@ -85,11 +85,8 @@ export async function GET(
   const counted = Math.min(games, MAX_COUNTED);
   const qualified = games >= MIN_GAMES;
 
-  // Solo Ladder points + rank. Sum the ledger, then call the top RPC
-  // with a generous limit and find this wallet's rank from the result.
-  // We also group rows by action_type to surface a breakdown so the
-  // player can see HOW they earned their score (10 games × 10 = 100,
-  // etc.) on the Solo Ladder card.
+  // Per-action breakdown for the UI ("10 games × 4 = 40", etc.). Pulled
+  // straight from the ledger so callers can render a familiar table.
   const { data: pointsRow } = await supabase
     .from("season_v1_points")
     .select("points, action_type")
@@ -97,29 +94,39 @@ export async function GET(
     .gte("occurred_at", meta.starts_at)
     .lte("occurred_at", meta.ends_at);
   const breakdown: Record<string, { count: number; points: number }> = {};
-  let points = 0;
   for (const r of pointsRow ?? []) {
     const t = (r.action_type as string) ?? "unknown";
     const p = (r.points as number) ?? 0;
     if (!breakdown[t]) breakdown[t] = { count: 0, points: 0 };
     breakdown[t].count += 1;
     breakdown[t].points += p;
-    points += p;
   }
 
-  // For rank, ask the RPC for the top N and find this wallet. If the
-  // wallet is below the top N, return null for rank — UI shows "outside
-  // top N".
-  const RANK_FETCH = 200;
-  const { data: ladder } = await supabase.rpc("season_v1_solo_top", { p_limit: RANK_FETCH });
-  type LadderRow = { wallet: string; points: number; rank: number };
+  // Solo Ladder canonical points + rank — both come from the same RPC
+  // the public leaderboard uses, so YOUR SCORE on the card and the YOU
+  // row on the ladder always agree. The old "sum the ledger" path
+  // missed the refs × 100 and active-day × 5 bonuses, which produced an
+  // 8 vs 13 mismatch for the test wallet.
+  const RANK_FETCH = 500;
+  const { data: ladder } = await supabase.rpc("season_v1_solo_top_full", { p_limit: RANK_FETCH });
+  type LadderRow = {
+    wallet: string; points: number; rank: number;
+    games?: number; wins?: number; claims?: number;
+    refs?: number; streak?: number;
+  };
   const rankRow = (ladder as LadderRow[] | null)?.find(r => r.wallet?.toLowerCase() === wallet);
   const rank = rankRow ? rankRow.rank : null;
-
-  // Referral credit: how many people did this wallet bring who qualified.
-  const { data: referredQualifiers } = await supabase
-    .rpc("season_v1_referral_credit", { p_wallet: wallet });
-  const referralCount = (referredQualifiers as number | null) ?? 0;
+  const points = rankRow ? rankRow.points : 0;
+  const referralCount = rankRow?.refs ?? 0;
+  // Surface refs + streak in the breakdown so the breakdown card can
+  // render them alongside the ledger-sourced rows (no ledger rows exist
+  // for these — they're computed in the RPC).
+  if (referralCount > 0) {
+    breakdown["referral_qualified"] = { count: referralCount, points: referralCount * 100 };
+  }
+  if (rankRow?.streak && rankRow.streak > 0) {
+    breakdown["active_day"] = { count: rankRow.streak, points: rankRow.streak * 5 };
+  }
 
   return NextResponse.json({
     wallet,
