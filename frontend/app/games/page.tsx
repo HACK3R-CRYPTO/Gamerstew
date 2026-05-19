@@ -427,37 +427,55 @@ export default function GamesPage() {
 
   // Season 1 — Team Wars + Solo Ladder. Same poll cadence as the other
   // events panel data sources; null while there is no active season so
-  // the cards just don't render.
+  // the cards just don't render. Includes the player's join state so the
+  // event card can swap between a "join now" CTA and the standings view.
   const [season1, setSeason1] = useState<{
+    startsAt: string;
     endsAt: string;
     targetPerTeam: number;
     topTeam: { team: string; counted: number } | null;
     topSolo: { wallet: string; points: number } | null;
+    myTeam: string | null;
   } | null>(null);
   useEffect(() => {
     let cancelled = false;
     const fetchSeason = async () => {
       try {
-        const r = await fetch("/api/season/leaderboard", { cache: "no-store" });
-        if (!r.ok || cancelled) return;
-        const j = await r.json();
+        // Public leaderboard for meta + standings. /me only if connected;
+        // anon visitors should still see the join CTA on the card.
+        const [lbRes, meRes] = await Promise.all([
+          fetch("/api/season/leaderboard", { cache: "no-store" }),
+          address
+            ? fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" })
+            : Promise.resolve(null as Response | null),
+        ]);
+        if (cancelled) return;
+        if (!lbRes.ok) return;
+        const j = await lbRes.json();
         if (cancelled) return;
         if (!j?.meta?.endsAt) { setSeason1(null); return; }
         const teams = (j.teams ?? []) as { team: string; counted: number }[];
         const top = teams.length > 0 ? teams[0] : null;
         const solo = (j.soloTop10 ?? [])[0] ?? null;
+        let myTeam: string | null = null;
+        if (meRes && meRes.ok) {
+          const me = await meRes.json();
+          myTeam = me?.team ?? null;
+        }
         setSeason1({
+          startsAt: j.meta.startsAt,
           endsAt: j.meta.endsAt,
           targetPerTeam: j.meta.targetPerTeam ?? 500,
           topTeam: top ? { team: top.team, counted: top.counted } : null,
           topSolo: solo ? { wallet: solo.wallet, points: solo.points } : null,
+          myTeam,
         });
       } catch {}
     };
     void fetchSeason();
     const i = setInterval(fetchSeason, 30000);
     return () => { cancelled = true; clearInterval(i); };
-  }, []);
+  }, [address]);
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/seasons`)
@@ -682,31 +700,58 @@ export default function GamesPage() {
               onClick: () => router.push("/leaderboard"),
             });
           }
-          // Season 1 — Team Wars + Solo Ladder. Both link into the
-          // Seasons tab on /leaderboard where the full hero, standings,
-          // and Solo Ladder live, matching how the 3-Week Cup card
-          // already routes there.
+          // Season 1 — Team Wars + Solo Ladder. Card shape adapts to:
+          //   1. pre-launch (now < startsAt): "starts <weekday>" with the
+          //      join CTA front-and-centre so people lock in a team early
+          //   2. live + not joined: same join CTA + countdown
+          //   3. live + joined: standings (leader, your team progress)
+          // Solo Ladder always renders alongside since it's independent
+          // of team membership — every game already counts toward it.
           if (season1) {
-            const seasonEndSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
-            const left = seasonEndSec - now;
+            const startSec = Math.floor(new Date(season1.startsAt).getTime() / 1000);
+            const endSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
+            const left = endSec - now;
+            const preLaunch = now < startSec;
+            const notJoined = !season1.myTeam;
             if (left > 0) {
-              events.push({
-                icon: "🏟️", color: "#f97316",
-                title: `Team Wars — ${fmtShortCountdown(left)} left`,
-                subtitle: season1.topTeam
-                  ? `Leader: Team ${season1.topTeam.team.toUpperCase()} · ${season1.topTeam.counted}/${season1.targetPerTeam} games`
-                  : "Pick your team · 4,800 G$ pool",
-                onClick: () => router.push("/leaderboard?tab=seasons"),
-                ...(season1.topTeam ? {
-                  progress: {
-                    value: season1.topTeam.counted,
-                    total: season1.targetPerTeam,
-                  },
-                } : {}),
-              });
+              if (preLaunch) {
+                const startWd = new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "long" });
+                events.push({
+                  icon: "⚔️", color: "#f97316",
+                  title: notJoined ? "Season 1 · Pick a Team" : `Team Wars · You're in Team ${season1.myTeam!.toUpperCase()}`,
+                  subtitle: notJoined
+                    ? `Starts ${startWd} · 4,200 G$ pool · Tap to join →`
+                    : `Starts ${startWd} · 4,200 G$ pool`,
+                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                });
+              } else if (notJoined) {
+                events.push({
+                  icon: "⚔️", color: "#f97316",
+                  title: "Team Wars · Pick a Team",
+                  subtitle: `${fmtShortCountdown(left)} left · 4,200 G$ pool · Tap to join →`,
+                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                });
+              } else {
+                events.push({
+                  icon: "🏟️", color: "#f97316",
+                  title: `Team Wars — ${fmtShortCountdown(left)} left`,
+                  subtitle: season1.topTeam
+                    ? `Leader: Team ${season1.topTeam.team.toUpperCase()} · ${season1.topTeam.counted}/${season1.targetPerTeam} games`
+                    : "Race starts now · 4,200 G$ pool",
+                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                  ...(season1.topTeam ? {
+                    progress: {
+                      value: season1.topTeam.counted,
+                      total: season1.targetPerTeam,
+                    },
+                  } : {}),
+                });
+              }
               events.push({
                 icon: "📊", color: "#fbbf24",
-                title: `Solo Ladder — ${fmtShortCountdown(left)} left`,
+                title: preLaunch
+                  ? `Solo Ladder · Starts ${new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "short" })}`
+                  : `Solo Ladder — ${fmtShortCountdown(left)} left`,
                 subtitle: season1.topSolo
                   ? `${season1.topSolo.wallet.slice(0, 4)}…${season1.topSolo.wallet.slice(-3)} · ${season1.topSolo.points.toLocaleString()} pts · View →`
                   : "Every action counts · 1,200 G$ pool",
@@ -1115,35 +1160,61 @@ export default function GamesPage() {
           )}
 
 
-          {/* Community challenge compact strip — mirrors ChallengeBanner
-              position (before stats pills) so it's always visible. One
-              row: icon + progress count + prize + days left. Tapping
-              scrolls players to the sidebar events section for more detail.
-              Only shows when challenge is active (not hit). */}
-          {weeklyChallenge && !weeklyChallenge.hit && (
-            <div style={{
-              width: "100%", maxWidth: "680px", flexShrink: 0,
-              borderRadius: "12px", padding: "9px 14px",
-              background: "linear-gradient(90deg, rgba(6,78,32,0.45) 0%, rgba(2,20,10,0.6) 100%)",
-              border: "1px solid rgba(134,239,172,0.3)",
-              boxShadow: "0 0 14px rgba(34,197,94,0.1)",
-              display: "flex", alignItems: "center", gap: "10px",
-              flexWrap: "wrap",
-            }}>
-              <span style={{ fontSize: "14px", flexShrink: 0 }}>🌍</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>Community Challenge</span>
-                <span style={{ color: "rgba(134,239,172,0.55)", fontSize: "9px", fontWeight: 700 }}> · {weeklyChallenge.progress}/{weeklyChallenge.target} games · {weeklyChallenge.daysLeft}d left</span>
+          {/* Season 1 hero strip — replaces the Community Challenge
+              banner that used to live here. Lives above the stats pills
+              so it's the first thing players notice; tap to drop into the
+              Seasons tab where joining + standings happen. Status pill
+              swaps between JOIN → (CTA) and JOINED ✓ (acknowledgement)
+              so anyone glancing knows where they stand. Community
+              Challenge still surfaces in the events sidebar — this slot
+              is reserved for the headline event. */}
+          {season1 && (() => {
+            const startSec = Math.floor(new Date(season1.startsAt).getTime() / 1000);
+            const endSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
+            if (endSec - now <= 0) return null;
+            const preLaunch = now < startSec;
+            const notJoined = !season1.myTeam;
+            const startWd = new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "short" });
+            const subtitle = preLaunch
+              ? (notJoined ? `Starts ${startWd} · Pick a team` : `Starts ${startWd} · Team ${season1.myTeam!.toUpperCase()}`)
+              : (notJoined ? `Pick your team · ${fmtShortCountdown(endSec - now)} left` : `Team ${season1.myTeam!.toUpperCase()} · ${fmtShortCountdown(endSec - now)} left`);
+            return (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push("/leaderboard?tab=seasons")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push("/leaderboard?tab=seasons"); }}
+                style={{
+                  width: "100%", maxWidth: "680px", flexShrink: 0,
+                  borderRadius: "12px", padding: "9px 14px",
+                  background: "linear-gradient(90deg, rgba(124,45,18,0.45) 0%, rgba(40,10,5,0.6) 100%)",
+                  border: "1px solid rgba(251,191,36,0.4)",
+                  boxShadow: "0 0 14px rgba(249,115,22,0.18)",
+                  display: "flex", alignItems: "center", gap: "10px",
+                  flexWrap: "wrap",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: "14px", flexShrink: 0 }}>⚔️</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, letterSpacing: "0.06em" }}>SEASON 1 · TEAM WARS</span>
+                  <span style={{ color: "rgba(254,215,170,0.65)", fontSize: "9px", fontWeight: 700 }}> · {subtitle}</span>
+                </div>
+                <div style={{
+                  padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
+                  background: notJoined ? "rgba(251,191,36,0.16)" : "rgba(134,239,172,0.16)",
+                  border: notJoined ? "1px solid rgba(251,191,36,0.55)" : "1px solid rgba(134,239,172,0.45)",
+                }}>
+                  <span style={{
+                    color: notJoined ? "#fbbf24" : "#86efac",
+                    fontSize: "9px", fontWeight: 900, letterSpacing: "0.08em",
+                  }}>
+                    {notJoined ? "JOIN →" : "JOINED ✓"}
+                  </span>
+                </div>
               </div>
-              <div style={{
-                padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
-                background: "rgba(251,191,36,0.12)",
-                border: "1px solid rgba(251,191,36,0.4)",
-              }}>
-                <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900 }}>{weeklyChallenge.rewardG} G$ split</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Stats pills — compact on mobile. On mobile we also append a
               STREAK pill as the 4th member when the user is connected
