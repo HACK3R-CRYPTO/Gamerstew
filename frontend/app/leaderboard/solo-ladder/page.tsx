@@ -23,6 +23,7 @@ type SoloRow = {
   games?: number;
   wins?: number;
   claims?: number;
+  refs?: number;
 };
 
 type LbResponse = {
@@ -132,20 +133,22 @@ function MedalSlot({ rank }: { rank: number | null }) {
 // YOU gets a soft violet outline so the player can locate themselves
 // without colour-coding the rest of the list.
 function LadderRow({
-  rank, wallet, username, points, isMe,
+  rank, wallet, username, points, isMe, games, wins, claims, refs,
 }: {
   rank: number | null;
   wallet: string;
   username?: string | null;
   points: number;
   isMe: boolean;
-  // Stats kept on the API but intentionally not rendered in the row.
-  // Per-row chatter ("47 games · 8 wins") competes with the score; the
-  // player's OWN breakdown lives in YOUR POSITION above.
+  // Stats render as a small subtitle under the name. Refs are the
+  // headline reason — without them the formula chip "refs × 100" had
+  // no visible counterpart in the row.
   games?: number;
   wins?: number;
   claims?: number;
+  refs?: number;
 }) {
+  const stats = statsLine(games, wins, claims, refs);
   // Same canonical seed format as /profile so the avatar matches across
   // the app — wallet always feeds in so empty username still resolves.
   const displayName = isMe ? "YOU" : (username || shortAddr(wallet));
@@ -182,6 +185,15 @@ function LadderRow({
           textShadow: isMe ? "0 0 8px rgba(167,139,250,0.5)" : "none",
           letterSpacing: "0.01em",
         }}>{displayName}</div>
+        {stats && (
+          <div style={{
+            color: "rgba(220,210,255,0.55)",
+            fontSize: "11px", fontWeight: 700, lineHeight: 1.2,
+            marginTop: "3px",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            letterSpacing: "0.02em",
+          }}>{stats}</div>
+        )}
       </div>
       <div style={{
         flexShrink: 0,
@@ -500,6 +512,7 @@ export default function SoloLadderPage() {
                   games={r.games}
                   wins={r.wins}
                   claims={r.claims}
+                  refs={r.refs}
                 />
               ))}
             </div>

@@ -99,7 +99,7 @@ export async function GET(req: Request) {
   // contract, not in Supabase, so we call games-backend /api/usernames
   // (LRU-cached resolveUsername). Same source the existing /leaderboard
   // and /profile use, which is how the avatar seed ends up identical.
-  type LadderRow = { wallet: string; username?: string | null; points: number; rank: number; games?: number; wins?: number; claims?: number };
+  type LadderRow = { wallet: string; username?: string | null; points: number; rank: number; games?: number; wins?: number; claims?: number; refs?: number };
   const rawLadder: LadderRow[] = (ladder as LadderRow[] | null) ?? [];
   let enrichedLadder: LadderRow[] = rawLadder;
   if (rawLadder.length > 0) {
