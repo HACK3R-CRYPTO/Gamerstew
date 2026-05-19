@@ -1763,6 +1763,21 @@ function LeaderboardInner() {
                           </div>
                         </div>
 
+                        {/* Headline explanation — mirrors the Team Wars card
+                            so a player landing on the seasons tab can
+                            understand what Solo Ladder is without
+                            clicking through. Calls out the contributors
+                            (games + wagers + refs + streak) so they see
+                            this isn't only about high-score grinding. */}
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          color: "rgba(230,220,255,0.9)",
+                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
+                        }}>
+                          Every <strong style={{ color: "#fde68a" }}>game</strong>, <strong style={{ color: "#fde68a" }}>wager win</strong>, <strong style={{ color: "#fde68a" }}>claim</strong>, <strong style={{ color: "#fde68a" }}>habitat</strong>, <strong style={{ color: "#fde68a" }}>referral</strong> and <strong style={{ color: "#fde68a" }}>active day</strong> earns points.
+                          Top <strong style={{ color: "#fde68a" }}>10</strong> split <strong style={{ color: "#fde68a" }}>1,200 G$</strong>.
+                        </div>
+
                         {/* Prize + leader stat row */}
                         <div style={{
                           position: "relative", zIndex: 1,

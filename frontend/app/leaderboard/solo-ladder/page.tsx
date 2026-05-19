@@ -24,6 +24,7 @@ type SoloRow = {
   wins?: number;
   claims?: number;
   refs?: number;
+  streak?: number;
 };
 
 type LbResponse = {
@@ -68,17 +69,18 @@ function avatarUrl(wallet: string, username?: string | null): string {
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
 }
 
-// Per-row stats line. Skips zero-count actions so a brand new player's
-// row reads cleanly instead of "0 games · 0 wins · 0 claims".
-function statsLine(games?: number, wins?: number, claims?: number, refs?: number): string {
-  // Labels match the chip strip on the formula card so a player can map
-  // "5 wager wins" in their stats line to the "+15 Wager win" chip
-  // without confusion. "wins" alone reads as "games won" which is wrong.
+// Per-row stats line. Labels match the chip strip on the formula card
+// so a player can map "5 wager wins" in their stats line to the
+// "+15 Wager win" chip without confusion. Refs + streak always render
+// (even at zero) so the column is visible to everyone — without that,
+// nobody sees the referral metric until someone actually has one.
+function statsLine(games?: number, wins?: number, claims?: number, refs?: number, streak?: number): string {
   const parts: string[] = [];
   if (games && games > 0) parts.push(`${games} game${games === 1 ? "" : "s"}`);
   if (wins && wins > 0) parts.push(`${wins} wager win${wins === 1 ? "" : "s"}`);
   if (claims && claims > 0) parts.push(`${claims} claim${claims === 1 ? "" : "s"}`);
-  if (refs && refs > 0) parts.push(`${refs} ref${refs === 1 ? "" : "s"}`);
+  parts.push(`${refs ?? 0} ref${(refs ?? 0) === 1 ? "" : "s"}`);
+  parts.push(`${streak ?? 0}-day streak`);
   return parts.join(" · ");
 }
 
@@ -133,22 +135,24 @@ function MedalSlot({ rank }: { rank: number | null }) {
 // YOU gets a soft violet outline so the player can locate themselves
 // without colour-coding the rest of the list.
 function LadderRow({
-  rank, wallet, username, points, isMe, games, wins, claims, refs,
+  rank, wallet, username, points, isMe, games, wins, claims, refs, streak,
 }: {
   rank: number | null;
   wallet: string;
   username?: string | null;
   points: number;
   isMe: boolean;
-  // Stats render as a small subtitle under the name. Refs are the
-  // headline reason — without them the formula chip "refs × 100" had
-  // no visible counterpart in the row.
+  // Stats render as a small subtitle under the name. Refs + streak
+  // always render (zero-valued included) so the column never
+  // disappears — without that, new players never see those metrics
+  // exist.
   games?: number;
   wins?: number;
   claims?: number;
   refs?: number;
+  streak?: number;
 }) {
-  const stats = statsLine(games, wins, claims, refs);
+  const stats = statsLine(games, wins, claims, refs, streak);
   // Same canonical seed format as /profile so the avatar matches across
   // the app — wallet always feeds in so empty username still resolves.
   const displayName = isMe ? "YOU" : (username || shortAddr(wallet));
@@ -432,10 +436,12 @@ export default function SoloLadderPage() {
             <span style={{ color: "#fde68a" }}>claims × 5</span>
             <span style={{ color: "rgba(220,210,255,0.4)" }}> + </span>
             <span style={{ color: "#86efac" }}>refs × 100</span>
+            <span style={{ color: "rgba(220,210,255,0.4)" }}> + </span>
+            <span style={{ color: "#fda4af" }}>days × 5</span>
           </div>
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(5, 1fr)",
+            gridTemplateColumns: "repeat(3, 1fr)",
             gap: "6px",
             marginTop: "12px",
           }}>
@@ -445,6 +451,7 @@ export default function SoloLadderPage() {
               { icon: "🏛️", v: "+30",   sub: "Per habitat" },
               { icon: "💰", v: "+5",    sub: "Per claim" },
               { icon: "🔗", v: "+100",  sub: "Per referral" },
+              { icon: "🔥", v: "+5",    sub: "Per day" },
             ].map(c => (
               <div key={c.sub} style={{
                 padding: "8px 4px",
@@ -513,6 +520,7 @@ export default function SoloLadderPage() {
                   wins={r.wins}
                   claims={r.claims}
                   refs={r.refs}
+                  streak={r.streak}
                 />
               ))}
             </div>
