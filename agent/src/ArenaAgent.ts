@@ -558,6 +558,35 @@ function normalizeMatch(m: any, id: bigint) {
 const activeGameLocks = new Set<string>();
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ─── submitTx — in-process tx serializer ───────────────────────────────────
+// The agent uses one wallet for every chain write (acceptMatch, playMove,
+// resolveMatch, tie refund, registration). viem reads the next nonce from
+// the RPC at the moment writeContract is called, so two parallel calls see
+// the same nonce — one tx wins inclusion, the other reverts with
+// "nonce too low" and the affected match silently fails to advance.
+//
+// This serializer chains every tx submission behind a single promise so
+// the nonce read for tx N always happens after the receipt of tx N-1.
+// Same wallet runs to completion before the next one starts. Loss-cap
+// reads + writes also become race-free because the next `canAccept` only
+// runs after the previous `acceptMatch` finalises.
+//
+// Cost: a second concurrent challenger waits one extra block (~5s on Celo)
+// before their match is accepted. Acceptable tradeoff vs silent drops.
+let txQueueTail: Promise<unknown> = Promise.resolve();
+async function submitTx<T>(op: () => Promise<T>): Promise<T> {
+    const previous = txQueueTail;
+    let release: () => void = () => {};
+    const next = new Promise<void>(r => { release = r; });
+    txQueueTail = next;
+    try {
+        await previous.catch(() => {}); // never block the queue on prior failures
+        return await op();
+    } finally {
+        release();
+    }
+}
+
 // RETRY HELPER: Handle temporary RPC/Network glitches
 async function withRetry<T>(fn: () => Promise<T>, label: string, retries = 3): Promise<T> {
     for (let i = 0; i < retries; i++) {
@@ -688,13 +717,17 @@ async function startAgent() {
             // User-provided IPFS CID
             const ipfsUri = "ipfs://bafkreig6sha4aqzafeqbocsppwobxdp3rlu7axv2rcloyh4tpw2afbj2r4";
 
-            const txHash = await walletClient.writeContract({
-                address: REGISTRY_ADDRESS,
-                abi: ERC8004_ABI,
-                functionName: 'register',
-                args: [ipfsUri],
-                chain: CELO_MAINNET,
-                account
+            const txHash = await submitTx(async () => {
+                const h = await walletClient.writeContract({
+                    address: REGISTRY_ADDRESS,
+                    abi: ERC8004_ABI,
+                    functionName: 'register',
+                    args: [ipfsUri],
+                    chain: CELO_MAINNET,
+                    account
+                });
+                await publicClient.waitForTransactionReceipt({ hash: h });
+                return h;
             });
             console.log(chalk.green(`✅ Agent Registered! TX: ${txHash}`));
         } else {
@@ -819,12 +852,15 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
             [{ type: 'uint8' }, { type: 'uint256' }],
             [1, matchId]
         );
-        const { request } = await publicClient.simulateContract({
-            address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
         });
-        const hash = await walletClient.writeContract(request);
         console.log(chalk.green(`Match #${matchId} accepted! Hash: ${hash} (commit ${commitHash.slice(0, 10)}..)`));
-        await publicClient.waitForTransactionReceipt({ hash });
 
         // Social Update: Match Accepted
         await moltbook.postChallengeAccepted(
@@ -904,13 +940,16 @@ async function tryPlayMove(matchId: bigint, m: any) {
 
         console.log(chalk.yellow(`Submitting Move (${moveLabel})...`));
 
-        const { request } = await publicClient.simulateContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playMove',
-            args: [matchId, moveToSend], account
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playMove',
+                args: [matchId, moveToSend], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
         });
-        const hash = await walletClient.writeContract(request);
         console.log(chalk.gray(`TX: ${hash}`));
-        await publicClient.waitForTransactionReceipt({ hash });
 
         // Cache the move locally so the resolver doesn't need to read it
         // back from chain. RPC nodes can serve stale snapshots and return
@@ -994,12 +1033,14 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         const resolveRand = moveSeeder.rand(matchId);
         const outcome = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove, m.wager, resolveRand);
 
-        const { request } = await publicClient.simulateContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
-            args: [matchId, outcome.winner], account
+        await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
+                args: [matchId, outcome.winner], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
         });
-        const hash = await walletClient.writeContract(request);
-        await publicClient.waitForTransactionReceipt({ hash });
         console.log(chalk.green(`✅ Match #${matchId} Resolved! ${outcome.isTie ? `TIE (${outcome.tieReason}) → AI on chain, refund pending` : `Winner: ${outcome.winner === m.challenger ? 'Challenger' : 'Opponent'} (${outcome.winner})`}`));
 
         // Persist the resolve outcome to Supabase so the frontend can
@@ -1131,15 +1172,18 @@ async function sendTieRefund(matchId: bigint, player: `0x${string}`, amountWei: 
     try {
         console.log(chalk.gray(`💸 Refund #${matchId}: ${formatEther(amountWei)} G$ → ${player.slice(0, 8)}..`));
 
-        const { request } = await publicClient.simulateContract({
-            address: G_TOKEN_ADDRESS,
-            abi: ERC20_ABI,
-            functionName: 'transfer',
-            args: [player, amountWei],
-            account,
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: G_TOKEN_ADDRESS,
+                abi: ERC20_ABI,
+                functionName: 'transfer',
+                args: [player, amountWei],
+                account,
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
         });
-        const hash = await walletClient.writeContract(request);
-        await publicClient.waitForTransactionReceipt({ hash });
 
         try {
             await supabase
