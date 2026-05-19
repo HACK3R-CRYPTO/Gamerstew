@@ -66,6 +66,22 @@ export async function GET(
     }
   } catch { /* fall through with null username — UI shows short wallet */ }
 
+  // Lazy habitat-purchase credit. Habitats are on-chain (HabitatRegistry),
+  // so the only way to convert ownership into season points is a deliberate
+  // reconciliation pass. This route is the canonical place a player checks
+  // their own score, so we sync here before reading the ledger — any tier
+  // they bought since the last sync gets credited (+30 each, idempotent
+  // per season). 60s LRU cache on the backend's chain reader keeps this
+  // cheap in the common case.
+  try {
+    const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    const secret = process.env.INTERNAL_SECRET || "";
+    await fetch(`${backend}/api/season/sync-habitats?wallet=${wallet}`, {
+      cache: "no-store",
+      headers: { "x-internal-secret": secret },
+    });
+  } catch { /* skip credit on transport failure — next call will retry */ }
+
   // Completed-game count for this wallet — same source the team-total RPC
   // now uses: season_v1_points rows with action_type='game_played'. The
   // points ledger only records games that passed the 8s duration gate in

@@ -1833,6 +1833,53 @@ function freeTierForLevel(level) {
 const habitatCache = new Map(); // wallet → { ownedPaidTiers: number[], ubiDonated: string, at: ms }
 const HABITAT_CACHE_TTL_MS = 60_000;
 
+// ─── Season 1: credit habitat ownership as season points ───────────────────
+// Each paid tier (6–10) the wallet owns is worth +30 pts once per season.
+// Idempotent via a season-tagged ref so re-running never double-credits;
+// the v1 prefix future-proofs Season 2's credit pass against the unique
+// constraint already on (wallet, action_type, ref). Designed for fire-and-
+// forget invocation — failures log but don't surface to the caller so any
+// caller (habitat page, season-me) stays fast.
+async function creditHabitatPoints(wallet, ownedPaidTiers) {
+  try {
+    const lower = String(wallet || '').toLowerCase();
+    const tiers = Array.isArray(ownedPaidTiers) ? ownedPaidTiers : [];
+    if (!lower || tiers.length === 0) return;
+
+    const { data: meta } = await supabase
+      .from('season_v1_meta')
+      .select('starts_at, ends_at')
+      .eq('active', true)
+      .maybeSingle();
+    if (!meta) return;
+
+    // Which tiers are already credited inside the active window?
+    const { data: existing } = await supabase
+      .from('season_v1_points')
+      .select('ref')
+      .ilike('wallet', lower)
+      .eq('action_type', 'habitat_bought')
+      .gte('occurred_at', meta.starts_at)
+      .lte('occurred_at', meta.ends_at);
+    const existingRefs = new Set((existing || []).map(r => r.ref));
+
+    const rows = tiers
+      .map(t => ({
+        wallet: lower,
+        action_type: 'habitat_bought',
+        points: 30,
+        ref: `habitat:v1:${t}`,
+      }))
+      .filter(r => !existingRefs.has(r.ref));
+
+    if (rows.length === 0) return;
+    const { error } = await supabase.from('season_v1_points').insert(rows);
+    if (error) console.warn(`creditHabitatPoints insert failed for ${lower}:`, error.message);
+  } catch (e) {
+    console.warn(`creditHabitatPoints unexpected error for ${wallet}:`, e?.message || e);
+  }
+}
+
 async function fetchPaidOwnership(addr) {
   const cached = habitatCache.get(addr);
   if (cached && Date.now() - cached.at < HABITAT_CACHE_TTL_MS) return cached;
@@ -1896,6 +1943,27 @@ app.get('/api/habitat/:address', async (req, res) => {
     equipped,
     ubiDonated,
   });
+
+  // Lazy season point credit — fire-and-forget so the response stays fast.
+  // Any player loading their habitat page gets their +30/tier credited
+  // without waiting on a manual sync.
+  creditHabitatPoints(addr, ownedPaidTiers).catch(() => {});
+});
+
+// ─── GET /api/season/sync-habitats?wallet=X ─────────────────────────────────
+// Reconciles on-chain habitat ownership against the season_v1_points ledger
+// for one wallet. Called by /api/season/me right before it reads points so
+// the personal score always reflects the latest purchase without needing a
+// habitat page visit. Idempotent (creditHabitatPoints filters already-
+// credited refs), so /api/season/me can call it on every read.
+app.get('/api/season/sync-habitats', async (req, res) => {
+  const wallet = String(req.query.wallet || '').toLowerCase().trim();
+  if (!/^0x[a-f0-9]{40}$/.test(wallet)) {
+    return res.status(400).json({ error: 'Invalid wallet' });
+  }
+  const { ownedPaidTiers } = await fetchPaidOwnership(wallet);
+  await creditHabitatPoints(wallet, ownedPaidTiers);
+  res.json({ ok: true, owned: ownedPaidTiers });
 });
 
 // ─── POST /api/habitat/equip — persist player's equipped tier choice ────────
