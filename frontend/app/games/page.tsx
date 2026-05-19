@@ -722,14 +722,14 @@ export default function GamesPage() {
                   subtitle: notJoined
                     ? `Starts ${startWd} · 4,200 G$ pool · Tap to join →`
                     : `Starts ${startWd} · 4,200 G$ pool`,
-                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
                 });
               } else if (notJoined) {
                 events.push({
                   icon: "⚔️", color: "#f97316",
                   title: "Team Wars · Pick a Team",
                   subtitle: `${fmtShortCountdown(left)} left · 4,200 G$ pool · Tap to join →`,
-                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
                 });
               } else {
                 events.push({
@@ -738,7 +738,7 @@ export default function GamesPage() {
                   subtitle: season1.topTeam
                     ? `Leader: Team ${season1.topTeam.team.toUpperCase()} · ${season1.topTeam.counted}/${season1.targetPerTeam} games`
                     : "Race starts now · 4,200 G$ pool",
-                  onClick: () => router.push("/leaderboard?tab=seasons"),
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
                   ...(season1.topTeam ? {
                     progress: {
                       value: season1.topTeam.counted,
@@ -1182,8 +1182,8 @@ export default function GamesPage() {
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => router.push("/leaderboard?tab=seasons")}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push("/leaderboard?tab=seasons"); }}
+                onClick={() => router.push("/leaderboard?tab=seasons#team-wars-card")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push("/leaderboard?tab=seasons#team-wars-card"); }}
                 style={{
                   width: "100%", maxWidth: "680px", flexShrink: 0,
                   borderRadius: "12px", padding: "9px 14px",

@@ -485,6 +485,27 @@ function LeaderboardInner() {
   const [activeTab, setActiveTab] = useState<"rankings" | "alltime" | "seasons" | "pvp">(initialTab);
   const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
 
+  // Deep-link scroll. The Games page banner sends players here with
+  // #team-wars-card so they land on the team picker, not the page top.
+  // Polls briefly because the card mounts after season1Lb fetches —
+  // scrolling on first paint would silently miss the target.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeTab !== "seasons") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    let tries = 0;
+    const tick = () => {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (tries++ < 20) setTimeout(tick, 100);
+    };
+    tick();
+  }, [activeTab]);
+
   // 72-hour Arena Cup — shared hook returns null outside the event window,
   // so the banner below only renders while the challenge is live.
   const challenge = useChallenge(address);
@@ -1496,10 +1517,11 @@ function LeaderboardInner() {
                   const myQualified = !!me?.qualified;
 
                   return (
-                    <div style={{
+                    <div id="team-wars-card" style={{
                       borderRadius: "18px", padding: "2px",
                       background: "linear-gradient(135deg, #f97316 0%, #c026d3 60%, #7c3aed 100%)",
                       boxShadow: "0 0 22px rgba(192,38,211,0.28), 0 10px 24px rgba(0,0,0,0.6)",
+                      scrollMarginTop: "80px",
                     }}>
                       <div style={{
                         borderRadius: "16px",
