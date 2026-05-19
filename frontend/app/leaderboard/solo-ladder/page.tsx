@@ -59,7 +59,11 @@ function shortAddr(a: string): string {
 // and every event card. Palette mirrors /profile so the family of
 // avatars feels cohesive.
 function avatarUrl(wallet: string, username?: string | null): string {
-  const seed = `${username || ""}-${wallet}`;
+  // DiceBear seeds are case-sensitive. wagmi returns checksummed (mixed-
+  // case) addresses, the season API returns lowercase ones — so a player
+  // can land on two different faces for the same wallet. Lowercasing
+  // here normalises everything to the same seed.
+  const seed = `${username || ""}-${wallet.toLowerCase()}`;
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
 }
 

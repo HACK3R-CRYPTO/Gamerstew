@@ -92,7 +92,10 @@ const NAV_ITEMS = [
 
 // DiceBear avatar — unique face per wallet (matches leaderboard rows)
 function avatarUrl(address: string, username?: string | null) {
-  const seed = `${username || ""}-${address}`;
+  // Lowercase the address so the same wallet always seeds the same
+  // avatar — wagmi returns checksum casing, the season API returns
+  // lowercase, and DiceBear treats them as different seeds.
+  const seed = `${username || ""}-${address.toLowerCase()}`;
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
 }
 

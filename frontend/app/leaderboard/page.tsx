@@ -139,8 +139,10 @@ function fmtName(addr: string, username?: string | null) {
   return `${addr.slice(0, 4)}...${addr.slice(-3)}`;
 }
 function avatarUrl(address: string, username?: string | null) {
-  // Always seed with BOTH username and address — guarantees uniqueness per wallet.
-  const seed = `${username || ""}-${address}`;
+  // Always seed with BOTH username and address — guarantees uniqueness per
+  // wallet. Address is lowercased so wagmi's checksum casing and the API's
+  // lowercase don't collide into two different faces for the same player.
+  const seed = `${username || ""}-${address.toLowerCase()}`;
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9,fbbf24,f97316,c026d3`;
 }
 
@@ -1706,7 +1708,7 @@ function LeaderboardInner() {
                   // matches /profile so the family of avatars looks
                   // cohesive.
                   const avatarFor = (w: string, u?: string | null) =>
-                    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(`${u || ""}-${w}`)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
+                    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(`${u || ""}-${w.toLowerCase()}`)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
 
                   return (
                     <div style={{
