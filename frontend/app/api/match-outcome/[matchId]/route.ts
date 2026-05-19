@@ -28,7 +28,7 @@ export async function GET(
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { data, error } = await supabase
     .from("agent_match_state")
-    .select("outcome, tie_reason, tie_refund_wei, refund_pending, refund_tx_hash")
+    .select("outcome, tie_reason, tie_refund_wei, refund_pending, refund_tx_hash, commit_hash, seed, resolved_at, ai_move, player_move, game_type")
     .eq("match_id", matchId)
     .maybeSingle();
 
@@ -39,12 +39,22 @@ export async function GET(
     return NextResponse.json({ outcome: null }, { status: 200 });
   }
 
+  // commit_hash is always safe to expose; seed only after the match
+  // resolves (releasing the seed mid-match would let the player infer
+  // the agent's pending move before they commit theirs).
+  const seedReleased = !!data.resolved_at;
   return NextResponse.json({
     outcome: data.outcome,                  // 'ai_won' | 'player_won' | 'tie' | null
     tieReason: data.tie_reason ?? null,     // 'rps_same' | 'coin_both_right' | ...
     tieRefundWei: data.tie_refund_wei ?? null,
     refundPending: !!data.refund_pending,
     refundTxHash: data.refund_tx_hash ?? null,
+    // Provably-fair audit fields.
+    commitHash: data.commit_hash ?? null,
+    seed: seedReleased ? (data.seed ?? null) : null,
+    gameType: data.game_type ?? null,
+    aiMove: seedReleased ? (data.ai_move ?? null) : null,
+    playerMove: seedReleased ? (data.player_move ?? null) : null,
   }, {
     headers: {
       "Cache-Control": "no-store",

@@ -1,6 +1,7 @@
-import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters, keccak256, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { randomBytes } from 'node:crypto';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
 import { MoltbookService } from './services/MoltbookService.js';
@@ -115,6 +116,74 @@ const GAME_NAMES = ['RockPaperScissors', 'DiceRoll', 'UNUSED', 'CoinFlip', 'UNUS
 // Combined with the contract's 5% protocol fee, the treasury grows ~10-15%
 // per 100 matches of average wager — sustainable without continuous topping
 // up of the agent wallet.
+
+// ─── MoveSeeder ─────────────────────────────────────────────────────────────
+// Hash-committed RNG for provably fair play. Lifecycle per match:
+//   1. accept time:  commit() generates a 32-byte seed, stores it in memory,
+//                    returns the keccak256 hash. That hash is written to
+//                    agent_match_state.commit_hash BEFORE the player plays.
+//   2. play time:    rand() returns a deterministic [0,1) generator bound
+//                    to this match's seed. Every Math.random() in the
+//                    move-pick path is replaced with this generator, so
+//                    every randomness draw is locked in once the seed is.
+//   3. resolve time: reveal() returns the seed. It's written to
+//                    agent_match_state.seed so anyone can verify
+//                    keccak256(seed) == commit_hash and replay the RNG.
+//   4. cleanup:      forget() drops the seed from memory.
+//
+// If the agent restarts between accept and resolve the in-memory seed is
+// lost. predict() / determineWinner() fall back to Math.random for that
+// match and the row's `seed` column ends up null at resolve time. A
+// verifier sees commit_hash present but seed null and labels the match
+// "unverifiable for this run." Crucially, the agent CANNOT forge a
+// replacement seed because keccak256 is one-way — submitting a fake seed
+// would fail the commit hash check on the verifier side.
+class MoveSeeder {
+    private seeds = new Map<string, `0x${string}`>();
+    private counters = new Map<string, number>();
+
+    commit(matchId: bigint): { seed: `0x${string}`; commitHash: `0x${string}` } {
+        const seed = toHex(randomBytes(32));
+        const commitHash = keccak256(seed);
+        const key = matchId.toString();
+        this.seeds.set(key, seed);
+        this.counters.set(key, 0);
+        return { seed, commitHash };
+    }
+
+    rand(matchId: bigint): () => number {
+        const key = matchId.toString();
+        const seed = this.seeds.get(key);
+        if (!seed) {
+            console.warn(chalk.yellow(`⚠️  No seed for match #${matchId} — falling back to Math.random. This match will not be verifiable.`));
+            return Math.random;
+        }
+        return () => {
+            const counter = this.counters.get(key) ?? 0;
+            this.counters.set(key, counter + 1);
+            // keccak256(seed || matchId(32B) || counter(8B)) → first 4 bytes → uint32 → [0,1)
+            const matchIdHex = toHex(matchId, { size: 32 }).slice(2);
+            const counterHex = toHex(BigInt(counter), { size: 8 }).slice(2);
+            const input = `${seed}${matchIdHex}${counterHex}` as `0x${string}`;
+            const hash = keccak256(input);
+            const v = parseInt(hash.slice(2, 10), 16);
+            return v / 0x100000000;
+        };
+    }
+
+    reveal(matchId: bigint): `0x${string}` | null {
+        return this.seeds.get(matchId.toString()) ?? null;
+    }
+
+    forget(matchId: bigint): void {
+        const key = matchId.toString();
+        this.seeds.delete(key);
+        this.counters.delete(key);
+    }
+}
+
+const moveSeeder = new MoveSeeder();
+
 class OpponentModel {
     // transitions[gameType][playerAddress][prevMove][nextMove] = count
     transitions: Record<number, Record<string, number[][]>> = {};
@@ -202,26 +271,28 @@ class OpponentModel {
     }
 
     // Main decision function. Returns a 0-indexed move suitable for the
-    // contract (caller converts to Dice 1-6 if needed).
-    predict(gameType: number, player: string): number {
+    // contract (caller converts to Dice 1-6 if needed). Pass a seeded
+    // `rand` to make every randomness draw verifiable after the match
+    // (MoveSeeder.rand for production, Math.random for tests/fallback).
+    predict(gameType: number, player: string, rand: () => number = Math.random): number {
         const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
         const prediction = this.predictNext(gameType, player);
 
         // ─── Cold start ────────────────────────────────────────────────────
         if (!prediction) {
-            return this.coldStart(gameType, size);
+            return this.coldStart(gameType, size, rand);
         }
 
         // ─── RPS — the main game ───────────────────────────────────────────
         if (gameType === 0) {
             const counter      = (prediction.move + 1) % 3;   // beats predicted
             const metaCounter  = (prediction.move + 2) % 3;   // beats the counter
-            const random       = Math.floor(Math.random() * 3);
+            const random       = Math.floor(rand() * 3);
 
             // Lower-confidence predictions = more randomness. When the model
             // is confident we lean hard on counter; when uncertain we mix
             // more random so we don't telegraph the same move repeatedly.
-            const r = Math.random();
+            const r = rand();
             if (prediction.confidence >= 0.6) {
                 // High confidence: 75% counter, 15% meta, 10% random
                 return r < 0.75 ? counter : r < 0.90 ? metaCounter : random;
@@ -234,32 +305,32 @@ class OpponentModel {
         if (gameType === 3) {
             const opposite = 1 - prediction.move;
             // 80% opposite, 20% random — entropy floor against pattern exploiters.
-            return Math.random() < 0.80 ? opposite : Math.floor(Math.random() * 2);
+            return rand() < 0.80 ? opposite : Math.floor(rand() * 2);
         }
 
         // ─── Dice — kept from previous strategy, favor high ──────────────
         if (gameType === 1) {
-            return Math.random() > 0.3 ? 5 : Math.floor(Math.random() * 6);
+            return rand() > 0.3 ? 5 : Math.floor(rand() * 6);
         }
 
-        return Math.floor(Math.random() * size);
+        return Math.floor(rand() * size);
     }
 
     // Cold-start strategy when we have no prior signal on this player.
     // For RPS we exploit the well-documented opening bias toward rock.
-    coldStart(gameType: number, size: number): number {
+    coldStart(gameType: number, size: number, rand: () => number = Math.random): number {
         if (gameType === 0) {
             // Humans play rock ~41% on first round. Paper beats rock.
             // Mix: 45% paper (beats rock), 30% scissors (beats paper),
             // 25% rock (beats scissors) — still has variety, but tilted.
-            const r = Math.random();
+            const r = rand();
             return r < 0.45 ? 1 : r < 0.75 ? 2 : 0;
         }
         if (gameType === 3) {
             // Heads is the modal first call (~52%). Counter with tails.
-            return Math.random() < 0.55 ? 1 : 0;
+            return rand() < 0.55 ? 1 : 0;
         }
-        return Math.floor(Math.random() * size);
+        return Math.floor(rand() * size);
     }
 }
 
@@ -648,6 +719,24 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
         return;
     }
 
+    // Generate the per-match seed and lock its hash to Supabase BEFORE
+    // we burn the accept tx. The player can read commit_hash on the row
+    // the moment the contract status flips to ACCEPTED, then verify
+    // after the match that keccak256(revealed_seed) == commit_hash.
+    const { commitHash } = moveSeeder.commit(matchId);
+    try {
+        await supabase.from('agent_match_state').upsert({
+            match_id: matchId.toString(),
+            challenger: challenger.toLowerCase(),
+            wager_wei: wager.toString(),
+            game_type: gameType,
+            accepted_at: new Date().toISOString(),
+            commit_hash: commitHash,
+        }, { onConflict: 'match_id' });
+    } catch (e: any) {
+        console.warn(chalk.yellow(`agent_match_state pre-accept upsert failed for #${matchId}: ${e?.message ?? e}`));
+    }
+
     try {
         const encodedArgs = encodeAbiParameters(
             [{ type: 'uint8' }, { type: 'uint256' }],
@@ -657,7 +746,7 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
             address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
         });
         const hash = await walletClient.writeContract(request);
-        console.log(chalk.green(`Match #${matchId} accepted! Hash: ${hash}`));
+        console.log(chalk.green(`Match #${matchId} accepted! Hash: ${hash} (commit ${commitHash.slice(0, 10)}..)`));
         await publicClient.waitForTransactionReceipt({ hash });
 
         // Social Update: Match Accepted
@@ -721,7 +810,12 @@ async function tryPlayMove(matchId: bigint, m: any) {
 
         console.log(chalk.magenta(`🤖 Agent playing move for Match #${matchId} (${GAME_NAMES[gameType]})...`));
 
-        const aiMove = model.predict(gameType, opponentAddr);
+        // Seeded RNG bound to this match's commit_hash. Every randomness
+        // draw inside predict (and later inside determineWinner's oracle
+        // flip) consumes from the same counter, so the entire match is
+        // verifiable from the seed alone.
+        const rand = moveSeeder.rand(matchId);
+        const aiMove = model.predict(gameType, opponentAddr, rand);
         let moveToSend = aiMove;
 
         let moveLabel = 'Strategic';
@@ -806,7 +900,12 @@ async function tryResolveMatch(matchId: bigint, m: any) {
 
         console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove} (${cachedOpponentMove !== undefined ? 'cached' : 'chain'})`));
 
-        const outcome = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove, m.wager);
+        // Continue the same seeded RNG stream that predict() started
+        // during tryPlayMove. determineWinner's coin-flip oracle picks
+        // up at the next counter value, so play-time and resolve-time
+        // randomness are both derivable from one seed.
+        const resolveRand = moveSeeder.rand(matchId);
+        const outcome = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove, m.wager, resolveRand);
 
         const { request } = await publicClient.simulateContract({
             address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
@@ -818,9 +917,13 @@ async function tryResolveMatch(matchId: bigint, m: any) {
 
         // Persist the resolve outcome to Supabase so the frontend can
         // tell a tied match apart from a clean loss (the contract emits
-        // MatchCompleted with AI as winner in both cases). The refund
-        // tx hash is filled in by sendTieRefund below.
+        // MatchCompleted with AI as winner in both cases). Reveal the
+        // seed at the same time — the row now contains everything a
+        // verifier needs: commit_hash (from accept time) + seed (here) +
+        // both players' moves + outcome. Null seed means the agent
+        // restarted mid-match and this row is unverifiable.
         const matchOutcome = outcome.isTie ? 'tie' : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 'ai_won' : 'player_won');
+        const revealedSeed = moveSeeder.reveal(matchId);
         try {
             await supabase.from('agent_match_state').upsert({
                 match_id: matchId.toString(),
@@ -835,10 +938,12 @@ async function tryResolveMatch(matchId: bigint, m: any) {
                 tie_reason: outcome.isTie ? outcome.tieReason : null,
                 tie_refund_wei: outcome.isTie ? outcome.tieRefundWei.toString() : null,
                 refund_pending: outcome.isTie,
+                seed: revealedSeed,
             }, { onConflict: 'match_id' });
         } catch (e: any) {
             console.warn(chalk.yellow(`agent_match_state upsert failed for #${matchId}: ${e?.message ?? e}`));
         }
+        moveSeeder.forget(matchId);
 
         // Tie refund. Send 0.98× wager from the agent's wallet to the
         // challenger. Best-effort with chain-level retry. Failure is
@@ -953,7 +1058,7 @@ function tieRefundFor(wager: bigint): bigint {
     return (wager * 98n) / 100n;
 }
 
-function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number, wager: bigint): ResolveOutcome {
+function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number, wager: bigint, rand: () => number = Math.random): ResolveOutcome {
     let p1Wins = false;
     let isTie = false;
     let tieReason = '';
@@ -968,13 +1073,14 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
         // Oracle flip decides which side called correctly. Outcomes:
         //   - p1 only correct → player wins
         //   - p2 only correct → AI wins
-        //   - both correct    → tie (was "house wins"; now refunds)
-        //   - both wrong      → tie (was "player wins"; now refunds)
+        //   - both correct    → tie (refunds)
+        //   - both wrong      → tie (refunds)
         //
-        // NOTE: still Math.random(). On-chain VRF / blockhash is tracked
-        // as post-hackathon work and would let us emit the oracle result
-        // on chain for full auditability.
-        const oracleFlip = Math.random() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
+        // The oracle now draws from the same seed stream the agent's
+        // own move pick consumed, so the entire match's randomness is
+        // provably bound to the commit_hash written at accept time.
+        // Player can replay this draw after the seed is revealed.
+        const oracleFlip = rand() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
         console.log(chalk.gray(`🔮 Oracle Flip: ${oracleFlip === 0 ? 'Heads' : 'Tails'}`));
 
         const p1Correct = m1 === oracleFlip;
