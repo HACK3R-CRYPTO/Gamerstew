@@ -548,10 +548,11 @@ function LeaderboardInner() {
   type Season1Lb = {
     meta: { endsAt: string; targetPerTeam: number; bestEffortFloor: number };
     teams: { team: Season1Team; counted: number; players: number; qualifiers: number; hitTarget: boolean }[];
-    soloTop10: { wallet: string; points: number; rank: number }[];
+    soloTop10: { wallet: string; username?: string | null; points: number; rank: number }[];
   };
   type Season1Me = {
     wallet: string;
+    username?: string | null;
     team: Season1Team | null;
     games: number; counted: number; qualified: boolean;
     minGames: number; maxCounted: number;
@@ -1682,192 +1683,227 @@ function LeaderboardInner() {
                   );
                 })()}
 
-                {/* ── SEASON 1 · SOLO LADDER — Companion event card. Every
-                    action (game, wager win, habitat, claim, referral)
-                    earns points; top 10 split a 1,200 G$ pool. Lives next
-                    to Team Wars so players see both tracks of Season 1. ─ */}
+                {/* ── SEASON 1 · SOLO LADDER — Companion event card.
+                    Same anatomy as the Community Challenge card right
+                    below: gradient border, dark inner gradient with top
+                    gloss, header row, dual stat row, contributors list
+                    with avatars, my-score pill, drill-in CTA. ─ */}
                 {season1Lb && (() => {
                   const lb = season1Lb;
                   const me = season1Me;
                   const secondsLeft = Math.max(0, Math.floor(new Date(lb.meta.endsAt).getTime() / 1000) - now);
                   if (secondsLeft === 0) return null;
+                  // soloTop10 is the canonical top-N; first 5 fit comfortably here.
                   const top5 = lb.soloTop10.slice(0, 5);
                   const mySoloPts = me?.soloPoints ?? 0;
                   const mySoloRank = me?.soloRank ?? null;
+                  const myUsername = me?.username ?? null;
                   const meInTop5 = !!address && top5.some(r => r.wallet.toLowerCase() === address.toLowerCase());
+                  // Same DiceBear avatar seed the rest of the app uses
+                  // (`${username}-${wallet}`), so the same person shows
+                  // up under the same face across rankings, profile, and
+                  // every event card. The limited 5-color palette
+                  // matches /profile so the family of avatars looks
+                  // cohesive.
+                  const avatarFor = (w: string, u?: string | null) =>
+                    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(`${u || ""}-${w}`)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
+
                   return (
                     <div style={{
                       borderRadius: "18px", padding: "2px",
-                      background: "linear-gradient(135deg, #fbbf24 0%, #f97316 60%, #ef4444 100%)",
-                      boxShadow: "0 0 22px rgba(251,191,36,0.28), 0 10px 24px rgba(0,0,0,0.6)",
+                      background: "linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #c2410c 100%)",
+                      boxShadow: "0 0 22px rgba(251,191,36,0.25), 0 10px 24px rgba(0,0,0,0.6)",
                     }}>
                       <div style={{
                         borderRadius: "16px",
-                        background: "linear-gradient(180deg, rgba(40,10,80,0.96) 0%, rgba(10,2,40,0.98) 100%)",
-                        padding: "14px",
-                        display: "flex", flexDirection: "column", gap: "10px",
+                        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                        padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
+                        position: "relative", overflow: "hidden",
+                        display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
                       }}>
-                        {/* Header */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                            <span style={{ fontSize: "14px" }}>📊</span>
-                            <span style={{
-                              color: "#fbbf24", fontSize: "clamp(10px, 2.6vw, 11.5px)",
-                              fontWeight: 900, letterSpacing: "0.16em",
-                              textShadow: "0 0 10px rgba(251,191,36,0.55)",
-                            }}>SEASON 1 · SOLO LADDER</span>
+                        <div style={{
+                          position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+                          background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
+                          pointerEvents: "none",
+                        }} />
+
+                        {/* Header — left tag pill + headline; right boxed countdown */}
+                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+                          <div>
+                            <div style={{
+                              display: "inline-flex", alignItems: "center", gap: "5px",
+                              padding: "2px 8px", borderRadius: "999px",
+                              background: "rgba(251,191,36,0.15)",
+                              border: "1px solid rgba(251,191,36,0.5)",
+                              marginBottom: "6px",
+                            }}>
+                              <span style={{ color: "#fde68a", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>SEASON 1 EVENT</span>
+                            </div>
+                            <div style={{
+                              color: "white", fontSize: "clamp(14px,4vw,16px)",
+                              fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
+                            }}>
+                              SOLO LADDER
+                            </div>
                           </div>
                           <div style={{
-                            padding: "3px 10px", borderRadius: "999px",
-                            background: "rgba(251,191,36,0.18)",
-                            border: "1px solid rgba(251,191,36,0.55)",
-                            color: "#fde68a",
-                            fontSize: "10.5px", fontWeight: 900,
-                            fontFamily: "monospace", whiteSpace: "nowrap",
-                          }}>⏳ {formatCountdown(secondsLeft)}</div>
-                        </div>
-
-                        {/* Headline */}
-                        <div style={{
-                          color: "rgba(230,220,255,0.9)",
-                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
-                        }}>
-                          Every action counts. Top 10 by Friday split a <strong style={{ color: "#fde68a" }}>1,200 G$</strong> pool.
-                        </div>
-
-                        {/* Points strip — compact reference of what earns what */}
-                        <div style={{
-                          display: "flex", flexWrap: "wrap", gap: "5px",
-                        }}>
-                          {[
-                            { label: "GAME", pts: "1-15" },
-                            { label: "WAGER WIN", pts: "+15" },
-                            { label: "HABITAT", pts: "+30" },
-                            { label: "CLAIM", pts: "+5" },
-                            { label: "REFERRAL", pts: "+100" },
-                          ].map(p => (
-                            <div key={p.label} style={{
-                              padding: "3px 7px", borderRadius: "999px",
-                              background: "rgba(251,191,36,0.1)",
-                              border: "1px solid rgba(251,191,36,0.28)",
-                              fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.04em",
-                              whiteSpace: "nowrap",
-                            }}>
-                              <span style={{ color: "rgba(220,210,255,0.65)" }}>{p.label}</span>
-                              <span style={{ color: "#fde68a", marginLeft: "5px", fontWeight: 900 }}>{p.pts}</span>
+                            padding: "5px 10px", borderRadius: "10px",
+                            background: "rgba(0,0,0,0.5)",
+                            border: "1px solid rgba(251,191,36,0.4)",
+                            textAlign: "right", flexShrink: 0,
+                          }}>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>
+                              ENDS IN
                             </div>
-                          ))}
+                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1, fontFamily: "monospace" }}>
+                              {formatCountdown(secondsLeft)}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Top 5 list */}
+                        {/* Prize + leader stat row */}
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          padding: "10px 12px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.35)",
+                          border: "1px solid rgba(251,191,36,0.3)",
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
+                        }}>
+                          <div>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
+                              PRIZE POOL
+                            </div>
+                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px" }}>
+                              1,200 G$ · Top 10
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
+                              TOP SCORE
+                            </div>
+                            <div style={{ color: "#fde68a", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px", fontFamily: "monospace" }}>
+                              {top5[0] ? top5[0].points.toLocaleString() : "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Your share pill — mirrors Community Challenge */}
+                        {address && me && (mySoloPts > 0 || mySoloRank) && (
+                          <div style={{
+                            position: "relative", zIndex: 1,
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "8px 12px", borderRadius: "10px",
+                            background: "rgba(251,191,36,0.08)",
+                            border: "1px solid rgba(251,191,36,0.3)",
+                          }}>
+                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                              YOUR SCORE
+                            </span>
+                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, fontFamily: "monospace" }}>
+                              {mySoloPts.toLocaleString()} pts {mySoloRank ? `· #${mySoloRank}` : "· unranked"}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Top 5 — same row anatomy as Community Challenge
+                            contributors, but with avatar + amber points. */}
                         {top5.length === 0 ? (
                           <div style={{
-                            padding: "12px",
-                            color: "rgba(220,210,255,0.5)",
-                            fontSize: "11px", fontWeight: 700,
+                            position: "relative", zIndex: 1, padding: "12px",
+                            color: "rgba(220,210,255,0.5)", fontSize: "11px",
                             textAlign: "center", fontStyle: "italic",
                           }}>
                             No points logged yet. Play to start the ladder.
                           </div>
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            {top5.map(r => {
-                              const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
-                              const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : null;
-                              const rankColor =
-                                r.rank === 1 ? "#fbbf24" :
-                                r.rank === 2 ? "#cbd5e1" :
-                                r.rank === 3 ? "#fb923c" :
-                                "rgba(220,210,255,0.6)";
-                              return (
-                                <div key={r.wallet} style={{
-                                  display: "flex", alignItems: "center", gap: "8px",
-                                  padding: "5px 8px",
-                                  borderRadius: "8px",
-                                  background: isMe ? "rgba(134,239,172,0.08)" : "rgba(0,0,0,0.24)",
-                                  border: isMe ? "1px solid rgba(134,239,172,0.3)" : "1px solid rgba(255,255,255,0.04)",
-                                }}>
-                                  <span style={{
-                                    width: "22px", textAlign: "center",
-                                    color: rankColor, fontSize: "11.5px", fontWeight: 900,
-                                    textShadow: r.rank <= 3 ? `0 0 6px ${rankColor}` : "none",
-                                  }}>{medal ?? `#${r.rank}`}</span>
-                                  <span style={{
-                                    flex: 1, minWidth: 0,
-                                    color: isMe ? "#86efac" : "white",
-                                    fontSize: "11px", fontWeight: 800, fontFamily: "monospace",
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                  }}>
-                                    {isMe ? "YOU" : `${r.wallet.slice(0, 4)}…${r.wallet.slice(-3)}`}
-                                  </span>
-                                  <span style={{
-                                    color: "#fbbf24", fontSize: "11px", fontWeight: 900,
-                                    fontFamily: "monospace", whiteSpace: "nowrap",
-                                    textShadow: "0 0 6px rgba(251,191,36,0.4)",
-                                  }}>
-                                    {r.points.toLocaleString()} pts
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Your rank pill — only when wallet is connected and you have points */}
-                        {address && me && (mySoloPts > 0 || mySoloRank) && !meInTop5 && (
-                          <div style={{
-                            borderTop: "1px dashed rgba(167,139,250,0.2)",
-                            paddingTop: "10px",
-                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                          }}>
-                            <div>
-                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em" }}>YOUR SCORE</div>
-                              <div style={{
-                                color: "#fbbf24", fontSize: "14px", fontWeight: 900,
-                                textShadow: "0 0 8px rgba(251,191,36,0.5)",
-                                marginTop: "2px",
-                              }}>{mySoloPts.toLocaleString()} pts</div>
-                            </div>
+                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                             <div style={{
-                              padding: "4px 12px", borderRadius: "999px",
-                              background: "rgba(251,191,36,0.16)",
-                              border: "1px solid rgba(251,191,36,0.45)",
-                              color: "#fde68a",
-                              fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.14em",
-                            }}>
-                              {mySoloRank ? `RANK #${mySoloRank}` : "UNRANKED"}
+                              color: "rgba(254,215,170,0.7)",
+                              fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
+                            }}>TOP 5 · BY POINTS</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                              {top5.map(r => {
+                                const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
+                                const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "🏅";
+                                return (
+                                  <div key={r.wallet} style={{
+                                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                                    gap: "10px",
+                                    padding: "8px 10px", borderRadius: "10px",
+                                    background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
+                                    border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                                  }}>
+                                    <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                                      <span style={{
+                                        fontSize: "12px",
+                                        color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
+                                        fontWeight: 900, letterSpacing: "0.05em",
+                                        flexShrink: 0, minWidth: "22px",
+                                      }}>#{r.rank}</span>
+                                      <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
+                                      <span style={{
+                                        width: 24, height: 24, minWidth: 24, borderRadius: "50%",
+                                        overflow: "hidden", flexShrink: 0,
+                                        background: "#1a0550",
+                                        border: `1.5px solid ${isMe ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.15)"}`,
+                                      }}>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={avatarFor(r.wallet, r.username)} alt=""
+                                          width={24} height={24}
+                                          style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                                      </span>
+                                      <span style={{
+                                        color: isMe ? "#fde68a" : "rgba(255,255,255,0.92)",
+                                        fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
+                                        fontWeight: isMe ? 900 : 700,
+                                        fontFamily: r.username ? "system-ui, -apple-system, sans-serif" : "monospace",
+                                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                      }}>
+                                        {r.username || `${r.wallet.slice(0, 4)}…${r.wallet.slice(-3)}`}
+                                        {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
+                                      </span>
+                                    </span>
+                                    <span style={{
+                                      color: "#fbbf24",
+                                      fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
+                                      fontFamily: "monospace", flexShrink: 0,
+                                      textShadow: "0 0 6px rgba(251,191,36,0.4)",
+                                    }}>
+                                      {r.points.toLocaleString()}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
 
-                        {/* Drill-in CTA — keeps this card compact and routes
-                            to /leaderboard/solo-ladder for the full top 10,
-                            your breakdown, and your referral link. */}
+                        {/* Drill-in CTA */}
                         <div
                           role="button" tabIndex={0}
                           onClick={() => router.push("/leaderboard/solo-ladder")}
                           style={{
+                            position: "relative", zIndex: 1,
                             cursor: "pointer", userSelect: "none",
-                            borderTop: "1px dashed rgba(167,139,250,0.2)",
-                            paddingTop: "10px", marginTop: "2px",
                             display: "flex", alignItems: "center", justifyContent: "space-between",
+                            paddingTop: "4px",
                             transition: "transform 0.12s",
                           }}
                           onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.98)"; }}
                           onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
                         >
-                          <div style={{ color: "rgba(220,210,255,0.65)", fontSize: "10.5px", fontWeight: 700, lineHeight: 1.4 }}>
-                            See full top 10, your score breakdown, and your referral link
-                          </div>
-                          <div style={{
+                          <span style={{ color: "rgba(220,210,255,0.65)", fontSize: "10.5px", fontWeight: 700 }}>
+                            View full ladder · your breakdown · referral link
+                          </span>
+                          <span style={{
                             padding: "5px 11px", borderRadius: "999px",
                             background: "rgba(251,191,36,0.18)",
                             border: "1px solid rgba(251,191,36,0.55)",
                             color: "#fde68a",
                             fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.12em",
-                            whiteSpace: "nowrap", marginLeft: "10px",
-                          }}>VIEW ›</div>
+                            whiteSpace: "nowrap",
+                          }}>VIEW ›</span>
                         </div>
                       </div>
                     </div>

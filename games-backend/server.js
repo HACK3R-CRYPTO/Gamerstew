@@ -1344,6 +1344,23 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json({ leaderboard: enriched, total, page, limit, pages: Math.ceil(listTotal / limit) });
 });
 
+// ─── GET /api/usernames?wallets=0xa,0xb,... ─────────────────────────────────
+// Batch lookup of on-chain usernames (from the GamePass NFT contract).
+// Surfaces names to other services — the Season 1 Solo Ladder reads from
+// the Supabase ledger, which has no username column, so it can't enrich
+// rows without this endpoint. The resolveUsername LRU caches results so
+// repeat callers don't pay an RPC per wallet.
+app.get('/api/usernames', async (req, res) => {
+  const raw = String(req.query.wallets || '').trim();
+  if (!raw) return res.json({ usernames: {} });
+  const wallets = [...new Set(raw.split(',').map(s => s.trim().toLowerCase()).filter(s => /^0x[a-f0-9]{40}$/.test(s)))].slice(0, 500);
+  const entries = await Promise.all(wallets.map(async (w) => {
+    const name = await resolveUsername(w).catch(() => null);
+    return [w, name || null];
+  }));
+  res.json({ usernames: Object.fromEntries(entries) });
+});
+
 // ─── GET /api/activity ──────────────────────────────────────────────────────
 // Recent score events from the subgraph. Profile pages pass ?player=0x...
 // to scope to a single wallet; the global feed shows the last 10 plays.

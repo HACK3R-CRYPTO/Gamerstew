@@ -43,6 +43,21 @@ export async function GET(
     .eq("wallet", wallet)
     .maybeSingle();
 
+  // Username + avatar identity. Source of truth is the GamePass NFT
+  // (on-chain), exposed through games-backend /api/usernames (LRU-cached
+  // resolveUsername). Using the same source the existing /leaderboard
+  // and /profile use means the same person shows up under the same
+  // character — and the same DiceBear avatar — across the app.
+  let username: string | null = null;
+  try {
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:3005";
+    const r = await fetch(`${backend}/api/usernames?wallets=${wallet}`, { cache: "no-store" });
+    if (r.ok) {
+      const j = (await r.json()) as { usernames: Record<string, string | null> };
+      username = j.usernames?.[wallet] ?? null;
+    }
+  } catch { /* fall through with null username — UI shows short wallet */ }
+
   // Raw game count for this wallet inside the window.
   const { count: rawGames } = await supabase
     .from("game_sessions")
@@ -93,6 +108,7 @@ export async function GET(
 
   return NextResponse.json({
     wallet,
+    username,
     team: player?.team ?? null,
     joinedAt: player?.joined_at ?? null,
     referrerWallet: player?.referrer_wallet ?? null,

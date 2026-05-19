@@ -93,6 +93,32 @@ export async function GET(req: Request) {
   const { data: ladder } = await supabase
     .rpc("season_v1_solo_top_full", { p_limit: soloLimit });
 
+  // Enrich each row with the player's on-chain GamePass username so the
+  // card and the dedicated /leaderboard/solo-ladder page show real names
+  // instead of shortened wallets. Usernames live on the GamePass NFT
+  // contract, not in Supabase, so we call games-backend /api/usernames
+  // (LRU-cached resolveUsername). Same source the existing /leaderboard
+  // and /profile use, which is how the avatar seed ends up identical.
+  type LadderRow = { wallet: string; username?: string | null; points: number; rank: number; games?: number; wins?: number; claims?: number };
+  const rawLadder: LadderRow[] = (ladder as LadderRow[] | null) ?? [];
+  let enrichedLadder: LadderRow[] = rawLadder;
+  if (rawLadder.length > 0) {
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:3005";
+    const wallets = rawLadder.map(r => r.wallet.toLowerCase()).join(",");
+    let nameMap = new Map<string, string | null>();
+    try {
+      const r = await fetch(`${backend}/api/usernames?wallets=${wallets}`, { cache: "no-store" });
+      if (r.ok) {
+        const j = (await r.json()) as { usernames: Record<string, string | null> };
+        nameMap = new Map(Object.entries(j.usernames || {}));
+      }
+    } catch { /* leave nameMap empty; rows fall back to short wallet */ }
+    enrichedLadder = rawLadder.map(r => ({
+      ...r,
+      username: r.username ?? nameMap.get(r.wallet.toLowerCase()) ?? null,
+    }));
+  }
+
   return NextResponse.json({
     meta: {
       startsAt: meta.starts_at,
@@ -107,8 +133,8 @@ export async function GET(req: Request) {
     teams,
     // Historical name; carries top 10 by default, up to `?limit=` rows
     // when callers request more (Solo Ladder page asks for 500).
-    soloTop10: ladder ?? [],
-    soloLadder: ladder ?? [],
+    soloTop10: enrichedLadder,
+    soloLadder: enrichedLadder,
   }, {
     headers: { "Cache-Control": "no-store" },
   });

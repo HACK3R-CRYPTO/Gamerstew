@@ -17,6 +17,7 @@ import BottomNav from "@/components/BottomNav";
 
 type SoloRow = {
   wallet: string;
+  username?: string | null;
   rank: number;
   points: number;
   games?: number;
@@ -32,6 +33,7 @@ type LbResponse = {
 
 type MeResponse = {
   wallet: string;
+  username?: string | null;
   soloPoints: number;
   soloRank: number | null;
   soloBreakdown?: Record<string, { count: number; points: number }>;
@@ -52,6 +54,15 @@ function shortAddr(a: string): string {
   return a.length > 12 ? `${a.slice(0, 4)}…${a.slice(-3)}` : a;
 }
 
+// Canonical avatar URL — seed is `${username}-${wallet}` so the same
+// player shows up under the same face on /profile, every leaderboard,
+// and every event card. Palette mirrors /profile so the family of
+// avatars feels cohesive.
+function avatarUrl(wallet: string, username?: string | null): string {
+  const seed = `${username || ""}-${wallet}`;
+  return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
+}
+
 // Per-row stats line. Skips zero-count actions so a brand new player's
 // row reads cleanly instead of "0 games · 0 wins · 0 claims".
 function statsLine(games?: number, wins?: number, claims?: number, refs?: number): string {
@@ -66,102 +77,116 @@ function statsLine(games?: number, wins?: number, claims?: number, refs?: number
   return parts.join(" · ");
 }
 
-// Medal slot — gold/silver/bronze badge for top 3, gray number for the rest.
+// Medal slot — bigger gold/silver/bronze badge for top 3, soft `#N` text
+// for 4+. Mirrors the existing GameArena leaderboard's row anatomy so
+// the Solo Ladder feels like the same competition surface.
 function MedalSlot({ rank }: { rank: number | null }) {
   if (rank === 1) {
     return (
       <div style={{
-        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-        background: "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
-        boxShadow: "0 0 12px rgba(251,191,36,0.55), inset 0 1px 0 rgba(255,255,255,0.4)",
+        width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+        background: "radial-gradient(circle at 35% 30%, #fef3c7, #f59e0b 55%, #92400e 100%)",
+        boxShadow: "0 0 18px rgba(251,191,36,0.6), 0 4px 10px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.5)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18,
+        fontSize: 22,
       }}>🥇</div>
     );
   }
   if (rank === 2) {
     return (
       <div style={{
-        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-        background: "linear-gradient(160deg, #f1f5f9 0%, #cbd5e1 50%, #64748b 100%)",
-        boxShadow: "0 0 10px rgba(203,213,225,0.45), inset 0 1px 0 rgba(255,255,255,0.45)",
+        width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+        background: "radial-gradient(circle at 35% 30%, #f1f5f9, #cbd5e1 55%, #475569 100%)",
+        boxShadow: "0 0 16px rgba(203,213,225,0.5), 0 4px 10px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.5)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18,
+        fontSize: 22,
       }}>🥈</div>
     );
   }
   if (rank === 3) {
     return (
       <div style={{
-        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-        background: "linear-gradient(160deg, #fed7aa 0%, #fb923c 50%, #9a3412 100%)",
-        boxShadow: "0 0 10px rgba(251,146,60,0.45), inset 0 1px 0 rgba(255,255,255,0.4)",
+        width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+        background: "radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 55%, #7c2d12 100%)",
+        boxShadow: "0 0 14px rgba(251,146,60,0.5), 0 4px 10px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.45)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18,
+        fontSize: 22,
       }}>🥉</div>
     );
   }
   return (
     <div style={{
-      width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-      background: "transparent",
+      width: 44, height: 44, flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center",
-      color: "rgba(220,210,255,0.55)", fontSize: 16, fontWeight: 800,
-      fontFamily: "monospace",
-    }}>{rank ?? "—"}</div>
+      color: "rgba(220,210,255,0.45)",
+      fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em",
+    }}>#{rank ?? "—"}</div>
   );
 }
 
-// One row of the leaderboard. Flat, divider underneath, no pill.
+// One row of the leaderboard. Big medal/avatar/name/score, no clutter.
+// YOU gets a soft violet outline so the player can locate themselves
+// without colour-coding the rest of the list.
 function LadderRow({
-  rank, wallet, points, isMe, games, wins, claims,
+  rank, wallet, username, points, isMe,
 }: {
   rank: number | null;
   wallet: string;
+  username?: string | null;
   points: number;
   isMe: boolean;
+  // Stats kept on the API but intentionally not rendered in the row.
+  // Per-row chatter ("47 games · 8 wins") competes with the score; the
+  // player's OWN breakdown lives in YOUR POSITION above.
   games?: number;
   wins?: number;
   claims?: number;
 }) {
-  const stats = statsLine(games, wins, claims);
+  // Same canonical seed format as /profile so the avatar matches across
+  // the app — wallet always feeds in so empty username still resolves.
+  const displayName = isMe ? "YOU" : (username || shortAddr(wallet));
+  // Username gets a friendlier proportional font; wallet stays monospace
+  // because hex reads better with a fixed-width family.
+  const nameFont = username ? "system-ui, -apple-system, sans-serif" : "monospace";
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: "12px",
-      padding: "12px 4px",
-      borderBottom: "1px solid rgba(255,255,255,0.06)",
-      background: isMe ? "rgba(134,239,172,0.05)" : "transparent",
+      display: "flex", alignItems: "center", gap: "14px",
+      padding: "12px 14px",
+      borderRadius: "14px",
+      background: isMe ? "rgba(167,139,250,0.08)" : "transparent",
+      border: isMe ? "1.5px solid rgba(167,139,250,0.55)" : "1.5px solid transparent",
+      boxShadow: isMe ? "0 0 16px rgba(167,139,250,0.25)" : "none",
     }}>
       <MedalSlot rank={rank} />
+      <div style={{
+        width: 44, height: 44, minWidth: 44, borderRadius: "50%",
+        background: "#1a0550",
+        border: `2px solid ${isMe ? "rgba(167,139,250,0.55)" : "rgba(255,255,255,0.15)"}`,
+        boxShadow: isMe ? "0 0 10px rgba(167,139,250,0.35)" : "0 2px 6px rgba(0,0,0,0.35)",
+        overflow: "hidden", flexShrink: 0,
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={avatarUrl(wallet, username)} alt="" width={44} height={44}
+          style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          color: isMe ? "#86efac" : "white",
-          fontSize: "14px", fontWeight: 800, lineHeight: 1.15,
-          fontFamily: "monospace",
+          color: isMe ? "#c4b5fd" : "white",
+          fontSize: "16px", fontWeight: 900, lineHeight: 1.1,
+          fontFamily: nameFont,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>{isMe ? "YOU" : shortAddr(wallet)}</div>
-        {stats && (
-          <div style={{
-            color: "rgba(220,210,255,0.5)",
-            fontSize: "11px", fontWeight: 700, marginTop: "2px",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{stats}</div>
-        )}
+          textShadow: isMe ? "0 0 8px rgba(167,139,250,0.5)" : "none",
+          letterSpacing: "0.01em",
+        }}>{displayName}</div>
       </div>
-      <div style={{ flexShrink: 0, textAlign: "right" }}>
-        <div style={{
-          color: "#fbbf24",
-          fontSize: "14px", fontWeight: 900,
-          fontFamily: "monospace",
-          textShadow: "0 0 6px rgba(251,191,36,0.35)",
-          letterSpacing: "-0.01em",
-        }}>{points.toLocaleString()}</div>
-        <div style={{
-          color: "rgba(251,191,36,0.55)",
-          fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em",
-          marginTop: "1px",
-        }}>PTS</div>
-      </div>
+      <div style={{
+        flexShrink: 0,
+        color: "#fbbf24",
+        fontSize: "18px", fontWeight: 900,
+        fontFamily: "monospace",
+        textShadow: "0 0 8px rgba(251,191,36,0.45)",
+        letterSpacing: "-0.01em",
+      }}>{points.toLocaleString()}</div>
     </div>
   );
 }
@@ -218,6 +243,7 @@ export default function SoloLadderPage() {
   const myStats = statsLine(myGames, myWins, myClaims, myRefs);
   const myRank = me?.soloRank ?? null;
   const myPoints = me?.soloPoints ?? 0;
+  const myUsername = me?.username ?? null;
 
   return (
     <div style={{
@@ -279,31 +305,63 @@ export default function SoloLadderPage() {
           <div style={{
             borderRadius: "14px",
             background: "rgba(20,10,50,0.78)",
-            border: "1px solid rgba(167,139,250,0.18)",
+            border: "1.5px solid rgba(167,139,250,0.4)",
+            boxShadow: "0 0 18px rgba(167,139,250,0.18), 0 6px 14px rgba(0,0,0,0.4)",
             padding: "14px 14px 12px",
           }}>
+            {/* Compact "YOUR POSITION" caption above the row makes it
+                clear which row is yours when you're not in top 10. */}
             <div style={{
-              display: "flex", alignItems: "center", gap: "12px",
+              color: "rgba(220,210,255,0.55)",
+              fontSize: "9.5px", fontWeight: 900, letterSpacing: "0.2em",
+              marginBottom: "8px",
+            }}>YOUR POSITION</div>
+            <div style={{
+              display: "flex", alignItems: "center", gap: "14px",
             }}>
-              {/* Rank pill — amber rounded chip like Focus Pet's "#17" */}
+              {/* Rank pill — amber rounded chip */}
               <div style={{
-                minWidth: 44, height: 36,
+                minWidth: 48, height: 38,
                 borderRadius: 999,
                 padding: "0 12px",
                 background: "linear-gradient(160deg, #fed7aa 0%, #fb923c 60%, #c2410c 100%)",
                 color: "white",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 900,
+                fontSize: 14, fontWeight: 900,
                 textShadow: "0 1px 2px rgba(0,0,0,0.45)",
-                boxShadow: "0 0 10px rgba(251,146,60,0.45), inset 0 1px 0 rgba(255,255,255,0.35)",
+                boxShadow: "0 0 12px rgba(251,146,60,0.45), inset 0 1px 0 rgba(255,255,255,0.35)",
+                flexShrink: 0,
               }}>{myRank ? `#${myRank}` : "—"}</div>
+
+              {/* Avatar — same seed rule as the leaderboard rows so
+                  the player sees the same character that represents
+                  them across every leaderboard surface in the app. */}
+              <div style={{
+                width: 44, height: 44, minWidth: 44, borderRadius: "50%",
+                background: "#1a0550",
+                border: "2px solid rgba(167,139,250,0.55)",
+                boxShadow: "0 0 10px rgba(167,139,250,0.35)",
+                overflow: "hidden", flexShrink: 0,
+              }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={avatarUrl(address, myUsername)}
+                  alt=""
+                  width={44}
+                  height={44}
+                  style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
-                  color: "white", fontSize: "15px", fontWeight: 900,
-                  lineHeight: 1.1,
-                  textShadow: "0 1px 2px rgba(0,0,0,0.4)",
-                }}>Your position</div>
+                  color: "#c4b5fd",
+                  fontSize: "16px", fontWeight: 900, lineHeight: 1.1,
+                  fontFamily: myUsername ? "system-ui, -apple-system, sans-serif" : "monospace",
+                  textShadow: "0 0 8px rgba(167,139,250,0.5)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  letterSpacing: "0.01em",
+                }}>{myUsername || shortAddr(address)}</div>
                 {myStats && (
                   <div style={{
                     color: "rgba(220,210,255,0.55)",
@@ -432,6 +490,7 @@ export default function SoloLadderPage() {
                   key={r.wallet}
                   rank={r.rank}
                   wallet={r.wallet}
+                  username={r.username}
                   points={r.points}
                   isMe={!!address && r.wallet.toLowerCase() === address.toLowerCase()}
                   games={r.games}
