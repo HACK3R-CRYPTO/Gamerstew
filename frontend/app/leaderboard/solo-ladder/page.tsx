@@ -28,7 +28,7 @@ type SoloRow = {
 };
 
 type LbResponse = {
-  meta: { endsAt: string; soloLadderPool: string };
+  meta: { startsAt: string; endsAt: string; soloLadderPool: string };
   soloLadder?: SoloRow[];
   soloTop10?: SoloRow[];
 };
@@ -302,21 +302,27 @@ export default function SoloLadderPage() {
           </div>
         </div>
 
-        {/* Meta strip — countdown + pool */}
-        {lb && (
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "4px 2px",
-            fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em",
-          }}>
-            <span style={{ color: "rgba(220,210,255,0.6)" }}>
-              Top 10 split <strong style={{ color: "#fde68a" }}>1,200 G$</strong>
-            </span>
-            <span style={{ color: "#fde68a", fontFamily: "monospace" }}>
-              ⏳ {fmtCountdown(lb.meta.endsAt)}
-            </span>
-          </div>
-        )}
+        {/* Meta strip — countdown + pool. Counts down to start before
+            kickoff so the page never advertises an active scoring window
+            that isn't actually scoring. */}
+        {lb && (() => {
+          const preLaunch = new Date(lb.meta.startsAt).getTime() > Date.now();
+          const targetIso = preLaunch ? lb.meta.startsAt : lb.meta.endsAt;
+          return (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "4px 2px",
+              fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em",
+            }}>
+              <span style={{ color: "rgba(220,210,255,0.6)" }}>
+                Top 10 split <strong style={{ color: "#fde68a" }}>1,200 G$</strong>
+              </span>
+              <span style={{ color: "#fde68a", fontFamily: "monospace" }}>
+                {preLaunch ? "🚀" : "⏳"} {preLaunch ? "STARTS IN" : "ENDS IN"} · {fmtCountdown(targetIso)}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* YOUR POSITION — subtle elevated card, rank as colored pill on the
             left. Same row anatomy as the list below for visual consistency,

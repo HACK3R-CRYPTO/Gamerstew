@@ -569,7 +569,7 @@ function LeaderboardInner() {
   // instead of on a separate page.
   type Season1Team = "alpha" | "nova" | "pulse";
   type Season1Lb = {
-    meta: { endsAt: string; targetPerTeam: number; bestEffortFloor: number };
+    meta: { startsAt: string; endsAt: string; targetPerTeam: number; bestEffortFloor: number };
     teams: { team: Season1Team; counted: number; players: number; qualifiers: number; hitTarget: boolean }[];
     soloTop10: { wallet: string; username?: string | null; points: number; rank: number }[];
   };
@@ -1505,8 +1505,18 @@ function LeaderboardInner() {
                 {season1Lb && (() => {
                   const lb = season1Lb;
                   const me = season1Me;
-                  const secondsLeft = Math.max(0, Math.floor(new Date(lb.meta.endsAt).getTime() / 1000) - now);
+                  // Pre-launch: count down to the season start so players see
+                  // the suspense window honestly. Post-launch: count down to
+                  // end as before. Without this both cards advertised 12d
+                  // when only 9.5d of scoring actually exists.
+                  const startSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
+                  const endSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
+                  const preLaunch = now < startSec;
+                  const secondsLeft = preLaunch
+                    ? Math.max(0, startSec - now)
+                    : Math.max(0, endSec - now);
                   if (secondsLeft === 0) return null;
+                  const countdownLabel = preLaunch ? "STARTS IN" : "ENDS IN";
                   const teamColor: Record<Season1Team, string> = { alpha: "#f97316", nova: "#06b6d4", pulse: "#a78bfa" };
                   const sortedTeams = [...lb.teams].sort((a, b) => b.counted - a.counted);
                   const isJoined = !!me && !!me.team;
@@ -1546,7 +1556,7 @@ function LeaderboardInner() {
                             color: "#fde68a",
                             fontSize: "10.5px", fontWeight: 900,
                             fontFamily: "monospace", whiteSpace: "nowrap",
-                          }}>⏳ {formatCountdown(secondsLeft)}</div>
+                          }}>{preLaunch ? "🚀" : "⏳"} {countdownLabel} · {formatCountdown(secondsLeft)}</div>
                         </div>
 
                         {/* Headline */}
@@ -1715,8 +1725,17 @@ function LeaderboardInner() {
                 {season1Lb && (() => {
                   const lb = season1Lb;
                   const me = season1Me;
-                  const secondsLeft = Math.max(0, Math.floor(new Date(lb.meta.endsAt).getTime() / 1000) - now);
+                  // Same pre-launch / post-launch countdown swap as the
+                  // Team Wars card above so both cards agree on whether
+                  // we're waiting for kickoff or already running.
+                  const soloStartSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
+                  const soloEndSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
+                  const soloPreLaunch = now < soloStartSec;
+                  const secondsLeft = soloPreLaunch
+                    ? Math.max(0, soloStartSec - now)
+                    : Math.max(0, soloEndSec - now);
                   if (secondsLeft === 0) return null;
+                  const soloCountdownLabel = soloPreLaunch ? "STARTS IN" : "ENDS IN";
                   // soloTop10 is the canonical top-N; first 5 fit comfortably here.
                   const top5 = lb.soloTop10.slice(0, 5);
                   const mySoloPts = me?.soloPoints ?? 0;
@@ -1777,7 +1796,7 @@ function LeaderboardInner() {
                             textAlign: "right", flexShrink: 0,
                           }}>
                             <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>
-                              ENDS IN
+                              {soloCountdownLabel}
                             </div>
                             <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1, fontFamily: "monospace" }}>
                               {formatCountdown(secondsLeft)}
