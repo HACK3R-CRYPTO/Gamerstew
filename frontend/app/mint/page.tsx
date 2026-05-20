@@ -21,6 +21,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread, MINIPAY_DEEPLINKS } from "@/lib/contracts";
+import { captureReferralFromUrl, readPendingReferral, clearPendingReferral } from "@/lib/referral";
 
 // Minimum CELO we ask non-MiniPay wallets to hold before we let them tap
 // MINT. 0.002 CELO is a comfortable margin over the ~0.0005 CELO a Game
@@ -55,12 +56,20 @@ function MintInner() {
   // a friend's wallet here, we stash it in localStorage; the Season 1
   // team picker reads URL ?ref first, then this key, then null.
   //
-  // Pre-fills from URL ?ref when the player arrived via a share link, so
-  // the field always shows the truth of who's about to get credited.
+  // Pre-fills from URL ?ref OR the localStorage cache populated by the
+  // referral capture util. localStorage rescues the value when the user
+  // came in via /leaderboard?ref=… and got bounced through /connect →
+  // /mint, which strips query params. URL still wins when both exist
+  // so a fresh share-link arrival overrides any stale cache.
   const [referrer, setReferrer] = useState(() => {
-    const r = params.get("ref")?.toLowerCase().trim() ?? "";
-    return /^0x[a-f0-9]{40}$/.test(r) ? r : "";
+    const fromUrl = params.get("ref")?.toLowerCase().trim() ?? "";
+    if (/^0x[a-f0-9]{40}$/.test(fromUrl)) return fromUrl;
+    const cached = readPendingReferral();
+    return cached ?? "";
   });
+  // Capture from URL on mount too, so cache stays warm even if the user
+  // never hits the leaderboard route.
+  useEffect(() => { captureReferralFromUrl(); }, [params]);
   const refClean = referrer.toLowerCase().trim();
   const refIsEmpty = refClean.length === 0;
   const refIsValidShape = /^0x[a-f0-9]{40}$/.test(refClean);
@@ -160,6 +169,10 @@ function MintInner() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ wallet: address.toLowerCase(), referrer: refClean }),
           });
+          // Server-side truth lands here; the localStorage bridge is no
+          // longer needed for this player. Clear it so subsequent flows
+          // can't be shadowed by a stale cache.
+          clearPendingReferral();
         } catch { /* network blip — accept that this player misses the credit */ }
       }
       // Contract state takes a beat to reflect — refetch once so the
