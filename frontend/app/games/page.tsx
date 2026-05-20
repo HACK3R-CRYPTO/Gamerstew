@@ -125,20 +125,8 @@ const GAMES = [
     startGrad: "linear-gradient(160deg, #d8b4fe 0%, #9333ea 50%, #6b21a8 100%)",
     startGlow: "rgba(167,139,250,0.75)",
     art: (
-      // 3 AI personality emojis stacked — gives a "roster" feel without
-      // a new asset. Players see the visual cue that this is a multi-opponent
-      // hub, not a single game.
-      <div style={{
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: 4, height: "100%",
-        filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))",
-      }}>
-        <div style={{ fontSize: 48 }}>🔮</div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <div style={{ fontSize: 24 }}>🪞</div>
-          <div style={{ fontSize: 24 }}>🎲</div>
-        </div>
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/games/challenge-ais.png" alt="Challenge AI" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
     ),
   },
   // Coming-soon teaser — deliberately muted vs active games. The chassis
