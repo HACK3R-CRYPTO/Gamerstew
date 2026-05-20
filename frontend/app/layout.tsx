@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "@/components/providers";
 import AppAudio from "@/components/AppAudio";
-import Footer from "@/components/Footer";
 
 const APP_URL = "https://gamearenahq.xyz";
 const APP_TITLE = "Game Arena";
@@ -75,7 +74,6 @@ export default function RootLayout({
               button. Pauses during gameplay so game tracks dominate. */}
           <AppAudio />
           {children}
-          <Footer />
         </Providers>
       </body>
     </html>
