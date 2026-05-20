@@ -10,36 +10,91 @@ export const CONTRACT_ADDRESSES = {
   HABITAT_REGISTRY: process.env.NEXT_PUBLIC_HABITAT_REGISTRY || '0x8888FEb43ac1833c683D0474204aa55A55BD010F',
 };
 
-// Celo MiniPay fee-currency adapters — Celo lets you pay gas in stablecoins
-// instead of CELO. MiniPay users have zero CELO by design, so every
-// transaction a MiniPay user signs must include `feeCurrency` pointing at
-// one of these adapter addresses. Canonical addresses from the Celo
-// docs / celo-org/skills reference.
-//
-// Usage:
-//   import { feeCurrencyFor } from "@/lib/contracts";
-//   writeContract({ ...args, feeCurrency: feeCurrencyFor(isMiniPay) });
-export const FEE_CURRENCY_ADAPTERS = {
-  USDC: '0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B',
-  USDT: '0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72',
+// MiniPay deeplink targets (celopedia minipay-requirements §"Deeplinks"
+// and §6 "Integration & Support"). Use these instead of in-app explainer
+// screens — MiniPay handles the funding UX natively and pulls users
+// back into the Mini App afterwards. Canonical list:
+// https://docs.minipay.xyz/technical-references/deeplinks.html
+export const MINIPAY_DEEPLINKS = {
+  ADD_CASH: 'https://link.minipay.xyz/add_cash?tokens=USDC,USDT,USDm',
+  INVITE_FRIENDS: 'https://link.minipay.xyz/invite_friends',
+  BALANCE: 'https://link.minipay.xyz/balance',
 } as const;
 
-// Pick the fee currency for a given context. We default MiniPay users to
-// the USDC adapter (most commonly funded); non-MiniPay users pay in CELO
-// (undefined = default gas token).
+// Celo MiniPay fee-currency adapters. MiniPay users have zero CELO by
+// design, so every tx they sign must include `feeCurrency` pointing at
+// one of these addresses. Canonical mapping from celopedia minipay-
+// guide §"Supported Stablecoins":
+//   USDC / USDT — fee currency is a separate **adapter** address
+//   USDm        — fee currency is the **token** address itself
+// Passing the token instead of the adapter for USDC/USDT causes silent
+// tx failures, which is exactly the foot-gun celopedia warns about.
+export const STABLECOIN_TOKENS = {
+  USDC: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C',
+  USDT: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
+  USDm: '0x765DE816845861e75A25fCA122bb6898B8B1282a',
+} as const;
+export const FEE_CURRENCY_ADAPTERS = {
+  USDC: '0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B',
+  USDT: '0x0e2a3e05bc9a16f5292a6170456a710cb89c6f72',
+  USDm: '0x765DE816845861e75A25fCA122bb6898B8B1282a', // token == adapter
+} as const;
+
+// Sync fallback: returns the USDm fee currency for MiniPay (MiniPay's own
+// default), or empty for non-MiniPay (pay in CELO). Used when we can't
+// await a balance check — e.g. inside a render path. Async callers
+// should prefer detectFeeSpread for correct token selection.
 export function feeCurrencyFor(isMiniPay: boolean): `0x${string}` | undefined {
-  return isMiniPay ? (FEE_CURRENCY_ADAPTERS.USDC as `0x${string}`) : undefined;
+  return isMiniPay ? (FEE_CURRENCY_ADAPTERS.USDm as `0x${string}`) : undefined;
 }
 
-// Spread-helper: returns `{ feeCurrency }` when a MiniPay adapter should
-// apply, or an empty object otherwise. `feeCurrency` is a Celo-specific
-// transaction field that viem's Celo chain serializer handles at runtime,
-// but wagmi's generic writeContract type does not include it, so we cast
-// the spread to keep TS happy at call sites.
-//   writeContractAsync({ ...args, ...celoFeeSpread(isMiniPay) })
+// Sync spread variant of the above. Stays for back-compat with render-
+// path callers; async tx flows should use detectFeeSpread instead.
 export function celoFeeSpread(isMiniPay: boolean): Record<string, unknown> {
   const fc = feeCurrencyFor(isMiniPay);
   return fc ? { feeCurrency: fc } : {};
+}
+
+// Preferred-stablecoin detection (celopedia minipay-requirements §2
+// "Dynamic Adaptation"). Reads the user's USDT and USDC balances over a
+// direct HTTP RPC — NOT the MiniPay WebView — then picks the highest
+// non-zero balance, falling back to USDm. This is the only stablecoin
+// MiniPay funds by default, so USDm is the safe end of the chain.
+//
+// Returns a {} when not in MiniPay so non-MiniPay callers spread nothing.
+export async function detectFeeSpread(
+  isMiniPay: boolean,
+  account: `0x${string}` | undefined,
+): Promise<Record<string, unknown>> {
+  if (!isMiniPay) return {};
+  if (!account) return { feeCurrency: FEE_CURRENCY_ADAPTERS.USDm };
+  try {
+    // Direct RPC call so the read doesn't go through the MiniPay
+    // WebView. Forno is public and CORS-permissive.
+    const balanceOfData = (addr: string) =>
+      `0x70a08231000000000000000000000000${addr.slice(2).toLowerCase()}`;
+    const call = async (to: string) => {
+      const res = await fetch('https://forno.celo.org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'eth_call',
+          params: [{ to, data: balanceOfData(account) }, 'latest'],
+        }),
+      });
+      const j = await res.json();
+      return j?.result ? BigInt(j.result) : 0n;
+    };
+    const [usdt, usdc] = await Promise.all([
+      call(STABLECOIN_TOKENS.USDT),
+      call(STABLECOIN_TOKENS.USDC),
+    ]);
+    if (usdt > 0n) return { feeCurrency: FEE_CURRENCY_ADAPTERS.USDT };
+    if (usdc > 0n) return { feeCurrency: FEE_CURRENCY_ADAPTERS.USDC };
+  } catch {
+    // RPC failure — fall through to USDm
+  }
+  return { feeCurrency: FEE_CURRENCY_ADAPTERS.USDm };
 }
 
 export const ERC20_ABI = [

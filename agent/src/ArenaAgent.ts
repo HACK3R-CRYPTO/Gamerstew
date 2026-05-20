@@ -737,6 +737,32 @@ async function startAgent() {
         console.log(chalk.gray('EIP-8004 registration check... (skipping if failed)'));
     }
 
+    // ─── Self Agent ID (Talent Protocol prize-pool requirement) ─────────────
+    // Self Agent ID is mint-with-proof: register(agentURI) reverts with a
+    // custom error (0xf570d268) when called from a wallet that hasn't
+    // gone through the passport-backed ZK verification in the Self mobile
+    // app. The right path is "linked" registration via
+    // https://selfagentid.xyz — a verified human registers and then signs
+    // an EIP-712 message that authorises this agent wallet. We just
+    // surface the current registration status on boot so ops can confirm
+    // it's still in place; we never try to write from here.
+    const SELF_AGENT_REGISTRY = '0xaC3DF9ABf80d0F5c020C06B04Cced27763355944' as `0x${string}`;
+    try {
+        const selfBalance = await publicClient.readContract({
+            address: SELF_AGENT_REGISTRY,
+            abi: ERC8004_ABI,
+            functionName: 'balanceOf',
+            args: [account.address]
+        }) as bigint;
+        if (selfBalance > 0n) {
+            console.log(chalk.green('✅ Self Agent ID linked to this wallet.'));
+        } else {
+            console.log(chalk.yellow('⚠️  Self Agent ID not yet linked. Use https://selfagentid.xyz (linked mode, Celo Mainnet).'));
+        }
+    } catch {
+        console.log(chalk.gray('Self Agent ID status check skipped (RPC error).'));
+    }
+
     console.log(chalk.gray(`Wallet: ${account.address} | Platform: ${ARENA_ADDRESS}`));
 
     setInterval(scanForMatches, 2000); // Check every 2s for lightning response

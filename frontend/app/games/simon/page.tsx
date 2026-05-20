@@ -14,7 +14,7 @@ import {
   startGame as startGameAction,
   startGameMiniPay as startGameMiniPayAction,
 } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -364,14 +364,14 @@ export default function SimonGamePage() {
         | { success: true; signature: string; nonce: string; gameType: number }
         | { success: false; error: string };
       let authToken: string | null = null;
-      let miniPayMsg: string | null = null;
-      let miniPaySig: string | null = null;
 
       if (isMiniPay) {
-        miniPayMsg = `GameArena|simon|${scoreToSubmit}|${Date.now()}`;
-        miniPaySig = await signMessageAsync({ message: miniPayMsg });
+        // MiniPay forbids personal_sign — call the unsigned MiniPay
+        // path. Empty strings satisfy the action signature; the server
+        // action ignores them. See celopedia minipay-guide §"No message
+        // signing".
         sig = await signScoreMiniPay(
-          address, miniPaySig, miniPayMsg,
+          address, "", "",
           { game: "simon", score: scoreToSubmit },
           sessionTokenRef.current ?? "",
         );
@@ -405,7 +405,7 @@ export default function SimonGamePage() {
           ...(isEmbeddedWallet ? { gas: 300000n } : {}),
           // MiniPay pays network fees in USDC via Celo's fee-currency
           // adapter since the wallet holds no CELO.
-          ...celoFeeSpread(isMiniPay),
+          ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
         });
       } catch (err: unknown) {
         const e = err as {
@@ -453,8 +453,11 @@ export default function SimonGamePage() {
       // ── STEP 3: save off-chain ──
       let result;
       const fullScoreData = { ...baseScoreData, txHash };
-      if (isMiniPay && miniPaySig && miniPayMsg) {
-        result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, fullScoreData);
+      if (isMiniPay) {
+        // MiniPay path: no client signature (celopedia minipay-guide
+        // §"No message signing"). submitScoreMiniPay ignores the
+        // sig/msg args; empty strings keep the action signature stable.
+        result = await submitScoreMiniPay(address, "", "", fullScoreData);
       } else if (authToken) {
         result = await submitScore(authToken, address, fullScoreData);
       }
@@ -583,9 +586,11 @@ export default function SimonGamePage() {
       try {
         let res;
         if (isMiniPay) {
-          const msg = `GameArena|start|simon|${Date.now()}`;
-          const sig = await signMessageAsync({ message: msg });
-          res = await startGameMiniPayAction(address, sig, msg, "simon");
+          // MiniPay forbids personal_sign (celopedia minipay-guide §"No
+          // message signing"). Identity check happens on-chain at score-
+          // submit time instead. Empty sig args kept for action-signature
+          // compatibility; the server action ignores them.
+          res = await startGameMiniPayAction(address, "", "", "simon");
         } else {
           const token = await getAccessToken();
           if (!token) {

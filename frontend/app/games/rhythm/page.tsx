@@ -14,7 +14,7 @@ import {
   startGameMiniPay as startGameMiniPayAction,
   type RhythmTap,
 } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -732,9 +732,11 @@ export default function RhythmGamePage() {
       try {
         let res;
         if (isMiniPay) {
-          const msg = `GameArena|start|rhythm|${Date.now()}`;
-          const sig = await signMessageAsync({ message: msg });
-          res = await startGameMiniPayAction(address, sig, msg, "rhythm");
+          // MiniPay forbids personal_sign (celopedia minipay-guide §"No
+          // message signing"). Identity is enforced by the on-chain
+          // score-submission tx the player will sign later — forging a
+          // session here has zero exploit value.
+          res = await startGameMiniPayAction(address, "", "", "rhythm");
         } else {
           const token = await getAccessToken();
           if (!token) {
@@ -853,8 +855,6 @@ export default function RhythmGamePage() {
           | { success: true; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
-        let miniPayMsg: string | null = null;
-        let miniPaySig: string | null = null;
 
         // Anti-cheat: the session ticket from /api/start-game is required.
         // Without it the backend refuses to sign. If we somehow got here
@@ -869,10 +869,10 @@ export default function RhythmGamePage() {
         const tapLogSnapshot = tapLogRef.current.slice();
 
         if (isMiniPay) {
-          miniPayMsg = `GameArena|rhythm|${scoreToSubmit}|${Date.now()}`;
-          miniPaySig = await signMessageAsync({ message: miniPayMsg });
+          // MiniPay forbids personal_sign. Identity is enforced by the
+          // on-chain score-submission tx the player signs afterwards.
           sig = await signScoreMiniPay(
-            address, miniPaySig, miniPayMsg,
+            address, "", "",
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
@@ -916,7 +916,7 @@ export default function RhythmGamePage() {
             // MiniPay users have no CELO — pay the network fee in USDC via
             // Celo's fee-currency adapter. Non-MiniPay callers get {} here
             // so the tx uses CELO like any normal Celo wallet.
-            ...celoFeeSpread(isMiniPay),
+            ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
           });
         } catch (err: unknown) {
           // Classify wallet errors so we can show something useful.
@@ -969,8 +969,11 @@ export default function RhythmGamePage() {
         // drifted (e.g. encore scoring on the server differs by a few points).
         let result;
         const fullScoreData = { ...baseScoreData, score: officialScore, txHash };
-        if (isMiniPay && miniPaySig && miniPayMsg) {
-          result = await submitScoreMiniPay(address, miniPaySig, miniPayMsg, fullScoreData);
+        if (isMiniPay) {
+          // MiniPay path: no client signature (celopedia minipay-guide
+          // §"No message signing"). submitScoreMiniPay accepts empty
+          // sig/msg and ignores them.
+          result = await submitScoreMiniPay(address, "", "", fullScoreData);
         } else if (authToken) {
           result = await submitScore(authToken, address, fullScoreData);
         }

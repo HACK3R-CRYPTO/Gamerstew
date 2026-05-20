@@ -20,7 +20,12 @@ function miniPayEth(): MiniPayEthereum | null {
   return eth?.isMiniPay ? eth : null;
 }
 
-export function useIsMiniPay() {
+// Canonical MiniPay detection from celopedia minipay-guide.md: synchronous
+// check of `window.ethereum.isMiniPay`. No polling, no async retry — the
+// MiniPay provider is injected before the React render in the supported
+// path. Stays a hook (not a free function) so callers can compose with
+// other React state without manually reading window.
+export function useIsMiniPay(): boolean {
   const [isMiniPay] = useState(() => !!miniPayEth());
   return isMiniPay;
 }

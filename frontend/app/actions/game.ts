@@ -160,16 +160,25 @@ export async function startGame(
   }
 }
 
-// MiniPay variant of startGame — wallet-sig auth instead of Privy JWT.
-// Same as the JWT version otherwise.
+// MiniPay variant of startGame — no client signature.
+//
+// MiniPay does NOT support personal_sign / eth_signTypedData (canonical
+// celopedia rule: minipay-guide.md §"Important Constraints"). Prompting
+// for one is a listing-blocker. The cryptographic chain still ends at
+// the on-chain score-submission tx, which requires the player's wallet
+// to sign — so a forged session can only ever credit the named wallet,
+// which has zero payoff for an attacker.
+//
+// `walletSig` / `signedMessage` are accepted for backwards-compatibility
+// but ignored. New callers should pass empty strings or omit them.
 export async function startGameMiniPay(
   playerAddress: string,
-  walletSig:     string,
-  signedMessage: string,
+  _walletSig:    string,
+  _signedMessage:string,
   game:          GameId,
 ): Promise<StartGameResult> {
-  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
-    return { success: false, error: 'Unauthorized' };
+  if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
+    return { success: false, error: 'Invalid wallet address' };
   }
   try {
     const { ok, data } = await internalFetch('/api/start-game', {
@@ -222,17 +231,24 @@ export async function signScore(
   }
 }
 
-// ─── signScoreMiniPay — MiniPay users (no Privy JWT) ─────────────────────────
+// ─── signScoreMiniPay — MiniPay users (no Privy JWT, no client sig) ──────────
+// Same reasoning as startGameMiniPay above: MiniPay forbids personal_sign,
+// and the sig was only authenticating identity. A forged request can only
+// produce an EIP-712 voucher bound to the named wallet, which only that
+// wallet can spend on-chain — zero exploit value. Drop the sig check.
+//
+// `walletSig` / `signedMessage` stay in the signature for backwards
+// compatibility but are ignored.
 export async function signScoreMiniPay(
   playerAddress:  string,
-  walletSig:      string,
-  signedMessage:  string,
+  _walletSig:     string,
+  _signedMessage: string,
   scoreData:      { game: GameId; score: number },
   sessionToken:   string,
   tapLog?:        RhythmTap[],
 ): Promise<SignScoreResult> {
-  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
-    return { success: false, error: 'Unauthorized' };
+  if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
+    return { success: false, error: 'Invalid wallet address' };
   }
   try {
     const { ok, data } = await internalFetch('/api/sign-score', {
@@ -294,15 +310,19 @@ export async function submitScore(
   }
 }
 
-// ─── submitScoreMiniPay — MiniPay users ──────────────────────────────────────
+// ─── submitScoreMiniPay — MiniPay users (no client sig) ──────────────────────
+// Same reasoning as startGameMiniPay / signScoreMiniPay above. MiniPay
+// forbids personal_sign; the on-chain score-submission tx already binds
+// the score to the wallet. `walletSig` / `signedMessage` kept for the
+// action signature but ignored.
 export async function submitScoreMiniPay(
   playerAddress:  string,
-  walletSig:      string,
-  signedMessage:  string,
+  _walletSig:     string,
+  _signedMessage: string,
   scoreData:      ScoreData,
 ): Promise<SubmitScoreResult> {
-  if (!await verifyMiniPaySig(walletSig, signedMessage, playerAddress)) {
-    return { success: false, error: 'Unauthorized' };
+  if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
+    return { success: false, error: 'Invalid wallet address' };
   }
 
   const { score, gameTime } = scoreData;
