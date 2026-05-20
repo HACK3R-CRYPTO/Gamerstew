@@ -5,6 +5,7 @@ import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { captureReferralFromUrl, readPendingReferral } from "@/lib/referral";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
@@ -666,7 +667,8 @@ function LeaderboardInner() {
   // picker they can't act on. The ref survives via localStorage; once
   // they finish mint + verify they land back on this same view, this
   // time authenticated, and the team picker actually works.
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, getAccessToken } = usePrivy();
+  const isMiniPay = useIsMiniPay();
   useEffect(() => {
     if (!ready) return;
     if (authenticated || address) return; // already connected, render normally
@@ -681,6 +683,14 @@ function LeaderboardInner() {
     setSeason1Joining(team);
     setSeason1JoinError(null);
     try {
+      // Auth path. Browser users send a Privy access token; the API
+      // verifies the linked wallet matches the one being joined.
+      // MiniPay users pass the isMiniPay marker (no signing path).
+      const accessToken = isMiniPay ? null : await getAccessToken();
+      if (!isMiniPay && !accessToken) {
+        setSeason1JoinError("Sign in required to pick a team.");
+        return;
+      }
       const r = await fetch("/api/season/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -688,6 +698,8 @@ function LeaderboardInner() {
           wallet: address.toLowerCase(),
           team,
           referrerWallet: referrerFromUrl,
+          accessToken,
+          isMiniPay,
         }),
       });
       const j = await r.json();
@@ -698,7 +710,7 @@ function LeaderboardInner() {
       if (lbRes.ok) setSeason1Lb(await lbRes.json());
     } catch { setSeason1JoinError("Network error."); }
     finally { setSeason1Joining(null); }
-  }, [address, season1Joining, referrerFromUrl]);
+  }, [address, season1Joining, referrerFromUrl, isMiniPay, getAccessToken]);
 
   // Live countdown to season end (refreshes every second)
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -1640,6 +1652,41 @@ function LeaderboardInner() {
                             );
                           })}
                         </div>
+
+                        {/* Unauthenticated visitors: explicit Connect CTA
+                            instead of nothing. Without this the team
+                            picker silently disappears for anyone who
+                            isn't signed in, which made it look broken
+                            when the Telegram reminder dropped. Privy
+                            login wraps the rest of the onboarding chain. */}
+                        {!address && ready && (
+                          <div style={{
+                            borderTop: "1px dashed rgba(167,139,250,0.2)",
+                            paddingTop: "10px",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            gap: "8px",
+                          }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ color: "rgba(220,210,255,0.7)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em" }}>SIGN IN TO PICK A TEAM</div>
+                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "3px" }}>
+                                3 teams, 9.5 days, 5,400 G$ pool.
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => router.push(`/connect?next=${encodeURIComponent("/leaderboard?tab=seasons")}`)}
+                              style={{
+                                padding: "9px 14px", borderRadius: "10px",
+                                background: "linear-gradient(160deg, #fbbf24 0%, #f59e0b 50%, #b45309 100%)",
+                                border: "1.5px solid rgba(255,255,255,0.45)",
+                                color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.08em",
+                                cursor: "pointer", whiteSpace: "nowrap",
+                                boxShadow: "0 4px 12px rgba(245,158,11,0.35), inset 0 2px 4px rgba(255,255,255,0.25)",
+                              }}
+                            >
+                              CONNECT
+                            </button>
+                          </div>
+                        )}
 
                         {/* Your status — joined badge or team picker */}
                         {address && me && !isJoined && (
