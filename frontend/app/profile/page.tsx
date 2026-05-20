@@ -9,6 +9,7 @@ import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { playCoin, playTabSwitch } from "@/hooks/useAppAudio";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
 import ShareCard from "@/components/ShareCard";
@@ -831,6 +832,9 @@ function ProfileInner() {
   // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
   const isMobile = useIsMobile();
   const isMiniPay = useIsMiniPay();
+  // Profile is your-data-only — redirect to /connect when there's no
+  // session so unauthenticated visitors don't see an empty shell.
+  useRequireAuth();
   const { address } = useAccount();
   const { isVerified, entitlement, claimG$ } = useSelfVerification();
 
