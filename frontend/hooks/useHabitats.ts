@@ -2,7 +2,7 @@
 
 import { useMemo, useCallback, useEffect, useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from "wagmi";
-import { CONTRACT_ADDRESSES, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, detectFeeSpread } from "@/lib/contracts";
 import { habitatRegistryAbi, erc20Abi } from "@/lib/abis/habitatRegistry";
 import { HABITATS, FIRST_PAID_TIER, getHabitat, defaultEquipped, freeTierForLevel, type HabitatTier } from "@/lib/habitats";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -201,7 +201,7 @@ export function useHabitats(playerLevel: number = 1) {
         abi: erc20Abi,
         functionName: "approve",
         args: [CONTRACT_ADDRESSES.HABITAT_REGISTRY as `0x${string}`, tier.costG$],
-        ...celoFeeSpread(isMiniPay),
+        ...(await detectFeeSpread(isMiniPay, address)),
       });
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
       await refetchAllowance();
@@ -213,7 +213,7 @@ export function useHabitats(playerLevel: number = 1) {
       abi: habitatRegistryAbi,
       functionName: "unlockHabitat",
       args: [tier.id],
-      ...celoFeeSpread(isMiniPay),
+      ...(await detectFeeSpread(isMiniPay, address)),
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status !== "success") {

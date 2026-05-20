@@ -20,7 +20,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 
 // Minimum CELO we ask non-MiniPay wallets to hold before we let them tap
 // MINT. 0.002 CELO is a comfortable margin over the ~0.0005 CELO a Game
@@ -144,7 +144,7 @@ function MintInner() {
         abi: GAME_PASS_ABI,
         functionName: "mint",
         args: [username],
-        ...celoFeeSpread(isMiniPay),
+        ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
       });
       // Persist the referrer server-side so the Season 1 team picker
       // can credit the friend on join — survives cross-device, incognito,

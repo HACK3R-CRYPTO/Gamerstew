@@ -14,7 +14,7 @@ import {
   startGameMiniPay as startGameMiniPayAction,
   type RhythmTap,
 } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -916,7 +916,7 @@ export default function RhythmGamePage() {
             // MiniPay users have no CELO — pay the network fee in USDC via
             // Celo's fee-currency adapter. Non-MiniPay callers get {} here
             // so the tx uses CELO like any normal Celo wallet.
-            ...celoFeeSpread(isMiniPay),
+            ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
           });
         } catch (err: unknown) {
           // Classify wallet errors so we can show something useful.

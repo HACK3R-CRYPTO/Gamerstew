@@ -14,7 +14,7 @@ import {
   startGame as startGameAction,
   startGameMiniPay as startGameMiniPayAction,
 } from "@/app/actions/game";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, celoFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -405,7 +405,7 @@ export default function SimonGamePage() {
           ...(isEmbeddedWallet ? { gas: 300000n } : {}),
           // MiniPay pays network fees in USDC via Celo's fee-currency
           // adapter since the wallet holds no CELO.
-          ...celoFeeSpread(isMiniPay),
+          ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
         });
       } catch (err: unknown) {
         const e = err as {
