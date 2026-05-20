@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { captureReferralFromUrl } from "@/lib/referral";
 
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -310,6 +311,13 @@ export default function SplashScreen() {
   const [textIndex, setTextIndex] = useState(0);
   const [displayed, setDisplayed] = useState(0);
   const router = useRouter();
+
+  // Referral capture happens BEFORE the typing animation finishes so
+  // the ?ref query param on a share link survives the router.push to
+  // /home below (Next strips arbitrary query strings on push). Helper
+  // is idempotent and TTL-cached in localStorage, safe to call when
+  // no ref is present.
+  useEffect(() => { captureReferralFromUrl(); }, []);
 
   useEffect(() => {
     const current = loadingTexts[textIndex];

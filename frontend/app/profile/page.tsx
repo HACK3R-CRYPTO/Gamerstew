@@ -1590,7 +1590,14 @@ function ProfileInner() {
                           glowColor="rgba(34,197,94,0.55)"
                           onClick={() => {
                             if (typeof window === "undefined") return;
-                            const url = `${window.location.origin}/leaderboard?tab=seasons&ref=${address.toLowerCase()}`;
+                            // Share URL lands on the root splash, not the
+                            // team picker. Splash captures ?ref to
+                            // localStorage on mount, then routes through
+                            // /home → /connect → /mint (ref pre-filled)
+                            // → /verify → /games. A new (unauth) user
+                            // sees the welcome experience first instead
+                            // of a team picker they can't act on.
+                            const url = `${window.location.origin}/?ref=${address.toLowerCase()}`;
                             void navigator.clipboard?.writeText(url);
                             setSeason1CopiedAt(Date.now());
                           }}
