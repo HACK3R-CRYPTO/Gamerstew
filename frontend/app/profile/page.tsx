@@ -1983,6 +1983,29 @@ function ProfileInner() {
 
             </div>
 
+            {/* Reviewer-trust links — the absolute minimum MiniPay needs
+                (celopedia minipay-requirements §6 Support + §7 Legal +
+                §8 Analytics, "reachable from inside the app"). Single
+                row of tiny text-only links at the bottom of profile so
+                they don't compete with primary content but a reviewer
+                tapping the Profile tab finds them in one scroll. */}
+            <div style={{
+              marginTop: "24px", paddingTop: "16px",
+              borderTop: "1px solid rgba(167,139,250,0.12)",
+              display: "flex", justifyContent: "center", alignItems: "center",
+              flexWrap: "wrap", gap: "12px",
+              color: "rgba(220,210,255,0.45)",
+              fontSize: "10.5px", fontWeight: 600, letterSpacing: "0.04em",
+            }}>
+              <a href="https://t.me/+oY4inbBoglViNmE0" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(220,210,255,0.65)", textDecoration: "none" }}>Support</a>
+              <span>·</span>
+              <a href="/terms" style={{ color: "rgba(220,210,255,0.65)", textDecoration: "none" }}>Terms</a>
+              <span>·</span>
+              <a href="/privacy" style={{ color: "rgba(220,210,255,0.65)", textDecoration: "none" }}>Privacy</a>
+              <span>·</span>
+              <a href="https://dune.com/ogazboiz/gamearena" target="_blank" rel="noopener noreferrer" style={{ color: "rgba(220,210,255,0.65)", textDecoration: "none" }}>Analytics</a>
+            </div>
+
           </div>
         </div>
       </div>
