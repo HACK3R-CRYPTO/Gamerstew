@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import {
@@ -244,6 +245,10 @@ const ENCORE_POOL: [number, number][] = [
 export default function RhythmGamePage() {
   const router = useRouter();
   const { address } = useAccount();
+  // Gameplay routes are wallet-bound. Without a session, score
+  // submission would fail at the on-chain step and the player wastes
+  // time. Redirect to /connect on entry; bring them back via next=.
+  useRequireAuth();
   const [phase, setPhase] = useState<Phase>("idle");
 
   // User audio preferences from profile — persisted in localStorage.

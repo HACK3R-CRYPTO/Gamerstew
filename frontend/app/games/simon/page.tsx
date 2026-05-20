@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
@@ -106,6 +107,10 @@ type PetEvent = { type: "correct" | "wrong" | "clear" | "bonus"; ts: number };
 export default function SimonGamePage() {
   const router = useRouter();
   const { address } = useAccount();
+  // Wallet-bound route: gate at entry so unauthenticated visitors
+  // can't start a game they can't submit (would fail at the on-chain
+  // step). Bounces to /connect with next= preserving this route.
+  useRequireAuth();
   // Mobile flag drives lighter-weight GPU effects on the Simon device.
   // Stacked 80/160/240px box-shadow blurs + triple drop-shadow filters
   // cause "Aww, snap!" renderer OOMs on low-end Android and the MiniPay

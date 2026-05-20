@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { encodeAbiParameters, formatUnits } from "viem";
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC20_ABI } from "@/lib/contracts";
 import {
@@ -196,6 +197,10 @@ function useAgentLiveness(): { online: boolean; reason: "offline" | "out-of-fund
 export default function ChallengeAi() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  // Wager-based route; absolutely needs a session before entry. The
+  // /connect chain brings them back via next= so the experience stays
+  // continuous.
+  useRequireAuth();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const isDesktop = useIsDesktop();
