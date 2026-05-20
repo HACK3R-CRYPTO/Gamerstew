@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
   const wallet = body.wallet?.toLowerCase().trim();
   const team = body.team?.toLowerCase().trim();
-  const referrer = body.referrerWallet?.toLowerCase().trim() || null;
+  let referrer = body.referrerWallet?.toLowerCase().trim() || null;
 
   if (!wallet || !/^0x[a-f0-9]{40}$/.test(wallet)) {
     return NextResponse.json({ error: "invalid wallet" }, { status: 400 });
@@ -41,6 +41,22 @@ export async function POST(req: Request) {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Fallback: if the request doesn't carry a referrer (typical for a
+  // returning player who clicked their own deep link or pasted the URL
+  // without ?ref), pull from the server-side intent table written at
+  // /mint time. Same shape — a single 0x wallet or null.
+  if (!referrer) {
+    const { data: intent } = await supabase
+      .from("season_v1_referrer_intent")
+      .select("referrer_wallet")
+      .eq("wallet", wallet)
+      .maybeSingle();
+    const fromIntent = intent?.referrer_wallet?.toLowerCase().trim();
+    if (fromIntent && /^0x[a-f0-9]{40}$/.test(fromIntent) && fromIntent !== wallet) {
+      referrer = fromIntent;
+    }
+  }
 
   // Pull the active season config first. If no active season, fail loud.
   const { data: meta, error: metaErr } = await supabase

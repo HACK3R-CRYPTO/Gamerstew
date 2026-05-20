@@ -146,14 +146,22 @@ function MintInner() {
         args: [username],
         ...celoFeeSpread(isMiniPay),
       });
-      // Persist the referrer so the Season 1 team picker can credit the
-      // friend on join. The mint tx is the registration lock-in moment;
-      // once we get here, the value the player typed is final. We write
-      // even on empty input so a previous (wrong) value gets cleared.
-      try {
-        if (refOk && !refIsEmpty) localStorage.setItem("season1_referrer", refClean);
-        else if (refIsEmpty) localStorage.removeItem("season1_referrer");
-      } catch { /* private mode / quota — silently skip */ }
+      // Persist the referrer server-side so the Season 1 team picker
+      // can credit the friend on join — survives cross-device, incognito,
+      // and cache-clear. The mint tx is the lock-in moment by product
+      // design: /api/season/intent is first-write-wins, so a refresh
+      // can't overwrite the value the player just committed to. Empty
+      // input or transport failure just skips the write — no referrer
+      // recorded, no penalty.
+      if (refOk && !refIsEmpty && address) {
+        try {
+          await fetch("/api/season/intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ wallet: address.toLowerCase(), referrer: refClean }),
+          });
+        } catch { /* network blip — accept that this player misses the credit */ }
+      }
       // Contract state takes a beat to reflect — refetch once so the
       // redirect effect above fires cleanly after the tx lands.
       await refetchPass();
