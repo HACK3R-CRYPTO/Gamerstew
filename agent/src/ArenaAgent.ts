@@ -737,6 +737,45 @@ async function startAgent() {
         console.log(chalk.gray('EIP-8004 registration check... (skipping if failed)'));
     }
 
+    // ─── Self Agent ID (Talent Protocol prize-pool requirement) ─────────────
+    // Self Agent ID is a soulbound ERC-721 on Celo Mainnet at
+    // 0xaC3DF9...5944. balanceOf > 0 means this wallet already has an
+    // agent registered, so we skip the write to keep boot cheap. The
+    // agentURI reuses the same IPFS card the ERC-8004 registration
+    // points at — same agent, same description; swap in a Self-
+    // flavoured agent card later if the schema diverges.
+    const SELF_AGENT_REGISTRY = '0xaC3DF9ABf80d0F5c020C06B04Cced27763355944' as `0x${string}`;
+    try {
+        const selfBalance = await publicClient.readContract({
+            address: SELF_AGENT_REGISTRY,
+            abi: ERC8004_ABI,
+            functionName: 'balanceOf',
+            args: [account.address]
+        }) as bigint;
+
+        if (selfBalance === 0n) {
+            console.log(chalk.yellow('📝 Registering AI Agent (Self Agent ID)...'));
+            const agentURI = "ipfs://bafkreig6sha4aqzafeqbocsppwobxdp3rlu7axv2rcloyh4tpw2afbj2r4";
+            const txHash = await submitTx(async () => {
+                const h = await walletClient.writeContract({
+                    address: SELF_AGENT_REGISTRY,
+                    abi: ERC8004_ABI,
+                    functionName: 'register',
+                    args: [agentURI],
+                    chain: CELO_MAINNET,
+                    account
+                });
+                await publicClient.waitForTransactionReceipt({ hash: h });
+                return h;
+            });
+            console.log(chalk.green(`✅ Self Agent ID registered! TX: ${txHash}`));
+        } else {
+            console.log(chalk.green('✅ Agent already registered (Self Agent ID).'));
+        }
+    } catch (e: any) {
+        console.log(chalk.gray(`Self Agent ID registration check failed: ${e?.shortMessage ?? e?.message ?? 'unknown'} — continuing.`));
+    }
+
     console.log(chalk.gray(`Wallet: ${account.address} | Platform: ${ARENA_ADDRESS}`));
 
     setInterval(scanForMatches, 2000); // Check every 2s for lightning response
