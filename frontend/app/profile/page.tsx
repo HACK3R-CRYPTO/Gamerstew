@@ -8,6 +8,7 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { playCoin, playTabSwitch } from "@/hooks/useAppAudio";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
 import ShareCard from "@/components/ShareCard";
@@ -829,6 +830,7 @@ function ProfileInner() {
   const { logout, authenticated } = usePrivy();
   // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
   const isMobile = useIsMobile();
+  const isMiniPay = useIsMiniPay();
   const { address } = useAccount();
   const { isVerified, entitlement, claimG$ } = useSelfVerification();
 
@@ -1519,14 +1521,21 @@ function ProfileInner() {
                       face="linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)"
                       onClick={() => setWalletOpen(true)}
                     />
-                    <BalanceChip
-                      symbol="CELO"
-                      value={celoDisplay}
-                      sub="Gas token"
-                      color="#a7f3d0"
-                      wall="#064e3b"
-                      face="linear-gradient(160deg, #86efac 0%, #10b981 50%, #065f46 100%)"
-                    />
+                    {/* MiniPay hides CELO from users by design (celopedia
+                        minipay-guide §"Important Constraints" — only USDT
+                        / USDC / USDm allowed). Skip the chip entirely so
+                        nothing about CELO ever lands on the profile UI
+                        when running inside MiniPay. */}
+                    {!isMiniPay && (
+                      <BalanceChip
+                        symbol="CELO"
+                        value={celoDisplay}
+                        sub="Network fee"
+                        color="#a7f3d0"
+                        wall="#064e3b"
+                        face="linear-gradient(160deg, #86efac 0%, #10b981 50%, #065f46 100%)"
+                      />
+                    )}
                   </div>
 
                   {/* Stat gems */}

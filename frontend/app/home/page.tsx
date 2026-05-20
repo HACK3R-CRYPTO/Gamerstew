@@ -329,7 +329,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             G$ = GoodDollar
           </div>
           <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
-            G$ is a <strong style={{ color: "#fde68a" }}>free crypto token</strong> on Celo. You claim it daily after a one-time face-scan verification — no purchase, no deposit, no credit card. It&apos;s the currency you use to wager inside Game Arena.
+            G$ is a <strong style={{ color: "#fde68a" }}>free digital dollar</strong> on Celo. You claim it daily after a one-time face-scan verification. No purchase, no deposit, no credit card. It&apos;s the currency you use to wager inside Game Arena.
           </div>
         </InfoCard>
 
@@ -407,7 +407,7 @@ function SupportModal({ onClose }: { onClose: () => void }) {
     // G$ explainer pinned to the top — it's the #1 question we get from
     // new players ("is this real money I'm wagering?"). Answer it before
     // anyone has to ask.
-    { q: "What is G$? Is it real money?", a: "G$ (GoodDollar) is a free crypto token on Celo. You claim it daily after a one-time face-scan verification — no purchase. It has on-chain value but it's earned, not bought. Think of it like XP that lives on a blockchain." },
+    { q: "What is G$? Is it real money?", a: "G$ (GoodDollar) is a free digital dollar on Celo. You claim it daily after a one-time face-scan verification, no purchase needed. It has on-chain value but it's earned, not bought. Think of it like XP that lives on a blockchain." },
     { q: "How do I get G$?", a: "Verify with GoodDollar (face scan, one-time), then tap CLAIM on home/profile every 24h. You can also win G$ by wagering on games (1.3× back on a win) or finishing top-3 on the weekly leaderboard." },
     { q: "What can I do with my G$?", a: "Wager it on Rhythm or Simon rounds for a 1.3× return if you beat the target. Unspent G$ stays in your wallet as a regular ERC-20 — you can swap or transfer it outside the app too." },
     { q: "My score is not on the leaderboard", a: "Scores post on-chain after each game. If it's missing, refresh — the leaderboard polls every 15s." },

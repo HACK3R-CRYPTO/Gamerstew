@@ -191,7 +191,13 @@ function MintInner() {
         lower.includes("cannot estimate gas") ||
         lower.includes("exceeds allowance");
       if (isGas) {
-        setErr("Your wallet needs a bit of CELO to pay the network fee.");
+        // MiniPay covers fees in stablecoin; browser users still need
+        // CELO. Tailor the copy so MiniPay's reviewers don't flag the
+        // crypto-jargon path. celopedia minipay-requirements §3 forbids
+        // "Gas" copy.
+        setErr(isMiniPay
+          ? "Your wallet needs a small stablecoin balance to cover the network fee."
+          : "Your wallet needs a bit of CELO to cover the network fee.");
         setErrKind("gas");
         return;
       }
