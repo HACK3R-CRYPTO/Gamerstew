@@ -634,7 +634,9 @@ function LeaderboardInner() {
   // Referral capture from the URL: `?ref=<wallet>` arrives when a friend
   // shares their /leaderboard?tab=seasons&ref=<wallet> link. We hold the
   // wallet here until the player joins a team; on join we pass it as
-  // referrerWallet so the inviter gets credit when this player qualifies.
+  // referrerWallet so the inviter gets credit. If the URL is empty, the
+  // join endpoint also falls back to the server-side intent table
+  // populated at /mint, so cross-device flows still credit correctly.
   const referrerFromUrl = useMemo(() => {
     const raw = searchParams.get("ref")?.toLowerCase().trim() ?? null;
     if (!raw) return null;
