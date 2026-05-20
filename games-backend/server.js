@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
 const {
   physicsCheck:  rhythmPhysicsCheck,
@@ -37,9 +37,14 @@ app.use(express.json());
 
 // Pull the wallet out of the request body for keying. Falls back to the
 // IP if the body shape is unexpected, so we never drop the limit entirely.
+// Per-wallet bucket when a wallet is present, else IPv6-safe fallback.
+// express-rate-limit's stricter validator (v8+) rejects raw req.ip
+// because IPv6 addresses share a /64 prefix per provider, letting one
+// attacker mint unlimited keys. ipKeyGenerator normalises to the /64.
 const walletKey = (req) => {
   const w = (req.body?.playerAddress || req.body?.wallet || '').toString().toLowerCase();
-  return w && /^0x[0-9a-f]{40}$/.test(w) ? `wallet:${w}` : `ip:${req.ip}`;
+  if (w && /^0x[0-9a-f]{40}$/.test(w)) return `wallet:${w}`;
+  return `ip:${ipKeyGenerator(req.ip)}`;
 };
 
 const standardLimiter = rateLimit({
@@ -1012,6 +1017,52 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       })
       .eq('token', sessionToken);
 
+    // Season 1 Solo Ladder hook. Points now scale with the score the
+    // player actually earned in the round, so "open game → game over →
+    // claim point" is not a viable farm — that run scores ~0 and
+    // earns 0 Solo Ladder points. Real play (hits, sequences, runs)
+    // earns 1-15 points depending on effort.
+    //
+    // Formula: pts = clamp(floor(score / divisor), 0, MAX_PTS).
+    //   - Rhythm divisor 100: a real session (~500-3000 score) earns
+    //     5-15 pts. Score < 100 (no real play) earns 0.
+    //   - Simon divisor 20:   a real session (~100-300 score) earns
+    //     5-15 pts. Score < 20 (game over round 1) earns 0.
+    //
+    // Plus an 8s duration gate on top of the 5s sign-score floor. Same
+    // idempotency: one ledger row per session token. Best-effort write.
+    const MAX_SEASON_PTS_PER_GAME = 15;
+    const SCORE_DIVISOR = game === 'rhythm' ? 100 : 20;
+    const MIN_DURATION_MS = 8_000;
+    const passesDuration = sessionElapsedMs >= MIN_DURATION_MS;
+    const seasonPts = passesDuration
+      ? Math.max(0, Math.min(MAX_SEASON_PTS_PER_GAME, Math.floor(serverScore / SCORE_DIVISOR)))
+      : 0;
+    if (seasonPts > 0) {
+      try {
+        const { data: enrolled } = await supabase
+          .from('season_v1_players')
+          .select('wallet')
+          .ilike('wallet', playerAddress)
+          .maybeSingle();
+        if (enrolled) {
+          await supabase
+            .from('season_v1_points')
+            .insert({
+              wallet: playerAddress.toLowerCase(),
+              action_type: 'game_played',
+              points: seasonPts,
+              ref: sessionToken,
+            });
+        }
+      } catch (e) {
+        console.warn('Season 1 points hook (game_played) failed:', e.message);
+      }
+    } else {
+      // Quiet diagnostic — useful for tuning the divisor without spamming.
+      console.log(`Season 1 pts skipped: ${playerAddress.slice(0, 8)}.. game=${game} score=${serverScore} elapsed=${sessionElapsedMs}ms`);
+    }
+
     return res.json({
       success:   true,
       signature,
@@ -1296,6 +1347,23 @@ app.get('/api/leaderboard', async (req, res) => {
   }));
   const listTotal = Math.max(0, total - (offset > 0 ? offset : 0));
   res.json({ leaderboard: enriched, total, page, limit, pages: Math.ceil(listTotal / limit) });
+});
+
+// ─── GET /api/usernames?wallets=0xa,0xb,... ─────────────────────────────────
+// Batch lookup of on-chain usernames (from the GamePass NFT contract).
+// Surfaces names to other services — the Season 1 Solo Ladder reads from
+// the Supabase ledger, which has no username column, so it can't enrich
+// rows without this endpoint. The resolveUsername LRU caches results so
+// repeat callers don't pay an RPC per wallet.
+app.get('/api/usernames', async (req, res) => {
+  const raw = String(req.query.wallets || '').trim();
+  if (!raw) return res.json({ usernames: {} });
+  const wallets = [...new Set(raw.split(',').map(s => s.trim().toLowerCase()).filter(s => /^0x[a-f0-9]{40}$/.test(s)))].slice(0, 500);
+  const entries = await Promise.all(wallets.map(async (w) => {
+    const name = await resolveUsername(w).catch(() => null);
+    return [w, name || null];
+  }));
+  res.json({ usernames: Object.fromEntries(entries) });
 });
 
 // ─── GET /api/activity ──────────────────────────────────────────────────────
@@ -1729,6 +1797,29 @@ app.post('/api/record-claim', async (req, res) => {
     .from('users')
     .upsert({ wallet_address: addr, claim_streak: newStreak, last_claim_date: today }, { onConflict: 'wallet_address' });
 
+  // Season 1 Solo Ladder hook. Award 5 points per daily claim if the
+  // player is enrolled in the active season. Idempotent via the
+  // wallet:date ref — repeated calls in the same day won't double-count.
+  try {
+    const { data: enrolled } = await supabase
+      .from('season_v1_players')
+      .select('wallet')
+      .ilike('wallet', addr)
+      .maybeSingle();
+    if (enrolled) {
+      await supabase
+        .from('season_v1_points')
+        .insert({
+          wallet: addr,
+          action_type: 'daily_claim',
+          points: 5,
+          ref: `claim:${today}`,
+        });
+    }
+  } catch (e) {
+    console.warn('Season 1 points hook (daily_claim) failed:', e.message);
+  }
+
   res.json({ success: true, claimStreak: newStreak, alreadyClaimed: false });
 });
 
@@ -1746,6 +1837,53 @@ function freeTierForLevel(level) {
 // indicator endpoint fast even when many wallets are queried at once.
 const habitatCache = new Map(); // wallet → { ownedPaidTiers: number[], ubiDonated: string, at: ms }
 const HABITAT_CACHE_TTL_MS = 60_000;
+
+// ─── Season 1: credit habitat ownership as season points ───────────────────
+// Each paid tier (6–10) the wallet owns is worth +30 pts once per season.
+// Idempotent via a season-tagged ref so re-running never double-credits;
+// the v1 prefix future-proofs Season 2's credit pass against the unique
+// constraint already on (wallet, action_type, ref). Designed for fire-and-
+// forget invocation — failures log but don't surface to the caller so any
+// caller (habitat page, season-me) stays fast.
+async function creditHabitatPoints(wallet, ownedPaidTiers) {
+  try {
+    const lower = String(wallet || '').toLowerCase();
+    const tiers = Array.isArray(ownedPaidTiers) ? ownedPaidTiers : [];
+    if (!lower || tiers.length === 0) return;
+
+    const { data: meta } = await supabase
+      .from('season_v1_meta')
+      .select('starts_at, ends_at')
+      .eq('active', true)
+      .maybeSingle();
+    if (!meta) return;
+
+    // Which tiers are already credited inside the active window?
+    const { data: existing } = await supabase
+      .from('season_v1_points')
+      .select('ref')
+      .ilike('wallet', lower)
+      .eq('action_type', 'habitat_bought')
+      .gte('occurred_at', meta.starts_at)
+      .lte('occurred_at', meta.ends_at);
+    const existingRefs = new Set((existing || []).map(r => r.ref));
+
+    const rows = tiers
+      .map(t => ({
+        wallet: lower,
+        action_type: 'habitat_bought',
+        points: 30,
+        ref: `habitat:v1:${t}`,
+      }))
+      .filter(r => !existingRefs.has(r.ref));
+
+    if (rows.length === 0) return;
+    const { error } = await supabase.from('season_v1_points').insert(rows);
+    if (error) console.warn(`creditHabitatPoints insert failed for ${lower}:`, error.message);
+  } catch (e) {
+    console.warn(`creditHabitatPoints unexpected error for ${wallet}:`, e?.message || e);
+  }
+}
 
 async function fetchPaidOwnership(addr) {
   const cached = habitatCache.get(addr);
@@ -1810,6 +1948,27 @@ app.get('/api/habitat/:address', async (req, res) => {
     equipped,
     ubiDonated,
   });
+
+  // Lazy season point credit — fire-and-forget so the response stays fast.
+  // Any player loading their habitat page gets their +30/tier credited
+  // without waiting on a manual sync.
+  creditHabitatPoints(addr, ownedPaidTiers).catch(() => {});
+});
+
+// ─── GET /api/season/sync-habitats?wallet=X ─────────────────────────────────
+// Reconciles on-chain habitat ownership against the season_v1_points ledger
+// for one wallet. Called by /api/season/me right before it reads points so
+// the personal score always reflects the latest purchase without needing a
+// habitat page visit. Idempotent (creditHabitatPoints filters already-
+// credited refs), so /api/season/me can call it on every read.
+app.get('/api/season/sync-habitats', async (req, res) => {
+  const wallet = String(req.query.wallet || '').toLowerCase().trim();
+  if (!/^0x[a-f0-9]{40}$/.test(wallet)) {
+    return res.status(400).json({ error: 'Invalid wallet' });
+  }
+  const { ownedPaidTiers } = await fetchPaidOwnership(wallet);
+  await creditHabitatPoints(wallet, ownedPaidTiers);
+  res.json({ ok: true, owned: ownedPaidTiers });
 });
 
 // ─── POST /api/habitat/equip — persist player's equipped tier choice ────────

@@ -154,6 +154,146 @@ button[aria-label$="button"],
   to   { transform: scale(1);    opacity: 1; }
 }
 
+/* ─── Challenge AI arena animations ────────────────────────────────────────
+   Used by the lobby / VS / match / result screens for the on-chain MARKOV-1
+   opponent flow. Lifted from the claude.ai/design handoff prototype. */
+@keyframes popIn {
+  0%   { transform: scale(0.3);  opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+@keyframes vs-burst {
+  0%   { opacity: 0;    transform: translate(-50%, -50%) scale(0.4)  rotate(0deg); }
+  40%  { opacity: 0.7;  transform: translate(-50%, -50%) scale(1.05) rotate(20deg); }
+  100% { opacity: 0.45; transform: translate(-50%, -50%) scale(1.15) rotate(40deg); }
+}
+@keyframes vs-zoom {
+  0%   { transform: scale(0.2)  rotate(-15deg); opacity: 0; }
+  60%  { transform: scale(1.15) rotate(5deg);   opacity: 1; }
+  100% { transform: scale(1)    rotate(0);      opacity: 1; }
+}
+@keyframes vs-slide-in-left {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  100% { transform: translateX(0);     opacity: 1; }
+}
+@keyframes vs-slide-in-right {
+  0%   { transform: translateX(120%); opacity: 0; }
+  100% { transform: translateX(0);    opacity: 1; }
+}
+@keyframes reveal-burst {
+  0%   { opacity: 0;   transform: scale(0.4); }
+  50%  { opacity: 0.8; transform: scale(1.1); }
+  100% { opacity: 0;   transform: scale(1.4); }
+}
+@keyframes reveal-text {
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes fight-slam {
+  0%   { opacity: 0; transform: scale(2.4)   skewX(-12deg); filter: blur(8px); }
+  45%  { opacity: 1; transform: scale(0.92)  skewX(2deg);   filter: blur(0); }
+  60%  { transform: translateX(-6px) scale(1.02) skewX(-1deg); }
+  72%  { transform: translateX(5px)  scale(1)    skewX(0); }
+  100% { opacity: 1; transform: scale(1)     skewX(0); }
+}
+@keyframes ribbon-in {
+  0%   { opacity: 0; transform: translateY(8px) scaleX(0.7); }
+  100% { opacity: 1; transform: translateY(0)   scaleX(1); }
+}
+@keyframes chip-in {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes pick-pop {
+  0%   { transform: scale(0.4)  rotate(-8deg); opacity: 0; }
+  65%  { transform: scale(1.15) rotate(4deg);  opacity: 1; }
+  100% { transform: scale(1)    rotate(0);     opacity: 1; }
+}
+@keyframes combatant-cheer {
+  0%, 100% { transform: translateY(0); }
+  30%      { transform: translateY(-8px) scale(1.06); }
+  60%      { transform: translateY(0)    scale(1); }
+}
+@keyframes combatant-hit {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-8px); }
+  40%  { transform: translateX(8px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); filter: brightness(0.6) saturate(0.5); }
+  100% { transform: translateX(0); filter: none; }
+}
+@keyframes coin-spin {
+  0%   { transform: scale(0.3) rotateY(540deg); opacity: 0; }
+  60%  { transform: scale(1.1) rotateY(0deg);   opacity: 1; }
+  100% { transform: scale(1)   rotateY(0deg);   opacity: 1; }
+}
+@keyframes result-rays {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ─── Arcade cabinet (Challenge AI) ────────────────────────────────────── */
+@keyframes crt-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes crt-flicker {
+  0%, 100%      { opacity: 1; }
+  92%           { opacity: 1; }
+  93%           { opacity: 0.82; }
+  94%           { opacity: 1; }
+  96%           { opacity: 0.92; }
+  97%           { opacity: 1; }
+}
+@keyframes lever-pull {
+  0%   { transform: translateY(0)   scale(1); }
+  35%  { transform: translateY(5px) scale(0.97); }
+  100% { transform: translateY(0)   scale(1); }
+}
+@keyframes coin-rain {
+  0%   { transform: translate3d(var(--x, 0), -120%, 0) rotate(0deg);   opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translate3d(var(--x, 0), 120%,  0) rotate(720deg); opacity: 0; }
+}
+@keyframes ticker-roll {
+  0%   { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0);   opacity: 1; }
+}
+@keyframes screen-glow {
+  0%, 100% { box-shadow: inset 0 0 60px rgba(167,139,250,0.25), 0 0 28px rgba(167,139,250,0.45); }
+  50%      { box-shadow: inset 0 0 80px rgba(167,139,250,0.4),  0 0 38px rgba(167,139,250,0.65); }
+}
+@keyframes persona-breathe {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes persona-step-in {
+  0%   { transform: translateY(24px) scale(0.92); opacity: 0; }
+  100% { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+@keyframes lock-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-2px); }
+  40%, 80% { transform: translateX(2px); }
+}
+@keyframes marquee-pulse {
+  0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor; }
+  50%      { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor; }
+}
+@keyframes thinking-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
 @keyframes bounce-scale-in {
   0%   { transform: scale(0);   }
   60%  { transform: scale(1.18);  }

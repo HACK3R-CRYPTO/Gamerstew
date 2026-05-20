@@ -619,6 +619,10 @@ export default function RhythmGamePage() {
   // so it dies with the component — closing the tab forces a fresh session
   // next time, and it's invisible to other tabs / browser extensions.
   const sessionTokenRef = useRef<string | null>(null);
+  // Re-entry guard for startGame — same pattern as simon. Blocks a
+  // second dispatch while the ticket request is in flight so we don't
+  // create duplicate game_sessions rows from a fast double-click.
+  const startingRef = useRef<boolean>(false);
   // Full tap log captured during play. The server replays this to compute
   // the authoritative score — the client never claims a number.
   const tapLogRef = useRef<RhythmTap[]>([]);
@@ -709,6 +713,12 @@ export default function RhythmGamePage() {
 
   // Countdown → playing
   const startGame = async () => {
+    // Re-entry guard: bail if a session ticket is already being
+    // requested. Without it, two quick clicks during the ~500ms ticket
+    // round trip insert two game_sessions rows for one actual play.
+    if (startingRef.current) return;
+    startingRef.current = true;
+
     reset();
     // Reset submission bookkeeping — a fresh run is a fresh submit
     submittedRef.current = false;
@@ -729,17 +739,20 @@ export default function RhythmGamePage() {
           const token = await getAccessToken();
           if (!token) {
             setSubmitError("Sign in required to start a run.");
+            startingRef.current = false;
             return;
           }
           res = await startGameAction(token, address, "rhythm");
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          startingRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        startingRef.current = false;
         return;
       }
     }
@@ -748,6 +761,10 @@ export default function RhythmGamePage() {
     setCountdown(3);
     // Warm up audio context (needs user gesture, so do it on START tap)
     getAudioCtx();
+    // Lock releases once phase has flipped — the idle/replay button is
+    // off-screen now, so a second dispatch is structurally impossible
+    // until the next gameover surface.
+    startingRef.current = false;
   };
   useEffect(() => {
     if (phase !== "countdown") return;

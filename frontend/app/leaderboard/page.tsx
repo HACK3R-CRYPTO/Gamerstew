@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
@@ -139,8 +139,10 @@ function fmtName(addr: string, username?: string | null) {
   return `${addr.slice(0, 4)}...${addr.slice(-3)}`;
 }
 function avatarUrl(address: string, username?: string | null) {
-  // Always seed with BOTH username and address — guarantees uniqueness per wallet.
-  const seed = `${username || ""}-${address}`;
+  // Always seed with BOTH username and address — guarantees uniqueness per
+  // wallet. Address is lowercased so wagmi's checksum casing and the API's
+  // lowercase don't collide into two different faces for the same player.
+  const seed = `${username || ""}-${address.toLowerCase()}`;
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9,fbbf24,f97316,c026d3`;
 }
 
@@ -483,6 +485,27 @@ function LeaderboardInner() {
   const [activeTab, setActiveTab] = useState<"rankings" | "alltime" | "seasons" | "pvp">(initialTab);
   const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
 
+  // Deep-link scroll. The Games page banner sends players here with
+  // #team-wars-card so they land on the team picker, not the page top.
+  // Polls briefly because the card mounts after season1Lb fetches —
+  // scrolling on first paint would silently miss the target.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeTab !== "seasons") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+    let tries = 0;
+    const tick = () => {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (tries++ < 20) setTimeout(tick, 100);
+    };
+    tick();
+  }, [activeTab]);
+
   // 72-hour Arena Cup — shared hook returns null outside the event window,
   // so the banner below only renders while the challenge is live.
   const challenge = useChallenge(address);
@@ -540,6 +563,31 @@ function LeaderboardInner() {
   const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
   const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
+
+  // Season 1 — Team Wars + Solo Ladder. Lives inside the seasons tab so
+  // players see it next to the active Season N hero + past competitions
+  // instead of on a separate page.
+  type Season1Team = "alpha" | "nova" | "pulse";
+  type Season1Lb = {
+    meta: { startsAt: string; endsAt: string; targetPerTeam: number; bestEffortFloor: number };
+    teams: { team: Season1Team; counted: number; players: number; qualifiers: number; hitTarget: boolean }[];
+    soloTop10: { wallet: string; username?: string | null; points: number; rank: number }[];
+  };
+  type Season1Me = {
+    wallet: string;
+    username?: string | null;
+    team: Season1Team | null;
+    games: number; counted: number; qualified: boolean;
+    minGames: number; maxCounted: number;
+    soloPoints: number; soloRank: number | null;
+    soloBreakdown?: Record<string, { count: number; points: number }>;
+    referralCount: number;
+  };
+  const [season1Lb, setSeason1Lb] = useState<Season1Lb | null>(null);
+  const [season1Me, setSeason1Me] = useState<Season1Me | null>(null);
+  const [season1Joining, setSeason1Joining] = useState<Season1Team | null>(null);
+  const [season1JoinError, setSeason1JoinError] = useState<string | null>(null);
+
   useEffect(() => {
     if (activeTab !== "seasons") return;
     fetch(`${BACKEND_URL}/api/seasons`).then(r => r.json()).then(setSeasonsData).catch(() => setSeasonsData(null));
@@ -556,7 +604,68 @@ function LeaderboardInner() {
       ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address}`
       : `${BACKEND_URL}/api/weekly-challenge`;
     fetch(wUrl).then(r => r.json()).then(setWeeklyChallengeLB).catch(() => {});
+    // Season 1 polls — same cadence as the other seasons-tab sources.
+    fetch("/api/season/leaderboard", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setSeason1Lb(d ?? null))
+      .catch(() => setSeason1Lb(null));
+    if (address) {
+      fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setSeason1Me(d ?? null))
+        .catch(() => setSeason1Me(null));
+    } else {
+      setSeason1Me(null);
+    }
   }, [activeTab, address]);
+
+  // Soft-cap aware: the smallest team sets the join ceiling for the others.
+  const season1Counts = useMemo<Record<Season1Team, number>>(() => {
+    const m: Record<Season1Team, number> = { alpha: 0, nova: 0, pulse: 0 };
+    for (const t of season1Lb?.teams ?? []) m[t.team] = t.players;
+    return m;
+  }, [season1Lb]);
+  const season1Smallest = useMemo(() => Math.min(...Object.values(season1Counts)), [season1Counts]);
+  const season1TeamOpen = useCallback((team: Season1Team) => {
+    if (season1Smallest === 0) return true;
+    return season1Counts[team] < season1Smallest * 1.5;
+  }, [season1Counts, season1Smallest]);
+
+  // Referral capture from the URL: `?ref=<wallet>` arrives when a friend
+  // shares their /leaderboard?tab=seasons&ref=<wallet> link. We hold the
+  // wallet here until the player joins a team; on join we pass it as
+  // referrerWallet so the inviter gets credit when this player qualifies.
+  const referrerFromUrl = useMemo(() => {
+    const raw = searchParams.get("ref")?.toLowerCase().trim() ?? null;
+    if (!raw) return null;
+    if (!/^0x[a-f0-9]{40}$/.test(raw)) return null;
+    if (address && raw === address.toLowerCase()) return null; // can't refer self
+    return raw;
+  }, [searchParams, address]);
+
+  const joinSeason1 = useCallback(async (team: Season1Team) => {
+    if (!address || season1Joining) return;
+    setSeason1Joining(team);
+    setSeason1JoinError(null);
+    try {
+      const r = await fetch("/api/season/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: address.toLowerCase(),
+          team,
+          referrerWallet: referrerFromUrl,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) { setSeason1JoinError(j.message ?? j.error ?? "Could not join."); return; }
+      const meRes = await fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" });
+      if (meRes.ok) setSeason1Me(await meRes.json());
+      const lbRes = await fetch("/api/season/leaderboard", { cache: "no-store" });
+      if (lbRes.ok) setSeason1Lb(await lbRes.json());
+    } catch { setSeason1JoinError("Network error."); }
+    finally { setSeason1Joining(null); }
+  }, [address, season1Joining, referrerFromUrl]);
 
   // Live countdown to season end (refreshes every second)
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -1201,6 +1310,7 @@ function LeaderboardInner() {
             {activeTab === "seasons" && (
               <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", gap: "16px" }}>
 
+
                 {/* ── ACTIVE SEASON HERO ── */}
                 {seasonsData && (() => {
                   const liveEntries = (gameTab === "rhythm" ? seasonsData.live.rhythm : seasonsData.live.simon) || [];
@@ -1326,10 +1436,11 @@ function LeaderboardInner() {
                 })()}
 
                 {/* ── EVENTS — unified section for all live + past competitions.
-                    Arena Cups, 3-Week Competition, and future events all live
-                    here so players have one place to check what's running and
-                    what's already ended. ── */}
-                {(challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                    Arena Cups, 3-Week Competition, Team Wars + Solo Ladder
+                    (Season 1), and future events all live here so players
+                    have one place to check what's running and what's
+                    already ended. ── */}
+                {(challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || season1Lb || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
                   <div style={{
                     fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
                     color: "rgba(251,215,100,0.9)", textAlign: "center",
@@ -1387,6 +1498,475 @@ function LeaderboardInner() {
                     </button>
                   </div>
                 )}
+
+                {/* ── SEASON 1 · TEAM WARS — Event card matching the
+                    Community Challenge / 3-Week Cup pattern. Team picker
+                    inline; standings as mini progress bars. ─ */}
+                {season1Lb && (() => {
+                  const lb = season1Lb;
+                  const me = season1Me;
+                  // Pre-launch: count down to the season start so players see
+                  // the suspense window honestly. Post-launch: count down to
+                  // end as before. Without this both cards advertised 12d
+                  // when only 9.5d of scoring actually exists.
+                  const startSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
+                  const endSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
+                  const preLaunch = now < startSec;
+                  const secondsLeft = preLaunch
+                    ? Math.max(0, startSec - now)
+                    : Math.max(0, endSec - now);
+                  if (secondsLeft === 0) return null;
+                  const countdownLabel = preLaunch ? "STARTS IN" : "ENDS IN";
+                  const teamColor: Record<Season1Team, string> = { alpha: "#f97316", nova: "#06b6d4", pulse: "#a78bfa" };
+                  const sortedTeams = [...lb.teams].sort((a, b) => b.counted - a.counted);
+                  const isJoined = !!me && !!me.team;
+                  const myTeam = me?.team ?? null;
+                  const myCounted = me?.counted ?? 0;
+                  const myMin = me?.minGames ?? 40;
+                  const myMax = me?.maxCounted ?? 100;
+                  const myQualified = !!me?.qualified;
+
+                  return (
+                    <div id="team-wars-card" style={{
+                      borderRadius: "18px", padding: "2px",
+                      background: "linear-gradient(135deg, #f97316 0%, #c026d3 60%, #7c3aed 100%)",
+                      boxShadow: "0 0 22px rgba(192,38,211,0.28), 0 10px 24px rgba(0,0,0,0.6)",
+                      scrollMarginTop: "80px",
+                    }}>
+                      <div style={{
+                        borderRadius: "16px",
+                        background: "linear-gradient(180deg, rgba(40,10,80,0.96) 0%, rgba(10,2,40,0.98) 100%)",
+                        padding: "14px",
+                        display: "flex", flexDirection: "column", gap: "10px",
+                      }}>
+                        {/* Header */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ fontSize: "14px" }}>🏟️</span>
+                            <span style={{
+                              color: "#f97316", fontSize: "clamp(10px, 2.6vw, 11.5px)",
+                              fontWeight: 900, letterSpacing: "0.16em",
+                              textShadow: "0 0 10px rgba(249,115,22,0.55)",
+                            }}>SEASON 1 · TEAM WARS</span>
+                          </div>
+                          <div style={{
+                            padding: "3px 10px", borderRadius: "999px",
+                            background: "rgba(249,115,22,0.18)",
+                            border: "1px solid rgba(249,115,22,0.55)",
+                            color: "#fde68a",
+                            fontSize: "10.5px", fontWeight: 900,
+                            fontFamily: "monospace", whiteSpace: "nowrap",
+                          }}>{preLaunch ? "🚀" : "⏳"} {countdownLabel} · {formatCountdown(secondsLeft)}</div>
+                        </div>
+
+                        {/* Headline */}
+                        <div style={{
+                          color: "rgba(230,220,255,0.9)",
+                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
+                        }}>
+                          1st team takes <strong style={{ color: "#fde68a" }}>2,400 G$</strong> — first is first.
+                          2nd wins <strong style={{ color: "#fde68a" }}>1,200 G$</strong> and 3rd wins <strong style={{ color: "#fde68a" }}>600 G$</strong>,
+                          but only if they hit <strong style={{ color: "#fde68a" }}>500 games</strong>.
+                        </div>
+
+                        {/* Mini standings — three progress bars, compact */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {sortedTeams.map(t => {
+                            const c = teamColor[t.team];
+                            const pct = Math.min(100, Math.round((t.counted / lb.meta.targetPerTeam) * 100));
+                            const isMine = myTeam === t.team;
+                            return (
+                              <div key={t.team}>
+                                <div style={{
+                                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                                  marginBottom: "3px", fontSize: "10px", fontWeight: 800,
+                                }}>
+                                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <span style={{ width: "7px", height: "7px", borderRadius: "999px", background: c, boxShadow: `0 0 6px ${c}` }} />
+                                    <span style={{ color: "white", letterSpacing: "0.06em" }}>TEAM {t.team.toUpperCase()}</span>
+                                    {t.hitTarget && (
+                                      <span style={{ color: "#86efac", fontSize: "8px", fontWeight: 900, letterSpacing: "0.1em" }}>✓ QUALIFIED</span>
+                                    )}
+                                    {isMine && (
+                                      <span style={{ color: "rgba(220,210,255,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>YOU</span>
+                                    )}
+                                  </span>
+                                  <span style={{ color: "rgba(220,210,255,0.7)", fontFamily: "monospace" }}>
+                                    {t.counted}/{lb.meta.targetPerTeam}
+                                  </span>
+                                </div>
+                                <div style={{ height: "5px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: `1px solid ${c}22` }}>
+                                  <div style={{
+                                    width: `${pct}%`, height: "100%",
+                                    background: t.hitTarget ? "linear-gradient(90deg, #22c55e, #86efac)" : `linear-gradient(90deg, ${c}99, ${c})`,
+                                    boxShadow: t.hitTarget ? "0 0 6px rgba(34,197,94,0.5)" : `0 0 6px ${c}66`,
+                                    transition: "width 0.4s",
+                                  }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Your status — joined badge or team picker */}
+                        {address && me && !isJoined && (
+                          <div style={{
+                            borderTop: "1px dashed rgba(167,139,250,0.2)",
+                            paddingTop: "10px",
+                          }}>
+                            <div style={{
+                              display: "flex", alignItems: "center", justifyContent: "space-between",
+                              gap: "6px", marginBottom: "8px",
+                            }}>
+                              <div style={{
+                                color: "rgba(220,210,255,0.7)", fontSize: "10px",
+                                fontWeight: 900, letterSpacing: "0.18em",
+                              }}>PICK YOUR TEAM</div>
+                              {/* Referrer badge: lets the new joiner see who
+                                  invited them before they commit, so they
+                                  know joining via this link credits a friend. */}
+                              {referrerFromUrl && (
+                                <div style={{
+                                  display: "inline-flex", alignItems: "center", gap: "4px",
+                                  padding: "3px 8px", borderRadius: "999px",
+                                  background: "rgba(134,239,172,0.14)",
+                                  border: "1px solid rgba(134,239,172,0.4)",
+                                  color: "#86efac", fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.1em",
+                                  fontFamily: "monospace", whiteSpace: "nowrap",
+                                }}>
+                                  <span>🔗</span>
+                                  <span>REF · {referrerFromUrl.slice(0,4)}…{referrerFromUrl.slice(-3)}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                              {(["alpha","nova","pulse"] as Season1Team[]).map(id => {
+                                const c = teamColor[id];
+                                const open = season1TeamOpen(id);
+                                const joining = season1Joining === id;
+                                return (
+                                  <button
+                                    key={id}
+                                    onClick={() => open && !season1Joining && joinSeason1(id)}
+                                    disabled={!open || !!season1Joining}
+                                    style={{
+                                      padding: "9px 6px",
+                                      background: open ? `linear-gradient(180deg, ${c}33 0%, ${c}11 100%)` : "rgba(255,255,255,0.05)",
+                                      border: `1.5px solid ${open ? c : "rgba(255,255,255,0.1)"}`,
+                                      borderRadius: "10px",
+                                      cursor: open && !season1Joining ? "pointer" : "not-allowed",
+                                      opacity: open ? 1 : 0.5,
+                                      boxShadow: open ? `0 0 10px ${c}33` : "none",
+                                    }}
+                                  >
+                                    <div style={{
+                                      color: c, fontSize: "11px", fontWeight: 900, letterSpacing: "0.06em",
+                                      textShadow: `0 0 6px ${c}99`,
+                                    }}>{id.toUpperCase()}</div>
+                                    <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "2px" }}>
+                                      {season1Counts[id]} player{season1Counts[id] === 1 ? "" : "s"}
+                                    </div>
+                                    <div style={{
+                                      marginTop: "3px",
+                                      color: open ? "white" : "rgba(255,255,255,0.4)",
+                                      fontSize: "9px", fontWeight: 900, letterSpacing: "0.1em",
+                                    }}>{joining ? "JOINING…" : open ? "JOIN" : "FULL"}</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {season1JoinError && (
+                              <div style={{
+                                marginTop: "6px", color: "#fda4af",
+                                fontSize: "10px", fontWeight: 700, textAlign: "center",
+                              }}>{season1JoinError}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {address && isJoined && me && myTeam && (
+                          <div style={{
+                            borderTop: "1px dashed rgba(167,139,250,0.2)",
+                            paddingTop: "10px",
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                          }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em" }}>YOUR TEAM</div>
+                              <div style={{
+                                color: teamColor[myTeam], fontSize: "13px", fontWeight: 900,
+                                textShadow: `0 0 8px ${teamColor[myTeam]}77`,
+                              }}>TEAM {myTeam.toUpperCase()}</div>
+                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "2px" }}>
+                                {myCounted}/{myMax} counted games
+                              </div>
+                            </div>
+                            <div style={{
+                              padding: "4px 10px", borderRadius: "999px",
+                              background: myQualified ? "rgba(134,239,172,0.16)" : "rgba(253,164,175,0.14)",
+                              border: `1px solid ${myQualified ? "rgba(134,239,172,0.45)" : "rgba(253,164,175,0.4)"}`,
+                              color: myQualified ? "#86efac" : "#fda4af",
+                              fontSize: "10px", fontWeight: 900, letterSpacing: "0.14em",
+                              whiteSpace: "nowrap",
+                            }}>
+                              {myQualified ? "✓ QUALIFIED" : `${Math.max(0, myMin - (me?.games ?? 0))} TO QUALIFY`}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── SEASON 1 · SOLO LADDER — Companion event card.
+                    Same anatomy as the Community Challenge card right
+                    below: gradient border, dark inner gradient with top
+                    gloss, header row, dual stat row, contributors list
+                    with avatars, my-score pill, drill-in CTA. ─ */}
+                {season1Lb && (() => {
+                  const lb = season1Lb;
+                  const me = season1Me;
+                  // Same pre-launch / post-launch countdown swap as the
+                  // Team Wars card above so both cards agree on whether
+                  // we're waiting for kickoff or already running.
+                  const soloStartSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
+                  const soloEndSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
+                  const soloPreLaunch = now < soloStartSec;
+                  const secondsLeft = soloPreLaunch
+                    ? Math.max(0, soloStartSec - now)
+                    : Math.max(0, soloEndSec - now);
+                  if (secondsLeft === 0) return null;
+                  const soloCountdownLabel = soloPreLaunch ? "STARTS IN" : "ENDS IN";
+                  // soloTop10 is the canonical top-N; first 5 fit comfortably here.
+                  const top5 = lb.soloTop10.slice(0, 5);
+                  const mySoloPts = me?.soloPoints ?? 0;
+                  const mySoloRank = me?.soloRank ?? null;
+                  const myUsername = me?.username ?? null;
+                  const meInTop5 = !!address && top5.some(r => r.wallet.toLowerCase() === address.toLowerCase());
+                  // Same DiceBear avatar seed the rest of the app uses
+                  // (`${username}-${wallet}`), so the same person shows
+                  // up under the same face across rankings, profile, and
+                  // every event card. The limited 5-color palette
+                  // matches /profile so the family of avatars looks
+                  // cohesive.
+                  const avatarFor = (w: string, u?: string | null) =>
+                    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(`${u || ""}-${w.toLowerCase()}`)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
+
+                  return (
+                    <div style={{
+                      borderRadius: "18px", padding: "2px",
+                      background: "linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #c2410c 100%)",
+                      boxShadow: "0 0 22px rgba(251,191,36,0.25), 0 10px 24px rgba(0,0,0,0.6)",
+                    }}>
+                      <div style={{
+                        borderRadius: "16px",
+                        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
+                        padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
+                        position: "relative", overflow: "hidden",
+                        display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
+                      }}>
+                        <div style={{
+                          position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+                          background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
+                          pointerEvents: "none",
+                        }} />
+
+                        {/* Header — left tag pill + headline; right boxed countdown */}
+                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+                          <div>
+                            <div style={{
+                              display: "inline-flex", alignItems: "center", gap: "5px",
+                              padding: "2px 8px", borderRadius: "999px",
+                              background: "rgba(251,191,36,0.15)",
+                              border: "1px solid rgba(251,191,36,0.5)",
+                              marginBottom: "6px",
+                            }}>
+                              <span style={{ color: "#fde68a", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>SEASON 1 EVENT</span>
+                            </div>
+                            <div style={{
+                              color: "white", fontSize: "clamp(14px,4vw,16px)",
+                              fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
+                            }}>
+                              SOLO LADDER
+                            </div>
+                          </div>
+                          <div style={{
+                            padding: "5px 10px", borderRadius: "10px",
+                            background: "rgba(0,0,0,0.5)",
+                            border: "1px solid rgba(251,191,36,0.4)",
+                            textAlign: "right", flexShrink: 0,
+                          }}>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>
+                              {soloCountdownLabel}
+                            </div>
+                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1, fontFamily: "monospace" }}>
+                              {formatCountdown(secondsLeft)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Headline explanation — mirrors the Team Wars card
+                            so a player landing on the seasons tab can
+                            understand what Solo Ladder is without
+                            clicking through. Calls out the contributors
+                            (games + wagers + refs + streak) so they see
+                            this isn't only about high-score grinding. */}
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          color: "rgba(230,220,255,0.9)",
+                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
+                        }}>
+                          Every <strong style={{ color: "#fde68a" }}>game</strong>, <strong style={{ color: "#fde68a" }}>wager win</strong>, <strong style={{ color: "#fde68a" }}>claim</strong>, <strong style={{ color: "#fde68a" }}>habitat</strong>, <strong style={{ color: "#fde68a" }}>referral</strong> and <strong style={{ color: "#fde68a" }}>active day</strong> earns points.
+                          Top <strong style={{ color: "#fde68a" }}>10</strong> split <strong style={{ color: "#fde68a" }}>1,200 G$</strong>.
+                        </div>
+
+                        {/* Prize + leader stat row */}
+                        <div style={{
+                          position: "relative", zIndex: 1,
+                          padding: "10px 12px", borderRadius: "10px",
+                          background: "rgba(0,0,0,0.35)",
+                          border: "1px solid rgba(251,191,36,0.3)",
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
+                        }}>
+                          <div>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
+                              PRIZE POOL
+                            </div>
+                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px" }}>
+                              1,200 G$ · Top 10
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
+                              TOP SCORE
+                            </div>
+                            <div style={{ color: "#fde68a", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px", fontFamily: "monospace" }}>
+                              {top5[0] ? top5[0].points.toLocaleString() : "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Your share pill — mirrors Community Challenge */}
+                        {address && me && (mySoloPts > 0 || mySoloRank) && (
+                          <div style={{
+                            position: "relative", zIndex: 1,
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "8px 12px", borderRadius: "10px",
+                            background: "rgba(251,191,36,0.08)",
+                            border: "1px solid rgba(251,191,36,0.3)",
+                          }}>
+                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
+                              YOUR SCORE
+                            </span>
+                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, fontFamily: "monospace" }}>
+                              {mySoloPts.toLocaleString()} pts {mySoloRank ? `· #${mySoloRank}` : "· unranked"}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Top 5 — same row anatomy as Community Challenge
+                            contributors, but with avatar + amber points. */}
+                        {top5.length === 0 ? (
+                          <div style={{
+                            position: "relative", zIndex: 1, padding: "12px",
+                            color: "rgba(220,210,255,0.5)", fontSize: "11px",
+                            textAlign: "center", fontStyle: "italic",
+                          }}>
+                            No points logged yet. Play to start the ladder.
+                          </div>
+                        ) : (
+                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <div style={{
+                              color: "rgba(254,215,170,0.7)",
+                              fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
+                            }}>TOP 5 · BY POINTS</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                              {top5.map(r => {
+                                const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
+                                const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "🏅";
+                                return (
+                                  <div key={r.wallet} style={{
+                                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                                    gap: "10px",
+                                    padding: "8px 10px", borderRadius: "10px",
+                                    background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
+                                    border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                                  }}>
+                                    <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                                      <span style={{
+                                        fontSize: "12px",
+                                        color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
+                                        fontWeight: 900, letterSpacing: "0.05em",
+                                        flexShrink: 0, minWidth: "22px",
+                                      }}>#{r.rank}</span>
+                                      <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
+                                      <span style={{
+                                        width: 24, height: 24, minWidth: 24, borderRadius: "50%",
+                                        overflow: "hidden", flexShrink: 0,
+                                        background: "#1a0550",
+                                        border: `1.5px solid ${isMe ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.15)"}`,
+                                      }}>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={avatarFor(r.wallet, r.username)} alt=""
+                                          width={24} height={24}
+                                          style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                                      </span>
+                                      <span style={{
+                                        color: isMe ? "#fde68a" : "rgba(255,255,255,0.92)",
+                                        fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
+                                        fontWeight: isMe ? 900 : 700,
+                                        fontFamily: r.username ? "system-ui, -apple-system, sans-serif" : "monospace",
+                                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                      }}>
+                                        {r.username || `${r.wallet.slice(0, 4)}…${r.wallet.slice(-3)}`}
+                                        {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
+                                      </span>
+                                    </span>
+                                    <span style={{
+                                      color: "#fbbf24",
+                                      fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
+                                      fontFamily: "monospace", flexShrink: 0,
+                                      textShadow: "0 0 6px rgba(251,191,36,0.4)",
+                                    }}>
+                                      {r.points.toLocaleString()}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Drill-in CTA */}
+                        <div
+                          role="button" tabIndex={0}
+                          onClick={() => router.push("/leaderboard/solo-ladder")}
+                          style={{
+                            position: "relative", zIndex: 1,
+                            cursor: "pointer", userSelect: "none",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            paddingTop: "4px",
+                            transition: "transform 0.12s",
+                          }}
+                          onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.98)"; }}
+                          onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+                        >
+                          <span style={{ color: "rgba(220,210,255,0.65)", fontSize: "10.5px", fontWeight: 700 }}>
+                            View full ladder · your breakdown · referral link
+                          </span>
+                          <span style={{
+                            padding: "5px 11px", borderRadius: "999px",
+                            background: "rgba(251,191,36,0.18)",
+                            border: "1px solid rgba(251,191,36,0.55)",
+                            color: "#fde68a",
+                            fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.12em",
+                            whiteSpace: "nowrap",
+                          }}>VIEW ›</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* ── COMMUNITY CHALLENGE — weekly community games milestone ─ */}
                 {weeklyChallengeLB && !weeklyChallengeLB.hit && (

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import BottomNav from "@/components/BottomNav";
 import LevelUpToast from "@/components/LevelUpToast";
 import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
@@ -78,7 +79,7 @@ const GAMES = [
     artGrad: "linear-gradient(160deg, #7e22ce 0%, #a21caf 55%, #6d28d9 100%)",
     glow: "#c026d3",
     accent: "#e879f9",
-    showWager: true,
+    showWager: false,
     borderColor: "#f59e0b",
     startWall: "#7c2d00",
     startGrad: "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
@@ -109,23 +110,64 @@ const GAMES = [
     ),
   },
   {
+    id: "challenge-ai",
+    title: "CHALLENGE AI",
+    wager: "—",
+    payout: "—",
+    path: "/games/challenge-ai",
+    active: true,
+    artGrad: "linear-gradient(160deg, #4a006b 0%, #6b21a8 55%, #312e81 100%)",
+    glow: "#a78bfa",
+    accent: "#d8b4fe",
+    showWager: false,
+    borderColor: "#a78bfa",
+    startWall: "#4a006b",
+    startGrad: "linear-gradient(160deg, #d8b4fe 0%, #9333ea 50%, #6b21a8 100%)",
+    startGlow: "rgba(167,139,250,0.75)",
+    art: (
+      // 3 AI personality emojis stacked — gives a "roster" feel without
+      // a new asset. Players see the visual cue that this is a multi-opponent
+      // hub, not a single game.
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 4, height: "100%",
+        filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))",
+      }}>
+        <div style={{ fontSize: 48 }}>🔮</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ fontSize: 24 }}>🪞</div>
+          <div style={{ fontSize: 24 }}>🎲</div>
+        </div>
+      </div>
+    ),
+  },
+  // Coming-soon teaser — deliberately muted vs active games. The chassis
+  // stays consistent (border / shadow / dimensions) but the wager fields are
+  // empty and the START button is replaced with a NOTIFY pill that hooks
+  // into the existing push opt-in flow. Slot is permanent — when a real game
+  // ships, this card stays at the bottom signaling further roster growth.
+  {
     id: "coming-soon",
-    title: "COMING SOON",
+    title: "MORE COMING",
     wager: "—",
     payout: "—",
     path: "",
     active: false,
-    artGrad: "linear-gradient(160deg, #2a1860 0%, #1a0c40 55%, #0a0420 100%)",
-    glow: "#a78bfa",
-    accent: "#a78bfa",
+    artGrad: "linear-gradient(160deg, #3a2a5e 0%, #2a1d4a 55%, #1a1235 100%)",
+    glow: "#7c6db8",
+    accent: "#a89dd1",
     showWager: false,
-    borderColor: "#a78bfa",
-    startWall: "#1a0550",
-    startGrad: "linear-gradient(160deg, #6b7280 0%, #4b5563 50%, #1f2937 100%)",
-    startGlow: "rgba(107,114,128,0.4)",
+    borderColor: "#6d5db0",
+    startWall: "#2a1d4a",
+    startGrad: "linear-gradient(160deg, #b9a7e8 0%, #7c6db8 50%, #4b3a85 100%)",
+    startGlow: "rgba(124,109,184,0.55)",
     art: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/games/coming-soon.png" alt="Coming Soon" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+      <img src="/games/coming-soon.png" alt="More games coming soon"
+        style={{
+          width: "100%", height: "100%", objectFit: "contain",
+          filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.6))",
+        }} />
     ),
   },
 ];
@@ -199,6 +241,68 @@ export default function GamesPage() {
   // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
   const isMobile = useIsMobile();
   const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
+
+  // Slider scroll state — tracks whether the slider can scroll further
+  // left / right so the chevron buttons fade in and out cleanly. Without
+  // this, you'd see two dead buttons always rendered.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const updateScrollState = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 6);
+    // 6px slack so a tiny rounding error doesn't keep the chevron alive
+    // when the player is already at the right edge.
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 6);
+  }, []);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateScrollState();
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState]);
+  // Scroll by one card-width per chevron click. Matches scroll-snap so
+  // the slider lands cleanly on a card every time.
+  const scrollByCard = useCallback((dir: "left" | "right") => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const step = 246; // 232px card + 14px gap
+    el.scrollBy({ left: dir === "left" ? -step : step, behavior: "smooth" });
+  }, []);
+
+  // Push notifications — wired to the "MORE COMING" NOTIFY pill so players
+  // can opt-in for the next-game-drop ping with a single tap.
+  const { state: pushState, subscribe: subscribePush } = usePushNotifications(address);
+  const [notifyToast, setNotifyToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  async function onComingSoonNotify() {
+    if (!address) {
+      setNotifyToast({ msg: "Connect your wallet first.", ok: false });
+      setTimeout(() => setNotifyToast(null), 2400);
+      return;
+    }
+    if (pushState === "subscribed") {
+      setNotifyToast({ msg: "✅ You're already on the list — we'll ping you.", ok: true });
+      setTimeout(() => setNotifyToast(null), 2400);
+      return;
+    }
+    if (pushState === "denied" || pushState === "unsupported") {
+      setNotifyToast({ msg: "Notifications blocked. Enable in your browser settings.", ok: false });
+      setTimeout(() => setNotifyToast(null), 3000);
+      return;
+    }
+    const ok = await subscribePush();
+    setNotifyToast({
+      msg: ok ? "🔔 You're in — we'll ping you on every new game drop." : "Couldn't subscribe right now. Try again later.",
+      ok,
+    });
+    setTimeout(() => setNotifyToast(null), 2800);
+  }
 
   useEffect(() => {
     if (!address) { setStreak(null); return; }
@@ -320,6 +424,59 @@ export default function GamesPage() {
   // and returns null when the event is not active, so the banner below
   // only renders during the window.
   const challenge = useChallenge(address);
+
+  // Season 1 — Team Wars + Solo Ladder. Same poll cadence as the other
+  // events panel data sources; null while there is no active season so
+  // the cards just don't render. Includes the player's join state so the
+  // event card can swap between a "join now" CTA and the standings view.
+  const [season1, setSeason1] = useState<{
+    startsAt: string;
+    endsAt: string;
+    targetPerTeam: number;
+    topTeam: { team: string; counted: number } | null;
+    topSolo: { wallet: string; points: number } | null;
+    myTeam: string | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSeason = async () => {
+      try {
+        // Public leaderboard for meta + standings. /me only if connected;
+        // anon visitors should still see the join CTA on the card.
+        const [lbRes, meRes] = await Promise.all([
+          fetch("/api/season/leaderboard", { cache: "no-store" }),
+          address
+            ? fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" })
+            : Promise.resolve(null as Response | null),
+        ]);
+        if (cancelled) return;
+        if (!lbRes.ok) return;
+        const j = await lbRes.json();
+        if (cancelled) return;
+        if (!j?.meta?.endsAt) { setSeason1(null); return; }
+        const teams = (j.teams ?? []) as { team: string; counted: number }[];
+        const top = teams.length > 0 ? teams[0] : null;
+        const solo = (j.soloTop10 ?? [])[0] ?? null;
+        let myTeam: string | null = null;
+        if (meRes && meRes.ok) {
+          const me = await meRes.json();
+          myTeam = me?.team ?? null;
+        }
+        setSeason1({
+          startsAt: j.meta.startsAt,
+          endsAt: j.meta.endsAt,
+          targetPerTeam: j.meta.targetPerTeam ?? 500,
+          topTeam: top ? { team: top.team, counted: top.counted } : null,
+          topSolo: solo ? { wallet: solo.wallet, points: solo.points } : null,
+          myTeam,
+        });
+      } catch {}
+    };
+    void fetchSeason();
+    const i = setInterval(fetchSeason, 30000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, [address]);
+
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/seasons`)
       .then(r => r.json())
@@ -542,6 +699,65 @@ export default function GamesPage() {
               subtitle: "Top 3 win · View →",
               onClick: () => router.push("/leaderboard"),
             });
+          }
+          // Season 1 — Team Wars + Solo Ladder. Card shape adapts to:
+          //   1. pre-launch (now < startsAt): "starts <weekday>" with the
+          //      join CTA front-and-centre so people lock in a team early
+          //   2. live + not joined: same join CTA + countdown
+          //   3. live + joined: standings (leader, your team progress)
+          // Solo Ladder always renders alongside since it's independent
+          // of team membership — every game already counts toward it.
+          if (season1) {
+            const startSec = Math.floor(new Date(season1.startsAt).getTime() / 1000);
+            const endSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
+            const left = endSec - now;
+            const preLaunch = now < startSec;
+            const notJoined = !season1.myTeam;
+            if (left > 0) {
+              if (preLaunch) {
+                const startWd = new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "long" });
+                events.push({
+                  icon: "⚔️", color: "#f97316",
+                  title: notJoined ? "Season 1 · Pick a Team" : `Team Wars · You're in Team ${season1.myTeam!.toUpperCase()}`,
+                  subtitle: notJoined
+                    ? `Starts ${startWd} · 4,200 G$ pool · Tap to join →`
+                    : `Starts ${startWd} · 4,200 G$ pool`,
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
+                });
+              } else if (notJoined) {
+                events.push({
+                  icon: "⚔️", color: "#f97316",
+                  title: "Team Wars · Pick a Team",
+                  subtitle: `${fmtShortCountdown(left)} left · 4,200 G$ pool · Tap to join →`,
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
+                });
+              } else {
+                events.push({
+                  icon: "🏟️", color: "#f97316",
+                  title: `Team Wars — ${fmtShortCountdown(left)} left`,
+                  subtitle: season1.topTeam
+                    ? `Leader: Team ${season1.topTeam.team.toUpperCase()} · ${season1.topTeam.counted}/${season1.targetPerTeam} games`
+                    : "Race starts now · 4,200 G$ pool",
+                  onClick: () => router.push("/leaderboard?tab=seasons#team-wars-card"),
+                  ...(season1.topTeam ? {
+                    progress: {
+                      value: season1.topTeam.counted,
+                      total: season1.targetPerTeam,
+                    },
+                  } : {}),
+                });
+              }
+              events.push({
+                icon: "📊", color: "#fbbf24",
+                title: preLaunch
+                  ? `Solo Ladder · Starts ${new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "short" })}`
+                  : `Solo Ladder — ${fmtShortCountdown(left)} left`,
+                subtitle: season1.topSolo
+                  ? `${season1.topSolo.wallet.slice(0, 4)}…${season1.topSolo.wallet.slice(-3)} · ${season1.topSolo.points.toLocaleString()} pts · View →`
+                  : "Every action counts · 1,200 G$ pool",
+                onClick: () => router.push("/leaderboard?tab=seasons"),
+              });
+            }
           }
           if (compInfo) {
             // weeksLeft counts the current week as remaining, so "1" means
@@ -944,35 +1160,61 @@ export default function GamesPage() {
           )}
 
 
-          {/* Community challenge compact strip — mirrors ChallengeBanner
-              position (before stats pills) so it's always visible. One
-              row: icon + progress count + prize + days left. Tapping
-              scrolls players to the sidebar events section for more detail.
-              Only shows when challenge is active (not hit). */}
-          {weeklyChallenge && !weeklyChallenge.hit && (
-            <div style={{
-              width: "100%", maxWidth: "680px", flexShrink: 0,
-              borderRadius: "12px", padding: "9px 14px",
-              background: "linear-gradient(90deg, rgba(6,78,32,0.45) 0%, rgba(2,20,10,0.6) 100%)",
-              border: "1px solid rgba(134,239,172,0.3)",
-              boxShadow: "0 0 14px rgba(34,197,94,0.1)",
-              display: "flex", alignItems: "center", gap: "10px",
-              flexWrap: "wrap",
-            }}>
-              <span style={{ fontSize: "14px", flexShrink: 0 }}>🌍</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ color: "#86efac", fontSize: "10px", fontWeight: 900 }}>Community Challenge</span>
-                <span style={{ color: "rgba(134,239,172,0.55)", fontSize: "9px", fontWeight: 700 }}> · {weeklyChallenge.progress}/{weeklyChallenge.target} games · {weeklyChallenge.daysLeft}d left</span>
+          {/* Season 1 hero strip — replaces the Community Challenge
+              banner that used to live here. Lives above the stats pills
+              so it's the first thing players notice; tap to drop into the
+              Seasons tab where joining + standings happen. Status pill
+              swaps between JOIN → (CTA) and JOINED ✓ (acknowledgement)
+              so anyone glancing knows where they stand. Community
+              Challenge still surfaces in the events sidebar — this slot
+              is reserved for the headline event. */}
+          {season1 && (() => {
+            const startSec = Math.floor(new Date(season1.startsAt).getTime() / 1000);
+            const endSec = Math.floor(new Date(season1.endsAt).getTime() / 1000);
+            if (endSec - now <= 0) return null;
+            const preLaunch = now < startSec;
+            const notJoined = !season1.myTeam;
+            const startWd = new Date(season1.startsAt).toLocaleDateString("en-US", { weekday: "short" });
+            const subtitle = preLaunch
+              ? (notJoined ? `Starts ${startWd} · Pick a team` : `Starts ${startWd} · Team ${season1.myTeam!.toUpperCase()}`)
+              : (notJoined ? `Pick your team · ${fmtShortCountdown(endSec - now)} left` : `Team ${season1.myTeam!.toUpperCase()} · ${fmtShortCountdown(endSec - now)} left`);
+            return (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push("/leaderboard?tab=seasons#team-wars-card")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push("/leaderboard?tab=seasons#team-wars-card"); }}
+                style={{
+                  width: "100%", maxWidth: "680px", flexShrink: 0,
+                  borderRadius: "12px", padding: "9px 14px",
+                  background: "linear-gradient(90deg, rgba(124,45,18,0.45) 0%, rgba(40,10,5,0.6) 100%)",
+                  border: "1px solid rgba(251,191,36,0.4)",
+                  boxShadow: "0 0 14px rgba(249,115,22,0.18)",
+                  display: "flex", alignItems: "center", gap: "10px",
+                  flexWrap: "wrap",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: "14px", flexShrink: 0 }}>⚔️</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, letterSpacing: "0.06em" }}>SEASON 1 · TEAM WARS</span>
+                  <span style={{ color: "rgba(254,215,170,0.65)", fontSize: "9px", fontWeight: 700 }}> · {subtitle}</span>
+                </div>
+                <div style={{
+                  padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
+                  background: notJoined ? "rgba(251,191,36,0.16)" : "rgba(134,239,172,0.16)",
+                  border: notJoined ? "1px solid rgba(251,191,36,0.55)" : "1px solid rgba(134,239,172,0.45)",
+                }}>
+                  <span style={{
+                    color: notJoined ? "#fbbf24" : "#86efac",
+                    fontSize: "9px", fontWeight: 900, letterSpacing: "0.08em",
+                  }}>
+                    {notJoined ? "JOIN →" : "JOINED ✓"}
+                  </span>
+                </div>
               </div>
-              <div style={{
-                padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
-                background: "rgba(251,191,36,0.12)",
-                border: "1px solid rgba(251,191,36,0.4)",
-              }}>
-                <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900 }}>{weeklyChallenge.rewardG} G$ split</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Stats pills — compact on mobile. On mobile we also append a
               STREAK pill as the 4th member when the user is connected
@@ -1073,27 +1315,207 @@ export default function GamesPage() {
             }}
           />
 
-          {/* Game cards — desktop shows a 3-column row with fixed height,
-              mobile stacks horizontal cards (art left, info right) so each
-              game gets real estate and all three fit without cramping. */}
+          {/* Game cards — no tray. Cards live directly on the page
+              atmosphere (Apple Arcade / PSN / Stake pattern). The bg
+              icons that used to leak through gaps are dimmed by a soft
+              radial vignette behind the slider — same protection, no
+              visible frame. Chevrons appear over the cards on demand
+              and fade based on scroll position. */}
           <div style={{
-            display: isMobile ? "flex" : "grid",
-            flexDirection: isMobile ? "column" : undefined,
-            gridTemplateColumns: isMobile ? undefined : "repeat(3, 1fr)",
-            gap: isMobile ? "12px" : "14px",
+            position: "relative",
             width: "100%",
-            maxWidth: "680px",
-            height: isMobile ? "auto" : "clamp(280px, 48vh, 420px)",
+            maxWidth: isMobile ? "680px" : "920px",
           }}>
-            {GAMES.map(g => (
-              <GameCard
-                key={g.id}
-                game={g}
-                isMobile={isMobile}
-                onStart={() => g.path && router.push(g.path)}
-              />
-            ))}
+            {/* Soft atmospheric dim — kills the decorative-icon noise
+                under the slider area without putting the slider in a
+                visible box. Sits behind the cards, blurred + low
+                opacity so it reads as ambient, not as a container. */}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute",
+                inset: "-30px -50px -20px -50px",
+                background: "radial-gradient(ellipse at center, rgba(8,2,32,0.62) 0%, rgba(8,2,32,0.42) 45%, rgba(8,2,32,0.12) 78%, transparent 100%)",
+                pointerEvents: "none",
+                filter: "blur(18px)",
+                zIndex: 0,
+              }} />
+            )}
+
+            <div
+              ref={scrollerRef}
+              className="hide-scrollbar"
+              style={{
+                position: "relative",
+                zIndex: 1,
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? "12px" : "14px",
+                width: "100%",
+                height: isMobile ? "auto" : "clamp(328px, 56vh, 488px)",
+                overflowX: isMobile ? "visible" : "auto",
+                overflowY: isMobile ? "visible" : "hidden",
+                scrollSnapType: isMobile ? "none" : "x mandatory",
+                // scroll-padding-left matches paddingLeft so snap lands
+                // the first card at the visual gutter, not flush against
+                // the clip edge (which was the source of the left clip).
+                scrollPaddingLeft: isMobile ? 0 : "20px",
+                scrollPaddingRight: isMobile ? 0 : "60px",
+                // Horizontal breathing room. The first card needs room
+                // to scale-grow leftward on hover (~8px each side) —
+                // without paddingLeft the leftmost card's hover gets
+                // clipped by overflow:hidden the same way the top was.
+                paddingLeft: isMobile ? 0 : "20px",
+                paddingRight: isMobile ? 0 : "60px",
+                // Vertical breathing room. Hover does translateY(-8) +
+                // scale(1.04), which extends the card up to ~16px above
+                // its rest position. Symmetric buffers across both axes.
+                paddingTop: isMobile ? 0 : "24px",
+                paddingBottom: isMobile ? 0 : "24px",
+                scrollBehavior: "smooth",
+              }}
+            >
+              {GAMES.map(g => (
+                <GameCard
+                  key={g.id}
+                  game={g}
+                  isMobile={isMobile}
+                  onStart={() => g.path && router.push(g.path)}
+                  onNotify={onComingSoonNotify}
+                  pushState={pushState}
+                />
+              ))}
+            </div>
+
+            {/* Right-edge peek — softer, no border-radius (no tray to
+                follow). Fades a moving piece of the next card into the
+                page atmosphere. */}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute",
+                top: 0, right: 0, bottom: 4,
+                width: 80,
+                pointerEvents: "none",
+                background: "linear-gradient(90deg, transparent 0%, rgba(8,2,32,0.55) 45%, rgba(8,2,32,0.92) 100%)",
+                opacity: canScrollRight ? 1 : 0,
+                transition: "opacity 0.25s",
+                zIndex: 2,
+              }} />
+            )}
+            {!isMobile && (
+              <div aria-hidden style={{
+                position: "absolute",
+                top: 0, left: 0, bottom: 4,
+                width: 60,
+                pointerEvents: "none",
+                background: "linear-gradient(270deg, transparent 0%, rgba(8,2,32,0.55) 45%, rgba(8,2,32,0.92) 100%)",
+                opacity: canScrollLeft ? 1 : 0,
+                transition: "opacity 0.25s",
+                zIndex: 2,
+              }} />
+            )}
+
+            {/* ◀ ▶ chevron buttons — desktop only. The explicit "I am a
+                slider" affordance. Fades in only when scroll is possible
+                in that direction; smooth scroll-by-one-card per click. */}
+            {!isMobile && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous games"
+                  onClick={() => scrollByCard("left")}
+                  style={{
+                    position: "absolute",
+                    top: "50%", left: "10px",
+                    transform: "translateY(-50%)",
+                    width: 42, height: 42,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    padding: 0,
+                    background: "rgba(8,2,32,0.88)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    color: "white",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.55)",
+                    backdropFilter: "blur(6px)",
+                    opacity: canScrollLeft ? 1 : 0,
+                    pointerEvents: canScrollLeft ? "auto" : "none",
+                    transition: "opacity 0.25s, transform 0.15s, background 0.15s",
+                    zIndex: 3,
+                  }}
+                  onMouseEnter={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1.08)";
+                    el.style.background = "rgba(20,8,52,0.95)";
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1)";
+                    el.style.background = "rgba(8,2,32,0.88)";
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="15 6 9 12 15 18" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="More games"
+                  onClick={() => scrollByCard("right")}
+                  style={{
+                    position: "absolute",
+                    top: "50%", right: "10px",
+                    transform: "translateY(-50%)",
+                    width: 42, height: 42,
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    padding: 0,
+                    background: "rgba(8,2,32,0.88)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    color: "white",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 8px 22px -6px rgba(0,0,0,0.55)",
+                    backdropFilter: "blur(6px)",
+                    opacity: canScrollRight ? 1 : 0,
+                    pointerEvents: canScrollRight ? "auto" : "none",
+                    transition: "opacity 0.25s, transform 0.15s, background 0.15s",
+                    zIndex: 3,
+                  }}
+                  onMouseEnter={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1.08)";
+                    el.style.background = "rgba(20,8,52,0.95)";
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget as HTMLButtonElement;
+                    el.style.transform = "translateY(-50%) scale(1)";
+                    el.style.background = "rgba(8,2,32,0.88)";
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
+
+          {/* Notify toast — fixed-position pill so it doesn't shift layout */}
+          {notifyToast && (
+            <div style={{
+              position: "fixed",
+              bottom: isMobile ? "calc(78px + env(safe-area-inset-bottom))" : "32px",
+              left: "50%", transform: "translateX(-50%)",
+              zIndex: 80,
+              padding: "12px 18px", borderRadius: 14,
+              background: notifyToast.ok ? "rgba(134,239,172,0.16)" : "rgba(251,191,36,0.16)",
+              border: `1px solid ${notifyToast.ok ? "rgba(134,239,172,0.55)" : "rgba(251,191,36,0.55)"}`,
+              boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
+              backdropFilter: "blur(12px)",
+              color: notifyToast.ok ? "#86efac" : "#fde68a",
+              fontSize: 12.5, fontWeight: 800, letterSpacing: "0.04em",
+              maxWidth: "min(90vw, 360px)", textAlign: "center", lineHeight: 1.35,
+            }}>{notifyToast.msg}</div>
+          )}
 
           {/* Mobile activity panel — same card as the desktop sidebar,
               rendered inside the scrollable center so it fills what was
@@ -1143,11 +1565,89 @@ function GameCard({
   game,
   isMobile,
   onStart,
+  onNotify,
+  pushState,
 }: {
   game: typeof GAMES[number];
   isMobile: boolean;
   onStart: () => void;
+  onNotify?: () => void;
+  pushState?: "unsupported" | "default" | "granted" | "denied" | "subscribing" | "subscribed";
 }) {
+  const isComingSoon = game.id === "coming-soon";
+  const notifySubscribed = pushState === "subscribed";
+  // ─── Mobile: coming-soon variant ─────────────────────────────────────────
+  // Shorter, muted card. Same chassis (border, shadow, dimensions language)
+  // but ~70% the height of active cards and the START button is replaced
+  // with a 🔔 NOTIFY pill that wires into push subscriptions.
+  if (isMobile && isComingSoon) {
+    const notifyLabel = pushState === "subscribing"
+      ? "SUBSCRIBING…"
+      : notifySubscribed
+        ? "🔔 SUBSCRIBED"
+        : "🔔 NOTIFY ME";
+    return (
+      <div style={{
+        borderRadius: "18px",
+        padding: "2px",
+        background: `linear-gradient(135deg, ${game.borderColor}aa 0%, ${game.borderColor}44 100%)`,
+        boxShadow: `0 6px 18px -6px ${game.glow}55, 0 0 0 1px ${game.borderColor}22`,
+      }}>
+        <div style={{
+          borderRadius: "16px",
+          background: "linear-gradient(135deg, #1b1240 0%, #0b0626 80%)",
+          display: "flex", alignItems: "stretch", overflow: "hidden",
+          minHeight: "76px",
+        }}>
+          <div style={{
+            width: "76px", flexShrink: 0,
+            background: game.artGrad,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "relative", overflow: "hidden",
+          }}>
+            <div style={{ width: "84%", height: "84%", opacity: 0.85, filter: "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" }}>
+              {game.art}
+            </div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 0,
+            padding: "10px 12px",
+            display: "flex", flexDirection: "column", justifyContent: "space-between",
+          }}>
+            <div>
+              <div style={{
+                color: "rgba(232,225,255,0.95)",
+                fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.15,
+                textShadow: `0 0 10px ${game.borderColor}66`,
+              }}>{game.title}</div>
+              <div style={{
+                color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700,
+                letterSpacing: "0.04em", marginTop: 3,
+              }}>Tap to get pinged when they drop</div>
+            </div>
+            <div
+              role="button" tabIndex={0}
+              onClick={e => { e.stopPropagation(); onNotify?.(); }}
+              style={{
+                alignSelf: "flex-end",
+                padding: "6px 11px", borderRadius: 999,
+                background: notifySubscribed
+                  ? "rgba(134,239,172,0.16)"
+                  : "rgba(255,255,255,0.07)",
+                border: notifySubscribed
+                  ? "1px solid rgba(134,239,172,0.5)"
+                  : `1px solid ${game.borderColor}aa`,
+                color: notifySubscribed ? "#86efac" : "rgba(232,225,255,0.92)",
+                fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.12em",
+                cursor: "pointer", userSelect: "none",
+              }}
+            >{notifyLabel}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Mobile: horizontal layout — art left (fixed), info column right.
   // Keeps each card compact (~120px tall) so all 3 games fit without
   // forcing long scrolls, and each one reads as a clean list item.
@@ -1210,9 +1710,10 @@ function GameCard({
               }}>
                 {game.title}
               </div>
-              {/* Wager pill sits under the title — more prominent than a
-                  tiny corner chip, and balances the START button below. */}
-              {game.active && (
+              {/* Wager pill — only shown for games that actually wager. Rhythm
+                  Rush and Simon are skill-based earners (no wager), so they
+                  read as cleaner without a misleading BET pill. */}
+              {game.active && game.showWager && (
                 <div style={{
                   display: "inline-flex", alignItems: "baseline", gap: "5px",
                   padding: "2px 9px",
@@ -1287,29 +1788,44 @@ function GameCard({
     );
   }
 
-  // Desktop: unchanged 3-column tall cards.
+  // Desktop: tall cards inside a horizontal scroller (set by the parent).
+  // Fixed min-width + scroll-snap means the layout grows cleanly as more
+  // games are added — no grid refactor needed.
   return (
     <div
       style={{
         height: "100%",
+        flex: "0 0 auto",
+        minWidth: "232px",
+        maxWidth: "232px",
+        scrollSnapAlign: "start",
         transition: "transform 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         cursor: game.active ? "pointer" : "default",
       }}
-      onMouseEnter={e => { if (game.active) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.04) translateY(-6px)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
+      // Hover lifts + scales the card with a brightness boost. The
+      // scroller has top/bottom padding so the grown box has room to
+      // breathe inside the overflowY:hidden clip area.
+      onMouseEnter={e => {
+        if (!game.active) return;
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform = "translateY(-8px) scale(1.04)";
+        el.style.filter = "brightness(1.08) saturate(1.05)";
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.transform = "translateY(0) scale(1)";
+        el.style.filter = "none";
+      }}
     >
-      {/* Neon border wrapper — gradient border + glow */}
+      {/* Tinted border — keeps the per-game identity color (orange for
+          Rhythm Rush, green for Simon, etc) but drops the heavy neon halo
+          shadows that competed with the new contained tray surface. */}
       <div style={{
         height: "100%",
         borderRadius: "22px",
-        padding: "3px",
-        background: `linear-gradient(180deg, ${game.borderColor} 0%, ${game.borderColor}88 100%)`,
-        boxShadow: [
-          `0 0 0 1px ${game.borderColor}44`,
-          `0 0 20px ${game.borderColor}88`,
-          `0 0 50px ${game.borderColor}33`,
-          `0 20px 50px -10px ${game.glow}88`,
-        ].join(", "),
+        padding: "2px",
+        background: `linear-gradient(180deg, ${game.borderColor}cc 0%, ${game.borderColor}55 100%)`,
+        boxShadow: "0 14px 32px -12px rgba(0,0,0,0.55)",
       }}>
         {/* Card inner — flex column filling full height */}
         <div style={{
@@ -1446,6 +1962,37 @@ function GameCard({
                     }}>START</span>
                   </div>
                 </div>
+              </div>
+            ) : isComingSoon ? (
+              // Coming-soon card swaps START for a 🔔 NOTIFY pill wired to
+              // the push opt-in flow. Visually still "card-shaped" so it
+              // doesn't break the row rhythm, but tinted muted-green when
+              // already subscribed so the player gets clear feedback.
+              <div
+                role="button" tabIndex={0}
+                onClick={onNotify}
+                style={{
+                  cursor: "pointer", userSelect: "none",
+                  borderRadius: "14px", padding: "11px",
+                  textAlign: "center",
+                  background: notifySubscribed
+                    ? "rgba(134,239,172,0.14)"
+                    : "rgba(124,109,184,0.18)",
+                  border: notifySubscribed
+                    ? "1px solid rgba(134,239,172,0.5)"
+                    : `1px solid ${game.borderColor}aa`,
+                  color: notifySubscribed ? "#86efac" : "rgba(232,225,255,0.9)",
+                  fontSize: "12.5px", fontWeight: 900, letterSpacing: "0.14em",
+                  transition: "background 0.18s, color 0.18s",
+                }}
+                onMouseEnter={e => { if (!notifySubscribed) (e.currentTarget as HTMLDivElement).style.background = "rgba(124,109,184,0.28)"; }}
+                onMouseLeave={e => { if (!notifySubscribed) (e.currentTarget as HTMLDivElement).style.background = "rgba(124,109,184,0.18)"; }}
+              >
+                {pushState === "subscribing"
+                  ? "SUBSCRIBING…"
+                  : notifySubscribed
+                    ? "🔔 SUBSCRIBED"
+                    : "🔔 NOTIFY ME"}
               </div>
             ) : (
               <div style={{

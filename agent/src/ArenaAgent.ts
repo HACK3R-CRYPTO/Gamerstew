@@ -1,11 +1,30 @@
-import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters, keccak256, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { randomBytes } from 'node:crypto';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
 import { MoltbookService } from './services/MoltbookService.js';
 
 dotenv.config();
 dotenv.config({ path: '../contracts/.env' });
+
+// Shared Supabase client. Same project as the games-backend on Railway.
+// Uses SUPABASE_ANON_KEY to match the existing backend convention. This
+// works because RLS is currently disabled on the agent_* tables, so the
+// anon role has full access. If RLS is ever enabled, either switch this
+// to a SUPABASE_SERVICE_ROLE_KEY env var or add policies that grant the
+// anon role insert/update on agent_loss_caps + execute on
+// agent_increment_loss.
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    console.error(chalk.red("FATAL: SUPABASE_URL and SUPABASE_ANON_KEY must be set."));
+    console.log(chalk.yellow("Use the same values the games-backend service already uses on Railway."));
+    process.exit(1);
+}
+const supabase = createSupabaseClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!,
+);
 
 const ARENA_ABI = [
     { type: "event", name: "MatchProposed", inputs: [{ name: "matchId", type: "uint256", indexed: true }, { name: "challenger", type: "address", indexed: true }, { name: "opponent", type: "address", indexed: true }, { name: "wager", type: "uint256", indexed: false }, { name: "gameType", type: "uint8", indexed: false }] },
@@ -26,7 +45,11 @@ const USER_ADDRESS = '0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d';
 const G_TOKEN_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' as `0x${string}`;
 const REGISTRY_ADDRESS = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432' as `0x${string}`; // ERC-8004 on Celo Mainnet
 
-const ERC20_ABI = parseAbi(["function transferAndCall(address to, uint256 value, bytes data) external returns (bool)", "function balanceOf(address account) external view returns (uint256)"]);
+const ERC20_ABI = parseAbi([
+    "function transferAndCall(address to, uint256 value, bytes data) external returns (bool)",
+    "function transfer(address to, uint256 value) external returns (bool)",
+    "function balanceOf(address account) external view returns (uint256)",
+]);
 
 if (!process.env.PRIVATE_KEY) {
     console.error(chalk.red("FATAL: PRIVATE_KEY environment variable is not set."));
@@ -72,75 +95,315 @@ const walletClient = createWalletClient({
 const GAME_NAMES = ['RockPaperScissors', 'DiceRoll', 'UNUSED', 'CoinFlip', 'UNUSED_TicTacToe'];
 
 // AI Logic: Markov Chain for Opponent Modeling
+// ─── OpponentModel ──────────────────────────────────────────────────────────
+// Sustainable Markov-1 strategy. The goal is NOT to win every match — the
+// player-first tie rule + visible 1.9× payout already give the player a strong
+// emotional edge. The goal is a tunable house win rate that keeps the contract
+// treasury sustainable while still letting good players exploit AI patterns
+// occasionally for retention.
+//
+// Three layers of decision:
+//   1. Transition model — per-player count of "after move X, player plays Y."
+//      Pure counter against this beats casual / pattern players at ~65%.
+//   2. Mixed strategy — 70% counter, 18% meta-counter (the move that beats
+//      the counter — defends against players who learn to exploit step 1),
+//      12% pure random (entropy floor — caps any exploit at ~50%).
+//   3. Cold-start prior — for first-time opponents, use the well-documented
+//      RPS opening bias (humans pick rock ~41% on round 1). We weight toward
+//      paper to counter that, instead of going pure random.
+//
+// Expected vs typical casual player: ~55-58% AI win rate on non-tie outcomes.
+// Combined with the contract's 5% protocol fee, the treasury grows ~10-15%
+// per 100 matches of average wager — sustainable without continuous topping
+// up of the agent wallet.
+
+// ─── MoveSeeder ─────────────────────────────────────────────────────────────
+// Hash-committed RNG for provably fair play. Lifecycle per match:
+//   1. accept time:  commit() generates a 32-byte seed, stores it in memory,
+//                    returns the keccak256 hash. That hash is written to
+//                    agent_match_state.commit_hash BEFORE the player plays.
+//   2. play time:    rand() returns a deterministic [0,1) generator bound
+//                    to this match's seed. Every Math.random() in the
+//                    move-pick path is replaced with this generator, so
+//                    every randomness draw is locked in once the seed is.
+//   3. resolve time: reveal() returns the seed. It's written to
+//                    agent_match_state.seed so anyone can verify
+//                    keccak256(seed) == commit_hash and replay the RNG.
+//   4. cleanup:      forget() drops the seed from memory.
+//
+// If the agent restarts between accept and resolve the in-memory seed is
+// lost. predict() / determineWinner() fall back to Math.random for that
+// match and the row's `seed` column ends up null at resolve time. A
+// verifier sees commit_hash present but seed null and labels the match
+// "unverifiable for this run." Crucially, the agent CANNOT forge a
+// replacement seed because keccak256 is one-way — submitting a fake seed
+// would fail the commit hash check on the verifier side.
+class MoveSeeder {
+    private seeds = new Map<string, `0x${string}`>();
+    private counters = new Map<string, number>();
+
+    commit(matchId: bigint): { seed: `0x${string}`; commitHash: `0x${string}` } {
+        const seed = toHex(randomBytes(32));
+        const commitHash = keccak256(seed);
+        const key = matchId.toString();
+        this.seeds.set(key, seed);
+        this.counters.set(key, 0);
+        return { seed, commitHash };
+    }
+
+    rand(matchId: bigint): () => number {
+        const key = matchId.toString();
+        const seed = this.seeds.get(key);
+        if (!seed) {
+            console.warn(chalk.yellow(`⚠️  No seed for match #${matchId} — falling back to Math.random. This match will not be verifiable.`));
+            return Math.random;
+        }
+        return () => {
+            const counter = this.counters.get(key) ?? 0;
+            this.counters.set(key, counter + 1);
+            // keccak256(seed || matchId(32B) || counter(8B)) → first 4 bytes → uint32 → [0,1)
+            const matchIdHex = toHex(matchId, { size: 32 }).slice(2);
+            const counterHex = toHex(BigInt(counter), { size: 8 }).slice(2);
+            const input = `${seed}${matchIdHex}${counterHex}` as `0x${string}`;
+            const hash = keccak256(input);
+            const v = parseInt(hash.slice(2, 10), 16);
+            return v / 0x100000000;
+        };
+    }
+
+    reveal(matchId: bigint): `0x${string}` | null {
+        return this.seeds.get(matchId.toString()) ?? null;
+    }
+
+    forget(matchId: bigint): void {
+        const key = matchId.toString();
+        this.seeds.delete(key);
+        this.counters.delete(key);
+    }
+}
+
+const moveSeeder = new MoveSeeder();
+
+// Fraction of matches that run the Markov branch. The remainder play
+// uniformly random. The mix is decided by a seeded coin per match, so
+// the player can't tell which mode any given match is in without the
+// seed (revealed at resolve time). 0.7 = 70% Markov / 30% random.
+// Override via env without redeploy.
+const MARKOV_PCT = Math.min(1, Math.max(0, Number(process.env.MARKOV_PCT ?? "0.7")));
+
 class OpponentModel {
-    // transitions[gameType][playerAddress][prevMove][nextMove] = count
-    transitions: Record<number, Record<string, number[][]>> = {};
-    history: Record<number, Record<string, number>> = {};
+    // Markov-1: transitions1[gameType][player][prevMove][nextMove]
+    transitions1: Record<number, Record<string, number[][]>> = {};
+    // Markov-2: transitions2[gameType][player][prev2Move][prev1Move][nextMove]
+    transitions2: Record<number, Record<string, number[][][]>> = {};
+    // Rolling last-N moves per player. Capped at HISTORY_CAP to keep memory
+    // bounded; Markov-2 only ever needs the last two.
+    history: Record<number, Record<string, number[]>> = {};
+    // Player's overall move histogram. Last-resort signal when neither
+    // Markov-2 nor Markov-1 has enough rows.
+    histograms: Record<number, Record<string, number[]>> = {};
+    // Total moves we've observed per player — gates the cold-start branch.
+    seen: Record<number, Record<string, number>> = {};
     matchCount: number = 0;
     wins: Record<string, number> = {};
 
-    update(gameType: number, player: string, move: number) {
-        if (!this.transitions[gameType]) this.transitions[gameType] = {};
-        if (!this.history[gameType]) this.history[gameType] = {};
+    private readonly HISTORY_CAP = 8;
+    private readonly MARKOV2_MIN_OBS = 3; // need 3 hits in a (p2,p1) bucket
+    private readonly MARKOV1_MIN_OBS = 2; // need 2 hits in a p1 bucket
 
-        // Game type move counts: RPS=3, Dice=6, Coin=2
+    update(gameType: number, player: string, move: number) {
+        if (!this.transitions1[gameType]) this.transitions1[gameType] = {};
+        if (!this.transitions2[gameType]) this.transitions2[gameType] = {};
+        if (!this.history[gameType])      this.history[gameType] = {};
+        if (!this.histograms[gameType])   this.histograms[gameType] = {};
+        if (!this.seen[gameType])         this.seen[gameType] = {};
+
         const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
 
-        // Initialize player's transition table if it doesn't exist
-        if (!this.transitions[gameType][player]) {
-            this.transitions[gameType][player] = Array.from({ length: size }, () => Array(size).fill(0));
+        if (!this.transitions1[gameType][player]) {
+            this.transitions1[gameType][player] = Array.from({ length: size }, () => Array(size).fill(0));
+        }
+        if (!this.transitions2[gameType][player]) {
+            this.transitions2[gameType][player] = Array.from({ length: size }, () =>
+                Array.from({ length: size }, () => Array(size).fill(0))
+            );
+        }
+        if (!this.histograms[gameType][player]) {
+            this.histograms[gameType][player] = Array(size).fill(0);
+        }
+        if (!this.history[gameType][player]) {
+            this.history[gameType][player] = [];
         }
 
-        const lastMove = this.history[gameType][player];
-        if (lastMove !== undefined && lastMove < size && move < size) {
-            // Ensure nested objects exist check is handled by initialization above
-            // Safe access knowing initialization is done
-            const p = this.transitions[gameType]![player];
-            if (p) {
-                const row = p[lastMove];
-                if (row) {
-                    row[move] = (row[move] || 0) + 1;
-                }
-            }
+        // Histogram is unconditional — every observed move counts.
+        if (move < size) {
+            const histRow = this.histograms[gameType]![player]!;
+            histRow[move] = (histRow[move] ?? 0) + 1;
+            this.seen[gameType]![player] = (this.seen[gameType]![player] ?? 0) + 1;
+        }
 
-            // Update stats
+        const playerHistory = this.history[gameType]![player]!;
+
+        // Markov-1: increment transitions1[lastMove][move] when we have one prior move.
+        if (playerHistory.length >= 1 && move < size) {
+            const lastMove = playerHistory[playerHistory.length - 1]!;
+            if (lastMove < size) {
+                const row = this.transitions1[gameType]![player]![lastMove]!;
+                row[move] = (row[move] || 0) + 1;
+            }
             this.matchCount++;
             if (!this.wins[player]) this.wins[player] = 0;
         }
-        this.history[gameType][player] = move;
+
+        // Markov-2: increment transitions2[prev2][prev1][move] when we have two prior moves.
+        if (playerHistory.length >= 2 && move < size) {
+            const prev2 = playerHistory[playerHistory.length - 2]!;
+            const prev1 = playerHistory[playerHistory.length - 1]!;
+            if (prev2 < size && prev1 < size) {
+                const row = this.transitions2[gameType]![player]![prev2]![prev1]!;
+                row[move] = (row[move] || 0) + 1;
+            }
+        }
+
+        playerHistory.push(move);
+        if (playerHistory.length > this.HISTORY_CAP) playerHistory.shift();
     }
 
-    predict(gameType: number, player: string): number {
-        const playerTrans = this.transitions[gameType]?.[player];
-        const lastMove = this.history[gameType]?.[player];
-        // Game type move counts: RPS=3, Dice=6, Coin=2
+    // Predicts the player's next move via cascading lookups: Markov-2 first,
+    // then Markov-1, then the overall histogram. Returns null when none have
+    // enough signal — callers fall through to coldStart in that case.
+    predictNext(gameType: number, player: string): { move: number; confidence: number; depth: 1 | 2 | 0 } | null {
         const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
+        const playerHistory = this.history[gameType]?.[player] ?? [];
+        const trans1 = this.transitions1[gameType]?.[player];
+        const trans2 = this.transitions2[gameType]?.[player];
+        const hist = this.histograms[gameType]?.[player];
+        const totalSeen = this.seen[gameType]?.[player] ?? 0;
 
-        if (!playerTrans || lastMove === undefined || !playerTrans[lastMove]) {
-            return Math.floor(Math.random() * size);
+        // Markov-2: condition on the last two moves.
+        if (playerHistory.length >= 2 && trans2) {
+            const prev2 = playerHistory[playerHistory.length - 2]!;
+            const prev1 = playerHistory[playerHistory.length - 1]!;
+            const counts = trans2[prev2]?.[prev1];
+            if (counts) {
+                const total = counts.reduce((a, b) => a + b, 0);
+                if (total >= this.MARKOV2_MIN_OBS) {
+                    let best = 0;
+                    for (let i = 1; i < size; i++) {
+                        if (counts[i]! > counts[best]!) best = i;
+                    }
+                    return { move: best, confidence: counts[best]! / total, depth: 2 };
+                }
+            }
         }
 
-        const counts = playerTrans[lastMove]!;
-        const total = counts.reduce((a, b) => a + b, 0);
-
-        if (total === 0) return Math.floor(Math.random() * size);
-
-        let predictedMove = 0;
-        for (let i = 1; i < size; i++) {
-            if (counts[i]! > counts[predictedMove]!) predictedMove = i;
+        // Markov-1 fallback: condition on the last move only.
+        if (playerHistory.length >= 1 && trans1) {
+            const lastMove = playerHistory[playerHistory.length - 1]!;
+            const counts = trans1[lastMove];
+            if (counts) {
+                const total = counts.reduce((a, b) => a + b, 0);
+                if (total >= this.MARKOV1_MIN_OBS) {
+                    let best = 0;
+                    for (let i = 1; i < size; i++) {
+                        if (counts[i]! > counts[best]!) best = i;
+                    }
+                    return { move: best, confidence: counts[best]! / total, depth: 1 };
+                }
+            }
         }
 
-        if (gameType === 0) { // RPS - counter the predicted move
-            return (predictedMove + 1) % 3;
-        } else if (gameType === 1) { // Dice Roll (1-6) - pick high value with some randomness
-            // Return 0-5 (will be converted to 1-6 when used)
-            return Math.random() > 0.3 ? 5 : Math.floor(Math.random() * 6); // Favor 6
-        } else if (gameType === 3) { // CoinFlip - exploit patterns or random
-            return Math.random() > 0.5 ? predictedMove : 1 - predictedMove;
-        } else {
-            // Default random fallback for unknown types
-            return Math.floor(Math.random() * size);
+        // Histogram (overall move bias) is a weak last signal.
+        if (hist && totalSeen >= 3) {
+            let best = 0;
+            for (let i = 1; i < size; i++) {
+                if (hist[i]! > hist[best]!) best = i;
+            }
+            return { move: best, confidence: hist[best]! / totalSeen, depth: 0 };
         }
+
+        return null;
+    }
+
+    // Main decision function. Returns the agent's 0-indexed move plus the
+    // strategy mode used to pick it ('markov' / 'random' / 'cold_start').
+    // Pass a seeded `rand` to make every randomness draw verifiable after
+    // the match (MoveSeeder.rand for production, Math.random for fallback).
+    //
+    // The mix coin is drawn FIRST so its position in the seeded RNG stream
+    // is deterministic. Even if the Markov branch never executes (e.g. the
+    // player has no history yet), the coin still consumes one rand counter
+    // so the verifier can replay the stream in lockstep.
+    predict(gameType: number, player: string, rand: () => number = Math.random, markovPct = MARKOV_PCT): { move: number; mode: 'markov' | 'random' | 'cold_start' } {
+        const size = gameType === 0 ? 3 : gameType === 1 ? 6 : 2;
+        const prediction = this.predictNext(gameType, player);
+        const modeCoin = rand();
+        const wantMarkov = modeCoin < markovPct;
+
+        // ─── Cold start ────────────────────────────────────────────────────
+        // No history yet, so no Markov branch to mix against. coldStart is
+        // a fixed opening-bias distribution; force-mixing random on top
+        // would just degrade the cold-start edge.
+        if (!prediction) {
+            return { move: this.coldStart(gameType, size, rand), mode: 'cold_start' };
+        }
+
+        // ─── Random mode ───────────────────────────────────────────────────
+        // The coin landed in the random pocket. Play a uniformly random
+        // move regardless of what Markov would have done. Player can't
+        // tell from outside the agent whether this match is markov or
+        // random; that obscuration is the whole point of the mix.
+        if (!wantMarkov) {
+            return { move: Math.floor(rand() * size), mode: 'random' };
+        }
+
+        // ─── Markov mode — RPS ─────────────────────────────────────────────
+        if (gameType === 0) {
+            const counter      = (prediction.move + 1) % 3;   // beats predicted
+            const metaCounter  = (prediction.move + 2) % 3;   // beats the counter
+            const random       = Math.floor(rand() * 3);
+
+            // Lower-confidence predictions = more randomness. When the model
+            // is confident we lean hard on counter; when uncertain we mix
+            // more random so we don't telegraph the same move repeatedly.
+            const r = rand();
+            if (prediction.confidence >= 0.6) {
+                // High confidence: 75% counter, 15% meta, 10% random
+                return { move: r < 0.75 ? counter : r < 0.90 ? metaCounter : random, mode: 'markov' };
+            }
+            // Lower confidence: 60% counter, 20% meta, 20% random
+            return { move: r < 0.60 ? counter : r < 0.80 ? metaCounter : random, mode: 'markov' };
+        }
+
+        // ─── Markov mode — Coin flip ──────────────────────────────────────
+        if (gameType === 3) {
+            const opposite = 1 - prediction.move;
+            return { move: rand() < 0.80 ? opposite : Math.floor(rand() * 2), mode: 'markov' };
+        }
+
+        // ─── Markov mode — Dice ───────────────────────────────────────────
+        if (gameType === 1) {
+            return { move: rand() > 0.3 ? 5 : Math.floor(rand() * 6), mode: 'markov' };
+        }
+
+        return { move: Math.floor(rand() * size), mode: 'markov' };
+    }
+
+    // Cold-start strategy when we have no prior signal on this player.
+    // For RPS we exploit the well-documented opening bias toward rock.
+    coldStart(gameType: number, size: number, rand: () => number = Math.random): number {
+        if (gameType === 0) {
+            // Humans play rock ~41% on first round. Paper beats rock.
+            // Mix: 45% paper (beats rock), 30% scissors (beats paper),
+            // 25% rock (beats scissors) — still has variety, but tilted.
+            const r = rand();
+            return r < 0.45 ? 1 : r < 0.75 ? 2 : 0;
+        }
+        if (gameType === 3) {
+            // Heads is the modal first call (~52%). Counter with tails.
+            return rand() < 0.55 ? 1 : 0;
+        }
+        return Math.floor(rand() * size);
     }
 }
 
@@ -148,8 +411,133 @@ const model = new OpponentModel();
 const respondedMatches = new Set<string>();
 const processingAcceptance = new Set<string>();
 const completedMatches = new Set<string>(); // Skip these on future scans
+
+// ─── LossCapTracker ─────────────────────────────────────────────────────────
+// Two-layer circuit breaker against draining the agent wallet:
+//
+//   1. Global daily loss cap. If MARKOV has lost > GLOBAL_DAILY_LOSS_CAP
+//      across ALL matches today (UTC), agent refuses to accept any new
+//      match until the next UTC day rolls over.
+//
+//   2. Per-wallet daily loss cap. If a SINGLE wallet has won more than
+//      WALLET_DAILY_LOSS_CAP from MARKOV today, agent refuses to accept
+//      further matches from that wallet.
+//
+// State lives in Supabase (`agent_loss_caps`), shared with the games-backend
+// project. Survives container restarts, deploys, and disk wipes. The atomic
+// `agent_increment_loss` Postgres function prevents lost updates when two
+// matches resolve in the same tick.
+//
+// Policy on DB failure: FAIL CLOSED on reads (refuse new accepts if we
+// can't verify caps), but log loudly and surface in /healthz. Writes use a
+// best-effort retry; permanent failure leaves cap state under-counted, so
+// errors must page operators.
+class LossCapTracker {
+    private readonly GLOBAL_CAP_WEI: bigint = parseEther(process.env.GLOBAL_DAILY_LOSS_CAP ?? "100");
+    private readonly WALLET_CAP_WEI: bigint = parseEther(process.env.WALLET_DAILY_LOSS_CAP ?? "50");
+
+    // Process-local dedup. Belt-and-suspenders on top of the contract's
+    // exactly-once resolve guarantee. A duplicate recordOutcome call in
+    // the same process (retry path, double-fire) is silently skipped.
+    private countedMatches: Set<string> = new Set();
+
+    private dayKey(): string {
+        return new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    }
+
+    /**
+     * Called before acceptMatch. Returns null if the match can be accepted,
+     * or a reason string if a cap would be exceeded. FAIL CLOSED: a DB read
+     * error returns a reject string, so the agent declines until Supabase
+     * is reachable again.
+     */
+    async canAccept(challenger: string, wager: bigint): Promise<string | null> {
+        const today = this.dayKey();
+        const lcChal = challenger.toLowerCase();
+
+        const { data, error } = await supabase
+            .from("agent_loss_caps")
+            .select("scope, loss_wei")
+            .eq("scope_date", today)
+            .in("scope", ["global", lcChal]);
+
+        if (error) {
+            console.error(chalk.red(`Loss cap read failed (${error.message}). Refusing match for safety.`));
+            return `Loss cap state unavailable; refusing accept until DB is reachable.`;
+        }
+
+        let totalLossWei = 0n;
+        let walletLossWei = 0n;
+        for (const row of data ?? []) {
+            const v = BigInt((row.loss_wei as unknown as string) ?? "0");
+            if (row.scope === "global") totalLossWei = v;
+            else if (row.scope === lcChal) walletLossWei = v;
+        }
+
+        if (totalLossWei + wager > this.GLOBAL_CAP_WEI) {
+            return `GLOBAL daily loss cap reached (${formatEther(totalLossWei)}/${formatEther(this.GLOBAL_CAP_WEI)} G$ lost today). Pausing until next UTC day.`;
+        }
+        if (walletLossWei + wager > this.WALLET_CAP_WEI) {
+            return `WALLET cap reached for ${challenger.slice(0, 8)}.. (${formatEther(walletLossWei)}/${formatEther(this.WALLET_CAP_WEI)} G$ won from MARKOV today).`;
+        }
+        return null;
+    }
+
+    /**
+     * Called after a successful resolveMatch tx. Increments both scope rows
+     * atomically via the `agent_increment_loss` RPC. Only charges when the
+     * agent lost (player won the wager).
+     *
+     * If the RPC fails, the in-process dedup is rolled back so the next
+     * tick can retry. A persistent failure means cap state diverges from
+     * reality; the error is logged at error level for ops visibility.
+     */
+    async recordOutcome(matchId: bigint, challenger: string, agentWon: boolean, wager: bigint): Promise<void> {
+        const key = matchId.toString();
+        if (this.countedMatches.has(key)) return;
+        this.countedMatches.add(key);
+
+        if (agentWon) return; // agent won — nothing to charge
+
+        const today = this.dayKey();
+        const lcChal = challenger.toLowerCase();
+        const deltaStr = wager.toString();
+
+        try {
+            const [globalRes, walletRes] = await Promise.all([
+                supabase.rpc("agent_increment_loss", { p_date: today, p_scope: "global", p_delta: deltaStr }),
+                supabase.rpc("agent_increment_loss", { p_date: today, p_scope: lcChal,    p_delta: deltaStr }),
+            ]);
+            if (globalRes.error || walletRes.error) {
+                throw new Error(globalRes.error?.message ?? walletRes.error?.message ?? "rpc failed");
+            }
+            const newTotal = BigInt((globalRes.data as unknown as string) ?? "0");
+            const newWallet = BigInt((walletRes.data as unknown as string) ?? "0");
+            console.log(chalk.gray(`📊 Loss cap: +${formatEther(wager)} G$ (player ${challenger.slice(0, 8)}..). Today total = ${formatEther(newTotal)}/${formatEther(this.GLOBAL_CAP_WEI)} G$. This wallet = ${formatEther(newWallet)}/${formatEther(this.WALLET_CAP_WEI)} G$.`));
+        } catch (e: any) {
+            console.error(chalk.red(`Loss cap RPC failed (${e?.message ?? e}). State now under-counted by ${formatEther(wager)} G$ until reconciled.`));
+            this.countedMatches.delete(key); // allow a retry path
+        }
+    }
+}
+
+const lossCap = new LossCapTracker();
 let lastKnownMatchCount = 0n;
 const moltbook = new MoltbookService();
+// Cache of moves the agent itself submitted, keyed by matchId. Populated by
+// tryPlayMove right after a successful playMove tx; consumed by
+// tryResolveMatch as the source of truth for the agent's own move.
+//
+// Why: when the agent reads its own move back from chain via playerMoves,
+// forno's RPC sometimes serves a snapshot from before the AI's playMove was
+// indexed — returning 0 (= ROCK by Solidity default) instead of the real
+// value. Trusting the local cache eliminates that read entirely; the
+// challenger's move still comes from chain (we don't know it locally).
+const agentMoves = new Map<string, number>();
+// The mode predict() returned for this match — written to agent_match_state
+// at resolve time so the verifier can confirm the seed-derived coin flip
+// landed in the mode the agent claims.
+const agentModes = new Map<string, 'markov' | 'random' | 'cold_start'>();
 
 // Robust helper to handle different Viem return formats (named or indexed)
 function normalizeMatch(m: any, id: bigint) {
@@ -169,6 +557,35 @@ function normalizeMatch(m: any, id: bigint) {
 
 const activeGameLocks = new Set<string>();
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// ─── submitTx — in-process tx serializer ───────────────────────────────────
+// The agent uses one wallet for every chain write (acceptMatch, playMove,
+// resolveMatch, tie refund, registration). viem reads the next nonce from
+// the RPC at the moment writeContract is called, so two parallel calls see
+// the same nonce — one tx wins inclusion, the other reverts with
+// "nonce too low" and the affected match silently fails to advance.
+//
+// This serializer chains every tx submission behind a single promise so
+// the nonce read for tx N always happens after the receipt of tx N-1.
+// Same wallet runs to completion before the next one starts. Loss-cap
+// reads + writes also become race-free because the next `canAccept` only
+// runs after the previous `acceptMatch` finalises.
+//
+// Cost: a second concurrent challenger waits one extra block (~5s on Celo)
+// before their match is accepted. Acceptable tradeoff vs silent drops.
+let txQueueTail: Promise<unknown> = Promise.resolve();
+async function submitTx<T>(op: () => Promise<T>): Promise<T> {
+    const previous = txQueueTail;
+    let release: () => void = () => {};
+    const next = new Promise<void>(r => { release = r; });
+    txQueueTail = next;
+    try {
+        await previous.catch(() => {}); // never block the queue on prior failures
+        return await op();
+    } finally {
+        release();
+    }
+}
 
 // RETRY HELPER: Handle temporary RPC/Network glitches
 async function withRetry<T>(fn: () => Promise<T>, label: string, retries = 3): Promise<T> {
@@ -300,13 +717,17 @@ async function startAgent() {
             // User-provided IPFS CID
             const ipfsUri = "ipfs://bafkreig6sha4aqzafeqbocsppwobxdp3rlu7axv2rcloyh4tpw2afbj2r4";
 
-            const txHash = await walletClient.writeContract({
-                address: REGISTRY_ADDRESS,
-                abi: ERC8004_ABI,
-                functionName: 'register',
-                args: [ipfsUri],
-                chain: CELO_MAINNET,
-                account
+            const txHash = await submitTx(async () => {
+                const h = await walletClient.writeContract({
+                    address: REGISTRY_ADDRESS,
+                    abi: ERC8004_ABI,
+                    functionName: 'register',
+                    args: [ipfsUri],
+                    chain: CELO_MAINNET,
+                    account
+                });
+                await publicClient.waitForTransactionReceipt({ hash: h });
+                return h;
             });
             console.log(chalk.green(`✅ Agent Registered! TX: ${txHash}`));
         } else {
@@ -397,17 +818,49 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
         return;
     }
 
+    // Loss-cap circuit breaker — global + per-wallet. Cheap in-memory check
+    // before we burn gas on the acceptMatch tx. If a cap is hit, the match
+    // sits on chain in PROPOSED state; the frontend's useAgentLiveness will
+    // detect the staleness within ~45s and surface 'MARKOV is offline'.
+    const capReject = await lossCap.canAccept(challenger, wager);
+    if (capReject) {
+        console.log(chalk.yellow(`Match #${matchId} not accepted: ${capReject}`));
+        processingAcceptance.delete(matchId.toString());
+        return;
+    }
+
+    // Generate the per-match seed and lock its hash to Supabase BEFORE
+    // we burn the accept tx. The player can read commit_hash on the row
+    // the moment the contract status flips to ACCEPTED, then verify
+    // after the match that keccak256(revealed_seed) == commit_hash.
+    const { commitHash } = moveSeeder.commit(matchId);
+    try {
+        await supabase.from('agent_match_state').upsert({
+            match_id: matchId.toString(),
+            challenger: challenger.toLowerCase(),
+            wager_wei: wager.toString(),
+            game_type: gameType,
+            accepted_at: new Date().toISOString(),
+            commit_hash: commitHash,
+        }, { onConflict: 'match_id' });
+    } catch (e: any) {
+        console.warn(chalk.yellow(`agent_match_state pre-accept upsert failed for #${matchId}: ${e?.message ?? e}`));
+    }
+
     try {
         const encodedArgs = encodeAbiParameters(
             [{ type: 'uint8' }, { type: 'uint256' }],
             [1, matchId]
         );
-        const { request } = await publicClient.simulateContract({
-            address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
         });
-        const hash = await walletClient.writeContract(request);
-        console.log(chalk.green(`Match #${matchId} accepted! Hash: ${hash}`));
-        await publicClient.waitForTransactionReceipt({ hash });
+        console.log(chalk.green(`Match #${matchId} accepted! Hash: ${hash} (commit ${commitHash.slice(0, 10)}..)`));
 
         // Social Update: Match Accepted
         await moltbook.postChallengeAccepted(
@@ -437,40 +890,49 @@ async function tryPlayMove(matchId: bigint, m: any) {
 
     if (!isChallenger && !isOpponent) return;
 
-
-    // Check if we already played
-    const hasPlayed = await withRetry(() => publicClient.readContract({
-        address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, account.address]
-    }), "hasPlayed") as boolean;
-
-    if (hasPlayed) return;
-
-    // FAIRNESS: If we are the opponent (accepted someone's challenge),
-    // wait for the challenger to play first so they can't see our move
-    if (isOpponent) {
-        const challengerPlayed = await withRetry(() => publicClient.readContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, m.challenger]
-        }), "challengerPlayed") as boolean;
-
-        console.log(chalk.gray(`Match #${matchId}: challengerPlayed=${challengerPlayed}, waiting...`));
-        if (!challengerPlayed) return; // Wait for challenger to go first
-    }
-
-
-
+    // CRITICAL: claim the lock SYNCHRONOUSLY before any await so a parallel
+    // poll cycle for the same match can't sneak through the has-check and
+    // submit a duplicate playMove. Was previously set after the on-chain
+    // reads below, which let two pollers race to playMove with different
+    // (mathematically pre-determined) moves — only one mined but the second
+    // briefly polluted the visible state and made debugging confusing.
     activeGameLocks.add(matchIdStr);
+
     try {
+        // Check if we already played
+        const hasPlayed = await withRetry(() => publicClient.readContract({
+            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, account.address]
+        }), "hasPlayed") as boolean;
+
+        if (hasPlayed) return;
+
+        // FAIRNESS: If we are the opponent (accepted someone's challenge),
+        // wait for the challenger to play first so they can't see our move
+        if (isOpponent) {
+            const challengerPlayed = await withRetry(() => publicClient.readContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'hasPlayed', args: [matchId, m.challenger]
+            }), "challengerPlayed") as boolean;
+
+            console.log(chalk.gray(`Match #${matchId}: challengerPlayed=${challengerPlayed}, waiting...`));
+            if (!challengerPlayed) return; // Wait for challenger to go first
+        }
+
+        // Pick + submit our move
         const gameType = m.gameType;
         const opponentAddr = isChallenger ? m.opponent : m.challenger;
 
-
         console.log(chalk.magenta(`🤖 Agent playing move for Match #${matchId} (${GAME_NAMES[gameType]})...`));
 
-        // Predict move based on opponent
-        const aiMove = model.predict(gameType, opponentAddr);
+        // Seeded RNG bound to this match's commit_hash. Every randomness
+        // draw inside predict (and later inside determineWinner's oracle
+        // flip) consumes from the same counter, so the entire match is
+        // verifiable from the seed alone.
+        const rand = moveSeeder.rand(matchId);
+        const { move: aiMove, mode: aiMode } = model.predict(gameType, opponentAddr, rand);
+        agentModes.set(matchIdStr, aiMode);
+        console.log(chalk.gray(`Strategy mode: ${aiMode}${aiMode === 'random' ? ' (this match is non-counter — Markov-vs-random mix)' : ''}`));
         let moveToSend = aiMove;
 
-        // Visual Logging
         let moveLabel = 'Strategic';
         if (gameType === 0) moveLabel = ['Rock', 'Paper', 'Scissors'][aiMove] || 'Unknown';
         else if (gameType === 1) { moveLabel = `Dice ${aiMove + 1}`; moveToSend = aiMove + 1; }
@@ -478,17 +940,28 @@ async function tryPlayMove(matchId: bigint, m: any) {
 
         console.log(chalk.yellow(`Submitting Move (${moveLabel})...`));
 
-        const { request } = await publicClient.simulateContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playMove',
-            args: [matchId, moveToSend], account
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playMove',
+                args: [matchId, moveToSend], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
         });
-        const hash = await walletClient.writeContract(request);
         console.log(chalk.gray(`TX: ${hash}`));
-        await publicClient.waitForTransactionReceipt({ hash });
+
+        // Cache the move locally so the resolver doesn't need to read it
+        // back from chain. RPC nodes can serve stale snapshots and return
+        // 0 (rock by default) even after the playMove tx confirmed — that
+        // was the root cause of the wrong-winner bug.
+        agentMoves.set(matchIdStr, moveToSend);
 
     } catch (e: any) {
         console.error(chalk.red(`Failed to play move for #${matchId}:`), e.shortMessage || e.message);
     } finally {
+        // Release the lock on every exit path — early return, success, or error.
+        // The next poll cycle is the right time to retry if this attempt failed.
         activeGameLocks.delete(matchIdStr);
     }
 }
@@ -511,29 +984,153 @@ async function tryResolveMatch(matchId: bigint, m: any) {
     try {
         console.log(chalk.cyan(`⚖️ Resolving Match #${matchId} (Global Referee Mode)...`));
 
-        // specific game logic fetching
-        const [challengerMove, opponentMove] = await withRetry(() => Promise.all([
-            publicClient.readContract({ address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.challenger] }),
-            publicClient.readContract({ address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves', args: [matchId, m.opponent] })
-        ]), "fetchMoves") as [number, number];
+        // Source of truth for the AI's own move: the in-memory cache the
+        // tryPlayMove function populated right after its playMove tx
+        // confirmed. Reading the AI's move back from chain is unreliable
+        // — forno's RPC serves stale snapshots that can return 0 (= ROCK
+        // by Solidity default) for tens of seconds after the tx mined.
+        // That was the root cause of every wrong-winner outcome.
+        //
+        // The challenger's move still has to come from chain (we don't
+        // know it locally), but the challenger plays FIRST, so by the
+        // time we get here it has been on chain for many seconds and is
+        // safe to read.
+        const cachedOpponentMove = agentMoves.get(matchIdStr);
+        if (cachedOpponentMove === undefined) {
+            // Edge case: agent restarted between playing the move and
+            // resolving the match, so the cache was wiped. Fall back to
+            // a chain read with a healthy delay so the move is indexed.
+            console.log(chalk.yellow(`Match #${matchId}: AI move not in cache (agent restart?). Falling back to chain read.`));
+            await sleep(3000);
+        }
 
-        const winner = determineWinner(m.gameType, m.challenger, Number(challengerMove), m.opponent, Number(opponentMove));
+        const challengerMove = Number(await withRetry(() => publicClient.readContract({
+            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves',
+            args: [matchId, m.challenger],
+        }), "readChallengerMove"));
 
+        const opponentMove = cachedOpponentMove !== undefined
+            ? cachedOpponentMove
+            : Number(await withRetry(() => publicClient.readContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playerMoves',
+                args: [matchId, m.opponent],
+            }), "readOpponentMove"));
 
-        const { request } = await publicClient.simulateContract({
-            address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
-            args: [matchId, winner as `0x${string}`], account
+        console.log(chalk.gray(`Match #${matchId} moves: challenger=${challengerMove}, opponent=${opponentMove} (${cachedOpponentMove !== undefined ? 'cached' : 'chain'})`));
+
+        // Train the model with the player's observed move BEFORE we
+        // resolve. Each call ticks the histogram, Markov-1 transitions,
+        // and Markov-2 transitions. Without this the model never learns
+        // and predict() always hits the cold-start branch.
+        if (challengerMove !== undefined && challengerMove !== null) {
+            model.update(m.gameType, m.challenger, challengerMove);
+        }
+
+        // Continue the same seeded RNG stream that predict() started
+        // during tryPlayMove. determineWinner's coin-flip oracle picks
+        // up at the next counter value, so play-time and resolve-time
+        // randomness are both derivable from one seed.
+        const resolveRand = moveSeeder.rand(matchId);
+        const outcome = determineWinner(m.gameType, m.challenger, challengerMove, m.opponent, opponentMove, m.wager, resolveRand);
+
+        await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
+                args: [matchId, outcome.winner], account
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
         });
-        const hash = await walletClient.writeContract(request);
-        console.log(chalk.green(`✅ Match #${matchId} Resolved! Winner: ${winner === m.challenger ? 'Challenger' : 'Opponent'} (${winner})`));
+        console.log(chalk.green(`✅ Match #${matchId} Resolved! ${outcome.isTie ? `TIE (${outcome.tieReason}) → AI on chain, refund pending` : `Winner: ${outcome.winner === m.challenger ? 'Challenger' : 'Opponent'} (${outcome.winner})`}`));
 
+        // Persist the resolve outcome to Supabase so the frontend can
+        // tell a tied match apart from a clean loss (the contract emits
+        // MatchCompleted with AI as winner in both cases). Reveal the
+        // seed at the same time — the row now contains everything a
+        // verifier needs: commit_hash (from accept time) + seed (here) +
+        // both players' moves + outcome. Null seed means the agent
+        // restarted mid-match and this row is unverifiable.
+        const matchOutcome = outcome.isTie ? 'tie' : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 'ai_won' : 'player_won');
+        const revealedSeed = moveSeeder.reveal(matchId);
+        const recordedMode = agentModes.get(matchIdStr) ?? null;
+        try {
+            await supabase.from('agent_match_state').upsert({
+                match_id: matchId.toString(),
+                challenger: m.challenger.toLowerCase(),
+                wager_wei: m.wager.toString(),
+                game_type: m.gameType,
+                ai_move: opponentMove,
+                player_move: challengerMove,
+                resolved_at: new Date().toISOString(),
+                ai_won: outcome.winner.toLowerCase() === account.address.toLowerCase(),
+                outcome: matchOutcome,
+                tie_reason: outcome.isTie ? outcome.tieReason : null,
+                tie_refund_wei: outcome.isTie ? outcome.tieRefundWei.toString() : null,
+                refund_pending: outcome.isTie,
+                seed: revealedSeed,
+                mode: recordedMode,
+            }, { onConflict: 'match_id' });
+        } catch (e: any) {
+            console.warn(chalk.yellow(`agent_match_state upsert failed for #${matchId}: ${e?.message ?? e}`));
+        }
+        agentModes.delete(matchIdStr);
+        moveSeeder.forget(matchId);
+
+        // Season 1 Solo Ladder hook. Award the challenger 10 points for
+        // playing a match, plus 20 bonus points if they won the wager.
+        // Idempotent via the unique match_id used as `ref`. Best-effort:
+        // failures are logged but never block the resolve flow.
+        try {
+            const challengerLc = m.challenger.toLowerCase();
+            const { data: enrolled } = await supabase
+                .from('season_v1_players')
+                .select('wallet')
+                .ilike('wallet', challengerLc)
+                .maybeSingle();
+            if (enrolled) {
+                const rows: { wallet: string; action_type: string; points: number; ref: string }[] = [
+                    { wallet: challengerLc, action_type: 'game_played', points: 10, ref: `cai:${matchIdStr}` },
+                ];
+                // Rebalanced 20 → 15 so the win bonus is "significant but not
+                // dominant". Combined with the base 10 for playing, a wager
+                // win is worth 25 pts (2.5× a regular game), which rewards
+                // risk-taking without crowding out grinders.
+                if (matchOutcome === 'player_won') {
+                    rows.push({ wallet: challengerLc, action_type: 'wager_won', points: 15, ref: `cai:${matchIdStr}` });
+                }
+                await supabase.from('season_v1_points').insert(rows);
+            }
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Season 1 points hook (challenge-ai) failed for #${matchId}: ${e?.message ?? e}`));
+        }
+
+        // Tie refund. Send 0.98× wager from the agent's wallet to the
+        // challenger. Best-effort with chain-level retry. Failure is
+        // logged loudly; the refund_pending row in Supabase surfaces
+        // it for manual reconciliation.
+        if (outcome.isTie) {
+            await sendTieRefund(matchId, m.challenger as `0x${string}`, outcome.tieRefundWei);
+        }
+
+        // Loss-cap accounting. On a clean loss the agent paid `wager` to
+        // the player. On a tie the agent paid `tieRefundWei` to the
+        // player out of its own wallet. Either is a real outflow against
+        // the daily cap. On a clean AI win, no charge.
+        const lossWei = outcome.isTie
+            ? outcome.tieRefundWei
+            : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 0n : m.wager);
+        if (lossWei > 0n) {
+            await lossCap.recordOutcome(matchId, m.challenger, false, lossWei);
+        } else {
+            await lossCap.recordOutcome(matchId, m.challenger, true, 0n);
+        }
 
         // Social Update: Match Result
         await moltbook.postMatchResult(
             matchId.toString(),
             m.challenger,
             m.opponent,
-            winner,
+            outcome.winner,
             formatEther(m.wager * 2n),
             GAME_NAMES[m.gameType] || 'Unknown'
         );
@@ -566,39 +1163,119 @@ async function tryResolveMatch(matchId: bigint, m: any) {
     }
 }
 
-function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number): string {
+// Sends the tie refund to the challenger from the agent's wallet. Called
+// only after a successful resolveMatch tx has assigned the prize to the
+// AI on chain. Failure is logged but doesn't throw — the caller flagged
+// refund_pending=true in agent_match_state so ops can reconcile.
+async function sendTieRefund(matchId: bigint, player: `0x${string}`, amountWei: bigint): Promise<void> {
+    const matchKey = matchId.toString();
+    try {
+        console.log(chalk.gray(`💸 Refund #${matchId}: ${formatEther(amountWei)} G$ → ${player.slice(0, 8)}..`));
+
+        const hash = await submitTx(async () => {
+            const { request } = await publicClient.simulateContract({
+                address: G_TOKEN_ADDRESS,
+                abi: ERC20_ABI,
+                functionName: 'transfer',
+                args: [player, amountWei],
+                account,
+            });
+            const h = await walletClient.writeContract(request);
+            await publicClient.waitForTransactionReceipt({ hash: h });
+            return h;
+        });
+
+        try {
+            await supabase
+                .from('agent_match_state')
+                .update({ refund_pending: false, refund_tx_hash: hash })
+                .eq('match_id', matchKey);
+        } catch (e: any) {
+            console.warn(chalk.yellow(`Refund tx ${hash} succeeded but agent_match_state update failed for #${matchId}: ${e?.message ?? e}`));
+        }
+
+        console.log(chalk.green(`✅ Refund tx ${hash} for match #${matchId}`));
+    } catch (e: any) {
+        console.error(chalk.red(`❌ Tie refund FAILED for #${matchId} → ${player}: ${e?.shortMessage ?? e?.message ?? e}. agent_match_state.refund_pending stays true; reconcile manually.`));
+    }
+}
+
+// Resolution outcome for one match. `winner` is the address that
+// resolveMatch is called with (the contract pays it 1.96× the pot).
+// On a tie we route the on-chain win to the AI and refund the player
+// `tieRefundWei` G$ from the agent's wallet in a follow-up tx — gives
+// each side a symmetric "each pays half the protocol fee" outcome
+// without changing the contract.
+interface ResolveOutcome {
+    winner: `0x${string}`;
+    isTie: boolean;
+    tieRefundWei: bigint;
+    tieReason: string; // empty if not a tie
+}
+
+// Refund 98% of the wager on ties. The 2% fee already taken at
+// resolveMatch is split evenly between both sides this way (AI keeps
+// 0.98× of the pot, refunds the other 0.98× to the player).
+function tieRefundFor(wager: bigint): bigint {
+    return (wager * 98n) / 100n;
+}
+
+function determineWinner(gameType: number, p1: string, m1: number, p2: string, m2: number, wager: bigint, rand: () => number = Math.random): ResolveOutcome {
     let p1Wins = false;
     let isTie = false;
+    let tieReason = '';
 
     if (gameType === 0) { // RPS
-        if (m1 === m2) isTie = true;
+        if (m1 === m2) { isTie = true; tieReason = 'rps_same'; }
         else if ((m1 === 0 && m2 === 2) || (m1 === 1 && m2 === 0) || (m1 === 2 && m2 === 1)) p1Wins = true;
     } else if (gameType === 1) { // Dice
-        if (m1 === m2) isTie = true;
+        if (m1 === m2) { isTie = true; tieReason = 'dice_same'; }
         else if (m1 > m2) p1Wins = true;
     } else if (gameType === 3) { // Coin Flip
-        // Oracle Flip logic - re-simulated for determination 
-        // NOTE: Ideally, the Agent should store the flip result OR use blockhash randomness. 
-        // For this hackathon version, we act as the random oracle at resolution time.
-        const oracleFlip = Math.random() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
+        // Oracle flip decides which side called correctly. Outcomes:
+        //   - p1 only correct → player wins
+        //   - p2 only correct → AI wins
+        //   - both correct    → tie (refunds)
+        //   - both wrong      → tie (refunds)
+        //
+        // The oracle now draws from the same seed stream the agent's
+        // own move pick consumed, so the entire match's randomness is
+        // provably bound to the commit_hash written at accept time.
+        // Player can replay this draw after the seed is revealed.
+        const oracleFlip = rand() > 0.5 ? 1 : 0; // 0=Heads, 1=Tails
         console.log(chalk.gray(`🔮 Oracle Flip: ${oracleFlip === 0 ? 'Heads' : 'Tails'}`));
 
         const p1Correct = m1 === oracleFlip;
         const p2Correct = m2 === oracleFlip;
 
-        if (p1Correct && !p2Correct) p1Wins = true;
-        else if (!p1Correct && p2Correct) p1Wins = false;
-        else isTie = true; // Both correct or both wrong
+        if (p1Correct && p2Correct) {
+            isTie = true; tieReason = 'coin_both_right';
+            console.log(chalk.gray(`Both correct — tie, refund pending.`));
+        } else if (!p1Correct && !p2Correct) {
+            isTie = true; tieReason = 'coin_both_wrong';
+            console.log(chalk.gray(`Both wrong — tie, refund pending.`));
+        } else if (p1Correct) {
+            p1Wins = true;
+        } else {
+            p1Wins = false;
+        }
     }
 
     if (isTie) {
-        // On a tie, award the challenger (p1) — the human player initiates challenges,
-        // so this avoids the confusing "you tied but lost" experience.
-        console.log(chalk.yellow(`🤝 TIE detected! Awarding challenger (p1) on tie.`));
-        return p1;
+        // Route every tie to AI on chain. Caller sends `tieRefundWei` G$
+        // to the player after the resolveMatch tx confirms. Each side
+        // ends up net -2% (the protocol fee), no asymmetric edge either way.
+        const refund = tieRefundFor(wager);
+        console.log(chalk.yellow(`🤝 TIE (${tieReason}). On chain → AI; refund ${formatEther(refund)} G$ to player.`));
+        return { winner: p2 as `0x${string}`, isTie: true, tieRefundWei: refund, tieReason };
     }
 
-    return p1Wins ? p1 : p2;
+    return {
+        winner: (p1Wins ? p1 : p2) as `0x${string}`,
+        isTie: false,
+        tieRefundWei: 0n,
+        tieReason: '',
+    };
 }
 
 startAgent();

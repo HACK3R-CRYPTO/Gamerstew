@@ -241,6 +241,12 @@ export default function SimonGamePage() {
   }, []);
   useEffect(() => () => clearTimeouts(), [clearTimeouts]);
 
+  // Re-entry guard for startGame. Without it, two clicks within the
+  // session-ticket round trip (~0.5s) trigger two /api/start-game
+  // inserts → duplicate game_sessions rows. Caught in prod when a
+  // wallet's "2 games" reading showed 5 sessions for the same period.
+  const startingRef = useRef<boolean>(false);
+
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
   // Anti-cheat: server-issued session ticket. Required by /api/sign-score.
@@ -543,6 +549,14 @@ export default function SimonGamePage() {
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
   const startGame = useCallback(async () => {
+    // Re-entry guard: bail if a session ticket request is already
+    // in flight. Without this, a double-click or duplicated synthetic
+    // event during the ~500ms round trip dispatches two /api/start-game
+    // inserts, leaving a stale game_sessions row that inflates the
+    // counted-games total.
+    if (startingRef.current) return;
+    startingRef.current = true;
+
     // Reset everything for a fresh run
     patternRef.current = [];
     userPatternRef.current = [];
@@ -576,22 +590,30 @@ export default function SimonGamePage() {
           const token = await getAccessToken();
           if (!token) {
             setSubmitError("Sign in required to start a run.");
+            startingRef.current = false;
             return;
           }
           res = await startGameAction(token, address, "simon");
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          startingRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        startingRef.current = false;
         return;
       }
     }
 
     setPhase("countdown");
+    // Lock releases once the phase has flipped — at this point the
+    // idle/play-again button isn't on screen, so a second dispatch is
+    // structurally impossible anyway. Explicit release keeps the next
+    // post-gameover replay click responsive.
+    startingRef.current = false;
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
   }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken]);
