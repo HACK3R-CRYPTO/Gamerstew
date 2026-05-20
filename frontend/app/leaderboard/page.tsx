@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
+import { captureReferralFromUrl, readPendingReferral } from "@/lib/referral";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import BottomNav from "@/components/BottomNav";
 import MobileStreakChip from "@/components/MobileStreakChip";
@@ -631,19 +633,48 @@ function LeaderboardInner() {
     return season1Counts[team] < season1Smallest * 1.5;
   }, [season1Counts, season1Smallest]);
 
-  // Referral capture from the URL: `?ref=<wallet>` arrives when a friend
-  // shares their /leaderboard?tab=seasons&ref=<wallet> link. We hold the
-  // wallet here until the player joins a team; on join we pass it as
-  // referrerWallet so the inviter gets credit. If the URL is empty, the
-  // join endpoint also falls back to the server-side intent table
-  // populated at /mint, so cross-device flows still credit correctly.
+  // Referral capture. Three layers, URL wins, localStorage rescues:
+  //   1. ?ref=<wallet> on the share link is captured immediately into
+  //      localStorage on first paint (captureReferralFromUrl below) so
+  //      it survives the connect → mint → verify chain that strips
+  //      query params.
+  //   2. If the URL still carries it on this render, we use that
+  //      (canonical).
+  //   3. Otherwise we read the localStorage fallback — handles users
+  //      coming back from /mint where the URL no longer carries ref.
+  // The /api/season/join endpoint also falls back to the server-side
+  // intent table populated at /mint, so cross-device flows still
+  // credit correctly.
+  useEffect(() => {
+    captureReferralFromUrl();
+  }, [searchParams]);
   const referrerFromUrl = useMemo(() => {
-    const raw = searchParams.get("ref")?.toLowerCase().trim() ?? null;
-    if (!raw) return null;
-    if (!/^0x[a-f0-9]{40}$/.test(raw)) return null;
-    if (address && raw === address.toLowerCase()) return null; // can't refer self
-    return raw;
+    const norm = (raw: string | null): string | null => {
+      if (!raw) return null;
+      const v = raw.toLowerCase().trim();
+      if (!/^0x[a-f0-9]{40}$/.test(v)) return null;
+      if (address && v === address.toLowerCase()) return null;
+      return v;
+    };
+    const fromUrl = norm(searchParams.get("ref") ?? null);
+    if (fromUrl) return fromUrl;
+    return norm(readPendingReferral());
   }, [searchParams, address]);
+
+  // Bounce unauthenticated visitors arriving via a share link through
+  // the canonical onboarding chain instead of dumping them on a team
+  // picker they can't act on. The ref survives via localStorage; once
+  // they finish mint + verify they land back on this same view, this
+  // time authenticated, and the team picker actually works.
+  const { ready, authenticated } = usePrivy();
+  useEffect(() => {
+    if (!ready) return;
+    if (authenticated || address) return; // already connected, render normally
+    const refOnLink = searchParams.get("ref");
+    if (!refOnLink) return;
+    const dest = `/leaderboard?tab=seasons&ref=${encodeURIComponent(refOnLink)}`;
+    router.replace(`/connect?next=${encodeURIComponent(dest)}`);
+  }, [ready, authenticated, address, searchParams, router]);
 
   const joinSeason1 = useCallback(async (team: Season1Team) => {
     if (!address || season1Joining) return;
