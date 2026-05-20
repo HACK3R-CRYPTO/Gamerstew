@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
 const {
   physicsCheck:  rhythmPhysicsCheck,
@@ -37,9 +37,14 @@ app.use(express.json());
 
 // Pull the wallet out of the request body for keying. Falls back to the
 // IP if the body shape is unexpected, so we never drop the limit entirely.
+// Per-wallet bucket when a wallet is present, else IPv6-safe fallback.
+// express-rate-limit's stricter validator (v8+) rejects raw req.ip
+// because IPv6 addresses share a /64 prefix per provider, letting one
+// attacker mint unlimited keys. ipKeyGenerator normalises to the /64.
 const walletKey = (req) => {
   const w = (req.body?.playerAddress || req.body?.wallet || '').toString().toLowerCase();
-  return w && /^0x[0-9a-f]{40}$/.test(w) ? `wallet:${w}` : `ip:${req.ip}`;
+  if (w && /^0x[0-9a-f]{40}$/.test(w)) return `wallet:${w}`;
+  return `ip:${ipKeyGenerator(req.ip)}`;
 };
 
 const standardLimiter = rateLimit({
