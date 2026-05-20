@@ -738,12 +738,14 @@ async function startAgent() {
     }
 
     // ─── Self Agent ID (Talent Protocol prize-pool requirement) ─────────────
-    // Self Agent ID is a soulbound ERC-721 on Celo Mainnet at
-    // 0xaC3DF9...5944. balanceOf > 0 means this wallet already has an
-    // agent registered, so we skip the write to keep boot cheap. The
-    // agentURI reuses the same IPFS card the ERC-8004 registration
-    // points at — same agent, same description; swap in a Self-
-    // flavoured agent card later if the schema diverges.
+    // Self Agent ID is mint-with-proof: register(agentURI) reverts with a
+    // custom error (0xf570d268) when called from a wallet that hasn't
+    // gone through the passport-backed ZK verification in the Self mobile
+    // app. The right path is "linked" registration via
+    // https://selfagentid.xyz — a verified human registers and then signs
+    // an EIP-712 message that authorises this agent wallet. We just
+    // surface the current registration status on boot so ops can confirm
+    // it's still in place; we never try to write from here.
     const SELF_AGENT_REGISTRY = '0xaC3DF9ABf80d0F5c020C06B04Cced27763355944' as `0x${string}`;
     try {
         const selfBalance = await publicClient.readContract({
@@ -752,28 +754,13 @@ async function startAgent() {
             functionName: 'balanceOf',
             args: [account.address]
         }) as bigint;
-
-        if (selfBalance === 0n) {
-            console.log(chalk.yellow('📝 Registering AI Agent (Self Agent ID)...'));
-            const agentURI = "ipfs://bafkreig6sha4aqzafeqbocsppwobxdp3rlu7axv2rcloyh4tpw2afbj2r4";
-            const txHash = await submitTx(async () => {
-                const h = await walletClient.writeContract({
-                    address: SELF_AGENT_REGISTRY,
-                    abi: ERC8004_ABI,
-                    functionName: 'register',
-                    args: [agentURI],
-                    chain: CELO_MAINNET,
-                    account
-                });
-                await publicClient.waitForTransactionReceipt({ hash: h });
-                return h;
-            });
-            console.log(chalk.green(`✅ Self Agent ID registered! TX: ${txHash}`));
+        if (selfBalance > 0n) {
+            console.log(chalk.green('✅ Self Agent ID linked to this wallet.'));
         } else {
-            console.log(chalk.green('✅ Agent already registered (Self Agent ID).'));
+            console.log(chalk.yellow('⚠️  Self Agent ID not yet linked. Use https://selfagentid.xyz (linked mode, Celo Mainnet).'));
         }
-    } catch (e: any) {
-        console.log(chalk.gray(`Self Agent ID registration check failed: ${e?.shortMessage ?? e?.message ?? 'unknown'} — continuing.`));
+    } catch {
+        console.log(chalk.gray('Self Agent ID status check skipped (RPC error).'));
     }
 
     console.log(chalk.gray(`Wallet: ${account.address} | Platform: ${ARENA_ADDRESS}`));
