@@ -631,16 +631,26 @@ function LeaderboardInner() {
     return season1Counts[team] < season1Smallest * 1.5;
   }, [season1Counts, season1Smallest]);
 
-  // Referral capture from the URL: `?ref=<wallet>` arrives when a friend
-  // shares their /leaderboard?tab=seasons&ref=<wallet> link. We hold the
-  // wallet here until the player joins a team; on join we pass it as
-  // referrerWallet so the inviter gets credit when this player qualifies.
+  // Referral capture. Two sources, URL takes priority:
+  //   1. ?ref=<wallet> arrives when a friend shares the share link.
+  //   2. localStorage `season1_referrer` set on the /mint page when the
+  //      player typed a friend's wallet during registration. Mint is the
+  //      one-shot lock-in moment for referral — after that, the value is
+  //      held here until they actually join a team.
+  // On join we pass whichever wins as referrerWallet so the inviter gets
+  // credit when this player qualifies.
   const referrerFromUrl = useMemo(() => {
-    const raw = searchParams.get("ref")?.toLowerCase().trim() ?? null;
-    if (!raw) return null;
-    if (!/^0x[a-f0-9]{40}$/.test(raw)) return null;
-    if (address && raw === address.toLowerCase()) return null; // can't refer self
-    return raw;
+    const norm = (raw: string | null): string | null => {
+      if (!raw) return null;
+      const v = raw.toLowerCase().trim();
+      if (!/^0x[a-f0-9]{40}$/.test(v)) return null;
+      if (address && v === address.toLowerCase()) return null; // can't refer self
+      return v;
+    };
+    const fromUrl = norm(searchParams.get("ref") ?? null);
+    if (fromUrl) return fromUrl;
+    if (typeof window === "undefined") return null;
+    try { return norm(localStorage.getItem("season1_referrer")); } catch { return null; }
   }, [searchParams, address]);
 
   const joinSeason1 = useCallback(async (team: Season1Team) => {

@@ -48,6 +48,29 @@ function MintInner() {
   const [username, setUsername] = useState("");
   const [minting, setMinting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Season 1 referral capture — the GamePass mint is the one-shot
+  // registration moment. Once the player mints, hasMinted flips and the
+  // page auto-redirects away, so the input is unreachable. If they paste
+  // a friend's wallet here, we stash it in localStorage; the Season 1
+  // team picker reads URL ?ref first, then this key, then null.
+  //
+  // Pre-fills from URL ?ref when the player arrived via a share link, so
+  // the field always shows the truth of who's about to get credited.
+  const [referrer, setReferrer] = useState(() => {
+    const r = params.get("ref")?.toLowerCase().trim() ?? "";
+    return /^0x[a-f0-9]{40}$/.test(r) ? r : "";
+  });
+  const refClean = referrer.toLowerCase().trim();
+  const refIsEmpty = refClean.length === 0;
+  const refIsValidShape = /^0x[a-f0-9]{40}$/.test(refClean);
+  const refIsSelf = !!address && refClean === address.toLowerCase();
+  const refOk = refIsEmpty || (refIsValidShape && !refIsSelf);
+  const refStatus: { tone: "ok" | "warn" | "info"; msg: string } | null =
+    refIsEmpty ? null
+    : refIsSelf ? { tone: "warn", msg: "Can't refer yourself" }
+    : !refIsValidShape ? { tone: "warn", msg: "Paste a full 0x… wallet" }
+    : { tone: "ok", msg: "Friend will get credit when you qualify" };
   // Structured error kind lets us render a specific remediation card per
   // failure class instead of dumping raw RPC text on non-technical users.
   //   "gas"     → wallet has no CELO; show faucet/Telegram CTA.
@@ -123,6 +146,14 @@ function MintInner() {
         args: [username],
         ...celoFeeSpread(isMiniPay),
       });
+      // Persist the referrer so the Season 1 team picker can credit the
+      // friend on join. The mint tx is the registration lock-in moment;
+      // once we get here, the value the player typed is final. We write
+      // even on empty input so a previous (wrong) value gets cleared.
+      try {
+        if (refOk && !refIsEmpty) localStorage.setItem("season1_referrer", refClean);
+        else if (refIsEmpty) localStorage.removeItem("season1_referrer");
+      } catch { /* private mode / quota — silently skip */ }
       // Contract state takes a beat to reflect — refetch once so the
       // redirect effect above fires cleanly after the tx lands.
       await refetchPass();
@@ -315,6 +346,69 @@ function MintInner() {
                         fontSize: "10px", fontWeight: 800, fontFamily: "monospace",
                       }}>{username.length}/16</span>
                     </div>
+                  </div>
+
+                  {/* Referral input — optional, but only captureable here.
+                      Once the player mints, hasMinted flips and the page
+                      redirects, so the input is unreachable afterward.
+                      Pre-fills from URL ?ref so share-link arrivals never
+                      have to retype. Empty submission is fine: we just
+                      mint and skip the referrer. */}
+                  <div>
+                    <div style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                      marginBottom: "6px",
+                    }}>
+                      <span style={{
+                        color: "rgba(200,180,255,0.7)", fontSize: "10px", fontWeight: 900,
+                        letterSpacing: "0.18em",
+                      }}>REFERRAL · OPTIONAL</span>
+                      <span style={{
+                        color: "rgba(160,130,200,0.55)", fontSize: "9px", fontWeight: 700,
+                        letterSpacing: "0.06em",
+                      }}>ONE-TIME · LOCKS ON MINT</span>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      placeholder="0x… friend's wallet"
+                      value={referrer}
+                      onChange={e => setReferrer(e.target.value.replace(/[^0-9a-fA-FxX]/g, "").slice(0, 42))}
+                      disabled={minting}
+                      style={{
+                        width: "100%", boxSizing: "border-box",
+                        padding: "clamp(11px, 3vw, 14px) clamp(14px, 3.5vw, 16px)",
+                        background: "rgba(0,0,0,0.4)",
+                        border: `1.5px solid ${
+                          refIsEmpty ? "rgba(110,60,220,0.4)"
+                          : refOk ? "rgba(134,239,172,0.55)"
+                          : "rgba(239,68,68,0.55)"
+                        }`,
+                        borderRadius: "12px",
+                        color: "white",
+                        fontSize: "clamp(12px, 3.2vw, 14px)",
+                        fontFamily: "monospace",
+                        outline: "none",
+                        textAlign: "center",
+                        letterSpacing: "0.02em",
+                        transition: "border-color 0.15s, box-shadow 0.15s",
+                        boxShadow: !refIsEmpty && refOk
+                          ? "0 0 0 3px rgba(34,197,94,0.15), inset 0 2px 8px rgba(0,0,0,0.5)"
+                          : "inset 0 2px 8px rgba(0,0,0,0.5)",
+                      }}
+                    />
+                    {refStatus && (
+                      <div style={{
+                        marginTop: "6px", padding: "0 4px",
+                        color: refStatus.tone === "ok" ? "#86efac"
+                          : refStatus.tone === "warn" ? "#fca5a5"
+                          : "rgba(200,180,255,0.7)",
+                        fontSize: "10px", fontWeight: 700,
+                      }}>{refStatus.msg}</div>
+                    )}
                   </div>
 
                   {/* Inline error — only for non-gas cases, since gas gets
