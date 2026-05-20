@@ -27,9 +27,13 @@ export function useRequireAuth(): { ready: boolean; authed: boolean } {
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
 
-  // "Authed" = has a Privy session OR is inside MiniPay with an injected
-  // wallet. MiniPay users never go through Privy.
-  const authed = authenticated || (isMiniPay && !!address);
+  // "Authed" = has an actual wallet address AND a valid session. Just
+  // checking Privy's `authenticated` was a footgun: a player can stay
+  // Privy-authenticated long after they disconnect their wallet, which
+  // let them walk back into a game with no wallet to sign txs.
+  // Requiring `address` closes that gap — no wallet, no entry. MiniPay
+  // users are also covered: their address is always set in-app.
+  const authed = !!address && (authenticated || isMiniPay);
 
   useEffect(() => {
     if (!ready) return;
