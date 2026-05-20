@@ -10,6 +10,17 @@ export const CONTRACT_ADDRESSES = {
   HABITAT_REGISTRY: process.env.NEXT_PUBLIC_HABITAT_REGISTRY || '0x8888FEb43ac1833c683D0474204aa55A55BD010F',
 };
 
+// MiniPay deeplink targets (celopedia minipay-requirements §"Deeplinks"
+// and §6 "Integration & Support"). Use these instead of in-app explainer
+// screens — MiniPay handles the funding UX natively and pulls users
+// back into the Mini App afterwards. Canonical list:
+// https://docs.minipay.xyz/technical-references/deeplinks.html
+export const MINIPAY_DEEPLINKS = {
+  ADD_CASH: 'https://link.minipay.xyz/add_cash?tokens=USDC,USDT,USDm',
+  INVITE_FRIENDS: 'https://link.minipay.xyz/invite_friends',
+  BALANCE: 'https://link.minipay.xyz/balance',
+} as const;
+
 // Celo MiniPay fee-currency adapters. MiniPay users have zero CELO by
 // design, so every tx they sign must include `feeCurrency` pointing at
 // one of these addresses. Canonical mapping from celopedia minipay-

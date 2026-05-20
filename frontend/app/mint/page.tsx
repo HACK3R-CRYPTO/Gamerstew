@@ -20,7 +20,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread, MINIPAY_DEEPLINKS } from "@/lib/contracts";
 
 // Minimum CELO we ask non-MiniPay wallets to hold before we let them tap
 // MINT. 0.002 CELO is a comfortable margin over the ~0.0005 CELO a Game
@@ -509,9 +509,44 @@ function MintInner() {
                         Waiting for wallet confirmation...
                       </div>
                     )
+                  ) : isMiniPay && errKind === "gas" ? (
+                    // MiniPay user hit insufficient-funds during the fee-
+                    // currency tx. Send them to the Add Cash deeplink
+                    // (celopedia minipay-requirements §6 "Low-Balance
+                    // Handling") instead of a raw error. MiniPay funds
+                    // the top-up natively and brings them back to the
+                    // Mini App when done.
+                    <div style={{
+                      padding: "12px 14px", borderRadius: "12px",
+                      background: "linear-gradient(180deg, rgba(34,197,94,0.12) 0%, rgba(6,78,32,0.18) 100%)",
+                      border: "1px solid rgba(134,239,172,0.45)",
+                      boxShadow: "0 0 14px rgba(34,197,94,0.12)",
+                      display: "flex", flexDirection: "column",
+                      gap: "8px", textAlign: "center",
+                    }}>
+                      <div style={{
+                        color: "#86efac",
+                        fontSize: "clamp(11px, 3vw, 12.5px)",
+                        fontWeight: 900, letterSpacing: "0.18em",
+                      }}>BALANCE TOO LOW</div>
+                      <a href={MINIPAY_DEEPLINKS.ADD_CASH}
+                        style={{
+                          display: "block",
+                          padding: "10px 14px", borderRadius: "10px",
+                          background: "linear-gradient(160deg, #22c55e 0%, #16a34a 50%, #15803d 100%)",
+                          color: "white",
+                          fontSize: "clamp(11px, 2.9vw, 12px)",
+                          fontWeight: 900, letterSpacing: "0.1em",
+                          textDecoration: "none",
+                          border: "1.5px solid rgba(255,255,255,0.4)",
+                          boxShadow: "0 6px 14px rgba(34,197,94,0.4), inset 0 2px 6px rgba(255,255,255,0.25)",
+                        }}>
+                        💰 ADD CASH IN MINIPAY
+                      </a>
+                    </div>
                   ) : isMiniPay ? (
                     <div style={{ fontSize: "10.5px", textAlign: "center", color: "rgba(160,130,200,0.5)" }}>
-                      Soulbound NFT · fees paid in USDC
+                      Soulbound NFT · fees paid in stablecoin
                     </div>
                   ) : !hasGas && celoBalance ? (
                     // Minimal alert pattern: title + one primary CTA + tiny
