@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { playFightSlam, playAiRolling, playWin, playLose, playTie } from "@/hooks/useAppAudio";
 import { encodeAbiParameters, formatUnits } from "viem";
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC20_ABI } from "@/lib/contracts";
 import {
@@ -679,6 +680,12 @@ export default function ChallengeAi() {
   const tieByRefund = matchOutcome?.outcome === "tie";
   const youWon = winnerIsAddress && !tieByRefund;
   const tieByRule = tieByRefund;
+
+  // Outcome stings were previously fired here, when /api/match-outcome
+  // resolved. That landed seconds AFTER the visual reveal — sound was
+  // chronically late. Moved into ArenaMatch where roundOutcome is
+  // computed from moves the moment "revealing" flips, so audio lands
+  // on the same frame as the result animation.
   const tieRefundG = tieByRefund && matchOutcome?.tieRefundWei
     ? Number(matchOutcome.tieRefundWei) / 1e18
     : 0;
@@ -1289,6 +1296,15 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
     const t3 = setTimeout(() => setPhase(3), 2400);  // FIGHT slams in (replaces VS art)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []);
+  // Audio cues anchored to the cinematic beats. FIGHT! slams in at
+  // phase 3 — single shot. The AI-rolling sound used to fire here too,
+  // but that's the wrong moment: the actual "thinking" wait happens
+  // later in ArenaMatch when both players have moved and we're locking
+  // in the counter. Moved that trigger into the match component.
+  useEffect(() => {
+    if (phase !== 3) return;
+    playFightSlam();
+  }, [phase]);
 
   return (
     <div style={{
@@ -1389,17 +1405,47 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
           {phase >= 3 && (
             <div style={{
               position: "relative", zIndex: 2,
-              color: "white",
-              fontSize: 76, fontWeight: 900,
-              letterSpacing: "0.04em",
-              fontStyle: "italic",
-              textShadow:
-                "0 0 32px rgba(167,139,250,0.9)," +
-                "0 0 16px rgba(56,189,248,0.7)," +
-                "0 3px 0 rgba(0,0,0,0.55)," +
-                "0 0 4px rgba(0,0,0,0.9)",
-              animation: "fight-slam 0.55s cubic-bezier(0.16, 1, 0.3, 1) both",
-            }}>FIGHT!</div>
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
+            }}>
+              <div style={{
+                color: "white",
+                fontSize: "clamp(44px, 13vw, 76px)",
+                fontWeight: 900,
+                letterSpacing: "0.04em",
+                fontStyle: "italic",
+                textShadow:
+                  "0 0 32px rgba(167,139,250,0.9)," +
+                  "0 0 16px rgba(56,189,248,0.7)," +
+                  "0 3px 0 rgba(0,0,0,0.55)," +
+                  "0 0 4px rgba(0,0,0,0.9)",
+                animation: "fight-slam 0.55s cubic-bezier(0.16, 1, 0.3, 1) both",
+              }}>FIGHT!</div>
+              {/* Wait state. After FIGHT slams in, MARKOV's accept tx is
+                  still propagating on-chain (3–10s). Without this line
+                  the screen reads as frozen on a static FIGHT word.
+                  Animated ellipsis + small status badge tells the player
+                  "we're alive, the agent is on it". */}
+              <div style={{
+                padding: "6px 14px", borderRadius: 999,
+                background: "rgba(8,6,22,0.65)",
+                border: "1px solid rgba(167,139,250,0.4)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                color: "rgba(220,210,255,0.92)",
+                fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
+                textShadow: "0 0 6px rgba(0,0,0,0.85)",
+                animation: "chip-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both",
+                display: "inline-flex", alignItems: "center", gap: 8,
+              }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: "#86efac",
+                  boxShadow: "0 0 8px #86efac",
+                  animation: "fight-pulse 0.9s ease-in-out infinite",
+                }} />
+                MARKOV ACCEPTING<span className="fight-dots" />
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1441,27 +1487,32 @@ function ArenaVS({ tier, game, pet }: { tier: WagerTier; game: GameType; pet: Pe
 // Name ribbon: rim-colored bars flank the name so it reads as a nameplate,
 // not floating text. Mirrors the title-card pattern from fighting games.
 function NameRibbon({ label, rim, delay }: { label: string; rim: string; delay: string }) {
+  // Decorative dashes shrink and font scales down on narrow viewports so
+  // long persona names like "MARKOV-PRIME" don't get cut off mid-word.
+  // Previously sat at fixed 22px + 28px dashes — text was truncating on
+  // 360-wide screens.
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 10,
+      display: "flex", alignItems: "center", gap: "clamp(6px, 1.6vw, 10px)",
       marginTop: 12,
       animation: `ribbon-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) ${delay} both`,
-      maxWidth: "92vw",
+      maxWidth: "96vw",
     }}>
       <span aria-hidden style={{
-        flex: "0 0 28px", height: 2,
+        flex: "0 0 clamp(14px, 4vw, 28px)", height: 2,
         background: `linear-gradient(90deg, transparent, ${rim})`,
         boxShadow: `0 0 8px ${rim}`,
       }} />
       <span style={{
-        color: "white", fontSize: 22, fontWeight: 900,
-        letterSpacing: "0.06em",
+        color: "white",
+        fontSize: "clamp(15px, 4.6vw, 22px)",
+        fontWeight: 900,
+        letterSpacing: "0.05em",
         textShadow: `0 0 14px ${rim}, 0 1px 2px rgba(0,0,0,0.7)`,
         whiteSpace: "nowrap",
-        overflow: "hidden", textOverflow: "ellipsis",
       }}>{label}</span>
       <span aria-hidden style={{
-        flex: "0 0 28px", height: 2,
+        flex: "0 0 clamp(14px, 4vw, 28px)", height: 2,
         background: `linear-gradient(270deg, transparent, ${rim})`,
         boxShadow: `0 0 8px ${rim}`,
       }} />
@@ -1512,6 +1563,26 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
   const locked     = accepted && playerHasPlayed;
   const aiThinking = (proposed || (accepted && playerHasPlayed && !aiHasPlayed));
 
+  // AI rolling/thinking sound. Loops every ~700ms while we wait for the
+  // counter to lock in, stops the moment we hit revealing/completed.
+  // This is the real wait state the player feels — the cinematic's
+  // FIGHT! is over by the time we get here. Without this, "Computing
+  // the counter…" appears with dead silence underneath.
+  useEffect(() => {
+    if (revealing || completed) return;
+    if (!locked && !aiThinking) return;
+    playAiRolling();
+    const i = setInterval(playAiRolling, 700);
+    return () => clearInterval(i);
+  }, [locked, aiThinking, revealing, completed]);
+
+  // Result sting. Fires the moment revealing flips with both moves
+  // known — roundOutcome is computed client-side from the moves so
+  // we don't have to wait on /api/match-outcome (which lands seconds
+  // later and made the audio chronically late). Dedupe ref ensures
+  // one play per match even if revealing re-fires.
+  const stungOutcomeRef = useRef<string | null>(null);
+
   // Animated AI taunt — rotates from the tier's taunt pool while waiting.
   const [taunt, setTaunt] = useState<string>(tier.lines.ready);
   useEffect(() => {
@@ -1532,6 +1603,18 @@ function ArenaMatch({ tier, game, pet, activeMatch, playerHasPlayed, aiHasPlayed
   const roundOutcome: "win" | "lose" | "tie" | null = revealing && playerMove !== null && aiMove !== null
     ? (playerMove === aiMove ? "tie" : youWon ? "win" : "lose")
     : null;
+
+  // Result sting — fires the moment revealing flips with both moves
+  // known so audio lands on the same frame as the result animation.
+  useEffect(() => {
+    if (!roundOutcome) return;
+    const key = activeMatch?.id?.toString() ?? null;
+    if (!key || stungOutcomeRef.current === key) return;
+    stungOutcomeRef.current = key;
+    if (roundOutcome === "win") playWin();
+    else if (roundOutcome === "tie") playTie();
+    else if (roundOutcome === "lose") playLose();
+  }, [roundOutcome, activeMatch?.id]);
 
   // Live AI hand cycling — Rael's feedback: the AI feels invisible during
   // LOCK because the hand stays as "?". This cycles the AI's pick slot

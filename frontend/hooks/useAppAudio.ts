@@ -202,6 +202,73 @@ export function playTabSwitch() {
   scheduleSine(ctx, _sfxMaster, 900, ctx.currentTime, 0.05, 0.06, 1100);
 }
 
+// ═══ Challenge AI sound design ═══════════════════════════════════════════════
+// Pure synth, no asset files. Each helper is bound to a single moment in
+// the wager flow so the game feels alive instead of silent. All routed
+// through _sfxMaster so the existing mute toggle covers them.
+//
+// resumeCtx() guards against a suspended AudioContext — Web Audio can
+// suspend on tab-blur, after navigation on iOS Safari, or after long
+// idle. resume() is a no-op when already running, so safe to call every
+// time. Without this guard sounds silently no-op even when settings
+// say SFX is on.
+function resumeCtx() {
+  if (_ctx && _ctx.state === "suspended") _ctx.resume().catch(() => {});
+}
+
+// FIGHT! slam — bass thump + descending whip + sustained bell. Lands on
+// the same frame the FIGHT text scales in. Volumes pumped vs initial
+// version because the previous 0.18–0.22 peaks were inaudible under
+// modest device output levels.
+export function playFightSlam() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleSine(ctx, _sfxMaster, 140,  now,        0.40, 0.9,  60);   // low thump
+  scheduleSine(ctx, _sfxMaster, 1800, now,        0.20, 0.5,  400);  // high whip
+  scheduleBell(ctx, _sfxMaster, 587.33, now + 0.05, 0.7, 0.55);      // sustain
+}
+
+// AI rolling — rising arpeggio of short pulses, like a dial spinning up.
+// Fires once at the start of the agent-accept wait; ~0.4s total.
+export function playAiRolling() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  for (let i = 0; i < 6; i++) {
+    scheduleSine(ctx, _sfxMaster, 220 + i * 60, now + i * 0.07, 0.08, 0.22);
+  }
+}
+
+// Win — bright C-major ascent + sparkle bell at the top. Reward moment.
+export function playWin() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51]; // C5 E5 G5 C6 E6
+  notes.forEach((f, i) => scheduleBell(ctx, _sfxMaster!, f, now + i * 0.09, 0.6, 0.55));
+  scheduleBell(ctx, _sfxMaster, 2093.00, now + 0.55, 0.75, 0.45);    // sparkle
+}
+
+// Tie — neutral single-note ping with a soft echo. Reads as "settled,
+// neither side cleared the other".
+export function playTie() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 783.99, now,        0.55, 0.5);
+  scheduleBell(ctx, _sfxMaster, 783.99, now + 0.18, 0.45, 0.4);
+}
+
+// Lose — minor descending sequence. Honest, brief, doesn't dwell.
+export function playLose() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  const notes = [392.00, 311.13, 246.94, 196.00]; // G4 Eb4 B3 G3
+  notes.forEach((f, i) => scheduleBell(ctx, _sfxMaster!, f, now + i * 0.10, 0.65, 0.45));
+}
+
 // ═══ Ambient — arpeggiated C-minor pulse, routed through _ambientMaster ═════
 // Previous iteration stacked 3 triangle notes per chord + a soft kick — dense
 // and mood-y but static. This version arpeggiates the same harmony so the pad
@@ -317,7 +384,12 @@ function scheduleSoftKick(ctx: AudioContext, when: number) {
 
 function isGameplayRoute(pathname: string | null): boolean {
   if (!pathname) return false;
-  return pathname.startsWith("/games/rhythm") || pathname.startsWith("/games/simon");
+  // Any gameplay surface kills the ambient loop so game audio + the AI
+  // wait-state SFX own the channel. Challenge AI was missing here, so
+  // the menu hum kept playing under the VS cinematic and into rounds.
+  return pathname.startsWith("/games/rhythm")
+      || pathname.startsWith("/games/simon")
+      || pathname.startsWith("/games/challenge-ai");
 }
 
 // ═══ Hook — wires the module-level ctx, installs global listener + loop ════
