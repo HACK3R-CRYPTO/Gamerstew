@@ -1817,11 +1817,20 @@ function LeaderboardInner() {
                   if (secondsLeft === 0) return null;
                   const soloCountdownLabel = soloPreLaunch ? "STARTS IN" : "ENDS IN";
                   // soloTop10 is the canonical top-N; first 5 fit comfortably here.
-                  const top5 = lb.soloTop10.slice(0, 5);
+                  // Top 3 is the right scope for a card: it's the
+                  // universal podium (gold/silver/bronze) and creates
+                  // curiosity to drill in. The full top-10 lives on
+                  // /leaderboard/solo-ladder. Previously showed top 5
+                  // here, too much content for a card slot, competed
+                  // with the YOUR SCORE pill above for attention.
+                  const top3 = lb.soloTop10.slice(0, 3);
                   const mySoloPts = me?.soloPoints ?? 0;
                   const mySoloRank = me?.soloRank ?? null;
                   const myUsername = me?.username ?? null;
-                  const meInTop5 = !!address && top5.some(r => r.wallet.toLowerCase() === address.toLowerCase());
+                  // (meInTop3 dropped. It was dead code carried over from
+                  // when the podium was top-5. Self-position is shown via
+                  // the YOUR SCORE pill above the list, not via row
+                  // highlighting in the podium.)
                   // Same DiceBear avatar seed the rest of the app uses
                   // (`${username}-${wallet}`), so the same person shows
                   // up under the same face across rankings, profile, and
@@ -1920,7 +1929,7 @@ function LeaderboardInner() {
                               TOP SCORE
                             </div>
                             <div style={{ color: "#fde68a", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px", fontFamily: "monospace" }}>
-                              {top5[0] ? top5[0].points.toLocaleString() : "—"}
+                              {top3[0] ? top3[0].points.toLocaleString() : "—"}
                             </div>
                           </div>
                         </div>
@@ -1943,9 +1952,10 @@ function LeaderboardInner() {
                           </div>
                         )}
 
-                        {/* Top 5 — same row anatomy as Community Challenge
-                            contributors, but with avatar + amber points. */}
-                        {top5.length === 0 ? (
+                        {/* Top 3 podium — gold/silver/bronze only. The
+                            full top-10 lives on /leaderboard/solo-ladder
+                            so a card stays a card, not a mini-page. */}
+                        {top3.length === 0 ? (
                           <div style={{
                             position: "relative", zIndex: 1, padding: "12px",
                             color: "rgba(220,210,255,0.5)", fontSize: "11px",
@@ -1958,9 +1968,9 @@ function LeaderboardInner() {
                             <div style={{
                               color: "rgba(254,215,170,0.7)",
                               fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
-                            }}>TOP 5 · BY POINTS</div>
+                            }}>PODIUM · TOP 3</div>
                             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                              {top5.map(r => {
+                              {top3.map(r => {
                                 const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
                                 const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "🏅";
                                 return (
