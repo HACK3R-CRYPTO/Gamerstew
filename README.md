@@ -14,12 +14,12 @@ Every player completes a one-time face-scan via GoodDollar's Identity SDK before
 
 ### Solo games
 
-| Game         | Goal                          | Win threshold        |
-| ------------ | ----------------------------- | -------------------- |
-| Rhythm Rush  | Tap glowing buttons in time   | Score 350+ pts       |
-| Simon Memory | Repeat color sequences        | Complete 7+ rounds   |
+| Game         | Goal                                  |
+| ------------ | ------------------------------------- |
+| Rhythm Rush  | Tap glowing buttons in time           |
+| Simon Memory | Repeat color sequences                |
 
-Players wager G$ on a score target. Hit the target, win 1.3x your wager. Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
+Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
 
 ### MARKOV — autonomous on-chain AI opponent
 
@@ -32,7 +32,7 @@ MARKOV is an autonomous AI agent you can challenge 1v1 at any time. It auto-acce
 | Identity | Registered on the Celo Agent Trust Protocol (ERC-8004), Token #6386                                                                   |
 | Games    | Rock-Paper-Scissors, Coin Flip                                                                                                        |
 
-Winner takes 95% of the pot. 5% platform fee.
+Winner takes 98% of the pot. 2% routes to the GoodCollective UBI pool.
 
 ### Events and seasonal competitions
 
@@ -97,7 +97,6 @@ Deployed on Celo Mainnet (chain id 42220).
 | Contract             | Address                                                                                                                   | Purpose                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
-| `SoloWager.sol`      | [`0xc78A8A027e0...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb)                              | Solo wager escrow                        |
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | Wager and payout currency                |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
@@ -107,15 +106,13 @@ Deployed on Celo Mainnet (chain id 42220).
 
 ## G$ economics
 
-| Event                | Player                       | UBI Pool | Platform                            |
-| -------------------- | ---------------------------- | -------- | ----------------------------------- |
-| Solo wager win       | Gets 1.3x minus fees         | 2%       | 3% dev fee                          |
-| Solo wager loss      | Loses wager                  | 2%       | 3% dev fee + treasury keeps wager   |
-| MARKOV match win     | Gets 95% of the pot          | —        | 5% platform fee                     |
-| MARKOV match loss    | Loses wager                  | —        | 5% platform fee                     |
-| Daily UBI claim      | Verified players claim daily | —        | —                                   |
+| Event                | Player                       | Fee                                            |
+| -------------------- | ---------------------------- | ---------------------------------------------- |
+| MARKOV match win     | Gets 98% of the pot          | 2% routes to the GoodCollective UBI pool       |
+| MARKOV match loss    | Loses wager                  | 2% of the pot routes to GoodCollective UBI     |
+| Daily UBI claim      | Verified players claim daily | —                                              |
 
-Every wager contributes to platform revenue and the GoodDollar UBI pool simultaneously.
+Every MARKOV match contributes to the GoodCollective UBI pool · the 2% fee is the platform fee, and it is paid directly to GoodCollective, not retained by the platform.
 
 ---
 
