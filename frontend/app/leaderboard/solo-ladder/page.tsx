@@ -189,6 +189,7 @@ function LadderRow({
           textShadow: isMe ? "0 0 8px rgba(167,139,250,0.5)" : "none",
           letterSpacing: "0.01em",
         }}>{displayName}</div>
+        {/* Stats subtitle hidden — uncomment to restore the "X games · Y claims · …" line under each name.
         {stats && (
           <div style={{
             color: "rgba(220,210,255,0.55)",
@@ -198,6 +199,7 @@ function LadderRow({
             letterSpacing: "0.02em",
           }}>{stats}</div>
         )}
+        */}
       </div>
       <div style={{
         flexShrink: 0,
