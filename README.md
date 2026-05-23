@@ -1,410 +1,182 @@
-# GameArena — AI-Powered Gaming on Celo with GoodDollar
+# GameArena
 
-> Play skill games. Wager G$. Fund global UBI. Every game matters.
+GameArena is a competitive mini-games platform on Celo Mainnet where every player is a verified human. Compete in skill games, challenge an autonomous AI opponent called MARKOV, and earn real G$ from the GoodDollar UBI economy.
 
-GameArena is a competitive gaming platform on **Celo Mainnet** powered by **GoodDollar G$**. Players compete in solo skill games and Human vs AI matches against an adaptive AI agent — with real G$ stakes, weekly seasons, and on-chain proof of every play.
-
-Built as part of the **GoodBuilders Program** — expanding real G$ usage through competitive gaming.
+Live at [gamearenahq.xyz](https://gamearenahq.xyz) · public analytics at [dune.com/ogazboiz/gamearena](https://dune.com/ogazboiz/gamearena)
 
 ---
 
-## G$ Integration
+## How it works
 
-| Integration | How It Works |
-|---|---|
-| **G$ Wagering (Human vs AI)** | Wager G$ against Markov-1 AI in RPS & Coin Flip via `ArenaPlatform.sol` |
-| **G$ Wagering (Solo)** | Wager G$ on score targets in Rhythm Rush (350 pts) and Simon Memory (7 sequences) via `SoloWager.sol` — win 1.3x |
-| **GoodDollar Identity** | Face verification via Identity SDK — Sybil-resistant, no bots in wager mode |
-| **UBI Pool Fees** | 2% of every wager routes to [GoodCollective UBI Pool](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) on-chain |
-| **G$ Claim Button** | Verified UBI recipients claim daily G$ directly in the app |
-| **ERC-8004 Agent Identity** | AI agent registered on official [Celo Agent Trust Protocol](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) (Token #6386) |
+### Verified humans only
 
----
+Every player completes a one-time face-scan via GoodDollar's Identity SDK before playing for stakes. No bots, no farms, no sybil scripts. Free-play is open to anyone · wagers and prize pools are gated to verified accounts.
 
-## Architecture
+### Solo games
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                   CELO MAINNET (42220)                        │
-│                                                              │
-│  ArenaPlatform.sol      SoloWager.sol        GamePass.sol    │
-│  0x5C0eafE7834...       0xc78A8A027e0...     0xBB044d678...  │
-│  HvAI match escrow      Solo wager escrow    Soulbound NFT   │
-│                                              + on-chain scores│
-│  G$ Token               ERC-8004 Registry                    │
-│  0x62B8B11039...        0x8004A169FB4...                     │
-│                         Agent #6386                          │
-│  GoodCollective UBI Pool                                     │
-│  0x43d72Ff177...        2% fee recipient                     │
-└──────────────────────────────────────────────────────────────┘
-           ↕ wagmi / viem / ethers.js
-┌──────────────────────────────────────────────────────────────┐
-│                FRONTEND (React + Vite)                        │
-│                                                              │
-│  GamesHub.jsx    — game selection, wager, GamePass mint      │
-│  ArenaGame.jsx   — Human vs AI (Markov-1 agent)               │
-│  RhythmRush.jsx  — solo rhythm game with anti-cheat          │
-│  SimonGame.jsx   — solo memory game                          │
-│  Leaderboard.jsx — rankings, seasons, match history          │
-└──────────────────────────────────────────────────────────────┘
-           ↕ REST API
-┌──────────────────────────────────────────────────────────────┐
-│             GAMES BACKEND (Express.js + Supabase)             │
-│                                                              │
-│  POST /api/submit-score   validate → Supabase + on-chain tx  │
-│  GET  /api/leaderboard    top scores per game                │
-│  GET  /api/stats          users, seasons, prize pot           │
-│  GET  /api/seasons        weekly history + badges             │
-│  GET  /api/badges/:addr   player badges + streaks             │
-│  resolveWager()           calls SoloWager on-chain           │
-│  recordScore()            calls GamePass on-chain (tx hash)  │
-└──────────────────────────────────────────────────────────────┘
-           ↕ Markov-chain strategy
-┌──────────────────────────────────────────────────────────────┐
-│               AI AGENT (Node.js / TypeScript)                 │
-│                                                              │
-│  ArenaAgent.ts   — monitors chain for match proposals        │
-│  OpponentModel   — adaptive Markov pattern prediction        │
-│  Auto-accepts, plays, resolves matches autonomously          │
-│  Registered on ERC-8004 with verifiable on-chain identity    │
-└──────────────────────────────────────────────────────────────┘
-```
+| Game         | Goal                          | Win threshold        |
+| ------------ | ----------------------------- | -------------------- |
+| Rhythm Rush  | Tap glowing buttons in time   | Score 350+ pts       |
+| Simon Memory | Repeat color sequences        | Complete 7+ rounds   |
+
+Players wager G$ on a score target. Hit the target, win 1.3x your wager. Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
+
+### MARKOV — autonomous on-chain AI opponent
+
+MARKOV is an autonomous AI agent you can challenge 1v1 at any time. It auto-accepts your match, plays, and resolves the result · no human in the loop.
+
+| Layer    | Mechanic                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Strategy | Markov-2 chains · predicts your next move from your last two                                                                          |
+| Fairness | Hash-committed RNG · agent commits to its random seed at accept time and reveals at resolve, every match verifiable on-chain          |
+| Identity | Registered on the Celo Agent Trust Protocol (ERC-8004), Token #6386                                                                   |
+| Games    | Rock-Paper-Scissors, Coin Flip                                                                                                        |
+
+Winner takes 95% of the pot. 5% platform fee.
+
+### Events and seasonal competitions
+
+GameArena runs periodic competitions with G$ prize pools sourced from the platform, sponsors, or community-funded pots. Formats vary by event:
+
+- **Team races** — players auto-balanced into teams via soft cap, racing to a target across the period. Tiered prizes to top teams.
+- **Solo Ladders** — individual ranking competitions running alongside team events or standalone.
+- **Sponsor cups** — rare, larger-pool events (typically in USDC) funded by sponsor partners.
+- **Community-funded pots** — player-contributed prize pools, no platform money involved.
+
+Points accumulate across each event from every in-app action · games played, wager wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
 ---
 
-## Play Modes
+## Progression
 
-### Solo — Skill-Based Wagering
-- **Rhythm Rush** — tap the glowing button in time. Score 350+ pts to win 1.3x your wager
-- **Simon Memory** — repeat color sequences. Complete 7+ rounds to win 1.3x
-- Free play available — no wallet or G$ required
-- Every play recorded on-chain via GamePass contract (verifiable tx hash)
+Three independent loops run in parallel · skill, grind, and daily ritual · so players always have something to chase.
 
-### Human vs AI — Challenge Markov-1
-- Games: Rock-Paper-Scissors, Coin Flip
-- Wager any amount of G$ — AI auto-accepts and plays
-- Winner takes 95% of the pot; 5% platform fee
-- AI uses adaptive Markov-chain prediction — it learns your patterns
-- *(Player vs Player coming in a future phase)*
+### Player level and XP
 
-### Weekly Seasons
-- 7-day competitive seasons with automatic reset
-- Top 3 per game earn Gold / Silver / Bronze badges
-- Streak detection: "3-WEEK CHAMPION" for consecutive wins
-- Season history preserved permanently in database
+XP is awarded per game: `+10` base, `+25` if you beat the win threshold, `+25` for a personal best. Mission claims add `+50` to `+120` XP.
 
-### GamePass NFT
-- Soulbound (non-transferable) NFT minted on first play
-- Choose a username — shows on leaderboard instead of wallet address
-- `totalSupply()` = verifiable on-chain user count
-- Stores best scores per game on-chain
+Level curve follows the standard triangular formula · `totalXp(N) = 50·N·(N-1)`. LV 2 at 100 XP, LV 5 at 1,000, LV 10 at 4,500, LV 50 at 122,500. No cap.
 
----
+### Rank tiers
 
-## Retention & Progression Systems
+Six metallic tiers, pyramid-distributed so elite ranks stay rare:
 
-GameArena runs three independent progression loops so players always have something to chase — skill, grind, or daily ritual.
+| Rank      | Tier      |
+| --------- | --------- |
+| #1        | MASTER    |
+| #2–3      | DIAMOND   |
+| #4–6      | PLATINUM  |
+| #7–15     | GOLD      |
+| #16–50    | SILVER    |
+| #51+      | BRONZE    |
 
-### Player Level & XP
-- Every game played awards XP: `+10` base, `+25` if you beat the win threshold, `+25` for a new personal best
-- Mission claims give `+50` to `+120` XP on top
-- Level curve is the **Clash Royale / Pokémon GO standard triangular formula** — `totalXp(N) = 50·N·(N-1)`
-- LV 2 at 100 XP, LV 5 at 1,000, LV 10 at 4,500, LV 50 at 122,500
-- No cap — keeps long-term grinders engaged
+Tier is weekly-volatile · keeps competitive pressure active.
 
-### Rank Tiers (weekly, leaderboard-driven)
-6 metallic tiers pyramid-distributed like LoL / Wild Rift — elite tiers stay rare:
+### Pet evolution
 
-| Rank | Tier |
-|---|---|
-| #1 | MASTER |
-| #2–3 | DIAMOND |
-| #4–6 | PLATINUM |
-| #7–15 | GOLD |
-| #16–50 | SILVER |
-| #51+ | BRONZE |
+Every profile has a slime pet that evolves with player level · Egg → Baby → Teen → Crystal → King. Lives on the trainer card, reacts to taps.
 
-Tier is volatile (moves with weekly rankings) — keeps competitive pressure active.
+### Daily missions
 
-### Pet Evolution
-- Each player has a slime pet that evolves with their level
-- 5 stages: 🥚 Egg → 🟢 Baby Slime → 🟣 Teen Slime → 💎 Crystal Slime → 👑 King Slime
-- Pet lives on the profile trainer card, breathes + reacts to taps with speech bubbles
-- Emotional hook borrowed from Adopt Me / Tamagotchi retention playbook
+Three fresh missions every 24 hours, deterministically picked per `(wallet, date)`. Guaranteed mix · one easy, one win, one random. Same missions all day, new set tomorrow. Claim awards XP directly.
 
-### Daily Missions
-- 3 fresh missions every 24h, deterministically picked per `(wallet, date)` — same missions all day, new set tomorrow
-- 10-template pool covering play count, wins, score milestones, personal bests, multi-game days
-- Guaranteed mix: 1 easy + 1 win + 1 random → balanced difficulty curve
-- Progress updates from the existing score-submit hook (no separate calls)
-- Claim button awards XP directly
-- Built with off-chain Supabase for <100ms UX
+### Milestone achievements
 
-### Milestone Achievements
-- 13-achievement catalog: First Win, 3/7/30-day streaks, 5/25/100 games, Rhythm score milestones (300/500/700), Simon milestones (5/10/15)
-- Unlocked automatically after matching score submissions
-- Display counter `X / 13 UNLOCKED` on profile with unlocked = gold glow, locked = grayscale
-- Database schema reserves `nft_token_id` + `tx_hash` fields for future on-chain mint via `WinnerBadge.sol` (hybrid path)
+A 13-achievement catalog covering first win, 3/7/30-day streaks, 5/25/100-game thresholds, and per-game score milestones. Profile shows `X / 13 UNLOCKED`. Schema reserves `nft_token_id` and `tx_hash` fields for future on-chain minting.
 
-### Play Streak
-- Consecutive-day play counter on every player's record
-- Shown as a glowing 🔥 chip in the persistent sidebar across all post-connect pages (Duolingo pattern)
-- Displayed on leaderboard rows when streak ≥ 2 days as a status flex
+### Play streak
 
-### Backend API (all retention endpoints are off-chain Supabase)
-
-| Endpoint | Purpose |
-|---|---|
-| `GET  /api/user/:address` | Returns `xp`, `level`, `xpInLevel`, `xpToNext`, `streak`, `playedToday` |
-| `GET  /api/missions/today/:address` | Today's 3 missions with progress + seconds until midnight reset |
-| `POST /api/missions/claim` | Claim a completed mission → awards reward XP |
-| `GET  /api/achievements/:address` | Full 13-achievement catalog with unlock flag per player |
-| `GET  /api/streak/:address` | `{ streak, playedToday }` |
-| `GET  /api/badges/:address` | Seasonal gold/silver/bronze championship badges + streak labels |
-
-### Migrations
-Run these in order in Supabase SQL Editor:
-- `games-backend/migrations/2026-04-19_add_xp.sql` — adds `xp` column to `users`
-- `games-backend/migrations/2026-04-19_daily_missions.sql` — `daily_missions` table
-- `games-backend/migrations/2026-04-19_achievements.sql` — `achievements_unlocked` table
+Consecutive-day play counter on every player. Shown as a glowing 🔥 chip in the sidebar (Duolingo pattern). Displayed on leaderboard rows at 2+ days.
 
 ---
 
-## Smart Contracts
+## Smart contracts
 
-| Contract | Address | Purpose |
-|---|---|---|
-| `ArenaPlatform.sol` | [`0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) | Human vs AI match escrow |
-| `SoloWager.sol` | [`0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) | Solo wager escrow (3% dev fee, 2% UBI) |
-| `GamePass.sol` | [`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) | Soulbound NFT + on-chain scores |
-| GoodDollar G$ | [`0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A) | Wager & payout currency |
-| ERC-8004 Registry | [`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) | Agent identity (Token #6386) |
-| GoodCollective UBI | [`0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1) | 2% fee destination |
+Deployed on Celo Mainnet (chain id 42220).
 
-### GamePass Migration Note
-
-GamePass was migrated from [`0xd184E5CBEbf957624d14fAa0bfe20d6443411453`](https://celoscan.io/address/0xd184E5CBEbf957624d14fAa0bfe20d6443411453) to [`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) (v3).
-
-The reason for the migration was to make score submissions fully trustless. Previously all score transactions were submitted from the dev wallet, meaning every on-chain record appeared to come from the same address. With v3, the backend signs the verified game result using EIP-712 and the player submits the transaction themselves from their own wallet. This means every score on-chain is directly tied to the player's address and verifiable by anyone.
-
-All existing GamePass holders from the old contract were automatically migrated to v3. No action needed from existing players. New players will mint directly on v3 — it is free.
+| Contract             | Address                                                                                                                   | Purpose                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
+| `SoloWager.sol`      | [`0xc78A8A027e0...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb)                              | Solo wager escrow                        |
+| `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
+| GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | Wager and payout currency                |
+| ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | 2% wager-fee destination                 |
 
 ---
 
-## G$ Token Economics
+## G$ economics
 
-| Event | You (Dev) | UBI Pool | Player |
-|---|---|---|---|
-| Player wins solo wager | 3% dev fee | 2% of payout | Gets 1.3x minus fees |
-| Player loses solo wager | 3% dev fee + treasury keeps wager | 2% | Loses wager |
-| Player wins vs AI | 5% platform fee | — | Gets 95% of pot |
-| Player loses vs AI | 5% platform fee | — | Loses wager |
-| UBI recipient plays | — | — | Can claim daily G$ in-app |
+| Event                | Player                       | UBI Pool | Platform                            |
+| -------------------- | ---------------------------- | -------- | ----------------------------------- |
+| Solo wager win       | Gets 1.3x minus fees         | 2%       | 3% dev fee                          |
+| Solo wager loss      | Loses wager                  | 2%       | 3% dev fee + treasury keeps wager   |
+| MARKOV match win     | Gets 95% of the pot          | —        | 5% platform fee                     |
+| MARKOV match loss    | Loses wager                  | —        | 5% platform fee                     |
+| Daily UBI claim      | Verified players claim daily | —        | —                                   |
 
-Every wager contributes to both platform revenue and the GoodDollar UBI pool.
+Every wager contributes to platform revenue and the GoodDollar UBI pool simultaneously.
 
 ---
 
-## Quick Start
+## MiniPay
 
-### 1. Frontend
+GameArena runs natively inside Opera MiniPay. MiniPay users auto-connect via the injected provider · no extra setup, no wallet extension. Fees are paid in USDC / USDT / USDm. No CELO required.
+
+---
+
+## Tech stack
+
+| Layer            | Technology                                                  |
+| ---------------- | ----------------------------------------------------------- |
+| Frontend         | Next.js 16 (App Router), React 19, wagmi v3, viem v2        |
+| Smart contracts  | Solidity, Foundry, OpenZeppelin                             |
+| Backend          | Express.js + ethers.js v6, Supabase (PostgreSQL)            |
+| Identity         | GoodDollar Identity SDK + ERC-8004 Agent Trust Protocol     |
+| AI agent         | TypeScript · Markov-2 chains · hash-committed RNG           |
+| Auth             | Privy (email, social, embedded wallets)                     |
+| Chain            | Celo Mainnet (chain id 42220)                               |
+
+---
+
+## Running locally
+
 ```bash
 cd frontend
+cp .env.local.example .env.local   # fill in your keys
 npm install
-npm run dev        # http://localhost:3000
+npm run dev
 ```
 
-### 2. Games Backend
+In separate terminals:
+
 ```bash
-cd games-backend
-npm install
-node server.js     # http://localhost:3005
+cd games-backend && npm install && node server.js   # http://localhost:3005
+cd agent && npm install && npm start                # MARKOV agent
 ```
 
-### 3. AI Agent
-```bash
-cd agent
-npm install
-npm start          # monitors Celo for match proposals
-```
-
-### 4. Deploy Contracts (if needed)
-```bash
-cd contracts
-forge build
-forge script script/DeploySoloWager.s.sol \
-  --rpc-url https://forno.celo.org \
-  --broadcast --account deployer
-```
+Required environment variables: Privy app id, Supabase URL + anon key, contract addresses (Celo Mainnet), validator private key for the backend. See each subdirectory's `.env.example`.
 
 ---
 
-## Environment Variables
-
-### Frontend (`frontend/.env.local`)
-```bash
-# Privy
-NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
-PRIVY_APP_SECRET=<your privy app secret>
-
-# Backend
-NEXT_PUBLIC_BACKEND_URL=http://localhost:3005
-BACKEND_URL=http://localhost:3005
-INTERNAL_SECRET=<shared secret with backend>
-
-# Contracts (Celo Mainnet)
-NEXT_PUBLIC_ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
-NEXT_PUBLIC_SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
-NEXT_PUBLIC_GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
-NEXT_PUBLIC_G_TOKEN_ADDRESS=0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A
-NEXT_PUBLIC_AI_AGENT_ADDRESS=0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1
-NEXT_PUBLIC_ERC8004_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
-NEXT_PUBLIC_AGENT_TOKEN_ID=6386
-```
-
-### Games Backend (`games-backend/.env`)
-```bash
-PORT=3005
-CELO_RPC_URL=https://forno.celo.org
-SOLO_WAGER_ADDRESS=0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb
-GAME_PASS_ADDRESS=0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE
-ARENA_PLATFORM_ADDRESS=0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE
-VALIDATOR_PRIVATE_KEY=<your validator private key>
-INTERNAL_SECRET=<shared secret with frontend>
-ALLOWED_ORIGINS=http://localhost:3000
-SUPABASE_URL=<your supabase url>
-SUPABASE_ANON_KEY=<your supabase anon key>
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Blockchain | Celo Mainnet |
-| Smart Contracts | Solidity, Foundry, OpenZeppelin v4 |
-| Frontend | Next.js 15 (App Router), wagmi, viem |
-| Backend | Express.js, ethers.js v6 |
-| Database | Supabase (PostgreSQL) |
-| Identity | GoodDollar Identity SDK, ERC-8004 |
-| AI Agent | TypeScript, Markov chains |
-| Wallet | WalletConnect (Reown), Web3Auth |
-
----
-
-## Project Structure
-
-| Directory | Description | Docs |
-|---|---|---|
-| [`frontend/`](frontend/) | React + Vite — game UI, wallet, wager flow | [Frontend README](frontend/README.md) |
-| [`games-backend/`](games-backend/) | Express.js + Supabase — scores, seasons, on-chain resolver | [Backend .env.example](games-backend/.env.example) |
-| [`contracts/`](contracts/) | Foundry / Solidity — ArenaPlatform, SoloWager, GamePass | [Contracts README](contracts/README.md) |
-| [`agent/`](agent/) | TypeScript AI agent — Markov-chain opponent | — |
+## Project structure
 
 ```
 GameArenaCelo-/
-├── frontend/                    React + Vite
-│   └── src/
-│       ├── pages/
-│       │   ├── ArenaGame.jsx         PvP arena vs AI
-│       │   ├── GamesHub.jsx          Solo games hub
-│       │   ├── RhythmRush.jsx        Rhythm game
-│       │   ├── SimonGame.jsx         Memory game
-│       │   └── Leaderboard.jsx       Rankings + seasons + PvP
-│       ├── components/
-│       │   └── LandingOverlay.jsx    Splash screen
-│       ├── contexts/
-│       │   └── SelfVerificationContext.jsx
-│       └── config/
-│           └── contracts.js          Addresses + ABIs
-├── games-backend/               Express.js + Supabase
-│   └── server.js
-├── agent/                       AI agent
-│   └── ArenaAgent.ts
-└── contracts/                   Foundry / Solidity
-    └── src/
-        ├── ArenaPlatform.sol         PvP escrow
-        ├── SoloWager.sol             Solo wager (3% dev + 2% UBI)
-        └── GamePass.sol              Soulbound NFT + scores
+  contracts/        Solidity sources — ArenaPlatform, SoloWager, GamePass
+  frontend/         Next.js 16 — game UI, wallet, wager flow
+  games-backend/    Express + Supabase — scores, seasons, on-chain resolver
+  agent/            MARKOV agent — Markov-2 chains, hash-committed RNG
+  scripts/          Deployment + utility scripts
+  subgraph/         The Graph indexing (optional)
 ```
 
 ---
 
-## GoodBuilders Program
+## Public analytics
 
-GameArena participates in **GoodBuilders** — GoodDollar's grant program for projects building meaningful G$ usage.
-
-**Our integrations:**
-- G$ wagering with real economic flow (solo + PvP)
-- GoodDollar Identity SDK for Sybil resistance
-- 2% of all wager activity routed to GoodCollective UBI Pool
-- G$ claim button for verified UBI recipients
-- AI agent registered on ERC-8004 Agent Trust Protocol
-- Open source, deployed on Celo Mainnet
+All player counts, game volume, and contract activity are queryable live via [dune.com/ogazboiz/gamearena](https://dune.com/ogazboiz/gamearena). The chain is the source of truth · no proprietary metrics, no off-chain accounting.
 
 ---
 
----
-
-## Roadmap
-
-### Phase 2: Player-Signed Score Transactions (Anti-Cheat) ✅ (shipped — GamePass v3)
-
-#### 2b — Player-Signed Score Transactions (Solo Games) ✅
-Previously the backend wallet submitted score transactions on-chain (players couldn't fake scores, but all txs appeared from the dev address).
-
-**Shipped:**
-- **Backend** signs verified game result via EIP-712: `sign(playerAddress + score + gameType + nonce)`
-- **Frontend** calls `/api/sign-score`, then `writeContractAsync` with `recordScoreWithBackendSig()` — player submits and pays their own gas
-- **Contract** verifies `ecrecover(hash, sig) == trustedSigner` before recording score
-- **GamePass v3** (`0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE`) deployed with signature verification
-
-Every on-chain score tx now comes from the actual player's wallet. Scores can't be faked without the backend EIP-712 signature.
-
-#### 2a — Signed Dice Oracle (Arena) — dropped
-Dice Roll was removed from Arena (game simplified to RPS + Coin Flip). Dice oracle is no longer needed.
-
-### Phase 3: MiniPay Full Integration ✅ (shipped on `feat/minipay`)
-- Auto-connect injected wallet when inside MiniPay
-- Stablecoin balance display (USDm / cUSD) in account modal for MiniPay users
-- Hide CELO gas faucet for MiniPay users (they pay gas in USDm natively)
-
-### Phase 4: On-Chain Weekly Seasons
-Currently `GamePass.sol` only stores a player's **all-time best score** — it never resets. When a new week starts the contract still shows last week's best, so Supabase is used to track weekly competition separately.
-
-The upgrade changes the contract to store scores **per season**:
-
-```solidity
-// Current (all-time best only)
-mapping(address => uint256) public bestScore;
-
-// Phase 4 (score per week per player)
-mapping(uint256 season => mapping(address => uint256)) public weeklyScores;
-
-function currentSeason() public view returns (uint256) {
-    return block.timestamp / 7 days; // auto-resets every week, no admin needed
-}
-```
-
-- Week 1 scores at `weeklyScores[1][player]`, week 2 at `weeklyScores[2][player]`, etc.
-- Any past season queryable directly from the chain
-- Supabase becomes optional (cache for speed) — not the source of truth
-- Badges and season history fully verifiable on-chain
-
-> This makes GameArena fully trustless — competitive integrity enforced by the contract, not the backend.
-
-### Phase 5: Player vs Player (True PvP)
-Currently players can only challenge the Markov-1 AI. The upgrade introduces real human vs human matches:
-
-- Players create a match and stake G$ — another player accepts
-- Smart contract holds escrow, winner takes the pot
-- GoodDollar Identity required for both players — no bots on either side
-- Matchmaking lobby: open challenges, private matches, stake size filtering
-- All match results recorded on-chain
-
-> Turns GameArena into a full esports protocol — same Sybil-resistant, UBI-funding loop but between real humans.
-
----
-
-*Open source. Built on Celo. Powered by GoodDollar G$.*
+*Built on Celo. Powered by GoodDollar G$. Verified humans only.*
