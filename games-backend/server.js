@@ -969,6 +969,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
 
     const physics = rhythmPhysicsCheck(tapLog, sessionElapsedMs);
     if (!physics.ok) {
+      console.warn(`[rhythm] Physics check rejected ${playerAddress}: ${physics.reason} · ${tapLog.length} taps, ${sessionElapsedMs}ms session`);
       return res.status(403).json({ error: 'Physics check failed', reason: physics.reason });
     }
 
@@ -976,6 +977,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
 
     const jitter = rhythmJitterCheck(replay.hits);
     if (!jitter.ok) {
+      console.warn(`[rhythm] Jitter check rejected ${playerAddress}: ${jitter.reason} · ${replay.hits.length} hits`);
       return res.status(403).json({ error: 'Jitter check failed', reason: jitter.reason });
     }
 
