@@ -81,11 +81,15 @@ function physicsCheck(tapLog, elapsedMs) {
     return { ok: false, reason: 'Session too long' };
   }
 
-  // Inter-tap gap — humans cap at ~10 taps/sec, anything below 30ms is bot
+  // Inter-tap gap — only enforce on SAME-LANE consecutive taps. Two-finger
+  // mobile play legitimately fires cross-lane touch events 10-25ms apart;
+  // the sustained-rate gate below still catches real bot patterns.
   for (let i = 1; i < tapLog.length; i++) {
     const gap = tapLog[i].time - tapLog[i - 1].time;
     if (gap < 0) return { ok: false, reason: 'Tap log out of order' };
-    if (gap < 0.030) return { ok: false, reason: 'Taps too fast for human' };
+    if (tapLog[i].lane === tapLog[i - 1].lane && gap < 0.030) {
+      return { ok: false, reason: 'Taps too fast for human' };
+    }
   }
 
   // Sustained APM — no sliding 1-second window can have more than 12 taps
