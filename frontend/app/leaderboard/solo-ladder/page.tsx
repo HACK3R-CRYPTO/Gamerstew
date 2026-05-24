@@ -69,11 +69,11 @@ function avatarUrl(wallet: string, username?: string | null): string {
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
 }
 
-// Per-row stats line. Labels match the chip strip on the formula card
-// so a player can map "5 wager wins" in their stats line to the
-// "+15 Wager win" chip without confusion. Refs + streak always render
-// (even at zero) so the column is visible to everyone — without that,
-// nobody sees the referral metric until someone actually has one.
+// Per-row stats line — kept commented out so we can restore the
+// "X games · Y wager wins · …" subtitle if we ever bring back the
+// noisy version of the row. Streak now renders as an inline chip
+// instead (see LadderRow).
+/*
 function statsLine(games?: number, wins?: number, claims?: number, refs?: number, streak?: number): string {
   const parts: string[] = [];
   if (games && games > 0) parts.push(`${games} game${games === 1 ? "" : "s"}`);
@@ -83,6 +83,7 @@ function statsLine(games?: number, wins?: number, claims?: number, refs?: number
   parts.push(`${streak ?? 0}-day streak`);
   return parts.join(" · ");
 }
+*/
 
 // Medal slot — bigger gold/silver/bronze badge for top 3, soft `#N` text
 // for 4+. Mirrors the existing GameArena leaderboard's row anatomy so
@@ -152,7 +153,6 @@ function LadderRow({
   refs?: number;
   streak?: number;
 }) {
-  const stats = statsLine(games, wins, claims, refs, streak);
   // Same canonical seed format as /profile so the avatar matches across
   // the app — wallet always feeds in so empty username still resolves.
   const displayName = isMe ? "YOU" : (username || shortAddr(wallet));
@@ -180,26 +180,30 @@ function LadderRow({
         <img src={avatarUrl(wallet, username)} alt="" width={44} height={44}
           style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
+      <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: "8px" }}>
+        <span style={{
           color: isMe ? "#c4b5fd" : "white",
           fontSize: "16px", fontWeight: 900, lineHeight: 1.1,
           fontFamily: nameFont,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           textShadow: isMe ? "0 0 8px rgba(167,139,250,0.5)" : "none",
           letterSpacing: "0.01em",
-        }}>{displayName}</div>
-        {/* Stats subtitle hidden — uncomment to restore the "X games · Y claims · …" line under each name.
-        {stats && (
-          <div style={{
-            color: "rgba(220,210,255,0.55)",
-            fontSize: "11px", fontWeight: 700, lineHeight: 1.2,
-            marginTop: "3px",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          minWidth: 0,
+        }}>{displayName}</span>
+        {/* Streak chip — only metric we surface on the row. Color escalates
+            with streak length (Duolingo pattern): soft orange → bright orange
+            → gold-with-glow. Hidden at streak 0 so non-streakers stay clean.
+            Inline beside the username · flexShrink: 0 keeps it visible even
+            when long usernames truncate. */}
+        {typeof streak === "number" && streak >= 1 && (
+          <span style={{
+            flexShrink: 0,
+            color: streak >= 7 ? "#fbbf24" : streak >= 3 ? "#f97316" : "#fb923c",
+            fontSize: "12px", fontWeight: 800,
             letterSpacing: "0.02em",
-          }}>{stats}</div>
+            textShadow: streak >= 7 ? "0 0 6px rgba(251,191,36,0.4)" : "none",
+          }}>🔥 {streak}</span>
         )}
-        */}
       </div>
       <div style={{
         flexShrink: 0,
@@ -257,12 +261,14 @@ export default function SoloLadderPage() {
 
   const ladder = useMemo<SoloRow[]>(() => (lb?.soloLadder ?? lb?.soloTop10 ?? []), [lb]);
 
-  // YOUR POSITION stats — pulled from the per-user breakdown.
-  const myGames = me?.soloBreakdown?.game_played?.count ?? 0;
-  const myWins = me?.soloBreakdown?.wager_won?.count ?? 0;
-  const myClaims = me?.soloBreakdown?.daily_claim?.count ?? 0;
-  const myRefs = me?.referralCount ?? 0;
-  const myStats = statsLine(myGames, myWins, myClaims, myRefs);
+  // YOUR POSITION stats — kept commented out so we can restore the full
+  // subtitle if the noisy version comes back. Only streak renders now,
+  // inline beside the username (same treatment as the ladder rows).
+  // const myGames = me?.soloBreakdown?.game_played?.count ?? 0;
+  // const myWins = me?.soloBreakdown?.wager_won?.count ?? 0;
+  // const myClaims = me?.soloBreakdown?.daily_claim?.count ?? 0;
+  // const myRefs = me?.referralCount ?? 0;
+  const myStreak = me?.soloBreakdown?.active_day?.count ?? 0;
   const myRank = me?.soloRank ?? null;
   const myPoints = me?.soloPoints ?? 0;
   const myUsername = me?.username ?? null;
@@ -381,21 +387,24 @@ export default function SoloLadderPage() {
                 />
               </div>
 
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: "8px" }}>
+                <span style={{
                   color: "#c4b5fd",
                   fontSize: "16px", fontWeight: 900, lineHeight: 1.1,
                   fontFamily: myUsername ? "system-ui, -apple-system, sans-serif" : "monospace",
                   textShadow: "0 0 8px rgba(167,139,250,0.5)",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   letterSpacing: "0.01em",
-                }}>{myUsername || shortAddr(address)}</div>
-                {myStats && (
-                  <div style={{
-                    color: "rgba(220,210,255,0.55)",
-                    fontSize: "11px", fontWeight: 700, marginTop: "4px",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>{myStats}</div>
+                  minWidth: 0,
+                }}>{myUsername || shortAddr(address)}</span>
+                {myStreak >= 1 && (
+                  <span style={{
+                    flexShrink: 0,
+                    color: myStreak >= 7 ? "#fbbf24" : myStreak >= 3 ? "#f97316" : "#fb923c",
+                    fontSize: "12px", fontWeight: 800,
+                    textShadow: myStreak >= 7 ? "0 0 6px rgba(251,191,36,0.4)" : "none",
+                    letterSpacing: "0.02em",
+                  }}>🔥 {myStreak}</span>
                 )}
               </div>
 
