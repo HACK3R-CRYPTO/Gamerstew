@@ -943,9 +943,10 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
   }
 
   const sessionElapsedMs = Date.now() - new Date(session.started_at).getTime();
-  // Session expiry: 10 minutes. Plenty for encore survivors, blocks
-  // long-wait cap-inflation attacks.
-  if (sessionElapsedMs > 10 * 60 * 1000) {
+  // Session expiry: 11 minutes. Simon's in-game timer hard-stops the run at
+  // exactly 10 minutes, so 11 gives a 60-second safety margin for the score
+  // submit network call to land. Still blocks long-wait cap-inflation attacks.
+  if (sessionElapsedMs > 11 * 60 * 1000) {
     return res.status(403).json({ error: 'Session expired' });
   }
   // Min duration: 5 seconds. Shorter than the 30s I considered earlier
@@ -1113,7 +1114,7 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
         return res.status(403).json({ error: 'Cheating detected: Speed hack' });
       }
 
-      if (actualElapsed > 10 * 60 * 1000) {
+      if (actualElapsed > 11 * 60 * 1000) {
         return res.status(403).json({ error: 'Session expired' });
       }
     } catch (e) {

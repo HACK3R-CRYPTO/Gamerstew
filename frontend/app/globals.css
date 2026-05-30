@@ -111,6 +111,14 @@ button[aria-label$="button"],
   50%      { opacity: 1;    }
 }
 
+/* Simon timer · final-10-second urgency. Scales the chip slightly to draw
+   the eye without taking over the screen — the player is mid-tap and can't
+   afford to be visually mugged. */
+@keyframes simon-timer-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1;   }
+  50%      { transform: scale(1.08); opacity: 0.7; }
+}
+
 /* Pet evolution celebration — bigger, longer than level-up because
    evolutions are rare (5 total across the whole pet progression). */
 
