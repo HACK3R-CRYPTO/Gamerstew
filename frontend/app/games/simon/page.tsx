@@ -46,6 +46,13 @@ const MIN_DELAY  = 350;   // ms — floor on gap
 const BASE_SCORE = 10;    // points per cleared round
 const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
 
+// ─── Hard time limit ─────────────────────────────────────────────────────────
+// 10 minutes per run. Visible countdown in the HUD, game ends cleanly at 0
+// so the score always submits inside the backend session window (11 min TTL).
+// Turns Simon from open-ended memory into memory-under-pressure — deep rounds
+// must be cleared faster as the clock burns down.
+const GAME_DURATION_MS = 10 * 60 * 1000;
+
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -117,6 +124,11 @@ export default function SimonGamePage() {
   // webview. Mobile gets slimmer shadows; desktop keeps the full drama.
   const isMobile = useIsMobile();
   const [phase, setPhase] = useState<Phase>("idle");
+
+  // Hard time limit · 10-minute countdown visible in HUD.
+  // Game ends automatically when this hits 0 so the score always submits
+  // inside the backend session TTL (no more "Session expired" at minute 10).
+  const [timeLeftMs, setTimeLeftMs] = useState(GAME_DURATION_MS);
 
   // User audio preferences (same pattern as rhythm page)
   const audioSettings = useAudioSettings();
@@ -576,6 +588,7 @@ export default function SimonGamePage() {
     setScore(0);
     setSequences(0);
     setTappedCount(0);
+    setTimeLeftMs(GAME_DURATION_MS);
     setBonusUnlocked(false);
     setActiveBtn(null);
     setRoundFlash(null);
@@ -627,6 +640,27 @@ export default function SimonGamePage() {
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
   }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken]);
+
+  // ─── Hard 10-minute timer ─────────────────────────────────────────────────
+  // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
+  // pauses for sequence-flashes don't desync the countdown. At 0, ends the
+  // run with the current score (same path as a miss · handleGameOver replays
+  // the score-submit dance). Cleanup on phase change so we don't leak intervals.
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "showing") return;
+    const tick = () => {
+      const remaining = GAME_DURATION_MS - (Date.now() - startTimeRef.current);
+      if (remaining <= 0) {
+        setTimeLeftMs(0);
+        handleGameOver(scoreRef.current, GAME_DURATION_MS);
+        return;
+      }
+      setTimeLeftMs(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [phase, handleGameOver]);
 
   // Countdown ticks (same pattern as rhythm)
   useEffect(() => {
@@ -721,6 +755,7 @@ export default function SimonGamePage() {
           tappedCount={tappedCount}
           totalInRound={Math.max(1, sequences + 1)}
           isMobile={isMobile}
+          timeLeftMs={timeLeftMs}
           onButtonClick={handleButtonClick}
           onQuit={() => handleGameOver(scoreRef.current, Date.now() - startTimeRef.current)}
         />
@@ -999,7 +1034,7 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
 // Bottom: SCORE chip + progress dots showing taps remaining this round.
 function PlayingView({
   score, round, bonusUnlocked, activeBtn, isShowingSequence, roundFlash,
-  pet, petEvent, tappedCount, totalInRound, isMobile, onButtonClick, onQuit,
+  pet, petEvent, tappedCount, totalInRound, isMobile, timeLeftMs, onButtonClick, onQuit,
 }: {
   score: number;
   round: number;
@@ -1012,11 +1047,27 @@ function PlayingView({
   tappedCount: number;
   totalInRound: number;
   isMobile: boolean;
+  timeLeftMs: number;
   onButtonClick: (id: string) => void;
   onQuit: () => void;
 }) {
   const statusLabel = isShowingSequence ? "WATCH" : "YOUR TURN";
   const statusColor = isShowingSequence ? "#fbbf24" : "#67e8f9";
+
+  // Timer display · MM:SS countdown with color escalation as time burns down.
+  // > 1 min · white (calm), 1 min - 30s · yellow (warning), < 30s · red (critical),
+  // < 10s · pulsing red (do something). Always renders so deep-round players can
+  // pace themselves visually instead of guessing.
+  const totalSecLeft = Math.max(0, Math.ceil(timeLeftMs / 1000));
+  const mm = Math.floor(totalSecLeft / 60);
+  const ss = totalSecLeft % 60;
+  const timeStr = `${mm}:${ss.toString().padStart(2, "0")}`;
+  const timerColor =
+    totalSecLeft <= 10 ? "#ef4444" :
+    totalSecLeft <= 30 ? "#ef4444" :
+    totalSecLeft <= 60 ? "#fbbf24" :
+    "rgba(220,210,255,0.9)";
+  const timerPulse = totalSecLeft <= 10;
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
@@ -1041,6 +1092,32 @@ function PlayingView({
           </svg>
           QUIT
         </button>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Timer chip — visible countdown, colour escalates as time burns down */}
+        <div style={{
+          flexShrink: 0,
+          padding: "7px 14px", borderRadius: "999px",
+          background: totalSecLeft <= 30
+            ? "linear-gradient(180deg, rgba(239,68,68,0.18) 0%, rgba(239,68,68,0.08) 100%)"
+            : totalSecLeft <= 60
+              ? "linear-gradient(180deg, rgba(251,191,36,0.16) 0%, rgba(251,191,36,0.06) 100%)"
+              : "linear-gradient(180deg, rgba(167,139,250,0.14) 0%, rgba(167,139,250,0.05) 100%)",
+          border: `1.5px solid ${timerColor}66`,
+          display: "flex", alignItems: "center", gap: "6px",
+          boxShadow: `0 0 14px ${timerColor}33`,
+          animation: timerPulse ? "simon-timer-pulse 0.8s ease-in-out infinite" : undefined,
+        }}>
+          <span style={{
+            color: "rgba(200,180,255,0.55)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em",
+          }}>TIME</span>
+          <span style={{
+            color: timerColor, fontSize: "15px", fontWeight: 900, lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
+            textShadow: totalSecLeft <= 30 ? `0 0 10px ${timerColor}cc` : `0 0 8px ${timerColor}55`,
+          }}>{timeStr}</span>
+        </div>
 
         <div style={{ flex: 1 }} />
 
