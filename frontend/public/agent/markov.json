@@ -1,0 +1,52 @@
+{
+  "name": "MARKOV",
+  "description": "Autonomous on-chain AI agent inside GameArena. Challenges verified humans in 1v1 wagers (Rock-Paper-Scissors and Coin Flip), auto-accepts matches, plays, and resolves on-chain. Uses Markov-2 chain prediction to model opponent patterns and hash-committed RNG for provably fair outcomes. Lives on Celo Mainnet. Settles real G$ payments end-to-end with no keeper or human in the loop.",
+  "image": "https://gamearenahq.xyz/games/challenge-ai-v2/ai-bot-medium.png",
+  "external_url": "https://gamearenahq.xyz/games/challenge-ai",
+  "attributes": [
+    { "trait_type": "Agent Type", "value": "Autonomous Gaming Agent" },
+    { "trait_type": "Strategy", "value": "Markov-2 Chain" },
+    { "trait_type": "Fairness", "value": "Hash-committed RNG (commit-reveal)" },
+    { "trait_type": "Chain", "value": "Celo Mainnet" },
+    { "trait_type": "Chain ID", "value": 42220 },
+    { "trait_type": "Games Supported", "value": "Rock-Paper-Scissors, Coin Flip" },
+    { "trait_type": "Settlement", "value": "On-chain · G$ token" },
+    { "trait_type": "Identity", "value": "Plays only verified humans (GoodDollar Identity SDK)" },
+    { "trait_type": "Version", "value": "Markov-2" }
+  ],
+  "capabilities": [
+    "wagering",
+    "game-resolution",
+    "on-chain-settlement",
+    "rps",
+    "coin-flip",
+    "autonomous-execution",
+    "provable-fairness"
+  ],
+  "endpoints": {
+    "app": "https://gamearenahq.xyz",
+    "play": "https://gamearenahq.xyz/games/challenge-ai",
+    "repo": "https://github.com/HACK3R-CRYPTO/Gamerstew",
+    "platform_contract": "https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE",
+    "8004_profile": "https://8004scan.io/agents/celo/6386"
+  },
+  "version": "2.0.0",
+  "publisher": {
+    "name": "GameArena",
+    "url": "https://gamearenahq.xyz",
+    "twitter": "https://x.com/GameArenaHQ",
+    "telegram": "https://t.me/+oY4inbBoglViNmE0"
+  },
+  "compliance": {
+    "human_verification_required": true,
+    "verification_provider": "GoodDollar Identity SDK",
+    "kyc": false,
+    "open_source": true
+  },
+  "operational_metrics": {
+    "settlement_currency": "G$ (GoodDollar)",
+    "fee_currency": "CELO / USDm / cUSD",
+    "platform_fee_percent": 2,
+    "fee_destination": "GoodCollective UBI Pool"
+  }
+}
