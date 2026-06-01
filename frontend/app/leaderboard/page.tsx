@@ -560,11 +560,33 @@ function LeaderboardInner() {
     prizes: { first: number; second: number; third: number };
     winners: { rank: number; wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number }[];
   };
+  // Frozen Team-Wars + Solo-Ladder seasons. Sealed by the seal_season_v1()
+  // RPC when ends_at passes, immutable thereafter. Renders inside Completed
+  // Events alongside the legacy challenge + competition card types.
+  type PastSeasonV1 = {
+    season_id: number;
+    sealed_at: string;
+    starts_at: string;
+    ends_at: string;
+    standings: {
+      teams: { team: "alpha" | "nova" | "pulse"; counted: number; players: number; qualifiers: number }[];
+      soloTop10: { rank: number; wallet: string; username: string | null; points: number; streak?: number }[];
+    };
+    prize_winners: {
+      closing_surprise?: {
+        wallet: string;
+        username?: string | null;
+        amount_usdc?: number;
+        tx_hash?: string;
+      };
+    };
+  };
   type SelectedEvent =
     | { type: "challenge"; data: PastChallenge }
     | { type: "competition"; data: PastCompetition };
   const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
   const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
+  const [pastSeasonsV1, setPastSeasonsV1] = useState<PastSeasonV1[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
 
   // Season 1 — Team Wars + Solo Ladder. Lives inside the seasons tab so
@@ -603,6 +625,12 @@ function LeaderboardInner() {
       .then(r => r.json())
       .then(d => setPastCompetitions(d.competitions || []))
       .catch(() => setPastCompetitions([]));
+    // Past Season 1-style events (Team Wars + Solo Ladder). Lives on the Next.js
+    // side, not Railway — reads season_v1_results directly from Supabase.
+    fetch("/api/season/past", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setPastSeasonsV1(d.seasons || []))
+      .catch(() => setPastSeasonsV1([]));
     const wUrl = address
       ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address}`
       : `${BACKEND_URL}/api/weekly-challenge`;
@@ -2554,7 +2582,7 @@ function LeaderboardInner() {
                 )}
 
                 {/* ── COMPLETED EVENTS — grid cards matching Completed Seasons style ── */}
-                {(pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                {(pastChallenges.length > 0 || pastCompetitions.length > 0 || pastSeasonsV1.length > 0) && (
                   <div>
                     <div style={{
                       fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
@@ -2562,6 +2590,66 @@ function LeaderboardInner() {
                       textShadow: "0 0 14px rgba(251,191,36,0.6)", marginBottom: "12px",
                     }}>── COMPLETED EVENTS ──</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px" }}>
+                      {/* Past Team-Wars + Solo-Ladder seasons (newest first) */}
+                      {pastSeasonsV1.map(s => {
+                        const teamWinner = s.standings.teams[0];
+                        const soloWinner = s.standings.soloTop10[0];
+                        const closing = s.prize_winners.closing_surprise;
+                        const teamLabel = teamWinner ? teamWinner.team.toUpperCase() : "—";
+                        const teamColor =
+                          teamWinner?.team === "alpha" ? "#fb923c" :
+                          teamWinner?.team === "nova"  ? "#67e8f9" :
+                          teamWinner?.team === "pulse" ? "#a78bfa" : "#fbbf24";
+                        return (
+                          <div key={`season-${s.season_id}`}
+                            style={{
+                              borderRadius: "14px",
+                              background: "rgba(20,10,50,0.6)",
+                              border: "1px solid rgba(167,139,250,0.28)",
+                              boxShadow: "0 6px 14px rgba(0,0,0,0.5)",
+                              padding: "12px 14px", userSelect: "none",
+                            }}>
+                            <div style={{ color: "#c4b5fd", fontSize: "12px", fontWeight: 900, letterSpacing: "0.05em", marginBottom: "8px" }}>
+                              SEASON {s.season_id} · TEAM WARS
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: `${teamColor}14`, border: `1px solid ${teamColor}55`, marginBottom: "6px" }}>
+                              <span style={{ fontSize: "13px" }}>🏆</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>TEAM WINNER</div>
+                                <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{teamLabel}</div>
+                              </div>
+                              <div style={{ color: teamColor, fontSize: "12px", fontWeight: 900 }}>{teamWinner?.counted ?? 0}</div>
+                            </div>
+                            {soloWinner && (
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", marginBottom: "6px" }}>
+                                <span style={{ fontSize: "13px" }}>🥇</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>SOLO #1</div>
+                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {soloWinner.username || `${soloWinner.wallet.slice(0, 4)}…${soloWinner.wallet.slice(-3)}`}
+                                  </div>
+                                </div>
+                                <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900 }}>{soloWinner.points}</div>
+                              </div>
+                            )}
+                            {closing && (
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", marginBottom: "6px" }}>
+                                <span style={{ fontSize: "13px" }}>🎁</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ color: "rgba(187,247,208,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>CLOSING SURPRISE</div>
+                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {closing.username || `${closing.wallet.slice(0, 4)}…${closing.wallet.slice(-3)}`}
+                                  </div>
+                                </div>
+                                <div style={{ color: "#22c55e", fontSize: "11px", fontWeight: 900 }}>${closing.amount_usdc ?? 10}</div>
+                              </div>
+                            )}
+                            <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700, marginTop: "4px" }}>
+                              {new Date(s.starts_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })} → {new Date(s.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                            </div>
+                          </div>
+                        );
+                      })}
                       {pastCompetitions.map(comp => {
                         const winner = comp.winners[0];
                         const myFinish = address ? (comp.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
