@@ -6,6 +6,11 @@
   "external_url": "https://gamearenahq.xyz/games/challenge-ai",
   "services": [
     {
+      "name": "A2A",
+      "endpoint": "https://gamearenahq.xyz/.well-known/agent-card.json",
+      "version": "0.3.0"
+    },
+    {
       "name": "web",
       "endpoint": "https://gamearenahq.xyz"
     },
