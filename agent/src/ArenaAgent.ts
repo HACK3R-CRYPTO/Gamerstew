@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
 import { MoltbookService } from './services/MoltbookService.js';
+import { attestMatchCompleted } from './feedbackOracle.js';
 
 dotenv.config();
 dotenv.config({ path: '../contracts/.env' });
@@ -1101,6 +1102,16 @@ async function tryResolveMatch(matchId: bigint, m: any) {
         }
         agentModes.delete(matchIdStr);
         moveSeeder.forget(matchId);
+
+        // ERC-8004 reputation hook. Fire-and-forget · attests the resolved
+        // match to MARKOV's record in the official Feedback Registry on
+        // Celo. Builds the agent's on-chain reputation in real time as
+        // matches happen, surfaced on 8004scan.io/agents/celo/6386.
+        attestMatchCompleted({
+            matchId,
+            gameType: m.gameType,
+            outcome: outcome.isTie ? 'tie' : (outcome.winner.toLowerCase() === account.address.toLowerCase() ? 'markov' : 'player'),
+        });
 
         // Season 1 Solo Ladder hook. Award the challenger 10 points for
         // playing a match, plus 20 bonus points if they won the wager.
