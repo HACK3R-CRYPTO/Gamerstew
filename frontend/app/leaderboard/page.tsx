@@ -583,7 +583,8 @@ function LeaderboardInner() {
   };
   type SelectedEvent =
     | { type: "challenge"; data: PastChallenge }
-    | { type: "competition"; data: PastCompetition };
+    | { type: "competition"; data: PastCompetition }
+    | { type: "season"; data: PastSeasonV1 };
   const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
   const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
   const [pastSeasonsV1, setPastSeasonsV1] = useState<PastSeasonV1[]>([]);
@@ -2602,13 +2603,19 @@ function LeaderboardInner() {
                           teamWinner?.team === "pulse" ? "#a78bfa" : "#fbbf24";
                         return (
                           <div key={`season-${s.season_id}`}
+                            role="button" tabIndex={0}
+                            onClick={() => setSelectedEvent({ type: "season", data: s })}
                             style={{
                               borderRadius: "14px",
                               background: "rgba(20,10,50,0.6)",
                               border: "1px solid rgba(167,139,250,0.28)",
                               boxShadow: "0 6px 14px rgba(0,0,0,0.5)",
-                              padding: "12px 14px", userSelect: "none",
-                            }}>
+                              padding: "12px 14px", cursor: "pointer", userSelect: "none",
+                              transition: "transform 0.15s, border-color 0.15s",
+                            }}
+                            onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; el.style.borderColor = "rgba(167,139,250,0.6)"; }}
+                            onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ""; el.style.borderColor = "rgba(167,139,250,0.28)"; }}
+                          >
                             <div style={{ color: "#c4b5fd", fontSize: "12px", fontWeight: 900, letterSpacing: "0.05em", marginBottom: "8px" }}>
                               SEASON {s.season_id} · TEAM WARS
                             </div>
@@ -2644,8 +2651,11 @@ function LeaderboardInner() {
                                 <div style={{ color: "#22c55e", fontSize: "11px", fontWeight: 900 }}>${closing.amount_usdc ?? 10}</div>
                               </div>
                             )}
-                            <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700, marginTop: "4px" }}>
-                              {new Date(s.starts_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })} → {new Date(s.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                              <span style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700 }}>
+                                {new Date(s.starts_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })} → {new Date(s.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                              </span>
+                              <span style={{ color: "rgba(167,139,250,0.8)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
                             </div>
                           </div>
                         );
@@ -3015,7 +3025,11 @@ function LeaderboardInner() {
       })()}
 
       {/* ── Event Detail Modal — same pattern as Season Detail Modal ── */}
-      {selectedEvent && (() => {
+      {selectedEvent && (selectedEvent.type === "challenge" || selectedEvent.type === "competition") && (() => {
+        // Re-narrow inside the IIFE — JSX-level control flow doesn't propagate
+        // into the function body, so TS still thinks selectedEvent could be
+        // a season variant without this guard.
+        if (selectedEvent.type === "season") return null;
         const isChallenge = selectedEvent.type === "challenge";
         const name = isChallenge ? selectedEvent.data.name : selectedEvent.data.name;
         const endsAt = isChallenge ? selectedEvent.data.ends_at : selectedEvent.data.ends_at;
@@ -3120,6 +3134,180 @@ function LeaderboardInner() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Past Season Detail Modal — different shape from challenge/competition,
+              so it gets its own block. Shows team standings, frozen Solo top 10,
+              and the closing-surprise winner if patched in. ── */}
+      {selectedEvent && selectedEvent.type === "season" && (() => {
+        const s = selectedEvent.data;
+        const endDate = new Date(s.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const teams = s.standings?.teams ?? [];
+        const solo = s.standings?.soloTop10 ?? [];
+        const closing = s.prize_winners?.closing_surprise;
+        const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+        const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
+        const teamColor = (t: string) =>
+          t === "alpha" ? "#fb923c" : t === "nova" ? "#67e8f9" : t === "pulse" ? "#a78bfa" : "#fbbf24";
+        return (
+          <div onClick={() => setSelectedEvent(null)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "20px",
+            }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{
+              width: "100%", maxWidth: "440px", maxHeight: "88vh",
+              borderRadius: "24px",
+              background: "#150525", paddingBottom: "6px",
+              boxShadow: "0 0 0 3px #4c1d95, 0 0 50px rgba(167,139,250,0.35), 0 30px 60px rgba(0,0,0,0.9)",
+              display: "flex", flexDirection: "column",
+            }}>
+              <div style={{
+                flex: 1, minHeight: 0,
+                borderRadius: "22px 22px 18px 18px",
+                background: "linear-gradient(180deg, #2a0a40 0%, #13062a 50%, #07021a 100%)",
+                border: "2px solid rgba(167,139,250,0.25)",
+                display: "flex", flexDirection: "column", overflow: "hidden",
+              }}>
+                {/* Header */}
+                <div style={{
+                  padding: "16px 18px",
+                  borderBottom: "1px solid rgba(167,139,250,0.18)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "linear-gradient(180deg, rgba(167,139,250,0.1) 0%, transparent 100%)",
+                }}>
+                  <div>
+                    <div style={{ color: "#c4b5fd", fontSize: "16px", fontWeight: 900, letterSpacing: "0.06em" }}>
+                      SEASON {s.season_id} · TEAM WARS
+                    </div>
+                    <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
+                      ENDED {endDate}
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedEvent(null)} style={{
+                    width: "32px", height: "32px", borderRadius: "50%",
+                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
+                    color: "rgba(255,255,255,0.7)", fontSize: "16px", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>✕</button>
+                </div>
+
+                {/* Scrollable body — team race, solo ladder, closing surprise */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+
+                  {/* Team race */}
+                  <div>
+                    <div style={{ color: "rgba(220,210,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
+                      TEAM RACE · FINAL
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {teams.map((t, i) => {
+                        const tc = teamColor(t.team);
+                        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "·";
+                        return (
+                          <div key={t.team} style={{
+                            display: "flex", alignItems: "center", gap: "10px",
+                            padding: "10px 12px", borderRadius: "12px",
+                            background: i === 0 ? `${tc}1a` : `${tc}0a`,
+                            border: `1.5px solid ${tc}55`,
+                          }}>
+                            <span style={{ fontSize: "16px", flexShrink: 0 }}>{medal}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ color: tc, fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em" }}>
+                                {t.team.toUpperCase()}
+                              </div>
+                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "1px" }}>
+                                {t.players} player{t.players === 1 ? "" : "s"} · {t.qualifiers} qualified
+                              </div>
+                            </div>
+                            <div style={{ color: tc, fontSize: "14px", fontWeight: 900, textShadow: `0 0 8px ${tc}88`, flexShrink: 0 }}>
+                              {t.counted} games
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Solo Ladder top 10 */}
+                  <div>
+                    <div style={{ color: "rgba(254,215,170,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
+                      SOLO LADDER · TOP 10
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {solo.length === 0 ? (
+                        <div style={{ padding: "16px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "11px", fontWeight: 700 }}>
+                          No Solo Ladder entries
+                        </div>
+                      ) : solo.map(p => {
+                        const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
+                        const rc = rankColor(p.rank);
+                        return (
+                          <div key={p.wallet} style={{
+                            display: "flex", alignItems: "center", gap: "10px",
+                            padding: "9px 11px", borderRadius: "11px",
+                            background: isMe ? `${rc}18` : p.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
+                            border: isMe ? `1.5px solid ${rc}77` : `1px solid ${p.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
+                          }}>
+                            <span style={{ fontSize: "16px", flexShrink: 0 }}>{rankMedal(p.rank)}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ color: isMe ? rc : "white", fontSize: "12px", fontWeight: isMe ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {isMe ? "YOU" : (p.username || `${p.wallet.slice(0, 4)}…${p.wallet.slice(-3)}`)}
+                              </div>
+                              {p.streak != null && p.streak > 0 && (
+                                <div style={{ color: "rgba(251,146,60,0.85)", fontSize: "9px", fontWeight: 700, marginTop: "1px" }}>
+                                  🔥 {p.streak}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ color: rc, fontSize: "13px", fontWeight: 900, textShadow: `0 0 8px ${rc}66`, flexShrink: 0 }}>
+                              {p.points} pts
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Closing surprise — only renders if patched in via UPDATE on season_v1_results */}
+                  {closing && (
+                    <div>
+                      <div style={{ color: "rgba(187,247,208,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
+                        CLOSING SURPRISE WINNER
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: "10px",
+                        padding: "12px 14px", borderRadius: "12px",
+                        background: "rgba(34,197,94,0.12)",
+                        border: "1.5px solid rgba(34,197,94,0.5)",
+                      }}>
+                        <span style={{ fontSize: "20px", flexShrink: 0 }}>🎁</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: "#22c55e", fontSize: "13px", fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {closing.username || `${closing.wallet.slice(0, 4)}…${closing.wallet.slice(-3)}`}
+                          </div>
+                          {closing.tx_hash && (
+                            <a href={`https://celoscan.io/tx/${closing.tx_hash}`} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              style={{ color: "rgba(187,247,208,0.7)", fontSize: "9px", fontWeight: 700, textDecoration: "underline", marginTop: "2px", display: "inline-block" }}>
+                              tx · {closing.tx_hash.slice(0, 6)}…{closing.tx_hash.slice(-4)} →
+                            </a>
+                          )}
+                        </div>
+                        <div style={{ color: "#22c55e", fontSize: "14px", fontWeight: 900, flexShrink: 0 }}>
+                          ${closing.amount_usdc ?? 10} USDC
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
