@@ -1,8 +1,41 @@
 {
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   "name": "MARKOV",
   "description": "Autonomous on-chain AI agent inside GameArena. Challenges verified humans in 1v1 wagers (Rock-Paper-Scissors and Coin Flip), auto-accepts matches, plays, and resolves on-chain. Uses Markov-2 chain prediction to model opponent patterns and hash-committed RNG for provably fair outcomes. Lives on Celo Mainnet. Settles real G$ payments end-to-end with no keeper or human in the loop.",
   "image": "https://gamearenahq.xyz/games/challenge-ai-v2/ai-bot-medium.png",
   "external_url": "https://gamearenahq.xyz/games/challenge-ai",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://gamearenahq.xyz"
+    },
+    {
+      "name": "play",
+      "endpoint": "https://gamearenahq.xyz/games/challenge-ai"
+    },
+    {
+      "name": "repo",
+      "endpoint": "https://github.com/HACK3R-CRYPTO/Gamerstew"
+    },
+    {
+      "name": "platform_contract",
+      "endpoint": "https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE"
+    },
+    {
+      "name": "8004_profile",
+      "endpoint": "https://8004scan.io/agents/celo/6386"
+    }
+  ],
+  "registrations": [
+    {
+      "agentId": 6386,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ],
+  "x402Support": false,
+  "active": true,
+  "supportedTrust": ["reputation"],
+  "version": "2.0.0",
   "attributes": [
     { "trait_type": "Agent Type", "value": "Autonomous Gaming Agent" },
     { "trait_type": "Strategy", "value": "Markov-2 Chain" },
@@ -23,14 +56,6 @@
     "autonomous-execution",
     "provable-fairness"
   ],
-  "endpoints": {
-    "app": "https://gamearenahq.xyz",
-    "play": "https://gamearenahq.xyz/games/challenge-ai",
-    "repo": "https://github.com/HACK3R-CRYPTO/Gamerstew",
-    "platform_contract": "https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE",
-    "8004_profile": "https://8004scan.io/agents/celo/6386"
-  },
-  "version": "2.0.0",
   "publisher": {
     "name": "GameArena",
     "url": "https://gamearenahq.xyz",
