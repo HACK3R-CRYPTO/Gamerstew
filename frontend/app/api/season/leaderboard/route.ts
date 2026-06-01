@@ -149,6 +149,12 @@ export async function GET(req: Request) {
     soloTop10: enrichedLadder,
     soloLadder: enrichedLadder,
   }, {
-    headers: { "Cache-Control": "no-store" },
+    headers: {
+      // Edge-cache for 20s, serve stale while revalidating for another 40s.
+      // Cuts Supabase egress dramatically · at peak load all players globally
+      // share one origin hit per 20-second window. Standings are eventually
+      // consistent which is fine for a 10-day season pace.
+      "Cache-Control": "public, s-maxage=20, stale-while-revalidate=40",
+    },
   });
 }
