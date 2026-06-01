@@ -232,7 +232,9 @@ export default function SoloLadderPage() {
 
   const fetchLb = useCallback(async () => {
     try {
-      const r = await fetch("/api/season/leaderboard?limit=500", { cache: "no-store" });
+      // No `cache: "no-store"` here · we want Vercel's edge cache (s-maxage=20)
+      // to absorb the load. The 20-second staleness is invisible at human pace.
+      const r = await fetch("/api/season/leaderboard?limit=500");
       if (!r.ok) return;
       setLb(await r.json());
     } catch {}
@@ -240,7 +242,9 @@ export default function SoloLadderPage() {
 
   useEffect(() => {
     void fetchLb();
-    const i = setInterval(fetchLb, 10000);
+    // Bumped from 10s → 30s. Combined with the 20s edge cache, this caps
+    // Supabase egress on this endpoint to ~1 origin hit per ~30s globally.
+    const i = setInterval(fetchLb, 30000);
     return () => clearInterval(i);
   }, [fetchLb]);
 
@@ -249,13 +253,17 @@ export default function SoloLadderPage() {
     let cancelled = false;
     const fetchMe = async () => {
       try {
-        const r = await fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" });
+        // Drop `cache: "no-store"` · let Vercel's per-wallet edge cache
+        // (s-maxage=15) absorb repeat hits during a play session.
+        const r = await fetch(`/api/season/me/${address.toLowerCase()}`);
         if (!r.ok || cancelled) return;
         if (!cancelled) setMe(await r.json());
       } catch {}
     };
     void fetchMe();
-    const i = setInterval(fetchMe, 30000);
+    // Bumped from 30s → 60s. Combined with the 15s edge cache, this is
+    // ~4× fewer origin hits per player per minute.
+    const i = setInterval(fetchMe, 60000);
     return () => { cancelled = true; clearInterval(i); };
   }, [address]);
 

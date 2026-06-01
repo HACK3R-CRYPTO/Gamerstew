@@ -162,6 +162,12 @@ export async function GET(
     target: meta.target_per_team,
     seasonEndsAt: meta.ends_at,
   }, {
-    headers: { "Cache-Control": "no-store" },
+    headers: {
+      // Per-wallet edge cache · each wallet URL has its own cache key, so
+      // players don't see each other's stale data. 15s is short enough that
+      // a player's own score updates feel near-realtime; the SWR window lets
+      // the edge return cached while the next read populates in background.
+      "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30",
+    },
   });
 }
