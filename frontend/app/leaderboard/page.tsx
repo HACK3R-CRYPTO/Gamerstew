@@ -3026,10 +3026,6 @@ function LeaderboardInner() {
 
       {/* ── Event Detail Modal — same pattern as Season Detail Modal ── */}
       {selectedEvent && (selectedEvent.type === "challenge" || selectedEvent.type === "competition") && (() => {
-        // Re-narrow inside the IIFE — JSX-level control flow doesn't propagate
-        // into the function body, so TS still thinks selectedEvent could be
-        // a season variant without this guard.
-        if (selectedEvent.type === "season") return null;
         const isChallenge = selectedEvent.type === "challenge";
         const name = isChallenge ? selectedEvent.data.name : selectedEvent.data.name;
         const endsAt = isChallenge ? selectedEvent.data.ends_at : selectedEvent.data.ends_at;
