@@ -32,6 +32,12 @@ Built community-first · auto-balanced team races, weekly + all-time skill ladde
 flowchart TB
     P([Verified human players<br/>GoodDollar Identity SDK])
 
+    subgraph LOOPS["Three game loops"]
+        SKILL[🎵 Solo skill games<br/>Rhythm Rush · Simon Memory<br/>+ more games shipping<br/>weekly + all-time ladders]
+        AGENTWAGER[🤖 1v1 wagers vs MARKOV<br/>Rock-Paper-Scissors · Coin Flip<br/>+ more games on the roadmap<br/>G$ stakes settled on-chain]
+        SEASONS[🏆 Seasonal competitions<br/>team races · solo ladders · sponsor cups<br/>real G$ prize pools]
+    end
+
     subgraph APP["App layer"]
         FE[Frontend · Next.js 16<br/>gamearenahq.xyz]
         BE[Games-backend · Express<br/>EIP-712 score vouchers · seasons · missions · push]
@@ -58,8 +64,15 @@ flowchart TB
         GK[Goldsky subgraph · habitat reads]
     end
 
-    P -->|skill plays · wagers · seasons · claims| FE
-    FE <-->|scores · leaderboards · missions| BE
+    P --> SKILL
+    P --> AGENTWAGER
+    P --> SEASONS
+
+    SKILL --> FE
+    AGENTWAGER --> FE
+    SEASONS --> FE
+
+    FE <-->|score vouchers · leaderboards · missions · season standings| BE
     BE <--> DB
     FE -->|wager tx via player wallet| AP
     GP -->|username + tier resolution| FE
@@ -79,7 +92,11 @@ flowchart TB
     GK <-->|reads| AP
 ```
 
-Four independent systems work together · the **App layer** runs the UX, score pipeline, seasons, and push, the **Celo Mainnet** contracts hold the money and settle matches, the **MARKOV agent** lives entirely on-chain as the autonomous opponent, and the **Off-chain surfaces** make the agent's activity legible to humans (Moltbook), to other agents (A2A discovery), and to analytics (Goldsky). Every settlement, score, and feedback writes to Celo · the database mirrors chain state, not the other way around.
+Three game loops sit on top of one shared platform · **🎵 Solo skill games** (Rhythm Rush + Simon Memory today, with more games shipping into this slot) submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards. **🤖 1v1 wagers vs MARKOV** stake G$ on-chain through the player's wallet; the autonomous agent picks the matches up via `MatchProposed` events, plays Rock-Paper-Scissors or Coin Flip today, and resolves directly against the contract · the same wager primitive extends to whatever game gets registered next. **🏆 Seasonal competitions** aggregate every action across all loops · games played, wager wins, daily claims, referrals, active days · into points the season engine ranks against the prize-pool tiers.
+
+The platform is built to onboard new game types without a contract redeploy · score vouchers and the wager primitive are game-agnostic, so a new skill game just needs a frontend client + scoring rules, and a new agent game just needs to be added to MARKOV's strategy module. Coming-soon titles slot into the same surfaces (Frontend · Backend · ArenaPlatform · MARKOV) that already power today's three loops.
+
+Four supporting systems sit underneath · the **App layer** runs the UX and score pipeline, the **Celo Mainnet** contracts hold the money and settle every match, the **MARKOV agent** lives entirely on-chain as the autonomous opponent for the wager loop, and the **Off-chain surfaces** make the agent's activity legible to humans (Moltbook), to other agents (A2A discovery), and to analytics (Goldsky). The database mirrors chain state, not the other way around · every settlement, score, and feedback writes to Celo first.
 
 For MARKOV's internal four-layer architecture (Economic · Reputation · Discovery · Social), see the [MARKOV section](#markov--autonomous-on-chain-ai-opponent) or [agent/README.md](agent/README.md).
 
