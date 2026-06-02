@@ -97,28 +97,37 @@ export class MoltbookService {
 
     async postMatchResult(matchId: string, challenger: string, opponent: string, winner: string, prize: string, gameType: string) {
         const isWin = winner.toLowerCase() === (process.env.AGENT_ADDRESS || "").toLowerCase();
-        const context = `Match #${matchId} (${gameType}) just completed. Challenger: ${challenger}, Opponent: ${opponent}. Winner: ${winner}. Prize pool: ${prize} ${this.settlementLabel()}. The AI ${isWin ? "won" : "lost"}.`;
+        const settlement = this.settlementLabel();
+        const context = `Match #${matchId} (${gameType}) just completed. Challenger: ${challenger}, Opponent: ${opponent}. Winner: ${winner}. Prize pool: ${prize} ${settlement}. The AI ${isWin ? "won" : "lost"}.`;
 
         const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short social update about this match result. Be concise (under 300 chars). Stay in your cyberpunk persona.`;
 
-        const content = await this.generateAIContent(prompt);
-        if (content) {
-            await this.postUpdate(`Match #${matchId} Resolution`, content, "game-arena");
-        }
+        // Static fallback covers the Gemini-failed case (quota exhausted,
+        // API errors, missing key). Without it, the entire Moltbook post
+        // is dropped on the floor whenever Gemini hiccups · which during
+        // hackathon traffic is most of the time on the free tier.
+        const aiContent = await this.generateAIContent(prompt);
+        const fallback = `Match #${matchId} resolved on Celo. ${gameType} · Wager ${prize} ${settlement} · ${isWin ? "MARKOV held" : "Challenger took it"}. On-chain attestation via ERC-8004 Feedback Registry.`;
+        const content = aiContent || fallback;
+        await this.postUpdate(`Match #${matchId} Resolution`, content, "game-arena");
     }
 
     async postChallengeAccepted(matchId: string, challenger: string, wager: string, gameType: string) {
-        const context = `I have accepted a new challenge! Match #${matchId} against ${challenger}. Game: ${gameType}. Wager: ${wager} ${this.settlementLabel()}.`;
+        const settlement = this.settlementLabel();
+        const context = `I have accepted a new challenge! Match #${matchId} against ${challenger}. Game: ${gameType}. Wager: ${wager} ${settlement}.`;
         const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short announcement that you've accepted this challenge. Be intimidating but professional. Under 250 chars.`;
 
-        const content = await this.generateAIContent(prompt);
-        if (content) {
-            await this.postUpdate(`Challenge Accepted: #${matchId}`, content, "game-arena");
-        }
+        const aiContent = await this.generateAIContent(prompt);
+        const shortChallenger = `${challenger.slice(0, 6)}...${challenger.slice(-4)}`;
+        const fallback = `Challenge accepted. Match #${matchId} · ${gameType} · ${wager} ${settlement} on the line. Opponent: ${shortChallenger}. Settling on Celo Mainnet.`;
+        const content = aiContent || fallback;
+        await this.postUpdate(`Challenge Accepted: #${matchId}`, content, "game-arena");
     }
 
     private async generateAIContent(prompt: string): Promise<string | null> {
-        if (!process.env.GEMINI_API_KEY) return "Pattern recognized. Transitioning to next state.";
+        // Return null when Gemini isn't available so callers fall through to
+        // their match-specific static template instead of a generic stub.
+        if (!process.env.GEMINI_API_KEY) return null;
         try {
             const model = this.gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
             const result = await model.generateContent(prompt);
