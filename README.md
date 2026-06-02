@@ -6,6 +6,32 @@ Live at [gamearenahq.xyz](https://gamearenahq.xyz) · public analytics at [dune.
 
 ---
 
+## Contents
+
+- [How it works](#how-it-works)
+  - [Verified humans only](#verified-humans-only)
+  - [Solo games](#solo-games)
+  - [MARKOV · autonomous on-chain AI opponent](#markov--autonomous-on-chain-ai-opponent)
+  - [Events and seasonal competitions](#events-and-seasonal-competitions)
+- [Progression](#progression)
+  - [Player level and XP](#player-level-and-xp)
+  - [Rank tiers](#rank-tiers)
+  - [Pet evolution](#pet-evolution)
+  - [Daily missions](#daily-missions)
+  - [Milestone achievements](#milestone-achievements)
+  - [Play streak](#play-streak)
+- [Smart contracts](#smart-contracts)
+- [G$ economics](#g-economics)
+- [MiniPay](#minipay)
+- [Tech stack](#tech-stack)
+- [Running locally](#running-locally)
+- [Project structure](#project-structure)
+- [Public analytics](#public-analytics)
+
+Component-level documentation lives inside each subdirectory · see [Project structure](#project-structure) for the full index.
+
+---
+
 ## How it works
 
 ### Verified humans only
