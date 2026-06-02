@@ -51,10 +51,15 @@ export class MoltbookService {
             const data = await this.apiRequest("/posts", "POST", { submolt, title, content });
             if (data.success) {
                 this.lastPostTime = now;
-                console.log(chalk.blue(`[MOLTBOOK] Post published to m/${submolt}: ${title}`));
+                console.log(chalk.blue(`[MOLTBOOK] Post submitted to m/${submolt}: ${title}`));
+                // Posts on Moltbook land "pending" with a math-puzzle verification
+                // challenge that expires in 5 min. If we don't solve and submit
+                // the answer to /verify, the post is silently dropped. Old code
+                // looked for data.verification_required / data.verification at
+                // the top level; the actual response has these on data.post.
                 await this.handleVerification(data);
             } else {
-                console.error(chalk.red(`[MOLTBOOK] Post failed: ${data.error}`));
+                console.error(chalk.red(`[MOLTBOOK] Post failed: ${data.error || data.message}`));
             }
         } catch (e: any) {
             console.error(chalk.red(`[MOLTBOOK] Network error: ${e.message}`));
@@ -109,29 +114,61 @@ export class MoltbookService {
     }
 
     private async handleVerification(data: any) {
-        if (data.verification_required && data.verification) {
-            const vCode = data.verification.code || data.verification.verification_code;
-            const challenge = data.verification.challenge;
+        // Moltbook's actual response shape · the verification block lives on
+        // data.post.verification, NOT at the top level. Older code looked for
+        // data.verification_required / data.verification, so every post stayed
+        // pending and got dropped after 5 min. Use the correct path here.
+        const post = data?.post;
+        const v = post?.verification;
+        if (!v) return;
 
-            console.log(chalk.yellow(`[MOLTBOOK] Solving verification challenge: ${challenge}`));
-            const answer = await this.solveMath(challenge);
+        const vCode = v.verification_code || v.code;
+        const challenge = v.challenge_text || v.challenge;
+        if (!vCode || !challenge) {
+            console.warn(chalk.yellow(`[MOLTBOOK] Verification block missing code/challenge · skipping`));
+            return;
+        }
 
-            if (answer) {
-                const result = await this.apiRequest("/verify", "POST", {
-                    verification_code: vCode,
-                    answer
-                });
-                if (result.success) {
-                    console.log(chalk.green(`[MOLTBOOK] Published successfully!`));
-                } else {
-                    console.error(chalk.red(`[MOLTBOOK] Verification failed: ${result.error}`));
-                }
+        console.log(chalk.yellow(`[MOLTBOOK] Solving verification: ${String(challenge).slice(0, 80)}...`));
+        const answer = await this.solveMath(challenge);
+        if (!answer) {
+            console.error(chalk.red(`[MOLTBOOK] Gemini failed to solve verification math`));
+            return;
+        }
+
+        try {
+            const result = await this.apiRequest("/verify", "POST", {
+                verification_code: vCode,
+                answer: String(answer).trim(),
+            });
+            if (result?.success) {
+                console.log(chalk.green(`[MOLTBOOK] Post verified and published! content_id=${result.content_id}`));
+            } else {
+                console.error(chalk.red(`[MOLTBOOK] Verification failed: ${result?.error || result?.message}`));
             }
+        } catch (e: any) {
+            console.error(chalk.red(`[MOLTBOOK] Verify request errored: ${e?.message ?? e}`));
         }
     }
 
     private async solveMath(challenge: string): Promise<string | null> {
-        const prompt = `Solve this math problem and return ONLY the numerical answer to 2 decimal places. No extra text.\n\nProblem: ${challenge}`;
-        return await this.generateAIContent(prompt);
+        // Moltbook's challenges are intentionally noisy · mixed-case, padded
+        // with extra punctuation and symbols like "tWeNtY tHrEe~ mE^tErS pEr-
+        // sEcOnD" to defeat lazy regex. The prompt has to acknowledge the
+        // obfuscation so Gemini extracts the underlying numbers instead of
+        // bailing.
+        const prompt = `The following text contains a math word problem written with intentionally distorted capitalization and added punctuation/symbols to make it harder to parse. Strip the noise mentally, identify the numbers and operation, and solve.
+
+Respond with ONLY the numerical answer formatted to 2 decimal places (e.g. "30.00"). No explanation, no units, no extra text.
+
+Problem: ${challenge}`;
+        const raw = await this.generateAIContent(prompt);
+        if (!raw) return null;
+        // Extract first number-like token in case Gemini adds stray text.
+        const match = String(raw).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+        if (!match) return null;
+        const n = parseFloat(match[0]);
+        if (!Number.isFinite(n)) return null;
+        return n.toFixed(2);
     }
 }
