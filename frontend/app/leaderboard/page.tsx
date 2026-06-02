@@ -533,6 +533,29 @@ function LeaderboardInner() {
     contributors: { wallet: string; username: string | null; games: number }[];
   } | null>(null);
 
+  // MARKOV Climb · 23-day Challenge-AI match-count leaderboard. Powers the
+  // flagship hackathon-window event card. Ranked by total resolved matches
+  // vs MARKOV inside the configured event window (Jun 3 → Jun 25). Top 3
+  // share $5 USDC + 1,750 G$ at deadline.
+  type MarkovClimb = {
+    event: {
+      id: string;
+      name: string;
+      tagline: string;
+      startsAt: string;
+      endsAt: string;
+      phase: "upcoming" | "live" | "ended";
+      minMatchesToQualify: number;
+      prizes: {
+        first:  { usdc: number; g_dollar: number };
+        second: { usdc: number; g_dollar: number };
+        third:  { usdc: number; g_dollar: number };
+      };
+    };
+    leaderboard: { rank: number; wallet: string; username: string | null; matches: number; qualified: boolean }[];
+  };
+  const [markovClimb, setMarkovClimb] = useState<MarkovClimb | null>(null);
+
   // Seasons + competition data (for SEASONS tab)
   const [seasonsData, setSeasonsData] = useState<SeasonsData | null>(null);
   const [competition, setCompetition] = useState<CompetitionData | null>(null);
@@ -632,6 +655,13 @@ function LeaderboardInner() {
       .then(r => r.json())
       .then(d => setPastSeasonsV1(d.seasons || []))
       .catch(() => setPastSeasonsV1([]));
+    // MARKOV Climb · flagship hackathon event. Endpoint reads
+    // agent_match_state directly so the leaderboard reflects whatever
+    // matches have actually resolved in the event window.
+    fetch("/api/markov-climb", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setMarkovClimb(d ?? null))
+      .catch(() => setMarkovClimb(null));
     const wUrl = address
       ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address}`
       : `${BACKEND_URL}/api/weekly-challenge`;
@@ -1514,13 +1544,123 @@ function LeaderboardInner() {
                     (Season 1), and future events all live here so players
                     have one place to check what's running and what's
                     already ended. ── */}
-                {(challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || season1Lb || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
+                {(markovClimb || challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || season1Lb || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
                   <div style={{
                     fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
                     color: "rgba(251,215,100,0.9)", textAlign: "center",
                     textShadow: "0 0 14px rgba(251,191,36,0.7)",
                   }}>── EVENTS ──</div>
                 )}
+
+                {/* ── MARKOV CLIMB · flagship hackathon event card ──
+                    Sits at the top of EVENTS during the Jun 3-25 window so
+                    it's the first thing players see when they hit the page.
+                    Renders three phases:
+                      · upcoming · "Starts in Xd Yh" countdown, no leaderboard
+                      · live     · live leaderboard top 3 + "Xd left" countdown
+                      · ended    · winners line + "Concluded" marker
+                    Cyan-indigo accent distinguishes it from the amber Arena Cup
+                    cards and the green community-challenge card. */}
+                {markovClimb && markovClimb.event.phase !== "ended" && (() => {
+                  const ev = markovClimb.event;
+                  const phase = ev.phase;
+                  const nowMs = Date.now();
+                  const startMs = Date.parse(ev.startsAt);
+                  const endMs = Date.parse(ev.endsAt);
+                  const targetMs = phase === "upcoming" ? startMs : endMs;
+                  const diffMs = Math.max(0, targetMs - nowMs);
+                  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+                  const hours = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+                  const countdownLabel = phase === "upcoming" ? "STARTS IN" : "LEFT";
+                  const top3 = markovClimb.leaderboard.slice(0, 3);
+                  return (
+                    <div style={{
+                      borderRadius: "18px", padding: "2px",
+                      background: "linear-gradient(180deg, #22d3ee 0%, #6366f1 50%, #1e1b4b 100%)",
+                      boxShadow: "0 0 22px rgba(99,102,241,0.35), 0 10px 24px rgba(0,0,0,0.6)",
+                    }}>
+                      <div style={{
+                        borderRadius: "16px",
+                        background: "linear-gradient(180deg, #0e0830 0%, #07021a 100%)",
+                        padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
+                        position: "relative", overflow: "hidden",
+                        display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
+                      }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "55%", background: "linear-gradient(180deg, rgba(99,102,241,0.12) 0%, transparent 100%)", pointerEvents: "none" }} />
+
+                        {/* Header */}
+                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+                          <div>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(99,102,241,0.18)", border: "1px solid rgba(99,102,241,0.5)", marginBottom: "6px" }}>
+                              <span style={{ color: "#a5b4fc", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>HACKATHON EVENT · {phase === "upcoming" ? "STARTS JUN 3 · 8 AM WAT" : "LIVE"}</span>
+                            </div>
+                            <div style={{ color: "white", fontSize: "clamp(15px,4.4vw,18px)", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
+                              MARKOV CLIMB
+                            </div>
+                            <div style={{ color: "rgba(165,180,252,0.8)", fontSize: "10px", fontWeight: 700, marginTop: "3px", letterSpacing: "0.04em" }}>
+                              {ev.tagline}
+                            </div>
+                          </div>
+                          <div style={{ padding: "5px 10px", borderRadius: "10px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(99,102,241,0.4)", textAlign: "right", flexShrink: 0 }}>
+                            <div style={{ color: "rgba(165,180,252,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>{countdownLabel}</div>
+                            <div style={{ color: "#a5b4fc", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1 }}>
+                              {days}d {hours}h
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Prize tiers */}
+                        <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
+                          {[
+                            { medal: "🥇", label: "1ST", g: ev.prizes.first.g_dollar,  usdc: ev.prizes.first.usdc,  accent: "#fbbf24" },
+                            { medal: "🥈", label: "2ND", g: ev.prizes.second.g_dollar, usdc: ev.prizes.second.usdc, accent: "#e2e8f0" },
+                            { medal: "🥉", label: "3RD", g: ev.prizes.third.g_dollar,  usdc: ev.prizes.third.usdc,  accent: "#f97316" },
+                          ].map(p => (
+                            <div key={p.label} style={{ padding: "8px 10px", borderRadius: "10px", background: "rgba(0,0,0,0.4)", border: `1px solid ${p.accent}55`, textAlign: "center" }}>
+                              <div style={{ fontSize: "14px", lineHeight: 1 }}>{p.medal}</div>
+                              <div style={{ color: p.accent, fontSize: "9px", fontWeight: 900, letterSpacing: "0.14em", marginTop: "4px" }}>{p.label}</div>
+                              <div style={{ color: "white", fontSize: "11px", fontWeight: 900, marginTop: "3px" }}>
+                                {p.usdc > 0 ? `$${p.usdc} + ` : ""}{p.g} G$
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Eligibility line */}
+                        <div style={{ position: "relative", zIndex: 1, color: "rgba(165,180,252,0.65)", fontSize: "10px", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>
+                          Rank by Challenge-AI matches · min {ev.minMatchesToQualify} to qualify · every match writes to 8004scan
+                        </div>
+
+                        {/* Leaderboard top 3 OR empty state */}
+                        {phase === "live" && top3.length > 0 && (
+                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "5px" }}>
+                            <div style={{ color: "rgba(165,180,252,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em" }}>
+                              CURRENT TOP {top3.length}
+                            </div>
+                            {top3.map(p => (
+                              <div key={p.wallet} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: "8px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(99,102,241,0.2)" }}>
+                                <span style={{ color: "white", fontSize: "11px", fontWeight: 800 }}>
+                                  #{p.rank} · {p.username || `${p.wallet.slice(0, 6)}…${p.wallet.slice(-4)}`}
+                                </span>
+                                <span style={{ color: "#a5b4fc", fontSize: "11px", fontWeight: 900 }}>{p.matches}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {phase === "live" && top3.length === 0 && (
+                          <div style={{ position: "relative", zIndex: 1, padding: "10px 12px", borderRadius: "10px", background: "rgba(99,102,241,0.08)", border: "1px dashed rgba(99,102,241,0.4)", textAlign: "center", color: "rgba(165,180,252,0.85)", fontSize: "11px", fontWeight: 700 }}>
+                            Leaderboard empty. Be the first to qualify · play 30 matches.
+                          </div>
+                        )}
+
+                        {/* Play CTA */}
+                        <a href="/games/challenge-ai" style={{ position: "relative", zIndex: 1, display: "block", textAlign: "center", padding: "10px 14px", borderRadius: "12px", background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.1em", textDecoration: "none", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}>
+                          {phase === "upcoming" ? "WARM UP · PLAY CHALLENGE-AI" : "PLAY · CLIMB THE BOARD"}
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Empty state when no live cup AND no active competition.
                     The header still shows because past events exist below;
