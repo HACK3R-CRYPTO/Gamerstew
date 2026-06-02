@@ -1592,7 +1592,7 @@ function LeaderboardInner() {
                         <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
                           <div>
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(99,102,241,0.18)", border: "1px solid rgba(99,102,241,0.5)", marginBottom: "6px" }}>
-                              <span style={{ color: "#a5b4fc", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>HACKATHON EVENT · {phase === "upcoming" ? "STARTS JUN 3 · 8 AM WAT" : "LIVE"}</span>
+                              <span style={{ color: "#a5b4fc", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>ARENA EVENT · {phase === "upcoming" ? "STARTS JUN 3 · 8 AM WAT" : "LIVE"}</span>
                             </div>
                             <div style={{ color: "white", fontSize: "clamp(15px,4.4vw,18px)", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
                               MARKOV CLIMB
