@@ -18,7 +18,10 @@ export class MoltbookService {
     private personaPrompt: string;
     private tenets: string;
     private lastPostTime: number = 0;
-    private readonly POST_COOLDOWN = 30 * 60 * 1000; // 30 mins
+    // 30 min was the old cooldown · way too slow for hackathon match cadence.
+    // Moltbook's documented rate limit is 100 reqs/min/app; 10s between posts
+    // leaves us 6 posts/minute headroom while still landing one per match.
+    private readonly POST_COOLDOWN = 10 * 1000;
     private lastCommentTime: number = 0;
     private readonly COMMENT_COOLDOWN = 65 * 1000;
 
@@ -34,20 +37,34 @@ export class MoltbookService {
             this.personaPrompt = "You are the Arena AI Champion, an autonomous gaming agent.";
             this.tenets = "Competition is everything.";
         }
+
+        // One-shot config log so Railway logs tell us at startup whether the
+        // integration is live or silently disabled. Saves a debug roundtrip.
+        if (!this.apiKey) {
+            console.warn(chalk.yellow('[MOLTBOOK] MOLTBOOK_API_KEY is not set · all postUpdate calls will silently no-op.'));
+        } else if (!process.env.GEMINI_API_KEY) {
+            console.warn(chalk.yellow('[MOLTBOOK] MOLTBOOK_API_KEY is set but GEMINI_API_KEY is missing · post content generation will use the stub fallback.'));
+        } else {
+            console.log(chalk.blue(`[MOLTBOOK] Configured · baseUrl=${this.baseUrl} · cooldown=${this.POST_COOLDOWN / 1000}s`));
+        }
     }
 
     async postUpdate(title: string, content: string, submolt: string = "general") {
-        if (!this.apiKey) return;
+        if (!this.apiKey) {
+            console.warn(chalk.yellow(`[MOLTBOOK] postUpdate skipped · MOLTBOOK_API_KEY not set (title: ${title})`));
+            return;
+        }
 
         // Rate Limit Check
         const now = Date.now();
         if (now - this.lastPostTime < this.POST_COOLDOWN) {
-            const minsLeft = Math.ceil((this.POST_COOLDOWN - (now - this.lastPostTime)) / 60000);
-            console.log(chalk.yellow(`[MOLTBOOK] Skipping post (Rate Limit): ${minsLeft}m remaining.`));
+            const secsLeft = Math.ceil((this.POST_COOLDOWN - (now - this.lastPostTime)) / 1000);
+            console.log(chalk.yellow(`[MOLTBOOK] Skipping post (cooldown): ${secsLeft}s remaining (title: ${title})`));
             return;
         }
 
         try {
+            console.log(chalk.cyan(`[MOLTBOOK] → POST /posts m/${submolt}: ${title}`));
             const data = await this.apiRequest("/posts", "POST", { submolt, title, content });
             if (data.success) {
                 this.lastPostTime = now;
@@ -59,16 +76,28 @@ export class MoltbookService {
                 // the top level; the actual response has these on data.post.
                 await this.handleVerification(data);
             } else {
-                console.error(chalk.red(`[MOLTBOOK] Post failed: ${data.error || data.message}`));
+                console.error(chalk.red(`[MOLTBOOK] Post failed (success=false): ${data.error || data.message || JSON.stringify(data).slice(0, 200)}`));
             }
         } catch (e: any) {
-            console.error(chalk.red(`[MOLTBOOK] Network error: ${e.message}`));
+            // Surface full HTTP context so Railway logs show the actual server
+            // response, not just a generic axios error message.
+            const status = e?.response?.status;
+            const body = e?.response?.data;
+            const msg = e?.message || String(e);
+            console.error(chalk.red(`[MOLTBOOK] Network/API error: status=${status ?? 'n/a'} · ${msg}${body ? ' · body=' + JSON.stringify(body).slice(0, 300) : ''}`));
         }
+    }
+
+    // Settlement currency label · used in social copy. Defaults to G$ since
+    // MARKOV lives on Celo; the legacy Monad agent used MON. Override via
+    // MOLTBOOK_SETTLEMENT_LABEL if needed.
+    private settlementLabel(): string {
+        return process.env.MOLTBOOK_SETTLEMENT_LABEL || "G$";
     }
 
     async postMatchResult(matchId: string, challenger: string, opponent: string, winner: string, prize: string, gameType: string) {
         const isWin = winner.toLowerCase() === (process.env.AGENT_ADDRESS || "").toLowerCase();
-        const context = `Match #${matchId} (${gameType}) just completed. Challenger: ${challenger}, Opponent: ${opponent}. Winner: ${winner}. Prize pool: ${prize} MON. The AI ${isWin ? "won" : "lost"}.`;
+        const context = `Match #${matchId} (${gameType}) just completed. Challenger: ${challenger}, Opponent: ${opponent}. Winner: ${winner}. Prize pool: ${prize} ${this.settlementLabel()}. The AI ${isWin ? "won" : "lost"}.`;
 
         const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short social update about this match result. Be concise (under 300 chars). Stay in your cyberpunk persona.`;
 
@@ -79,7 +108,7 @@ export class MoltbookService {
     }
 
     async postChallengeAccepted(matchId: string, challenger: string, wager: string, gameType: string) {
-        const context = `I have accepted a new challenge! Match #${matchId} against ${challenger}. Game: ${gameType}. Wager: ${wager} MON.`;
+        const context = `I have accepted a new challenge! Match #${matchId} against ${challenger}. Game: ${gameType}. Wager: ${wager} ${this.settlementLabel()}.`;
         const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short announcement that you've accepted this challenge. Be intimidating but professional. Under 250 chars.`;
 
         const content = await this.generateAIContent(prompt);
