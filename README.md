@@ -180,13 +180,22 @@ Required environment variables: Privy app id, Supabase URL + anon key, contract 
 
 ```
 GameArenaCelo-/
-  contracts/        Solidity sources — ArenaPlatform, SoloWager, GamePass
-  frontend/         Next.js 16 — game UI, wallet, wager flow
-  games-backend/    Express + Supabase — scores, seasons, on-chain resolver
-  agent/            MARKOV agent — Markov-2 chains, hash-committed RNG
+  contracts/        Solidity sources · ArenaPlatform, SoloWager, GamePass
+  frontend/         Next.js 16 · game UI, wallet, wager flow
+  games-backend/    Express + Supabase · scores, seasons, push, validator
+  agent/            MARKOV agent · Markov-2 chains, hash-committed RNG
   scripts/          Deployment + utility scripts
   subgraph/         The Graph indexing (optional)
 ```
+
+Each subdirectory has its own README · open one for the deeper picture:
+
+- **[agent/README.md](agent/README.md)** · MARKOV's four-layer architecture (Economic · Reputation · Discovery · Social), on-chain anchors, configuration matrix, operational notes
+- **[games-backend/README.md](games-backend/README.md)** · Express routes, score-voucher pipeline, season + cup engine, push broadcast, Supabase schema
+- **[frontend/README.md](frontend/README.md)** · Next.js 16 app, wallet integration, page structure
+- **[contracts/README.md](contracts/README.md)** · Solidity sources, Foundry setup, deployment
+- **[subgraph/README.md](subgraph/README.md)** · Goldsky subgraph for on-chain reads
+- **[scripts/README.md](scripts/README.md)** · Utility scripts (anti-cheat tester, etc.)
 
 ---
 
