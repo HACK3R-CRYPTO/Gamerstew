@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createPublicClient, http } from "viem";
+import { celo } from "viem/chains";
+
+// Platform contract on Celo Mainnet. matchCounter is the source of
+// truth for total matches ever created · agent_match_state lags behind
+// when off-chain upserts miss (network blips, agent restarts mid-flow).
+const ARENA_ADDRESS = "0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE" as const;
+const ARENA_ABI = [
+  { type: "function", name: "matchCounter", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+] as const;
 
 // PVP arena lifetime leaderboard · ranks players by total matches played
 // vs MARKOV across the entire history of agent_match_state. Includes a
@@ -84,9 +94,25 @@ export async function GET() {
     winRate: s.winRate,
   }));
 
+  // On-chain matchCounter is the truth-source for total match count.
+  // Falls back to the off-chain row count if the chain read fails so
+  // the page never renders a blank stat.
+  let chainTotal: number | null = null;
+  try {
+    const pub = createPublicClient({ chain: celo, transport: http("https://forno.celo.org") });
+    const counter = await pub.readContract({
+      address: ARENA_ADDRESS,
+      abi: ARENA_ABI,
+      functionName: "matchCounter",
+    });
+    chainTotal = Number(counter as bigint);
+  } catch { /* fall through · use off-chain count */ }
+
+  const offchainTotal = Array.from(stats.values()).reduce((sum, s) => sum + s.matches, 0);
+
   return NextResponse.json({
     totalPlayers: stats.size,
-    totalMatches: Array.from(stats.values()).reduce((sum, s) => sum + s.matches, 0),
+    totalMatches: chainTotal ?? offchainTotal,
     leaderboard,
   }, {
     headers: {

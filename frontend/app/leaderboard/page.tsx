@@ -104,7 +104,7 @@ function tierLabelByRank(rank: number): string {
   return "BRONZE III";
 }
 
-type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number };
+type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number; subText?: string };
 
 // /api/seasons response
 type PastSeason = {
@@ -341,6 +341,17 @@ function StagePodium({ podium }: { podium: Entry[] }) {
             }}>
               {pl.entry ? pl.entry.score : 0}
             </div>
+            {pl.entry?.subText && (
+              <div style={{
+                color: "rgba(255,255,255,0.75)",
+                fontSize: "10px", fontWeight: 800,
+                letterSpacing: "0.06em",
+                marginTop: "1px",
+                textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+              }}>
+                {pl.entry.subText}
+              </div>
+            )}
           </div>
         );
       })}
@@ -359,7 +370,7 @@ function fmtCompact(n: number): string {
 }
 
 function PlayerRow({
-  entry, rank, color, isMe, breakdown,
+  entry, rank, color, isMe, breakdown, subText,
 }: {
   entry: Entry;
   rank: number;
@@ -368,6 +379,10 @@ function PlayerRow({
   // Optional R/S split for the ALL-TIME tab. Renders a small line under
   // the total so players can read "this player is rhythm-heavy" at a glance.
   breakdown?: { rhythm: number; simon: number };
+  // Generic sub-line under the score · used by the PVP tab to surface
+  // wins + win-rate ("W 5 · 38%") without forcing every leaderboard
+  // surface to ship a custom breakdown shape.
+  subText?: string;
 }) {
   return (
     <div style={{
@@ -461,6 +476,17 @@ function PlayerRow({
               fontFeatureSettings: '"tnum" 1',
             }}>
               R {fmtCompact(breakdown.rhythm)} · S {fmtCompact(breakdown.simon)}
+            </div>
+          )}
+          {subText && !breakdown && (
+            <div style={{
+              color: "rgba(254,215,170,0.6)",
+              fontSize: "8px", fontWeight: 800,
+              letterSpacing: "0.06em",
+              marginTop: "2px",
+              fontFeatureSettings: '"tnum" 1',
+            }}>
+              {subText}
             </div>
           )}
         </div>
@@ -3119,6 +3145,9 @@ function LeaderboardInner() {
                       username: p.username ?? undefined,
                       score: p.matches,
                       timestamp: 0,
+                      subText: p.matches >= 10
+                        ? `W ${p.wins} · ${p.winRate}%`
+                        : `W ${p.wins}`,
                     }))}
                   />
                 )}
@@ -3138,6 +3167,10 @@ function LeaderboardInner() {
                     {pvpData.leaderboard.slice(3).map(p => {
                       const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
                       const color = rowColorByRank(p.rank);
+                      const showWinRate = p.matches >= 10;
+                      const subText = showWinRate
+                        ? `W ${p.wins} · ${p.winRate}%`
+                        : `W ${p.wins}`;
                       return (
                         <PlayerRow
                           key={p.wallet}
@@ -3150,6 +3183,7 @@ function LeaderboardInner() {
                           rank={p.rank}
                           color={color}
                           isMe={isMe}
+                          subText={subText}
                         />
                       );
                     })}
