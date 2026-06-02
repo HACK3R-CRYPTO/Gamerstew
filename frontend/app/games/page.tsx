@@ -1261,6 +1261,63 @@ export default function GamesPage() {
             );
           })()}
 
+          {/* MARKOV Climb hero strip — flagship Challenge-AI leaderboard
+              event. Lives in the same hero band as Season 1 so the
+              moment a player lands, the active prize race is the first
+              thing they see. Cyan-indigo accent distinguishes it from
+              the amber Season hero. Tap → /leaderboard?tab=seasons
+              where the full event card with prize tiers and live
+              leaderboard renders. Auto-hides once phase=ended. */}
+          {markovClimb && markovClimb.phase !== "ended" && (() => {
+            const startSec = Math.floor(new Date(markovClimb.startsAt).getTime() / 1000);
+            const endSec   = Math.floor(new Date(markovClimb.endsAt).getTime() / 1000);
+            const upcoming = now < startSec;
+            const pillLabel = upcoming
+              ? `STARTS IN ${fmtShortCountdown(startSec - now)}`
+              : `${fmtShortCountdown(endSec - now)} LEFT`;
+            const subtitle = upcoming
+              ? "Jun 3 · 8 AM WAT · Top 3 win"
+              : (markovClimb.topMatches && markovClimb.topMatches > 0
+                  ? `Leader: ${markovClimb.topUsername || "anon"} · ${markovClimb.topMatches} matches`
+                  : "Top 3 by match count win");
+            return (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push("/leaderboard?tab=seasons")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push("/leaderboard?tab=seasons"); }}
+                style={{
+                  width: "100%", maxWidth: "680px", flexShrink: 0,
+                  borderRadius: "12px", padding: "9px 14px",
+                  background: "linear-gradient(90deg, rgba(49,46,129,0.55) 0%, rgba(8,7,40,0.7) 100%)",
+                  border: "1px solid rgba(99,102,241,0.45)",
+                  boxShadow: "0 0 14px rgba(99,102,241,0.22)",
+                  display: "flex", alignItems: "center", gap: "10px",
+                  flexWrap: "wrap",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontSize: "14px", flexShrink: 0 }}>🤖</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: "#a5b4fc", fontSize: "10px", fontWeight: 900, letterSpacing: "0.06em" }}>MARKOV CLIMB · ARENA EVENT</span>
+                  <span style={{ color: "rgba(196,181,253,0.7)", fontSize: "9px", fontWeight: 700 }}> · {subtitle}</span>
+                </div>
+                <div style={{
+                  padding: "3px 10px", borderRadius: "999px", flexShrink: 0,
+                  background: upcoming ? "rgba(165,180,252,0.16)" : "rgba(34,211,238,0.18)",
+                  border: upcoming ? "1px solid rgba(165,180,252,0.55)" : "1px solid rgba(34,211,238,0.55)",
+                }}>
+                  <span style={{
+                    color: upcoming ? "#a5b4fc" : "#22d3ee",
+                    fontSize: "9px", fontWeight: 900, letterSpacing: "0.08em",
+                  }}>
+                    {pillLabel}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Stats pills — compact on mobile. On mobile we also append a
               STREAK pill as the 4th member when the user is connected
               with a non-zero streak, instead of floating a separate chip
