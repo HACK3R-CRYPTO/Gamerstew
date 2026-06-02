@@ -425,6 +425,42 @@ export default function GamesPage() {
     topSolo: { wallet: string; points: number } | null;
     myTeam: string | null;
   } | null>(null);
+
+  // MARKOV Climb · flagship Challenge-AI leaderboard event. Powers the
+  // Arena Event banner on the games hub so players see it the moment
+  // they land. Phase-aware: pre-launch shows the start countdown, live
+  // shows time left + current leader. Hides entirely when phase=ended.
+  const [markovClimb, setMarkovClimb] = useState<{
+    startsAt: string;
+    endsAt: string;
+    phase: "upcoming" | "live" | "ended";
+    topMatches: number | null;
+    topUsername: string | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchClimb = async () => {
+      try {
+        const r = await fetch("/api/markov-climb", { cache: "no-store" });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (cancelled) return;
+        const ev = j?.event;
+        if (!ev?.startsAt || !ev?.endsAt) { setMarkovClimb(null); return; }
+        const top = (j.leaderboard ?? [])[0] ?? null;
+        setMarkovClimb({
+          startsAt: ev.startsAt,
+          endsAt: ev.endsAt,
+          phase: ev.phase,
+          topMatches: top?.matches ?? null,
+          topUsername: top?.username ?? null,
+        });
+      } catch { /* keep last good state */ }
+    };
+    void fetchClimb();
+    const i = setInterval(fetchClimb, 30000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     const fetchSeason = async () => {
@@ -680,6 +716,27 @@ export default function GamesPage() {
 
         {(() => {
           const events: EventCard[] = [];
+          // MARKOV Climb · flagship event card · sits at the TOP of the
+          // list so players see it before anything else when they land
+          // on the games hub. Phase-aware: countdown to start, or time
+          // left + current leader during live phase.
+          if (markovClimb && markovClimb.phase !== "ended") {
+            const startSec = Math.floor(new Date(markovClimb.startsAt).getTime() / 1000);
+            const endSec   = Math.floor(new Date(markovClimb.endsAt).getTime() / 1000);
+            const upcoming = now < startSec;
+            const timeLabel = upcoming
+              ? `Starts in ${fmtShortCountdown(startSec - now)}`
+              : `${fmtShortCountdown(endSec - now)} left`;
+            const leaderLine = markovClimb.topMatches != null && markovClimb.topMatches > 0
+              ? `Leader: ${markovClimb.topUsername || "anon"} · ${markovClimb.topMatches} matches`
+              : "Top 3 win · $5 USDC + 1,750 G$ pool";
+            events.push({
+              icon: "🤖", color: "#a5b4fc",
+              title: `MARKOV Climb · ${timeLabel}`,
+              subtitle: `${leaderLine} · View →`,
+              onClick: () => router.push("/leaderboard?tab=seasons"),
+            });
+          }
           if (seasonInfo && seasonInfo.endsAt > 0) {
             events.push({
               icon: "🗓️", color: "#a78bfa",
