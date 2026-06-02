@@ -1,8 +1,28 @@
 # GameArena
 
-GameArena is a competitive mini-games platform on Celo Mainnet where every player is a verified human. Compete in skill games, challenge an autonomous AI opponent called MARKOV, and earn real G$ from the GoodDollar UBI economy.
+> A social on-chain community of verified humans playing mini-games for real rewards on Celo Mainnet. Skill leaderboards, seasonal cups, 1v1 wagers, and an autonomous AI opponent · all on-chain, all auditable.
 
-Live at [gamearenahq.xyz](https://gamearenahq.xyz) · public analytics at [dune.com/ogazboiz/gamearena](https://dune.com/ogazboiz/gamearena)
+[![GameArena](./frontend/public/og-image.png)](https://gamearenahq.xyz)
+
+[![Live](https://img.shields.io/badge/Live-Celo%20Mainnet-fbcc5c?style=for-the-badge&logo=ethereum)](https://gamearenahq.xyz)
+[![Community](https://img.shields.io/badge/Telegram-gamearenaHQ-2ca5e0?style=for-the-badge&logo=telegram)](https://t.me/gamearenaHQ)
+[![Chain](https://img.shields.io/badge/Chain-Celo%2042220-35d07f?style=for-the-badge&logo=ethereum)](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)
+[![ERC-8004](https://img.shields.io/badge/MARKOV-Token%20%236386-22d3ee?style=for-the-badge)](https://8004scan.io/agents/celo/6386)
+[![Karma](https://img.shields.io/badge/Karma-GameArena-7c3aed?style=for-the-badge)](https://karmahq.xyz/project/gamearena)
+
+**Live:** [gamearenahq.xyz](https://gamearenahq.xyz)
+**Community:** [t.me/gamearenaHQ](https://t.me/gamearenaHQ)
+**Analytics:** [dune.com/ogazboiz/gamearena](https://dune.com/ogazboiz/gamearena)
+
+---
+
+## 60-second explainer
+
+GameArena is where verified humans on Celo come to play. Every player is identity-verified via the GoodDollar Identity SDK before they can score, wager, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush + Simon Memory), 1v1 wagers against MARKOV (an autonomous on-chain AI opponent), and seasonal team + solo competitions with real prize pools.
+
+The economy runs on G$ from the GoodDollar stack. Prizes flow from the platform, from sponsor partners, and from community-funded pots. Solo wagers settle in the same tx that resolves the match. Season prizes pay out from sealed standings. Every score, settlement, and payout writes to Celo Mainnet · the chain is the source of truth, the leaderboards are just the UX.
+
+Built community-first · auto-balanced team races, weekly + all-time skill ladders, daily missions, milestone achievements, tier badges, play streaks, and a habitat economy where players spend G$ on cosmetic upgrades that compound into season standings. Daily and seasonal action is announced through the [Telegram community](https://t.me/gamearenaHQ).
 
 ---
 
