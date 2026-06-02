@@ -26,8 +26,68 @@ Built community-first · auto-balanced team races, weekly + all-time skill ladde
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TB
+    P([Verified human players<br/>GoodDollar Identity SDK])
+
+    subgraph APP["App layer"]
+        FE[Frontend · Next.js 16<br/>gamearenahq.xyz]
+        BE[Games-backend · Express<br/>EIP-712 score vouchers · seasons · missions · push]
+        DB[(Supabase Postgres<br/>scores · seasons · habitats · agent state)]
+    end
+
+    subgraph CHAIN["Celo Mainnet · chain 42220"]
+        AP[ArenaPlatform contract<br/>wagers + match settlement]
+        GP[GamePass NFT<br/>identity + usernames + tiers]
+        GD[G$ token · GoodDollar]
+        UBI[GoodCollective UBI Pool<br/>2% fee router]
+        REG[ERC-8004 Agent Registry<br/>MARKOV Token #6386]
+        FB[ERC-8004 Feedback Registry]
+    end
+
+    subgraph AGENT["MARKOV · autonomous AI opponent"]
+        M{{Markov-2 chain prediction<br/>hash-committed RNG<br/>no operator · no keeper}}
+        OR[Oracle Wallet<br/>fire-and-forget attestor]
+    end
+
+    subgraph EXT["Off-chain surfaces"]
+        MB[Moltbook social posts]
+        A2A[A2A v0.3 card · /.well-known/agent-card.json]
+        GK[Goldsky subgraph · habitat reads]
+    end
+
+    P -->|skill plays · wagers · seasons · claims| FE
+    FE <-->|scores · leaderboards · missions| BE
+    BE <--> DB
+    FE -->|wager tx via player wallet| AP
+    GP -->|username + tier resolution| FE
+    GP -->|holds player identity| P
+
+    AP -.MatchProposed event.-> M
+    M -->|accept · play · resolveMatch| AP
+    AP -->|G$ settlement · 98% winner| GD
+    AP -->|2% platform fee| UBI
+    GD --> P
+
+    M -->|every match| OR
+    OR -->|giveFeedback| FB
+    M -->|in-persona post per match| MB
+    REG -.anchors identity.- M
+    A2A -.discoverable to other agents.- M
+    GK <-->|reads| AP
+```
+
+Four independent systems work together · the **App layer** runs the UX, score pipeline, seasons, and push, the **Celo Mainnet** contracts hold the money and settle matches, the **MARKOV agent** lives entirely on-chain as the autonomous opponent, and the **Off-chain surfaces** make the agent's activity legible to humans (Moltbook), to other agents (A2A discovery), and to analytics (Goldsky). Every settlement, score, and feedback writes to Celo · the database mirrors chain state, not the other way around.
+
+For MARKOV's internal four-layer architecture (Economic · Reputation · Discovery · Social), see the [MARKOV section](#markov--autonomous-on-chain-ai-opponent) or [agent/README.md](agent/README.md).
+
+---
+
 ## Contents
 
+- [Architecture](#architecture)
 - [How it works](#how-it-works)
   - [Verified humans only](#verified-humans-only)
   - [Solo games](#solo-games)
