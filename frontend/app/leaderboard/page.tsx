@@ -3106,145 +3106,55 @@ function LeaderboardInner() {
                   </div>
                 )}
 
-                {/* Podium · top 3 get a raised treatment with avatars + medals.
-                    StagePodium is coupled to the Rhythm/Simon Entry shape so
-                    we render a PVP-specific 3-card podium that fits the
-                    matches/wins/winRate columns. 2nd left · 1st centre raised
-                    · 3rd right · stacks vertically on narrow screens. */}
-                {pvpData && pvpData.leaderboard.length > 0 && (() => {
-                  const podium = pvpData.leaderboard.slice(0, 3);
-                  if (podium.length === 0) return null;
-                  const positions = [
-                    { entry: podium[1], rank: 2, medal: "🥈", accent: "#e2e8f0", height: 130 },
-                    { entry: podium[0], rank: 1, medal: "🥇", accent: "#fbbf24", height: 150 },
-                    { entry: podium[2], rank: 3, medal: "🥉", accent: "#f97316", height: 120 },
-                  ];
-                  return (
-                    <div style={{
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "1fr 1.15fr 1fr",
-                      gap: isMobile ? "10px" : "12px",
-                      alignItems: "end",
-                      marginTop: "4px",
-                    }}>
-                      {positions.map((pos) => {
-                        if (!pos.entry) {
-                          return (
-                            <div key={pos.rank} style={{
-                              height: `${pos.height}px`,
-                              borderRadius: "16px",
-                              border: "1px dashed rgba(99,102,241,0.25)",
-                              background: "rgba(20,10,50,0.4)",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              color: "rgba(165,180,252,0.4)", fontSize: "11px", fontWeight: 800, letterSpacing: "0.1em",
-                            }}>{pos.medal} OPEN</div>
-                          );
-                        }
-                        const e = pos.entry;
-                        const isMe = !!address && e.wallet.toLowerCase() === address.toLowerCase();
-                        const display = e.username || `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`;
-                        const showWinRate = e.matches >= 10;
-                        return (
-                          <div key={pos.rank} style={{
-                            position: "relative",
-                            borderRadius: "16px", padding: "2px",
-                            background: `linear-gradient(180deg, ${pos.accent} 0%, ${pos.accent}30 100%)`,
-                            boxShadow: `0 0 24px ${pos.accent}44, 0 10px 22px rgba(0,0,0,0.45)`,
-                          }}>
-                            <div style={{
-                              borderRadius: "14px",
-                              height: isMobile ? "auto" : `${pos.height}px`,
-                              padding: "12px",
-                              background: isMe
-                                ? "linear-gradient(180deg, rgba(34,211,238,0.15) 0%, #07021a 100%)"
-                                : "linear-gradient(180deg, rgba(20,10,50,0.85) 0%, #07021a 100%)",
-                              display: "flex", flexDirection: "column", alignItems: "center", gap: "6px",
-                            }}>
-                              <div style={{ fontSize: "22px" }}>{pos.medal}</div>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={avatarUrl(e.wallet, e.username)}
-                                alt=""
-                                width={44}
-                                height={44}
-                                style={{
-                                  borderRadius: "50%",
-                                  border: `2px solid ${pos.accent}`,
-                                  boxShadow: `0 0 12px ${pos.accent}80`,
-                                }}
-                              />
-                              <div style={{
-                                color: isMe ? "#22d3ee" : "white",
-                                fontSize: "12px", fontWeight: 900, letterSpacing: "0.02em",
-                                textAlign: "center", maxWidth: "100%",
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              }}>{isMe ? "YOU" : display}</div>
-                              <div style={{ display: "flex", gap: "10px", alignItems: "baseline", flexWrap: "wrap", justifyContent: "center" }}>
-                                <span style={{ color: pos.accent, fontSize: "16px", fontWeight: 900 }}>{e.matches}</span>
-                                <span style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>MATCHES</span>
-                              </div>
-                              <div style={{ display: "flex", gap: "10px", fontSize: "10px", fontWeight: 800, color: "rgba(200,200,255,0.7)" }}>
-                                <span>{e.wins}W</span>
-                                {showWinRate && <span style={{ color: "#fbbf24" }}>{e.winRate}%</span>}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                {/* Top 3 podium · uses the same StagePodium component as
+                    the WEEKLY and ALL-TIME tabs. Adapter maps PvpEntry to
+                    the Entry shape the component expects: match count is
+                    the headline score. Layout, characters, glow, confetti
+                    are all identical to the other tabs so the PVP arena
+                    reads as a first-class leaderboard surface. */}
+                {pvpData && pvpData.leaderboard.length > 0 && (
+                  <StagePodium
+                    podium={pvpData.leaderboard.slice(0, 3).map(p => ({
+                      player: p.wallet,
+                      username: p.username ?? undefined,
+                      score: p.matches,
+                      timestamp: 0,
+                    }))}
+                  />
+                )}
 
-                {/* Rows 4+ · standard list with avatars. Win% hides under
-                    the 10-match denominator so a 2/3 player doesn't outrank
-                    a true grinder on the visual columns. */}
-                {pvpData && pvpData.leaderboard.length > 3 && pvpData.leaderboard.slice(3).map(p => {
-                  const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
-                  const display = p.username || `${p.wallet.slice(0, 6)}…${p.wallet.slice(-4)}`;
-                  const showWinRate = p.matches >= 10;
-                  return (
-                    <div key={p.wallet} style={{
-                      display: "grid", gridTemplateColumns: "auto auto 1fr auto auto auto", alignItems: "center", gap: "10px",
-                      padding: "10px 14px", borderRadius: "12px",
-                      background: isMe ? "rgba(34,211,238,0.12)" : "rgba(20,10,50,0.55)",
-                      border: isMe ? "1.5px solid rgba(34,211,238,0.55)" : "1px solid rgba(99,102,241,0.18)",
-                    }}>
-                      <div style={{
-                        width: "28px", textAlign: "center",
-                        color: "rgba(165,180,252,0.65)", fontSize: "12px", fontWeight: 900,
-                      }}>#{p.rank}</div>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={avatarUrl(p.wallet, p.username)}
-                        alt=""
-                        width={28}
-                        height={28}
-                        style={{
-                          borderRadius: "50%",
-                          border: `1.5px solid ${isMe ? "rgba(34,211,238,0.55)" : "rgba(99,102,241,0.3)"}`,
-                        }}
-                      />
-                      <div style={{
-                        color: isMe ? "#22d3ee" : "white", fontSize: "12px", fontWeight: 800,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-                      }}>{isMe ? "YOU · " : ""}{display}</div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>MATCHES</div>
-                        <div style={{ color: "#a5b4fc", fontSize: "13px", fontWeight: 900 }}>{p.matches}</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINS</div>
-                        <div style={{ color: "#86efac", fontSize: "13px", fontWeight: 900 }}>{p.wins}</div>
-                      </div>
-                      <div style={{ textAlign: "right", minWidth: "44px" }}>
-                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WIN %</div>
-                        <div style={{ color: showWinRate ? "#fbbf24" : "rgba(165,180,252,0.35)", fontSize: "13px", fontWeight: 900 }}>
-                          {showWinRate ? `${p.winRate}%` : "—"}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* Rows 4+ · same PlayerRow component the WEEKLY tab uses.
+                    Single column on mobile, 2-column grid on tablet+ so
+                    the visual rhythm matches the rest of the app. Score
+                    column reads as match count. */}
+                {pvpData && pvpData.leaderboard.length > 3 && (
+                  <div style={{
+                    width: "100%", maxWidth: "720px",
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
+                    gap: isMobile ? "8px" : "10px 14px",
+                    marginTop: "4px",
+                  }}>
+                    {pvpData.leaderboard.slice(3).map(p => {
+                      const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
+                      const color = rowColorByRank(p.rank);
+                      return (
+                        <PlayerRow
+                          key={p.wallet}
+                          entry={{
+                            player: p.wallet,
+                            username: p.username ?? undefined,
+                            score: p.matches,
+                            timestamp: 0,
+                          }}
+                          rank={p.rank}
+                          color={color}
+                          isMe={isMe}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* CTA at bottom when leaderboard is populated */}
                 {pvpData && pvpData.leaderboard.length > 0 && (
