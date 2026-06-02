@@ -2,7 +2,7 @@
 
 > A social on-chain community of verified humans playing mini-games for real rewards on Celo Mainnet. Skill leaderboards, seasonal cups, 1v1 wagers, and an autonomous AI opponent · all on-chain, all auditable.
 
-[![GameArena](./frontend/public/og-image.png)](https://gamearenahq.xyz)
+[![GameArena](./frontend/public/hero.png)](https://gamearenahq.xyz)
 
 [![Live](https://img.shields.io/badge/Live-Celo%20Mainnet-fbcc5c?style=for-the-badge&logo=ethereum)](https://gamearenahq.xyz)
 [![Community](https://img.shields.io/badge/Telegram-gamearenaHQ-2ca5e0?style=for-the-badge&logo=telegram)](https://t.me/gamearenaHQ)
