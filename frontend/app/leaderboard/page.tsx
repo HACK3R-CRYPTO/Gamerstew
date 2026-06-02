@@ -104,7 +104,7 @@ function tierLabelByRank(rank: number): string {
   return "BRONZE III";
 }
 
-type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number };
+type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number; subText?: string };
 
 // /api/seasons response
 type PastSeason = {
@@ -341,6 +341,17 @@ function StagePodium({ podium }: { podium: Entry[] }) {
             }}>
               {pl.entry ? pl.entry.score : 0}
             </div>
+            {pl.entry?.subText && (
+              <div style={{
+                color: "rgba(255,255,255,0.75)",
+                fontSize: "10px", fontWeight: 800,
+                letterSpacing: "0.06em",
+                marginTop: "1px",
+                textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+              }}>
+                {pl.entry.subText}
+              </div>
+            )}
           </div>
         );
       })}
@@ -3134,6 +3145,9 @@ function LeaderboardInner() {
                       username: p.username ?? undefined,
                       score: p.matches,
                       timestamp: 0,
+                      subText: p.matches >= 10
+                        ? `W ${p.wins} · ${p.winRate}%`
+                        : `W ${p.wins}`,
                     }))}
                   />
                 )}
