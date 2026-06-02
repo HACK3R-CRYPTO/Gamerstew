@@ -39,7 +39,7 @@ flowchart TB
     end
 
     subgraph APP["App layer"]
-        FE[Frontend · Next.js 16<br/>gamearenahq.xyz]
+        FE[Frontend · Next.js 16<br/>gamearenahq.xyz<br/>web + MiniPay webview]
         BE[Games-backend · Express<br/>EIP-712 score vouchers · seasons · missions · push]
         DB[(Supabase Postgres<br/>scores · seasons · habitats · agent state)]
     end
@@ -53,7 +53,7 @@ flowchart TB
         FB[ERC-8004 Feedback Registry]
     end
 
-    subgraph AGENT["MARKOV · autonomous AI opponent"]
+    subgraph AGENT["Agent layer · MARKOV (first agent) · A2A-extensible"]
         M{{Markov-2 chain prediction<br/>hash-committed RNG<br/>no operator · no keeper}}
         OR[Oracle Wallet<br/>fire-and-forget attestor]
     end
@@ -92,11 +92,41 @@ flowchart TB
     GK <-->|reads| AP
 ```
 
-Three game loops sit on top of one shared platform · **🎵 Solo skill games** (Rhythm Rush + Simon Memory today, with more games shipping into this slot) submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards. **🤖 1v1 wagers vs MARKOV** stake G$ on-chain through the player's wallet; the autonomous agent picks the matches up via `MatchProposed` events, plays Rock-Paper-Scissors or Coin Flip today, and resolves directly against the contract · the same wager primitive extends to whatever game gets registered next. **🏆 Seasonal competitions** aggregate every action across all loops · games played, wager wins, daily claims, referrals, active days · into points the season engine ranks against the prize-pool tiers.
+### Three game loops on one shared platform
 
-The platform is built to onboard new game types without a contract redeploy · score vouchers and the wager primitive are game-agnostic, so a new skill game just needs a frontend client + scoring rules, and a new agent game just needs to be added to MARKOV's strategy module. Coming-soon titles slot into the same surfaces (Frontend · Backend · ArenaPlatform · MARKOV) that already power today's three loops.
+**🎵 Solo skill games**
 
-Four supporting systems sit underneath · the **App layer** runs the UX and score pipeline, the **Celo Mainnet** contracts hold the money and settle every match, the **MARKOV agent** lives entirely on-chain as the autonomous opponent for the wager loop, and the **Off-chain surfaces** make the agent's activity legible to humans (Moltbook), to other agents (A2A discovery), and to analytics (Goldsky). The database mirrors chain state, not the other way around · every settlement, score, and feedback writes to Celo first.
+Rhythm Rush + Simon Memory today, with more games shipping into this slot. Plays submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards.
+
+**🤖 1v1 wagers vs MARKOV**
+
+G$ staked on-chain through the player's wallet. The autonomous agent picks matches up via `MatchProposed` events, plays Rock-Paper-Scissors or Coin Flip today, and resolves directly against the contract. The same wager primitive extends to whatever game gets registered next.
+
+**🏆 Seasonal competitions**
+
+Every action across all loops · games played, wager wins, daily claims, referrals, active days · aggregates into points the season engine ranks against the prize-pool tiers.
+
+---
+
+### Designed for extensibility
+
+- **New skill game** · ship a frontend client + scoring rules. No contract redeploy.
+- **New agent game** · add it to MARKOV's strategy module. The existing wager primitive carries it.
+- **New agent entirely** · register on the same ERC-8004 registry. MARKOV is the first agent on the platform, not the only one it can host · A2A v0.3 discovery means any compliant agent plugs into the same surfaces.
+- **Multi-platform reach** · the frontend works on the web AND inside MiniPay's webview from the same surface · no separate build.
+
+---
+
+### Four supporting systems
+
+| System | What it does |
+|---|---|
+| **App layer** | UX, score pipeline, seasons, missions, push notifications. Frontend on Vercel, backend on Railway, state in Supabase Postgres. |
+| **Celo Mainnet contracts** | Hold the money and settle every match · ArenaPlatform, GamePass NFT, G$ token, GoodCollective UBI pool. 2% platform fee routes to UBI. |
+| **MARKOV agent** | Lives entirely on-chain as the autonomous opponent. No operator, no keeper. Markov-2 chain prediction + hash-committed RNG. |
+| **Off-chain surfaces** | Make agent activity legible · Moltbook posts (humans), A2A discovery (other agents), Goldsky subgraph (analytics). |
+
+The database mirrors chain state, not the other way around · every settlement, score, and feedback writes to Celo first.
 
 For MARKOV's internal four-layer architecture (Economic · Reputation · Discovery · Social), see the [MARKOV section](#markov--autonomous-on-chain-ai-opponent) or [agent/README.md](agent/README.md).
 
