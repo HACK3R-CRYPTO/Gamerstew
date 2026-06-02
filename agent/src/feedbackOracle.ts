@@ -45,15 +45,26 @@ export type MatchOutcomeAttestation = {
 };
 
 let cachedOracleClient: ReturnType<typeof buildOracleClient> | null = null;
+let oracleInitLogged = false;
 function buildOracleClient() {
     const key = process.env.FEEDBACK_ORACLE_KEY as `0x${string}` | undefined;
-    if (!key) return null;
+    if (!key) {
+        if (!oracleInitLogged) {
+            console.warn(chalk.yellow('[8004] FEEDBACK_ORACLE_KEY is not set · match attestations will silently no-op. Set the env var on Railway to enable.'));
+            oracleInitLogged = true;
+        }
+        return null;
+    }
     const account = privateKeyToAccount(key);
     const client = createWalletClient({
         account,
         chain: celo,
         transport: http(process.env.CELO_RPC_URL || 'https://forno.celo.org'),
     }).extend(publicActions);
+    if (!oracleInitLogged) {
+        console.log(chalk.cyan(`[8004] Feedback Oracle configured · attestor=${account.address}`));
+        oracleInitLogged = true;
+    }
     return { account, client };
 }
 
