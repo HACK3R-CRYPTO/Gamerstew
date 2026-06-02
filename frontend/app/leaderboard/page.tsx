@@ -533,6 +533,18 @@ function LeaderboardInner() {
     contributors: { wallet: string; username: string | null; games: number }[];
   } | null>(null);
 
+  // PVP Arena lifetime leaderboard · all-time Challenge-AI stats per
+  // wallet. Powers the PVP ARENA tab. Same shape as MARKOV Climb so the
+  // UI can render through similar primitives, but the window covers
+  // the entire history (not just an event slice) and includes a wins +
+  // win-rate breakdown so it reads as both a grind ranking and a skill
+  // ranking simultaneously.
+  type PvpEntry = {
+    rank: number; wallet: string; username: string | null;
+    matches: number; wins: number; ties: number; winRate: number;
+  };
+  const [pvpData, setPvpData] = useState<{ totalPlayers: number; totalMatches: number; leaderboard: PvpEntry[] } | null>(null);
+
   // MARKOV Climb · 23-day Challenge-AI match-count leaderboard. Powers the
   // flagship hackathon-window event card. Ranked by total resolved matches
   // vs MARKOV inside the configured event window (Jun 3 → Jun 25). Top 3
@@ -680,6 +692,24 @@ function LeaderboardInner() {
       setSeason1Me(null);
     }
   }, [activeTab, address]);
+
+  // PVP Arena tab fetch · separate effect because the seasons-tab effect
+  // returns early before pvpData would load. Refreshes every 30s while
+  // the tab is active so live match counts roll in without a manual
+  // page reload.
+  useEffect(() => {
+    if (activeTab !== "pvp") return;
+    let cancelled = false;
+    const fetchPvp = () => {
+      fetch("/api/pvp-leaderboard", { cache: "no-store" })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (!cancelled) setPvpData(d ?? null); })
+        .catch(() => { if (!cancelled) setPvpData(null); });
+    };
+    fetchPvp();
+    const i = setInterval(fetchPvp, 30000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, [activeTab]);
 
   // Soft-cap aware: the smallest team sets the join ceiling for the others.
   const season1Counts = useMemo<Record<Season1Team, number>>(() => {
@@ -3015,18 +3045,119 @@ function LeaderboardInner() {
             )}
 
             {activeTab === "pvp" && (
-              <div style={{
-                width: "100%", maxWidth: "540px",
-                padding: "30px 20px", borderRadius: "18px",
-                background: "rgba(20,10,50,0.6)", border: "1px solid rgba(168,85,247,0.2)",
-                boxShadow: "0 0 30px rgba(168,85,247,0.15)",
-                textAlign: "center",
-              }}>
-                <div style={{ fontSize: "36px", marginBottom: "10px" }}>⚔️</div>
-                <div style={{ color: "white", fontSize: "14px", fontWeight: 900, letterSpacing: "0.1em", marginBottom: "6px" }}>PVP ARENA</div>
-                <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "11px", lineHeight: 1.5 }}>
-                  1v1 challenges with G$ wagers — top wins ranking coming here.
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                {/* Header strip · totals + context line */}
+                <div style={{
+                  padding: "14px 18px", borderRadius: "16px",
+                  background: "linear-gradient(180deg, rgba(99,102,241,0.18) 0%, rgba(20,10,50,0.7) 100%)",
+                  border: "1px solid rgba(99,102,241,0.4)",
+                  boxShadow: "0 0 22px rgba(99,102,241,0.25)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "22px" }}>⚔️</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: "white", fontSize: "14px", fontWeight: 900, letterSpacing: "0.06em" }}>PVP ARENA · vs MARKOV</div>
+                      <div style={{ color: "rgba(165,180,252,0.65)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
+                        All-time Challenge-AI standings · G$ wagers · settled on-chain
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <div>
+                      <div style={{ color: "rgba(165,180,252,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS</div>
+                      <div style={{ color: "#a5b4fc", fontSize: "16px", fontWeight: 900 }}>{pvpData?.totalPlayers ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: "rgba(165,180,252,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>MATCHES</div>
+                      <div style={{ color: "#a5b4fc", fontSize: "16px", fontWeight: 900 }}>{pvpData?.totalMatches ?? "—"}</div>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Empty / loading state */}
+                {!pvpData && (
+                  <div style={{ padding: "40px", textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING…</div>
+                )}
+                {pvpData && pvpData.leaderboard.length === 0 && (
+                  <div style={{
+                    width: "100%", maxWidth: "440px", margin: "20px auto",
+                    padding: "32px 24px", borderRadius: "20px",
+                    background: "linear-gradient(180deg, rgba(99,102,241,0.12) 0%, rgba(20,10,50,0.8) 100%)",
+                    border: "1.5px solid rgba(99,102,241,0.4)",
+                    boxShadow: "0 0 30px rgba(99,102,241,0.2)",
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: "44px", marginBottom: "10px" }}>🤖</div>
+                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900 }}>Be the first to challenge MARKOV</div>
+                    <div style={{ color: "rgba(200,180,255,0.75)", fontSize: "12px", marginTop: "10px", lineHeight: 1.6 }}>
+                      No matches resolved yet. Play one round, claim the top of the board.
+                    </div>
+                    <button
+                      onClick={() => router.push("/games/challenge-ai")}
+                      style={{
+                        marginTop: "18px", padding: "11px 24px", borderRadius: "999px",
+                        background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)",
+                        border: "none", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
+                        boxShadow: "0 0 20px rgba(99,102,241,0.5)",
+                      }}
+                    >
+                      PLAY MARKOV →
+                    </button>
+                  </div>
+                )}
+
+                {/* Leaderboard rows */}
+                {pvpData && pvpData.leaderboard.length > 0 && pvpData.leaderboard.map(p => {
+                  const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
+                  const medal = p.rank === 1 ? "🥇" : p.rank === 2 ? "🥈" : p.rank === 3 ? "🥉" : null;
+                  const display = p.username || `${p.wallet.slice(0, 6)}…${p.wallet.slice(-4)}`;
+                  return (
+                    <div key={p.wallet} style={{
+                      display: "grid", gridTemplateColumns: "auto 1fr auto auto auto", alignItems: "center", gap: "10px",
+                      padding: "10px 14px", borderRadius: "12px",
+                      background: isMe ? "rgba(34,211,238,0.12)" : "rgba(20,10,50,0.55)",
+                      border: isMe ? "1.5px solid rgba(34,211,238,0.55)" : "1px solid rgba(99,102,241,0.18)",
+                    }}>
+                      <div style={{
+                        width: "28px", textAlign: "center",
+                        color: medal ? "white" : "rgba(165,180,252,0.65)",
+                        fontSize: medal ? "16px" : "13px", fontWeight: 900,
+                      }}>{medal || `#${p.rank}`}</div>
+                      <div style={{
+                        color: isMe ? "#22d3ee" : "white", fontSize: "12px", fontWeight: 800,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{isMe ? "YOU · " : ""}{display}</div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>MATCHES</div>
+                        <div style={{ color: "#a5b4fc", fontSize: "13px", fontWeight: 900 }}>{p.matches}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINS</div>
+                        <div style={{ color: "#86efac", fontSize: "13px", fontWeight: 900 }}>{p.wins}</div>
+                      </div>
+                      <div style={{ textAlign: "right", minWidth: "44px" }}>
+                        <div style={{ color: "rgba(165,180,252,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WIN %</div>
+                        <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{p.winRate}%</div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* CTA at bottom when leaderboard is populated */}
+                {pvpData && pvpData.leaderboard.length > 0 && (
+                  <button
+                    onClick={() => router.push("/games/challenge-ai")}
+                    style={{
+                      alignSelf: "center", marginTop: "8px",
+                      padding: "12px 28px", borderRadius: "999px",
+                      background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)",
+                      border: "none", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
+                      boxShadow: "0 0 20px rgba(99,102,241,0.5)",
+                    }}
+                  >
+                    PLAY MARKOV →
+                  </button>
+                )}
               </div>
             )}
             <div style={{ flex: 1 }} />
