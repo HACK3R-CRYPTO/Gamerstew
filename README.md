@@ -26,6 +26,20 @@ Built community-first · auto-balanced team races, weekly + all-time skill ladde
 
 ---
 
+## From the community
+
+> there are days you'd just feel tired & overwhelmed and all you might need to cool off might be some games :)
+>
+> @Gamearenahq is a social community that's supports multiple fun games and community tasks.
+>
+> with live leader-boards, chill prizes and fun games to play.
+>
+> gamearena is positioning as the onchain environment you'd need to have fun!
+>
+> let's game!!
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -134,6 +148,7 @@ For MARKOV's internal four-layer architecture (Economic · Reputation · Discove
 
 ## Contents
 
+- [From the community](#from-the-community)
 - [Architecture](#architecture)
 - [How it works](#how-it-works)
   - [Verified humans only](#verified-humans-only)
