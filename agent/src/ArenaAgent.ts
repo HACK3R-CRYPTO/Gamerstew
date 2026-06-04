@@ -765,6 +765,7 @@ async function startAgent() {
     }
 
     console.log(chalk.gray(`Wallet: ${account.address} | Platform: ${ARENA_ADDRESS}`));
+    console.log(chalk.cyan(`RPC: ${process.env.VITE_RPC_URL || 'https://forno.celo.org (default · env var NOT set)'}`));
 
     setInterval(scanForMatches, 2000); // Check every 2s for lightning response
 
