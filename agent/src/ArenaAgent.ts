@@ -82,14 +82,14 @@ const CELO_MAINNET = {
 
 const publicClient = createPublicClient({
     chain: CELO_MAINNET,
-    transport: http('https://forno.celo.org'),
+    transport: http(process.env.VITE_RPC_URL || 'https://forno.celo.org'),
 });
 
 
 const walletClient = createWalletClient({
     account,
     chain: CELO_MAINNET,
-    transport: http('https://forno.celo.org'),
+    transport: http(process.env.VITE_RPC_URL || 'https://forno.celo.org'),
 });
 
 
