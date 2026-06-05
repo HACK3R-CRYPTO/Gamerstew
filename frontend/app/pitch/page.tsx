@@ -404,17 +404,19 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
     key: "problem",
     render: () => (
       <SlideFrame eyebrow="THE PROBLEM">
-        <H1>Web3 games fail you.</H1>
-        <div style={{ height: "clamp(12px, 2vh, 28px)" }} />
+        <H1>Verified humans on Celo have nowhere to play.</H1>
+        <Lead>
+          GoodDollar gave Celo hundreds of thousands of verified humans. Most of them never had a reason to use their G$ outside basic-income claims. There is no home for them to log in, compete, and have fun together.
+        </Lead>
         <BulletList>
           <Bullet accent="#ef4444">
-            <strong>You pay to play.</strong> 95% of new players quit at the paywall.
+            <strong>On-chain games extract, they do not entertain.</strong> Casino primitives and click-to-earn loops. Not games you would recommend to a friend.
           </Bullet>
           <Bullet accent="#f97316">
-            <strong>Loot boxes win, skill loses.</strong> Real skill games sit on app stores. They cannot settle real money.
+            <strong>GoodDollar identity is underused.</strong> The strongest sybil-resistance layer in Web3 protects hundreds of thousands of humans. Almost no consumer apps gate on it.
           </Bullet>
           <Bullet accent="#fbbf24">
-            <strong>The economy extracts.</strong> Value goes to early token holders, not players.
+            <strong>Communities lack durable competitive loops.</strong> Tournaments run in centralized brackets. No on-chain standings, no automated payouts, no continuity between events.
           </Bullet>
         </BulletList>
       </SlideFrame>
@@ -426,21 +428,36 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
     key: "solution",
     render: () => (
       <SlideFrame eyebrow="THE SOLUTION">
-        <H1>Free to play. Real prizes. Real UBI.</H1>
+        <H1>Three game loops. Three reasons people show up.</H1>
         <Lead>
-          You open the app and play. No wallet needed to start. Earn XP, level up, evolve your pet. Top the weekly leaderboard for badges. Place in a hosted <strong style={{ color: GOLD }}>Cup</strong> and we send you real USDC. Free G$ claims and optional wagers tie you into GoodDollar UBI for 500,000 verified humans.
+          Every match gated by GoodDollar Identity. Every wager and prize pool settles in G$ on the platform contract. The 2% platform fee routes back to the GoodCollective UBI pool · the same pool that funds the verified humans who play.
         </Lead>
         <div style={{
           marginTop: "clamp(16px, 3vh, 32px)",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
           gap: "clamp(12px, 1.6vw, 22px)",
           maxWidth: "1100px",
         }}>
           {[
-            { icon: "🎮", title: "Play free", body: "No deposit. No paywall. Open and play.", c: GREEN },
-            { icon: "🏆", title: "Win USDC", body: "Win a hosted Cup. We send the prize to your wallet.", c: GOLD },
-            { icon: "🌍", title: "Back UBI", body: "Every G$ claim ties you to GoodDollar.", c: CYAN },
+            {
+              icon: "🎵",
+              title: "Skill games",
+              body: "Rhythm Rush, Simon Memory. Weekly and all-time leaderboards. Top finishers earn G$ from platform pools.",
+              c: GREEN,
+            },
+            {
+              icon: "🤖",
+              title: "1v1 vs MARKOV",
+              body: "Autonomous AI opponent. Token #6386 on ERC-8004. Markov-2 prediction, hash-committed RNG, no operator. Provably fair on Celoscan.",
+              c: GOLD,
+            },
+            {
+              icon: "🏆",
+              title: "Seasonal cups",
+              body: "Team races, solo ladders, sponsor cups, community-funded pots. Real G$ pools, sealed standings, on-chain payouts.",
+              c: MAGENTA,
+            },
           ].map((card, i) => (
             <div key={i} style={{
               borderRadius: "16px",
@@ -457,7 +474,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
               <div style={{
                 color: "rgba(200,180,255,0.75)",
                 fontSize: "clamp(12px, 1.4vw, 14px)",
-                marginTop: "4px", lineHeight: 1.4,
+                marginTop: "4px", lineHeight: 1.45,
               }}>{card.body}</div>
             </div>
           ))}
