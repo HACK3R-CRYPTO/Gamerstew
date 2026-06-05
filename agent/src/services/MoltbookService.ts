@@ -40,12 +40,15 @@ export class MoltbookService {
 
         // One-shot config log so Railway logs tell us at startup whether the
         // integration is live or silently disabled. Saves a debug roundtrip.
+        const hasGroq = !!process.env.GROQ_API_KEY;
+        const hasGemini = !!process.env.GEMINI_API_KEY;
         if (!this.apiKey) {
             console.warn(chalk.yellow('[MOLTBOOK] MOLTBOOK_API_KEY is not set · all postUpdate calls will silently no-op.'));
-        } else if (!process.env.GEMINI_API_KEY) {
-            console.warn(chalk.yellow('[MOLTBOOK] MOLTBOOK_API_KEY is set but GEMINI_API_KEY is missing · post content generation will use the stub fallback.'));
+        } else if (!hasGroq && !hasGemini) {
+            console.warn(chalk.yellow('[MOLTBOOK] MOLTBOOK_API_KEY is set but neither GROQ_API_KEY nor GEMINI_API_KEY is configured · post content generation will use the stub fallback.'));
         } else {
-            console.log(chalk.blue(`[MOLTBOOK] Configured · baseUrl=${this.baseUrl} · cooldown=${this.POST_COOLDOWN / 1000}s`));
+            const providers = [hasGroq && 'Groq (primary)', hasGemini && 'Gemini (fallback)'].filter(Boolean).join(' + ');
+            console.log(chalk.blue(`[MOLTBOOK] Configured · baseUrl=${this.baseUrl} · cooldown=${this.POST_COOLDOWN / 1000}s · LLM: ${providers}`));
         }
     }
 
@@ -125,8 +128,43 @@ export class MoltbookService {
     }
 
     private async generateAIContent(prompt: string): Promise<string | null> {
-        // Return null when Gemini isn't available so callers fall through to
-        // their match-specific static template instead of a generic stub.
+        // Two-vendor fallback chain · Groq primary, Gemini secondary, null
+        // (static template at the caller) if both fail. Groq goes first
+        // because Llama-3.3-70b on the free tier absorbs the bursty post
+        // traffic during a climb event without the quota-related drops
+        // we kept hitting on Gemini. Both vendors are optional · callers
+        // already handle a null return by emitting a match-specific
+        // static template so reputation never goes silent.
+
+        // 1) Groq · Llama-3.3-70b · OpenAI-compatible chat completions API.
+        if (process.env.GROQ_API_KEY) {
+            try {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [{ role: "user", content: prompt }],
+                        max_tokens: 200,
+                        temperature: 0.9,
+                    }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const text = (data?.choices?.[0]?.message?.content ?? "").trim();
+                    if (text) return text;
+                }
+                console.warn(chalk.yellow(`[GROQ] Non-200 or empty response · falling through to Gemini`));
+            } catch (e: any) {
+                console.warn(chalk.yellow(`[GROQ] Request failed: ${e?.message ?? e} · falling through to Gemini`));
+            }
+        }
+
+        // 2) Gemini fallback · Google AI Studio. Different vendor, different
+        //    rate limit, so a Groq outage doesn't drop us straight to static.
         if (!process.env.GEMINI_API_KEY) return null;
         try {
             const model = this.gemini.getGenerativeModel({ model: "gemini-2.0-flash" });

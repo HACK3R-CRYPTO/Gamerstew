@@ -882,7 +882,8 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
         );
         const hash = await submitTx(async () => {
             const { request } = await publicClient.simulateContract({
-                address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall', args: [ARENA_ADDRESS, wager, encodedArgs], account
+                address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall',
+                args: [ARENA_ADDRESS, wager, encodedArgs], account,
             });
             const h = await walletClient.writeContract(request);
             await publicClient.waitForTransactionReceipt({ hash: h });
@@ -903,6 +904,10 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
             console.log(chalk.gray(`Match #${matchId} already accepted by someone else.`));
         } else {
             console.error(chalk.red('Failed to accept match:'), error.shortMessage || error.message);
+            // Empty-data reverts on transferAndCall almost always mean the
+            // agent wallet is out of CELO for gas · Forno disguises
+            // "insufficient funds" as a generic execution-reverted with 0x
+            // data. Check the wallet balance before chasing any deeper.
         }
     }
 }
