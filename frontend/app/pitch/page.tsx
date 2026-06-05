@@ -395,6 +395,31 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         }}>
           CELO · GOODDOLLAR · ERC-8004 · MINIPAY
         </div>
+        <div style={{
+          marginTop: "clamp(18px, 3vh, 28px)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "clamp(8px, 1.2vw, 14px)",
+          justifyContent: "center",
+        }}>
+          {[
+            { label: "LIVE · CELO MAINNET", c: GREEN },
+            { label: "MARKOV · TOKEN #6386", c: "#22d3ee" },
+            { label: "KARMA · GAMEARENA", c: "#a78bfa" },
+          ].map((b, i) => (
+            <span key={i} style={{
+              padding: "clamp(5px, 0.8vh, 7px) clamp(10px, 1.4vw, 16px)",
+              borderRadius: "999px",
+              border: `1px solid ${b.c}`,
+              background: `${b.c}1a`,
+              color: "white",
+              fontSize: "clamp(10px, 1.2vw, 13px)",
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textShadow: `0 0 10px ${b.c}77`,
+            }}>{b.label}</span>
+          ))}
+        </div>
       </div>
     ),
   },
@@ -585,7 +610,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
     key: "retention",
     render: () => (
       <SlideFrame eyebrow="RETENTION">
-        <H1>Six loops that keep you coming back.</H1>
+        <H1>Seven loops that keep you coming back.</H1>
         <div style={{
           marginTop: "clamp(16px, 2vh, 28px)",
           display: "grid",
@@ -600,6 +625,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             { icon: "🎯", title: "Daily Missions", body: "3 missions. Refresh every 24h.", c: "#f97316" },
             { icon: "🔥", title: "Streaks", body: "Skip a day, your flame freezes. Play to thaw.", c: CYAN },
             { icon: "✦", title: "Achievements", body: "13 milestones. NFT badges ship next.", c: "#f472b6" },
+            { icon: "🏡", title: "Habitats", body: "5 free + 5 paid tiers. G$ unlocks route 90% to the UBI pool.", c: "#a78bfa" },
           ].map((loop, i) => (
             <div key={i} style={{
               borderRadius: "14px",
@@ -638,16 +664,16 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         <H1>Players are already here.</H1>
         <BulletList>
           <Bullet accent={GREEN}>
-            <strong>MiniPay.</strong> 4M monthly actives across Africa, LatAm, and South Asia. Game Arena runs inside it.
+            <strong>MiniPay native.</strong> Runs inside the largest stablecoin wallet on Celo · millions of monthly actives across Africa, LatAm, and South Asia. No separate install. Auto-connect via the injected provider.
           </Bullet>
           <Bullet accent={GOLD}>
-            <strong>Celo mainnet.</strong> $0.001 per transaction. No gas wall.
+            <strong>Celo mainnet.</strong> Sub-cent fees, one-second finality. No gas wall, no L2 bridge friction.
           </Bullet>
           <Bullet accent={MAGENTA}>
-            <strong>Web, not app store.</strong> Share a link. It opens. Updates ship instantly.
+            <strong>Web, not app store.</strong> Share a link. It opens. Updates ship instantly. No review queue, no platform tax.
           </Bullet>
           <Bullet accent={CYAN}>
-            <strong>Social login.</strong> 60% of our base has never used a wallet. Google or email gets them playing in 10 seconds.
+            <strong>Social login.</strong> Most of our base has never used a wallet. Privy lets them play in 10 seconds via Google, email, or any embedded wallet · no seed phrase.
           </Bullet>
         </BulletList>
       </SlideFrame>
