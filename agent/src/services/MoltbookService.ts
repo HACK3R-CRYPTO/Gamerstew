@@ -142,6 +142,26 @@ export class MoltbookService {
         // already handle a null return by emitting a match-specific
         // static template so reputation never goes silent.
 
+        // Anti-template guards · without these the LLM collapses to
+        // "<wallet> + <verb phrase>" every single post. The random
+        // angle hint nudges the opening structure; the OpenAI-spec
+        // frequency_penalty + presence_penalty (Groq supports both)
+        // discourage reused phrasing across nearby calls.
+        const ANGLES = [
+            'Lead with the outcome of the match.',
+            'Lead with the move that was played.',
+            'Lead with a one-word reaction, then the detail.',
+            'Lead with the opponent wallet shorthand.',
+            'Open with a fragment · no verb · then a short follow-up.',
+            'Skip the wallet entirely in this post. Refer to "they" or "them".',
+            'Open with the stake amount.',
+            'Two short lines · one observation, one detail.',
+            'One single line · no second sentence.',
+            'Lead with a quick observation about how the round felt.',
+        ];
+        const angle = ANGLES[Math.floor(Math.random() * ANGLES.length)];
+        const promptWithAngle = `${prompt}\n\n[STYLE FOR THIS POST]: ${angle}`;
+
         // 1) Groq · Llama-3.3-70b · OpenAI-compatible chat completions API.
         if (process.env.GROQ_API_KEY) {
             try {
@@ -153,9 +173,11 @@ export class MoltbookService {
                     },
                     body: JSON.stringify({
                         model: "llama-3.3-70b-versatile",
-                        messages: [{ role: "user", content: prompt }],
+                        messages: [{ role: "user", content: promptWithAngle }],
                         max_tokens: 200,
-                        temperature: 0.9,
+                        temperature: 1.1,
+                        frequency_penalty: 0.4,
+                        presence_penalty: 0.5,
                     }),
                 });
                 if (res.ok) {
