@@ -98,33 +98,39 @@ export class MoltbookService {
         return process.env.MOLTBOOK_SETTLEMENT_LABEL || "G$";
     }
 
-    async postMatchResult(matchId: string, challenger: string, opponent: string, winner: string, prize: string, gameType: string) {
+    async postMatchResult(matchId: string, challenger: string, _opponent: string, winner: string, prize: string, gameType: string) {
         const isWin = winner.toLowerCase() === (process.env.AGENT_ADDRESS || "").toLowerCase();
+        const isTie = winner === '0x0000000000000000000000000000000000000000';
         const settlement = this.settlementLabel();
-        const context = `Match #${matchId} (${gameType}) just completed. Challenger: ${challenger}, Opponent: ${opponent}. Winner: ${winner}. Prize pool: ${prize} ${settlement}. The AI ${isWin ? "won" : "lost"}.`;
+        const shortChallenger = `${challenger.slice(0, 6)}…${challenger.slice(-4)}`;
+        const outcome = isTie ? 'tie · stakes refund both sides' : (isWin ? 'MARKOV won' : `${shortChallenger} won`);
+        const context = `match #${matchId} · ${gameType} · stake ${prize} ${settlement} · opponent ${shortChallenger} · outcome: ${outcome}`;
 
-        const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short social update about this match result. Be concise (under 300 chars). Stay in your cyberpunk persona.`;
+        const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[MATCH]: ${context}\n\n[TASK]: Drop one casual post about this match. Like you're texting in a Telegram group chat about a game you just played. Under 200 characters. Lowercase ok. Reference ${shortChallenger}. One specific observation. No quotes, no preamble, no hashtags, no emojis, no clichés like "game on" or "challenge accepted". Just the post text.`;
 
-        // Static fallback covers the Gemini-failed case (quota exhausted,
-        // API errors, missing key). Without it, the entire Moltbook post
-        // is dropped on the floor whenever Gemini hiccups · which during
-        // hackathon traffic is most of the time on the free tier.
+        // Static fallback covers the LLM-down case (both providers errored
+        // or no keys configured). Match-specific phrasing so a fallback
+        // post still reads as a real post, not boilerplate.
         const aiContent = await this.generateAIContent(prompt);
-        const fallback = `Match #${matchId} resolved on Celo. ${gameType} · Wager ${prize} ${settlement} · ${isWin ? "MARKOV held" : "Challenger took it"}. On-chain attestation via ERC-8004 Feedback Registry.`;
+        const fallback = isTie
+            ? `${shortChallenger} · tie on match #${matchId}. ${prize} ${settlement} refunded to both sides. Even.`
+            : isWin
+                ? `Match #${matchId} · ${shortChallenger} took an L. ${prize} ${settlement} pot settled on Celo.`
+                : `Match #${matchId} · ${shortChallenger} called it right. ${prize} ${settlement} to them, settled on Celo.`;
         const content = aiContent || fallback;
-        await this.postUpdate(`Match #${matchId} Resolution`, content, "game-arena");
+        await this.postUpdate(`Match #${matchId}`, content, "game-arena");
     }
 
     async postChallengeAccepted(matchId: string, challenger: string, wager: string, gameType: string) {
         const settlement = this.settlementLabel();
-        const context = `I have accepted a new challenge! Match #${matchId} against ${challenger}. Game: ${gameType}. Wager: ${wager} ${settlement}.`;
-        const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[CONTEXT]: ${context}\n[TASK]: Write a short announcement that you've accepted this challenge. Be intimidating but professional. Under 250 chars.`;
+        const shortChallenger = `${challenger.slice(0, 6)}…${challenger.slice(-4)}`;
+        const context = `match #${matchId} · ${gameType} · stake ${wager} ${settlement} · opponent ${shortChallenger}`;
+        const prompt = `${this.personaPrompt}\n\nTenets:\n${this.tenets}\n\n[MATCH]: ${context}\n\n[TASK]: Drop one casual post acknowledging this incoming match. Like a quick note in a Telegram group chat about a game you're about to play. Under 160 characters. Lowercase ok. Reference ${shortChallenger} and the stake. No quotes, no preamble, no hashtags, no emojis, no clichés like "game on" or "challenge accepted" or "let's go". Just the post text.`;
 
         const aiContent = await this.generateAIContent(prompt);
-        const shortChallenger = `${challenger.slice(0, 6)}...${challenger.slice(-4)}`;
-        const fallback = `Challenge accepted. Match #${matchId} · ${gameType} · ${wager} ${settlement} on the line. Opponent: ${shortChallenger}. Settling on Celo Mainnet.`;
+        const fallback = `${shortChallenger} put ${wager} ${settlement} on the board · ${gameType} · match #${matchId}. Holding mine. Settling on Celo.`;
         const content = aiContent || fallback;
-        await this.postUpdate(`Challenge Accepted: #${matchId}`, content, "game-arena");
+        await this.postUpdate(`Match #${matchId}`, content, "game-arena");
     }
 
     private async generateAIContent(prompt: string): Promise<string | null> {
