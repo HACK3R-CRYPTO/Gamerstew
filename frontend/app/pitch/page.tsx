@@ -430,7 +430,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
       <SlideFrame eyebrow="THE SOLUTION">
         <H1>Three game loops. Three reasons people show up.</H1>
         <Lead>
-          Every match gated by GoodDollar Identity. Every wager and prize pool settles in G$ on the platform contract. The 2% platform fee routes back to the GoodCollective UBI pool · the same pool that funds the verified humans who play.
+          Free play is open to anyone. Wagers and prize pools gated by GoodDollar Identity. MARKOV wagers settle in G$ on the platform contract · winner takes 98%, 2% routes to the GoodCollective UBI pool. Cup prizes pay USDC or G$ depending on the event · sponsor cups skew USDC, community-funded pots skew G$.
         </Lead>
         <div style={{
           marginTop: "clamp(16px, 3vh, 32px)",
@@ -570,7 +570,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>Weekly seasons mint badges.</strong> Bronze, Silver, and Gold per game, per week. On chain and auditable.
           </Bullet>
           <Bullet accent={CYAN}>
-            <strong>G$ and wager are optional.</strong> You claim G$ free every 24 hours from GoodDollar. Wager contracts are live on chain. We ship the in game toggle next.
+            <strong>Wager flow is live.</strong> Challenge MARKOV in Rock-Paper-Scissors or Coin Flip · stake G$, the agent auto-accepts, plays, resolves on chain. Winner takes 98% of the pot. 2% routes to the GoodCollective UBI pool. Free G$ claims every 24h from GoodDollar.
           </Bullet>
         </BulletList>
       </SlideFrame>
@@ -709,7 +709,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>Signed scores.</strong> EIP-712 vouchers. Backend signs, wallet countersigns. Neither side can post a score alone.
           </Bullet>
           <Bullet accent="#22d3ee">
-            <strong>ERC-8004 trust layer.</strong> MARKOV is Token #6386 on the ERC-8004 Agent Trust Protocol. Every match writes a reputation attestation on chain · player-signed and oracle-attested.
+            <strong>ERC-8004 trust layer.</strong> MARKOV is Token #6386. Every match produces four parallel signals · economic settlement on the platform contract, reputation attestation on the ERC-8004 Feedback Registry, A2A v0.3 discovery for other agents, and an in-persona Moltbook post. No human in the loop.
           </Bullet>
           <Bullet accent={MAGENTA}>
             <strong>Soulbound Game Pass.</strong> One per human. No transfers. No bot secondary market.
