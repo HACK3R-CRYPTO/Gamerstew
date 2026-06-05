@@ -572,6 +572,9 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           <Bullet accent={CYAN}>
             <strong>Wager flow is live.</strong> Challenge MARKOV in Rock-Paper-Scissors or Coin Flip · stake G$, the agent auto-accepts, plays, resolves on chain. Winner takes 98% of the pot. 2% routes to the GoodCollective UBI pool. Free G$ claims every 24h from GoodDollar.
           </Bullet>
+          <Bullet accent="#f472b6">
+            <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 90% G$ to the GoodCollective UBI pool, 10% to platform sustainability. G$ activity recycles into the economy that gates entry.
+          </Bullet>
         </BulletList>
       </SlideFrame>
     ),
@@ -830,9 +833,9 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           maxWidth: "1100px",
         }}>
           {[
-            { c: GREEN, title: "Funding", body: "Pre seed. Tournaments, a third game, and a two engineer team for 12 months." },
-            { c: GOLD, title: "Distribution", body: "MiniPay dapp store, Celo Foundation intros, wallet integrations." },
-            { c: MAGENTA, title: "Partnership", body: "Skill game studios who want an on chain economy and UBI rail." },
+            { c: GREEN, title: "Funding", body: "Seed. Tournaments, a third skill game, MCP surface for MARKOV, and a two engineer team for 12 months." },
+            { c: GOLD, title: "Distribution", body: "MiniPay dapp store, Celo Foundation intros, wallet integrations, GoodCollective co-marketing." },
+            { c: MAGENTA, title: "Partnership", body: "Skill-game studios, autonomous-agent teams, and brands sponsoring verified-human-only cups." },
           ].map((a, i) => (
             <div key={i} style={{
               borderRadius: "18px",
