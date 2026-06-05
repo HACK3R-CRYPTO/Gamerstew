@@ -35,6 +35,7 @@ import {
   gameTypeById, moveDisplay,
   type ArenaMatch, type GameType, type WagerTier,
 } from "@/lib/challengeAi";
+import { FEEDBACK_REGISTRY, FEEDBACK_ABI, buildFeedbackArgs } from "@/lib/markovFeedback";
 
 // Image mask — softens any visible rectangular background behind a character
 // image. Transparent PNGs ignore it; JPEG fallbacks fade cleanly at the edges.
@@ -680,6 +681,49 @@ export default function ChallengeAi() {
   const tieByRefund = matchOutcome?.outcome === "tie";
   const youWon = winnerIsAddress && !tieByRefund;
   const tieByRule = tieByRefund;
+
+  // ─── Player-signed ERC-8004 feedback ────────────────────────────────────
+  // Fire-and-forget · after every resolved match this player just played,
+  // emit one feedback row from their wallet to the Feedback Registry on
+  // behalf of MARKOV (token #6386). The agent's own Oracle attests
+  // separately, so this is additive · the player wallet becomes a new
+  // counterparty in the registry, which is the signal 8004scan's v5.2
+  // scoring weights heavily. Without this, MARKOV's registry only ever
+  // shows one counterparty (the Oracle) regardless of how many real
+  // humans actually played. One match resolved → one feedback per real
+  // participant. Wallet signing follows whatever path the player came in
+  // on (MiniPay auto-sign, Privy embedded silent-sign, MetaMask prompt).
+  // Failures just log · the Oracle's attestation is still in flight as
+  // the safety net so reputation never goes silent on a match.
+  const feedbackEmittedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (phase !== "result") return;
+    if (!activeMatch || activeMatch.status !== MATCH_STATUS.COMPLETED) return;
+    if (!address) return;
+    const matchKey = activeMatch.id.toString();
+    if (feedbackEmittedRef.current.has(matchKey)) return;
+    // Wait for matchOutcome to land so tieByRefund is reliable.
+    if (matchOutcome === undefined || matchOutcome === null) return;
+    feedbackEmittedRef.current.add(matchKey);
+
+    const outcome: "win" | "lose" | "tie" = tieByRefund
+      ? "tie"
+      : winnerIsAddress
+        ? "win"
+        : "lose";
+    const gameTag = activeMatch.gameType === GAME_TYPE_COIN ? "coinflip" : "rps";
+
+    void writeContractAsync({
+      address: FEEDBACK_REGISTRY,
+      abi: FEEDBACK_ABI,
+      functionName: "giveFeedback",
+      args: buildFeedbackArgs({ matchId: activeMatch.id, outcome, gameTag }),
+    }).catch(() => {
+      // Silent failure · Oracle attestation from the agent still lands.
+      // Allow retry on next mount in case this was a transient wallet hiccup.
+      feedbackEmittedRef.current.delete(matchKey);
+    });
+  }, [phase, activeMatch, matchOutcome, address, winnerIsAddress, tieByRefund, writeContractAsync]);
 
   // Outcome stings were previously fired here, when /api/match-outcome
   // resolved. That landed seconds AFTER the visual reveal — sound was
