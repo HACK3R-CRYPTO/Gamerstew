@@ -373,7 +373,18 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           letterSpacing: "0.14em",
           textShadow: "0 0 16px rgba(251,191,36,0.6)",
         }}>
-          FREE SKILL GAMES · REAL PRIZES · FUNDED UBI
+          SKILL LADDERS · 1V1 WAGERS · SEASONAL CUPS
+        </div>
+        <div style={{
+          marginTop: "clamp(14px, 2.5vh, 22px)",
+          color: "rgba(220,210,255,0.78)",
+          fontSize: "clamp(13px, 1.7vw, 17px)",
+          fontWeight: 500,
+          maxWidth: "720px",
+          lineHeight: 1.5,
+          padding: "0 8px",
+        }}>
+          A social on-chain community of verified humans playing mini-games for real rewards on Celo Mainnet. Skill leaderboards, seasonal cups, 1v1 wagers, and an autonomous AI opponent · all on-chain, all auditable.
         </div>
         <div style={{
           marginTop: "clamp(24px, 5vh, 44px)",
@@ -382,7 +393,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           fontWeight: 700,
           letterSpacing: "0.2em",
         }}>
-          CELO · GOODDOLLAR · MINIPAY
+          CELO · GOODDOLLAR · ERC-8004 · MINIPAY
         </div>
       </div>
     ),
@@ -478,8 +489,8 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
               body: "Four pads. Repeat the sequence. Round 5 adds a fifth pad. No score cap. Difficulty keeps scaling.",
             },
             {
-              name: "HUMAN VS AI", icon: "🤖", accent: GOLD,
-              body: "Face Markov-1, a live AI opponent registered on ERC-8004 Agent Trust Protocol. Rock-Paper-Scissors and Coin Flip with real G$ stakes.",
+              name: "1V1 VS MARKOV", icon: "🤖", accent: GOLD,
+              body: "Wager G$ against MARKOV, our autonomous on-chain agent. Token #6386 on ERC-8004 Agent Trust Protocol. First agent on the platform · A2A v0.3 discovery, open to other agents next. Rock-Paper-Scissors and Coin Flip today, same primitive scales to any future game.",
             },
           ].map((g, i) => (
             <div key={i} style={{
@@ -536,7 +547,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>Play costs nothing.</strong> No token to buy. No deposit. Open the app and play.
           </Bullet>
           <Bullet accent={GOLD}>
-            <strong>Competitions pay USDC.</strong> When we host a cup, the top three get real USDC straight to their wallet. The current 3 Week Cup sits at $15, $10, $5.
+            <strong>Cups pay real prizes.</strong> Seasonal cups, sponsor partnerships, and challenge events route USDC and G$ to the top of the standings. Sealed on-chain. Paid straight to the wallet.
           </Bullet>
           <Bullet accent={MAGENTA}>
             <strong>Weekly seasons mint badges.</strong> Bronze, Silver, and Gold per game, per week. On chain and auditable.
@@ -628,9 +639,9 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
     key: "platform",
     render: () => (
       <SlideFrame eyebrow="THE PLATFORM">
-        <H1>Build a game. Plug into the arena.</H1>
+        <H1>Open to games. Open to agents. Open to extension.</H1>
         <Lead>
-          GameArena is open to external developers. List your game, pay to be visible, and your players compete inside the same arena, leaderboards, and prize infrastructure we already built.
+          GameArena is the social on-chain community where verified humans on Celo come to play. The arena is open to external skill games AND to other autonomous agents. New game, new agent, new economy primitive · all three plug into the same identity, leaderboard, prize, and on-chain attestation infrastructure we already built.
         </Lead>
         <div style={{
           marginTop: "clamp(16px, 3vh, 32px)",
@@ -640,10 +651,10 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           maxWidth: "1100px",
         }}>
           {[
-            { icon: "🔌", title: "Plug in", body: "Integrate your game via our SDK. Your players land inside GameArena and compete on the existing leaderboard.", c: GREEN },
-            { icon: "💰", title: "Pay to list", body: "Listing fee gives you visibility in the arena. No need to build community from scratch.", c: GOLD },
-            { icon: "🏆", title: "Shared infrastructure", body: "Seasons, cups, XP, streaks, pet system, and prize pools. Your game inherits all of it.", c: MAGENTA },
-            { icon: "🌍", title: "Instant reach", body: "Access our player base on day one. Distribution without the grind.", c: CYAN },
+            { icon: "🔌", title: "Plug in a skill game", body: "Ship a frontend client + scoring rules. Score vouchers, leaderboards, and seasons are already built. No contract redeploy.", c: GREEN },
+            { icon: "🤖", title: "Plug in an agent", body: "Register on the same ERC-8004 Agent Trust Protocol. A2A v0.3 discovery means any compliant agent slots into the same wager and attestation surfaces MARKOV uses today.", c: "#22d3ee" },
+            { icon: "🏆", title: "Shared infrastructure", body: "Identity, scores, seasons, cups, XP, streaks, pet system, and prize pools. Every new game and agent inherits all of it.", c: MAGENTA },
+            { icon: "🌍", title: "Instant reach", body: "Verified humans, MiniPay distribution, and a built community on day one. No cold start.", c: GOLD },
           ].map((card, i) => (
             <div key={i} style={{
               borderRadius: "16px",
@@ -672,22 +683,22 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
     key: "tech",
     render: () => (
       <SlideFrame eyebrow="TECH AND TRUST">
-        <H1>Every score is on chain.</H1>
+        <H1>Every score, settlement, and attestation lives on chain.</H1>
         <BulletList>
           <Bullet accent={GOLD}>
-            <strong>Celo mainnet.</strong> Scores, wagers, and badges are on chain and auditable.
+            <strong>Celo mainnet.</strong> Scores, wagers, and badges write to the chain first. The database mirrors chain state, not the other way around.
           </Bullet>
           <Bullet accent={GREEN}>
-            <strong>Signed scores.</strong> EIP 712 vouchers. Backend signs, wallet countersigns. Neither side can post a score alone.
+            <strong>Signed scores.</strong> EIP-712 vouchers. Backend signs, wallet countersigns. Neither side can post a score alone.
+          </Bullet>
+          <Bullet accent="#22d3ee">
+            <strong>ERC-8004 trust layer.</strong> MARKOV is Token #6386 on the ERC-8004 Agent Trust Protocol. Every match writes a reputation attestation on chain · player-signed and oracle-attested.
           </Bullet>
           <Bullet accent={MAGENTA}>
             <strong>Soulbound Game Pass.</strong> One per human. No transfers. No bot secondary market.
           </Bullet>
-          <Bullet accent={CYAN}>
-            <strong>Face scan.</strong> GoodDollar Sybil resistance at the identity layer.
-          </Bullet>
           <Bullet accent="#f472b6">
-            <strong>Canvas and Web Audio.</strong> No MP3 bandwidth. No licensing risk.
+            <strong>Face scan.</strong> GoodDollar Identity SDK at the door. No bots, no farms, no sybil scripts.
           </Bullet>
         </BulletList>
       </SlideFrame>
@@ -713,15 +724,17 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
               c: GREEN,
               items: [
                 "Rhythm Rush and Simon Memory live",
-                "Human vs AI Arena with Markov-1 (ERC-8004 registered agent)",
+                "MARKOV · Token #6386 on ERC-8004 Agent Trust Protocol",
+                "A2A v0.3 discovery card · open to other agents",
+                "Player-signed reputation feedback on chain after every match",
                 "Free play, no wallet required",
                 "Weekly seasons with Bronze, Silver, Gold badges",
-                "72-hour Arena Cups with USDC prizes",
-                "3 Week Cup with on chain G$ prizes",
+                "Arena Cups with USDC and G$ prize pools",
                 "XP, levels, and 5 stage pet evolution",
-                "Daily missions and play streaks",
+                "Daily missions, achievements, play streaks",
                 "Wager contracts deployed on Celo mainnet",
                 "Game Pass, username mint, MiniPay and Privy auth",
+                "Karma project page for builder reputation",
               ],
             },
             {
@@ -733,13 +746,15 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
                 "Tournament brackets",
                 "True player vs player with matchmaking",
                 "Third skill game",
+                "MCP server surface for MARKOV",
               ],
             },
             {
               label: "HORIZON",
               c: MAGENTA,
               items: [
-                "Open developer platform — plug in your game, pay to list, access the player base",
+                "Open developer platform · plug in your game, pay to list, access the player base",
+                "Second autonomous agent on the platform via A2A discovery",
                 "Signed oracle anti cheat at scale",
                 "Public SDK for third party game integration",
                 "Native shells for app stores",
