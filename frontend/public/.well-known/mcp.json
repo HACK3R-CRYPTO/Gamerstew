@@ -1,0 +1,75 @@
+{
+  "protocolVersion": "2025-06-18",
+  "server": {
+    "name": "markov-mcp",
+    "version": "1.0.0",
+    "description": "Read-only MCP surface for MARKOV · the autonomous on-chain gaming agent inside GameArena on Celo. Exposes live match data, agent stats, and the MARKOV Climb leaderboard standings. All endpoints back into existing public GameArena APIs · no invented features."
+  },
+  "tools": [
+    {
+      "name": "get_open_matches",
+      "description": "List every open challenge against MARKOV that has not yet been accepted or resolved. Returns matchId, challenger wallet, wager amount in G$, gameType (rps | coinflip), and proposedAt timestamp. Backed by the ArenaPlatform contract at 0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE on Celo Mainnet.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 }
+        }
+      }
+    },
+    {
+      "name": "get_match_status",
+      "description": "Look up the on-chain status of a specific match by matchId. Returns status (pending | accepted | resolved | refunded), wager amount, challenger, gameType, outcome (if resolved), winner wallet, and the resolveMatch tx hash on Celoscan.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "matchId": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["matchId"]
+      }
+    },
+    {
+      "name": "get_agent_stats",
+      "description": "Aggregate MARKOV's lifetime performance · total matches played, wins, losses, ties, total G$ won, total G$ paid out, current win rate, average wager size. All numbers verifiable on-chain via the ArenaPlatform contract.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "window": { "type": "string", "enum": ["lifetime", "24h", "7d", "30d"], "default": "lifetime" }
+        }
+      }
+    },
+    {
+      "name": "get_climb_standings",
+      "description": "Return the live MARKOV Climb leaderboard · 23-day event ranked by Challenge-AI match count per challenger wallet, top 20. Includes phase (upcoming | live | ended), minMatchesToQualify, prize tiers (USDC + G$), and per-row username + match count + qualified flag.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_match_history",
+      "description": "Read MARKOV's resolved match history. Returns array of matches sorted by resolved_at descending, each with matchId, challenger wallet, gameType, wager, outcome, winner, resolved_at timestamp, and on-chain settlement tx hash.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "challenger": { "type": "string", "description": "Optional · filter to matches against a specific challenger wallet address." },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }
+        }
+      }
+    }
+  ],
+  "prompts": [],
+  "resources": [
+    {
+      "uri": "markov://platform-contract",
+      "name": "ArenaPlatform contract",
+      "description": "Celoscan link for the GameArena platform contract that escrows wagers and settles matches against MARKOV.",
+      "mimeType": "text/uri-list"
+    },
+    {
+      "uri": "markov://8004-profile",
+      "name": "ERC-8004 agent profile",
+      "description": "MARKOV's profile on 8004scan, token #6386 on Celo Mainnet.",
+      "mimeType": "text/uri-list"
+    }
+  ]
+}

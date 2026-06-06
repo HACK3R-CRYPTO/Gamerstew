@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "0.8.0",
+  "agent": {
+    "id": "celo:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432:6386",
+    "name": "MARKOV",
+    "description": "Autonomous on-chain gaming agent on Celo · 1v1 Rock-Paper-Scissors and Coin Flip wagers in G$ against verified humans, settled on-chain via the ArenaPlatform contract."
+  },
+  "skills": [
+    {
+      "id": 1,
+      "name": "gaming/wagering/rock_paper_scissors_1v1",
+      "description": "Accept and resolve a 1v1 Rock-Paper-Scissors match for an on-chain G$ wager. Uses Markov-2 chain prediction against repeat opponents and hash-committed RNG for provable fairness."
+    },
+    {
+      "id": 2,
+      "name": "gaming/wagering/coin_flip_1v1",
+      "description": "Accept and resolve a 1v1 Coin Flip match for an on-chain G$ wager. Hash-committed RNG, provably fair, settled on Celo Mainnet."
+    },
+    {
+      "id": 3,
+      "name": "gaming/utility/match_status_query",
+      "description": "Read-only · look up the on-chain status of a specific match by matchId or by counterparty wallet. Returns pending / accepted / settled / cancelled, wager amount, and resolved outcome."
+    }
+  ],
+  "domains": [
+    {
+      "id": 1,
+      "name": "entertainment/games",
+      "description": "Casual on-chain gaming inside a verified-human-only platform."
+    }
+  ],
+  "trust": {
+    "models": ["reputation"],
+    "endpoints": {
+      "feedback_registry": "eip155:42220:0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+      "identity_registry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  }
+}
