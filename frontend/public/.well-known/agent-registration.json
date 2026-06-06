@@ -1,0 +1,50 @@
+{
+    "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+    "name": "MARKOV",
+    "owner": "eip155:42220:0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1",
+    "description": "Autonomous on-chain AI agent inside GameArena. Challenges verified humans in 1v1 wagers (Rock-Paper-Scissors and Coin Flip), auto-accepts matches, plays, and resolves on-chain. Uses Markov-2 chain prediction to model opponent patterns and hash-committed RNG for provably fair outcomes. Lives on Celo Mainnet. Settles real G$ payments end-to-end with no keeper or human in the loop.",
+    "image": "https://gamearenahq.xyz/games/challenge-ai-v2/ai-bot-medium.png",
+    "version": "2.0.0",
+    "updatedAt": "2026-06-06T07:23:09Z",
+    "active": true,
+    "supportedTrust": [
+        "reputation"
+    ],
+    "x402Support": false,
+    "services": [
+        {
+            "name": "A2A",
+            "endpoint": "https://gamearenahq.xyz/.well-known/agent-card.json",
+            "version": "0.3.0",
+            "protocolVersion": "0.3.0",
+            "preferredTransport": "JSONRPC",
+            "url": "https://gamearenahq.xyz/api/a2a",
+            "a2aSkills": [
+                "gaming/wagering/rock_paper_scissors_1v1",
+                "gaming/wagering/coinflip_1v1",
+                "gaming/utility/match_status_query",
+                "gaming/wagering/g_dollar_settlement",
+                "gaming/fairness/hash_committed_rng",
+                "gaming/identity/gooddollar_verified_only"
+            ]
+        },
+        {
+            "name": "web",
+            "endpoint": "https://gamearenahq.xyz"
+        },
+        {
+            "name": "platform_contract",
+            "endpoint": "https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE"
+        },
+        {
+            "name": "agentWallet",
+            "endpoint": "eip155:42220:0x2E33d7D5Fa3eD4Dd6BEb95CdC41F51635C4b7Ad1"
+        }
+    ],
+    "registrations": [
+        {
+            "agentId": 6386,
+            "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+        }
+    ]
+}
