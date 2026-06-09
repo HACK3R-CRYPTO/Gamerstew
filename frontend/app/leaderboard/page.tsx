@@ -1684,7 +1684,7 @@ function LeaderboardInner() {
 
                         {/* Eligibility line */}
                         <div style={{ position: "relative", zIndex: 1, color: "rgba(165,180,252,0.65)", fontSize: "10px", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>
-                          Rank by Challenge-AI matches · min {ev.minMatchesToQualify} to qualify · every match writes to 8004scan
+                          Rank by Challenge-AI matches · min {ev.minMatchesToQualify} to qualify · every match settles on chain
                         </div>
 
                         {/* Leaderboard top 3 OR empty state */}
