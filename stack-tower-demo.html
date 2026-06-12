@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Stack Tower — Game Arena demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a14;
+    font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #wrap { position: fixed; inset: 0; height: 100dvh; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 16px 20px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none;
+  }
+  #score {
+    font-size: 44px; font-weight: 800; color: #fff;
+    text-shadow: 0 0 24px rgba(56,189,248,.6);
+  }
+  #best { font-size: 13px; color: #64748b; text-align: right; line-height: 1.5; }
+  #combo {
+    position: absolute; top: 88px; left: 0; right: 0;
+    text-align: center; font-size: 15px; font-weight: 700;
+    color: #fbbf24; text-shadow: 0 0 16px rgba(251,191,36,.7);
+    opacity: 0; transition: opacity .15s;
+    pointer-events: none;
+  }
+  #overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: rgba(10,10,20,.82);
+    backdrop-filter: blur(4px);
+  }
+  #overlay h1 {
+    font-size: 34px; color: #fff; letter-spacing: 2px;
+    text-shadow: 0 0 30px rgba(56,189,248,.8);
+  }
+  #overlay p { color: #94a3b8; font-size: 14px; max-width: 260px; text-align: center; line-height: 1.6; }
+  #overlay .final { font-size: 56px; font-weight: 800; color: #fbbf24; text-shadow: 0 0 30px rgba(251,191,36,.6); }
+  #overlay button {
+    margin-top: 6px; padding: 14px 44px;
+    font: inherit; font-size: 16px; font-weight: 700; letter-spacing: 1px;
+    color: #0a0a14; background: linear-gradient(135deg, #38bdf8, #818cf8);
+    border: none; border-radius: 14px; cursor: pointer;
+    box-shadow: 0 0 28px rgba(56,189,248,.45);
+  }
+  #overlay button:active { transform: scale(.96); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="best">BEST<br><span id="bestVal" style="color:#e2e8f0;font-size:18px;font-weight:700">0</span></div>
+  </div>
+  <div id="combo"></div>
+  <div id="overlay">
+    <h1>STACK TOWER</h1>
+    <p>A block slides back and forth.<br>Tap to drop it on the tower.<br>Whatever hangs over the edge gets sliced off.<br><br>Perfect drops keep the block full size and build a combo.</p>
+    <button id="startBtn">TAP TO PLAY</button>
+  </div>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('bestVal');
+  const comboEl = document.getElementById('combo');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const BLOCK_H = 26;
+  const START_W = Math.min(220, W * 0.62);
+  const PERFECT_TOL = 7;          // px tolerance for a "perfect"
+  const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
+
+  let state, raf;
+
+  // Tiny synth so drops feel juicy (same Web Audio approach as Rhythm Rush)
+  let actx = null;
+  function beep(freq, dur = 0.09, gain = 0.18) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = freq;
+      g.gain.setValueAtTime(gain, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    } catch (e) {}
+  }
+  function haptic(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+
+  function colorFor(i, light = 55) {
+    const hue = HUES[i % HUES.length];
+    return `hsl(${hue} 85% ${light}%)`;
+  }
+
+  function reset() {
+    state = {
+      stack: [{ x: (W - START_W) / 2, w: START_W }], // base block
+      moving: { x: 0, w: START_W, dir: 1, speed: 2.4 },
+      level: 1,
+      score: 0,
+      combo: 0,
+      camY: 0,          // camera offset, eases upward as the tower grows
+      camTarget: 0,
+      shards: [],       // sliced-off pieces falling away
+      flash: 0,
+      over: false,
+      started: true,
+    };
+  }
+
+  function towerTopY(level) { return H - 90 - level * BLOCK_H; }
+
+  function drop() {
+    const s = state;
+    if (s.over) return;
+    const below = s.stack[s.stack.length - 1];
+    const m = s.moving;
+
+    const overlapL = Math.max(m.x, below.x);
+    const overlapR = Math.min(m.x + m.w, below.x + below.w);
+    const overlap = overlapR - overlapL;
+
+    if (overlap <= 0) {
+      // Complete miss — the whole block falls, game over
+      s.shards.push({ x: m.x, y: towerTopY(s.level), w: m.w, vy: 0, vx: m.dir * 1.5, rot: 0, vr: m.dir * 0.04, c: colorFor(s.level) });
+      gameOver();
+      return;
+    }
+
+    const offset = Math.abs(overlap - m.w) < 0.01 ? 0 : Math.abs(m.x - below.x);
+
+    if (offset <= PERFECT_TOL) {
+      // PERFECT — snap to aligned, no slice, combo up, tiny screen flash
+      s.stack.push({ x: below.x, w: below.w });
+      s.combo++;
+      s.score += 2 + Math.min(s.combo, 5); // combo sweetener
+      s.flash = 1;
+      comboEl.textContent = s.combo >= 2 ? `PERFECT ×${s.combo} 🔥` : 'PERFECT!';
+      comboEl.style.opacity = 1;
+      setTimeout(() => comboEl.style.opacity = 0, 700);
+      beep(660 + Math.min(s.combo, 8) * 60, 0.12, 0.2);
+      haptic(18);
+    } else {
+      // Normal drop — slice the overhang into a falling shard
+      const shardW = m.w - overlap;
+      const shardX = m.x < below.x ? m.x : overlapR;
+      s.shards.push({ x: shardX, y: towerTopY(s.level), w: shardW, vy: 0, vx: (m.x < below.x ? -1 : 1) * 1.2, rot: 0, vr: (m.x < below.x ? -1 : 1) * 0.05, c: colorFor(s.level, 42) });
+      s.stack.push({ x: overlapL, w: overlap });
+      s.combo = 0;
+      s.score += 1;
+      beep(330, 0.07, 0.14);
+      haptic(8);
+    }
+
+    s.level++;
+    scoreEl.textContent = s.score;
+
+    // New moving block: alternate entry side, speed creeps up with height
+    const top = s.stack[s.stack.length - 1];
+    const fromLeft = s.level % 2 === 0;
+    s.moving = {
+      x: fromLeft ? -top.w : W,
+      w: top.w,
+      dir: fromLeft ? 1 : -1,
+      speed: 2.4 + s.level * 0.12 + Math.min(s.level * s.level * 0.002, 2),
+    };
+
+    // Camera follows the tower up
+    s.camTarget = Math.max(0, s.level * BLOCK_H - H * 0.45);
+  }
+
+  function gameOver() {
+    state.over = true;
+    beep(140, 0.4, 0.22);
+    haptic([30, 40, 60]);
+    const best = Math.max(state.score, +(localStorage.getItem('stk_best') || 0));
+    localStorage.setItem('stk_best', best);
+    bestEl.textContent = best;
+    setTimeout(() => {
+      overlay.classList.remove('hidden');
+      overlay.querySelector('h1').textContent = 'TOWER DOWN';
+      overlay.querySelector('p').innerHTML = `You stacked <b style="color:#e2e8f0">${state.level - 1}</b> blocks.`;
+      let final = overlay.querySelector('.final');
+      if (!final) {
+        final = document.createElement('div');
+        final.className = 'final';
+        overlay.insertBefore(final, overlay.querySelector('button'));
+      }
+      final.textContent = state.score;
+      startBtn.textContent = 'PLAY AGAIN';
+    }, 650);
+  }
+
+  function tick() {
+    const s = state;
+    // Move the slider
+    if (!s.over) {
+      const m = s.moving;
+      m.x += m.dir * m.speed;
+      if (m.dir === 1 && m.x + m.w > W + 4) { m.dir = -1; }
+      if (m.dir === -1 && m.x < -4) { m.dir = 1; }
+    }
+    // Camera ease
+    s.camY += (s.camTarget - s.camY) * 0.08;
+    // Shards fall
+    for (const sh of s.shards) { sh.vy += 0.45; sh.y += sh.vy; sh.x += sh.vx; sh.rot += sh.vr; }
+    s.shards = s.shards.filter(sh => sh.y < H + s.camY + 200);
+    if (s.flash > 0) s.flash -= 0.06;
+
+    draw();
+    raf = requestAnimationFrame(tick);
+  }
+
+  function draw() {
+    const s = state;
+    // Background — subtle vertical gradient that shifts as you climb
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    const climb = Math.min(s.level / 60, 1);
+    g.addColorStop(0, `hsl(${240 - climb * 60} 45% ${7 + climb * 6}%)`);
+    g.addColorStop(1, '#0a0a14');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(0, s.camY);
+
+    // Stack
+    for (let i = 0; i < s.stack.length; i++) {
+      const b = s.stack[i];
+      const y = towerTopY(i + 1);
+      ctx.fillStyle = colorFor(i, 30);                    // side shadow
+      ctx.fillRect(b.x, y + 3, b.w, BLOCK_H);
+      ctx.fillStyle = colorFor(i);                        // face
+      ctx.fillRect(b.x, y, b.w, BLOCK_H - 3);
+      ctx.fillStyle = 'rgba(255,255,255,.25)';            // top gloss
+      ctx.fillRect(b.x, y, b.w, 4);
+    }
+
+    // Moving block (with glow)
+    if (!s.over) {
+      const m = s.moving;
+      const y = towerTopY(s.level + 1);
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = colorFor(s.level);
+      ctx.fillRect(m.x - 6, y - 4, m.w + 12, BLOCK_H + 8); // fake glow
+      ctx.restore();
+      ctx.fillStyle = colorFor(s.level, 30);
+      ctx.fillRect(m.x, y + 3, m.w, BLOCK_H);
+      ctx.fillStyle = colorFor(s.level);
+      ctx.fillRect(m.x, y, m.w, BLOCK_H - 3);
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      ctx.fillRect(m.x, y, m.w, 4);
+    }
+
+    // Falling shards
+    for (const sh of s.shards) {
+      ctx.save();
+      ctx.translate(sh.x + sh.w / 2, sh.y + BLOCK_H / 2);
+      ctx.rotate(sh.rot);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = sh.c;
+      ctx.fillRect(-sh.w / 2, -BLOCK_H / 2, sh.w, BLOCK_H - 3);
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // Perfect flash
+    if (s.flash > 0) {
+      ctx.fillStyle = `rgba(251,191,36,${s.flash * 0.12})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function start() {
+    overlay.classList.add('hidden');
+    bestEl.textContent = localStorage.getItem('stk_best') || 0;
+    scoreEl.textContent = 0;
+    reset();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(tick);
+  }
+
+  startBtn.addEventListener('click', (e) => { e.stopPropagation(); start(); });
+  const tap = (e) => {
+    if (overlay.classList.contains('hidden') && state && !state.over) { e.preventDefault(); drop(); }
+  };
+  window.addEventListener('pointerdown', tap);
+  window.addEventListener('keydown', (e) => { if (e.code === 'Space') tap(e); });
+
+  bestEl.textContent = localStorage.getItem('stk_best') || 0;
+})();
+</script>
+</body>
+</html>
