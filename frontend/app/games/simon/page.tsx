@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useAuthStatus } from "@/hooks/useRequireAuth";
+import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
@@ -114,10 +115,11 @@ type PetEvent = { type: "correct" | "wrong" | "clear" | "bonus"; ts: number };
 export default function SimonGamePage() {
   const router = useRouter();
   const { address } = useAccount();
-  // Wallet-bound route: gate at entry so unauthenticated visitors
-  // can't start a game they can't submit (would fail at the on-chain
-  // step). Bounces to /connect with next= preserving this route.
-  useRequireAuth();
+  // Free-play route: guests can play full runs without connecting.
+  // handleGameOver self-guards (bails without an address) and the
+  // finish screen shows a sign-in CTA instead of the rank/XP panel.
+  // Signing in is the gate for SAVING, not PLAYING.
+  const { authed } = useAuthStatus();
   // Mobile flag drives lighter-weight GPU effects on the Simon device.
   // Stacked 80/160/240px box-shadow blurs + triple drop-shadow filters
   // cause "Aww, snap!" renderer OOMs on low-end Android and the MiniPay
@@ -736,7 +738,7 @@ export default function SimonGamePage() {
       }} />
 
       {/* IDLE */}
-      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} />}
+      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} guest={!authed} />}
 
       {/* COUNTDOWN */}
       {phase === "countdown" && <CountdownView n={countdown} />}
@@ -775,6 +777,7 @@ export default function SimonGamePage() {
           submitResult={submitResult}
           submitError={submitError}
           txError={txError}
+          guest={!authed}
         />
       )}
 
@@ -803,7 +806,7 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit }: { onStart: () => void; onExit: () => void }) {
+function IdleView({ onStart, onExit, guest }: { onStart: () => void; onExit: () => void; guest?: boolean }) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
@@ -857,6 +860,8 @@ function IdleView({ onStart, onExit }: { onStart: () => void; onExit: () => void
           One mistake ends the run
         </span>
       </div>
+
+      {guest && <GuestPlayChip />}
 
       {/* START button */}
       <div role="button" tabIndex={0} onClick={onStart}
@@ -1538,6 +1543,7 @@ function FinishedView({
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
+  guest,
 }: {
   grade: ReturnType<typeof gradeFor>;
   score: number; rounds: number; gameTimeMs: number;
@@ -1548,6 +1554,7 @@ function FinishedView({
   submitResult: FinishedSubmit | null;
   submitError: string | null;
   txError: string | null;
+  guest?: boolean;
 }) {
   const seconds = Math.max(0, Math.floor(gameTimeMs / 1000));
   return (
@@ -1641,15 +1648,21 @@ function FinishedView({
             <MiniStat label="TIME"    value={`${seconds}s`}       color="#22c55e" />
           </div>
 
-          {/* Reward panel (same as rhythm) */}
-          <RewardPanel
-            submitting={submitting}
-            signingOnChain={signingOnChain}
-            result={submitResult}
-            error={submitError}
-            txError={txError}
-            score={score}
-          />
+          {/* Reward panel (same as rhythm). Guests get the sign-in CTA
+              instead: their run was never submitted, so there's no
+              rank/XP to show. */}
+          {guest ? (
+            <GuestScorePrompt nextPath="/games/simon" />
+          ) : (
+            <RewardPanel
+              submitting={submitting}
+              signingOnChain={signingOnChain}
+              result={submitResult}
+              error={submitError}
+              txError={txError}
+              score={score}
+            />
+          )}
 
           {/* CTAs */}
           <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>

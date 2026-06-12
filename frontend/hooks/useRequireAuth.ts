@@ -23,17 +23,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 // yanking it away.
 export function useRequireAuth(): { ready: boolean; authed: boolean } {
   const router = useRouter();
-  const { ready, authenticated } = usePrivy();
-  const { address } = useAccount();
-  const isMiniPay = useIsMiniPay();
-
-  // "Authed" = has an actual wallet address AND a valid session. Just
-  // checking Privy's `authenticated` was a footgun: a player can stay
-  // Privy-authenticated long after they disconnect their wallet, which
-  // let them walk back into a game with no wallet to sign txs.
-  // Requiring `address` closes that gap — no wallet, no entry. MiniPay
-  // users are also covered: their address is always set in-app.
-  const authed = !!address && (authenticated || isMiniPay);
+  const { ready, authed } = useAuthStatus();
 
   useEffect(() => {
     if (!ready) return;
@@ -46,6 +36,25 @@ export function useRequireAuth(): { ready: boolean; authed: boolean } {
     const next = window.location.pathname + window.location.search;
     router.replace(`/connect?next=${encodeURIComponent(next)}`);
   }, [ready, authed, router]);
+
+  return { ready, authed };
+}
+
+// Same auth signal as useRequireAuth but WITHOUT the redirect. For
+// free-play routes: guests may enter and play, and the page decides
+// at the action layer (score save, leaderboard) what needs a session.
+export function useAuthStatus(): { ready: boolean; authed: boolean } {
+  const { ready, authenticated } = usePrivy();
+  const { address } = useAccount();
+  const isMiniPay = useIsMiniPay();
+
+  // "Authed" = has an actual wallet address AND a valid session. Just
+  // checking Privy's `authenticated` was a footgun: a player can stay
+  // Privy-authenticated long after they disconnect their wallet, which
+  // let them walk back into a game with no wallet to sign txs.
+  // Requiring `address` closes that gap — no wallet, no entry. MiniPay
+  // users are also covered: their address is always set in-app.
+  const authed = !!address && (authenticated || isMiniPay);
 
   return { ready, authed };
 }

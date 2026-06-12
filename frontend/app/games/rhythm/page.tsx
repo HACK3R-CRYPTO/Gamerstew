@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useAuthStatus } from "@/hooks/useRequireAuth";
+import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import {
@@ -245,10 +246,11 @@ const ENCORE_POOL: [number, number][] = [
 export default function RhythmGamePage() {
   const router = useRouter();
   const { address } = useAccount();
-  // Gameplay routes are wallet-bound. Without a session, score
-  // submission would fail at the on-chain step and the player wastes
-  // time. Redirect to /connect on entry; bring them back via next=.
-  useRequireAuth();
+  // Free-play route: guests can play full runs without connecting.
+  // Score submission self-guards (the submit effect bails without an
+  // address), and the finish screen shows a sign-in CTA instead of
+  // the rank/XP panel. Signing in is the gate for SAVING, not PLAYING.
+  const { authed } = useAuthStatus();
   const [phase, setPhase] = useState<Phase>("idle");
 
   // User audio preferences from profile — persisted in localStorage.
@@ -1414,7 +1416,7 @@ export default function RhythmGamePage() {
       }} />
 
       {/* ═══ IDLE ═══ */}
-      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} />}
+      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} guest={!authed} />}
 
       {/* ═══ COUNTDOWN ═══ */}
       {phase === "countdown" && <CountdownView n={countdown} />}
@@ -1458,6 +1460,7 @@ export default function RhythmGamePage() {
           submitResult={submitResult}
           submitError={submitError}
           txError={txError}
+          guest={!authed}
         />
       )}
 
@@ -1487,7 +1490,7 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit }: { onStart: () => void; onExit: () => void }) {
+function IdleView({ onStart, onExit, guest }: { onStart: () => void; onExit: () => void; guest?: boolean }) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
@@ -1540,6 +1543,8 @@ function IdleView({ onStart, onExit }: { onStart: () => void; onExit: () => void
           Desktop: A S D F or ← ↓ ↑ →
         </span>
       </div>
+
+      {guest && <GuestPlayChip />}
 
       {/* Juicy START button */}
       <div role="button" tabIndex={0} onClick={onStart}
@@ -2111,6 +2116,7 @@ function FinishedView({
   grade, score, maxCombo, hits, total,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
+  guest,
 }: {
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
@@ -2123,6 +2129,7 @@ function FinishedView({
   submitResult: FinishedSubmit | null;
   submitError: string | null;
   txError: string | null;
+  guest?: boolean;
 }) {
   const accuracy = total === 0 ? 0 : Math.round(((hits.perfect + hits.good * 0.5) / total) * 100);
   return (
@@ -2246,15 +2253,21 @@ function FinishedView({
             </div>
           </div>
 
-          {/* Reward panel — rank, XP, level-up, new achievements */}
-          <RewardPanel
-            submitting={submitting}
-            signingOnChain={signingOnChain}
-            result={submitResult}
-            error={submitError}
-            txError={txError}
-            score={score}
-          />
+          {/* Reward panel — rank, XP, level-up, new achievements.
+              Guests get the sign-in CTA instead: their run was never
+              submitted, so there's no rank/XP to show. */}
+          {guest ? (
+            <GuestScorePrompt nextPath="/games/rhythm" />
+          ) : (
+            <RewardPanel
+              submitting={submitting}
+              signingOnChain={signingOnChain}
+              result={submitResult}
+              error={submitError}
+              txError={txError}
+              score={score}
+            />
+          )}
 
           {/* CTAs */}
           <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
