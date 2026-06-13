@@ -45,6 +45,12 @@ const GEM_CHANCE = 0.06;        // rare, worth 5 coins
 type Phase = "idle" | "countdown" | "playing" | "finished" | "shop";
 type Drop = { id: number; kind: "coin" | "spike" | "gem"; x: number; y: number; r: number; spin: number };
 type Burst = { x: number; y: number; color: string; born: number };
+// Floating "+10" / "GEM!" / "5x!" texts. The single biggest game-feel
+// upgrade for collect-em-ups — every grab has a visible numeric reward
+// that drifts up and fades, so the satisfaction loop is undeniable.
+type Popup = { x: number; y: number; text: string; color: string; size: number; born: number; life: number };
+// Parallax background star — slow drift, depth, no gameplay impact.
+type Star = { x: number; y: number; r: number; speed: number; twinkle: number };
 
 export default function SlimeSurvivorPage() {
   const router = useRouter();
@@ -107,6 +113,21 @@ export default function SlimeSurvivorPage() {
   const invulnUntilRef = useRef(0);
   const keysRef = useRef({ left: false, right: false });
   const petImgRef = useRef<HTMLImageElement | null>(null);
+  // ── Juice refs (game feel) ──
+  // shake: random screen offset for the next few frames after a hit; decays.
+  const shakeRef = useRef(0);
+  // popups: short-lived floating texts (coin grabs, combo callouts).
+  const popupsRef = useRef<Popup[]>([]);
+  // trail: motion ghosts behind the slime so fast movement reads as speed.
+  const trailRef = useRef<{ x: number; y: number; born: number }[]>([]);
+  // starfield: a few dozen background dots that drift slowly across the
+  // screen at multiple depths. Reads as "moving through space," cheap to draw.
+  const starsRef = useRef<Star[]>([]);
+  // Big center callout when crossing combo milestones (5/10/25/50).
+  const calloutRef = useRef<{ text: string; sub: string; color: string; born: number } | null>(null);
+  const [calloutTick, setCalloutTick] = useState(0); // forces re-render when callout changes
+  // Last streak we triggered a callout for, to avoid spamming on every grab.
+  const lastCalloutStreakRef = useRef(0);
 
   // Preload all pet sprites once — evolution skins swap without a hitch.
   useEffect(() => {
@@ -199,6 +220,28 @@ export default function SlimeSurvivorPage() {
     effectsRef.current = eff;
     dropsRef.current = [];
     burstsRef.current = [];
+    popupsRef.current = [];
+    trailRef.current = [];
+    calloutRef.current = null;
+    lastCalloutStreakRef.current = 0;
+    shakeRef.current = 0;
+    // Spawn a fresh starfield sized to the canvas. 60 stars across 3 depth
+    // layers — close ones drift faster, far ones twinkle slower.
+    {
+      const { w, h } = sizeRef.current;
+      const stars: Star[] = [];
+      for (let i = 0; i < 60; i++) {
+        const depth = Math.random();
+        stars.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: 0.4 + depth * 1.8,
+          speed: 6 + depth * 22,
+          twinkle: Math.random() * Math.PI * 2,
+        });
+      }
+      starsRef.current = stars;
+    }
     playerXRef.current = 0.5;
     targetXRef.current = 0.5;
     heartsRef.current = eff.startHearts;
@@ -343,6 +386,9 @@ export default function SlimeSurvivorPage() {
                 setShieldLeft(shieldRef.current);
                 invulnUntilRef.current = wall + INVULN_MS;
                 streakRef.current = 0; setStreak(0);
+                lastCalloutStreakRef.current = 0;
+                shakeRef.current = Math.max(shakeRef.current, 6);
+                popupsRef.current.push({ x: d.x, y: d.y, text: "BLOCKED", color: "#38bdf8", size: 14, born: wall, life: 700 });
                 blip(420, 0.18, 0.2, "sine");
                 haptic(30);
                 burstsRef.current.push({ x: d.x, y: d.y, color: "#38bdf8", born: wall });
@@ -350,6 +396,9 @@ export default function SlimeSurvivorPage() {
                 heartsRef.current -= 1;
                 streakRef.current = 0;
                 invulnUntilRef.current = wall + INVULN_MS;
+                lastCalloutStreakRef.current = 0;
+                shakeRef.current = Math.max(shakeRef.current, heartsRef.current <= 0 ? 22 : 12);
+                popupsRef.current.push({ x: d.x, y: d.y, text: "-1 ❤", color: "#ef4444", size: 16, born: wall, life: 800 });
                 setHearts(heartsRef.current);
                 setStreak(0);
                 blip(150, 0.25, 0.22, "sawtooth");
@@ -368,7 +417,8 @@ export default function SlimeSurvivorPage() {
           const base = d.kind === "gem" ? 50 : 10;
           // Golden Touch upgrade scales score (not the coin bank count, so
           // the economy stays honest — you bank coins caught, not points).
-          scoreRef.current += Math.round(base * streakMult * eff.coinMultiplier);
+          const gained = Math.round(base * streakMult * eff.coinMultiplier);
+          scoreRef.current += gained;
           coinsRef.current += d.kind === "gem" ? 5 : 1;       // gems bank as 5 coins
           setScore(scoreRef.current);
           setStreak(newStreak);
@@ -376,6 +426,34 @@ export default function SlimeSurvivorPage() {
           blip(d.kind === "gem" ? 1046 : 740 + Math.min(newStreak, 12) * 18, 0.07, 0.13);
           haptic(d.kind === "gem" ? 16 : 8);
           burstsRef.current.push({ x: d.x, y: d.y, color: d.kind === "gem" ? "#86efac" : "#fbbf24", born: wall });
+          // Floating reward text — the single biggest "feels good" upgrade.
+          popupsRef.current.push({
+            x: d.x, y: d.y,
+            text: d.kind === "gem" ? `+${gained} ✦` : `+${gained}`,
+            color: d.kind === "gem" ? "#86efac" : "#fde68a",
+            size: d.kind === "gem" ? 18 : 13 + Math.min(streakMult - 1, 5) * 2,
+            born: wall, life: 850,
+          });
+          // Big center callout when crossing combo milestones.
+          const callouts: Record<number, { text: string; sub: string }> = {
+            5:  { text: "WARMED UP",   sub: "Keep going" },
+            10: { text: "ON FIRE 🔥",  sub: "2× multiplier" },
+            25: { text: "UNSTOPPABLE", sub: `${1 + Math.floor(25 / 10)}× multiplier` },
+            50: { text: "GOD MODE",    sub: `${1 + Math.floor(50 / 10)}× multiplier` },
+            100:{ text: "LEGENDARY",   sub: `${1 + Math.floor(100 / 10)}× multiplier` },
+          };
+          if (callouts[newStreak] && newStreak > lastCalloutStreakRef.current) {
+            calloutRef.current = {
+              text: callouts[newStreak].text,
+              sub: callouts[newStreak].sub,
+              color: newStreak >= 50 ? "#fbbf24" : newStreak >= 10 ? "#f0abfc" : "#86efac",
+              born: wall,
+            };
+            lastCalloutStreakRef.current = newStreak;
+            setCalloutTick(t => t + 1);
+            blip(1568, 0.18, 0.22, "triangle"); // celebration ping
+            setTimeout(() => blip(2093, 0.18, 0.18, "triangle"), 100);
+          }
           continue;
         }
         if (d.y < h + 40) kept.push(d);
@@ -386,9 +464,50 @@ export default function SlimeSurvivorPage() {
       }
       dropsRef.current = kept;
       burstsRef.current = burstsRef.current.filter(b => wall - b.born < 450);
+      popupsRef.current = popupsRef.current.filter(p => wall - p.born < p.life);
+
+      // ── Trail particles behind slime — only when moving with intent ──
+      const moveSpeed = Math.abs(targetXRef.current - playerXRef.current);
+      if (moveSpeed > 0.012) {
+        trailRef.current.push({ x: px, y: py + 4, born: wall });
+      }
+      trailRef.current = trailRef.current.filter(t => wall - t.born < 320);
+
+      // ── Update starfield ──
+      for (const s of starsRef.current) {
+        s.y += s.speed * dt;
+        s.twinkle += dt * 4;
+        if (s.y > h + 4) { s.y = -4; s.x = Math.random() * w; }
+      }
+
+      // ── Decay screen shake ──
+      if (shakeRef.current > 0) shakeRef.current = Math.max(0, shakeRef.current - dt * 60);
+      const shakeX = shakeRef.current > 0 ? (Math.random() - 0.5) * shakeRef.current * 2 : 0;
+      const shakeY = shakeRef.current > 0 ? (Math.random() - 0.5) * shakeRef.current * 2 : 0;
 
       // ── Draw ──
       ctx.clearRect(0, 0, w, h);
+
+      // Time-pressure red vignette in the last 10 seconds.
+      if (remaining <= 10) {
+        const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+        const pulse = 0.18 + Math.sin(wall / 110) * 0.06;
+        v.addColorStop(0, "rgba(239,68,68,0)");
+        v.addColorStop(1, `rgba(239,68,68,${pulse * (1 - remaining / 10)})`);
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // Everything below moves with screen shake.
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+
+      // Background stars (parallax depth).
+      for (const s of starsRef.current) {
+        const tw = 0.55 + Math.sin(s.twinkle) * 0.35;
+        ctx.fillStyle = `rgba(232,121,249,${0.18 + tw * 0.4})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      }
 
       // ground glow
       const ground = ctx.createLinearGradient(0, h - 56, 0, h);
@@ -451,6 +570,29 @@ export default function SlimeSurvivorPage() {
         ctx.restore();
       }
 
+      // Slime trail — fading ghosts behind the player. Reads as speed.
+      for (const t of trailRef.current) {
+        const age = (wall - t.born) / 320;
+        ctx.save();
+        ctx.globalAlpha = (1 - age) * 0.35;
+        ctx.fillStyle = pet.color;
+        ctx.beginPath(); ctx.arc(t.x, t.y, PLAYER_R * (1 - age * 0.4), 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Magnet ring — soft pulsing aura around the slime when upgrade is on.
+      if (eff.magnetRange > 0) {
+        const pulse = (Math.sin(wall / 220) + 1) / 2;
+        ctx.save();
+        ctx.globalAlpha = 0.18 + pulse * 0.18;
+        ctx.strokeStyle = "#67e8f9";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 10]);
+        ctx.beginPath(); ctx.arc(px, py, eff.magnetRange, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
       // player (pet sprite, blinking during invulnerability)
       const blink = invuln && Math.floor(wall / 110) % 2 === 0;
       if (!blink) {
@@ -474,7 +616,45 @@ export default function SlimeSurvivorPage() {
           ctx.fillStyle = pet.color;
           ctx.beginPath(); ctx.arc(px, py, PLAYER_R, 0, Math.PI * 2); ctx.fill();
         }
+
+        // Shield bubble overlay — translucent dome around the slime when
+        // shield charges remain. Pulses faintly with each tick.
+        if (shieldRef.current > 0) {
+          const sPulse = 0.6 + Math.sin(wall / 180) * 0.15;
+          ctx.save();
+          ctx.globalAlpha = 0.18 * sPulse;
+          ctx.fillStyle = "#38bdf8";
+          ctx.beginPath(); ctx.arc(px, py, PLAYER_R + 9, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 0.45;
+          ctx.strokeStyle = "#67e8f9";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(px, py, PLAYER_R + 9, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
       }
+
+      // Floating reward popups — drift up + fade, with a tiny pop-in scale
+      // for the first 100ms so the eye locks onto the number.
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const p of popupsRef.current) {
+        const age = (wall - p.born) / p.life;
+        const popIn = Math.min(1, (wall - p.born) / 100);
+        const scale = popIn < 1 ? 0.4 + popIn * 0.6 + (1 - popIn) * 0.3 : 1;
+        const dy = -age * 42;
+        ctx.save();
+        ctx.globalAlpha = 1 - age;
+        ctx.fillStyle = p.color;
+        ctx.font = `900 ${p.size * scale}px ui-sans-serif, system-ui, -apple-system, "Segoe UI"`;
+        // Subtle outline for legibility over busy backgrounds.
+        ctx.strokeStyle = "rgba(0,0,0,0.55)";
+        ctx.lineWidth = Math.max(2, p.size * 0.18);
+        ctx.strokeText(p.text, p.x, p.y + dy);
+        ctx.fillText(p.text, p.x, p.y + dy);
+        ctx.restore();
+      }
+
+      ctx.restore(); // end screen-shake transform
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -492,49 +672,90 @@ export default function SlimeSurvivorPage() {
     }}>
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
 
-      {/* HUD */}
+      {/* HUD — chip-styled. Score+streak left, timer center, hearts+shield right. */}
       {(phase === "playing" || phase === "countdown") && (
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0,
-          padding: "max(12px, env(safe-area-inset-top)) 16px 0",
+          padding: "max(12px, env(safe-area-inset-top)) 14px 0",
           display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+          gap: 10,
           pointerEvents: "none",
         }}>
-          <div>
-            <div style={{ color: "rgba(220,200,255,0.6)", fontSize: 9, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
-            <div style={{ color: "#fbbf24", fontSize: 32, fontWeight: 900, lineHeight: 1, textShadow: "0 0 16px rgba(251,191,36,0.6)" }}>{score}</div>
-            {streak >= 5 && (
-              <div style={{ color: "#f0abfc", fontSize: 11, fontWeight: 900, marginTop: 2, textShadow: "0 0 10px rgba(232,121,249,0.7)" }}>
-                {streak} STREAK {streak >= 10 ? `· ${1 + Math.floor(streak / 10)}×` : ""}
+          {/* Score chip */}
+          <div style={{
+            padding: "8px 12px",
+            borderRadius: 14,
+            background: "linear-gradient(180deg, rgba(20,10,50,0.85) 0%, rgba(8,2,32,0.85) 100%)",
+            border: "1.5px solid rgba(251,191,36,0.4)",
+            boxShadow: "0 6px 18px rgba(0,0,0,0.45), 0 0 14px rgba(251,191,36,0.2)",
+            minWidth: 88,
+          }}>
+            <div style={{ color: "rgba(220,200,255,0.55)", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
+            <div style={{ color: "#fbbf24", fontSize: 26, fontWeight: 900, lineHeight: 1.05, textShadow: "0 0 14px rgba(251,191,36,0.7)" }}>{score}</div>
+            {streak >= 3 && (
+              <div style={{
+                marginTop: 4, color: streak >= 10 ? "#fbbf24" : "#f0abfc",
+                fontSize: 10, fontWeight: 900, letterSpacing: "0.06em",
+                textShadow: `0 0 10px ${streak >= 10 ? "rgba(251,191,36,0.7)" : "rgba(232,121,249,0.7)"}`,
+              }}>
+                🔥 {streak}{streak >= 10 ? ` · ${1 + Math.floor(streak / 10)}×` : ""}
               </div>
             )}
           </div>
-          <div style={{ textAlign: "center" }}>
+
+          {/* Timer chip — pulses red in the final 10s */}
+          <div style={{
+            padding: "8px 16px",
+            borderRadius: 14,
+            background: "linear-gradient(180deg, rgba(20,10,50,0.85) 0%, rgba(8,2,32,0.85) 100%)",
+            border: `1.5px solid ${timeLeft <= 10 ? "#ef4444" : "rgba(255,255,255,0.18)"}`,
+            boxShadow: timeLeft <= 10
+              ? "0 6px 18px rgba(0,0,0,0.45), 0 0 22px rgba(239,68,68,0.5)"
+              : "0 6px 18px rgba(0,0,0,0.45)",
+            textAlign: "center",
+            animation: timeLeft <= 10 ? "bounce-scale-in 0.2s ease both" : undefined,
+          }}>
+            <div style={{ color: "rgba(220,200,255,0.55)", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.2em" }}>TIME</div>
             <div style={{
-              color: timeLeft <= 10 ? "#ef4444" : "white",
-              fontSize: 26, fontWeight: 900, fontFamily: "monospace",
-              textShadow: timeLeft <= 10 ? "0 0 14px rgba(239,68,68,0.8)" : "0 0 10px rgba(255,255,255,0.4)",
-            }}>{timeLeft}</div>
+              color: timeLeft <= 10 ? "#fca5a5" : "white",
+              fontSize: 26, fontWeight: 900, lineHeight: 1.05, fontFamily: "monospace",
+              textShadow: timeLeft <= 10 ? "0 0 14px rgba(239,68,68,0.8)" : "0 0 8px rgba(255,255,255,0.3)",
+            }}>{String(timeLeft).padStart(2, "0")}</div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-            <div style={{ display: "flex", gap: 4 }}>
+
+          {/* Lives chip — hearts row + shield row */}
+          <div style={{
+            padding: "8px 12px",
+            borderRadius: 14,
+            background: "linear-gradient(180deg, rgba(20,10,50,0.85) 0%, rgba(8,2,32,0.85) 100%)",
+            border: "1.5px solid rgba(239,68,68,0.35)",
+            boxShadow: "0 6px 18px rgba(0,0,0,0.45)",
+            minWidth: 88,
+          }}>
+            <div style={{ color: "rgba(220,200,255,0.55)", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.2em", textAlign: "right" }}>LIVES</div>
+            <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", marginTop: 2 }}>
               {Array.from({ length: runMaxHearts }).map((_, i) => (
                 <span key={i} style={{
-                  fontSize: 20,
-                  filter: i < hearts ? "drop-shadow(0 0 6px rgba(239,68,68,0.8))" : "grayscale(1) brightness(0.4)",
+                  fontSize: 16,
+                  filter: i < hearts ? "drop-shadow(0 0 5px rgba(239,68,68,0.8))" : "grayscale(1) brightness(0.35)",
                   transition: "filter 0.2s",
                 }}>❤️</span>
               ))}
             </div>
             {shieldLeft > 0 && (
-              <div style={{ display: "flex", gap: 3 }}>
+              <div style={{ display: "flex", gap: 2, justifyContent: "flex-end", marginTop: 4 }}>
                 {Array.from({ length: shieldLeft }).map((_, i) => (
-                  <span key={i} style={{ fontSize: 14, filter: "drop-shadow(0 0 5px rgba(56,189,248,0.8))" }}>🛡️</span>
+                  <span key={i} style={{ fontSize: 12, filter: "drop-shadow(0 0 5px rgba(56,189,248,0.8))" }}>🛡️</span>
                 ))}
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {/* COMBO CALLOUT — large center text that punches in on milestones */}
+      {phase === "playing" && calloutRef.current && (
+        <ComboCallout key={calloutTick} callout={calloutRef.current} />
       )}
 
       {/* COUNTDOWN */}
@@ -752,6 +973,40 @@ export default function SlimeSurvivorPage() {
           onPlay={startGame}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Combo callout ────────────────────────────────────────────────────────────
+// Big center punch-in when crossing combo milestones (5/10/25/50/100).
+// Self-removes after the bounce-in + brief hold; pointerEvents:none so it
+// never blocks the input that's actively generating the combo.
+function ComboCallout({ callout }: { callout: { text: string; sub: string; color: string; born: number } }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 1200);
+    return () => clearTimeout(t);
+  }, [callout.born]);
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "absolute", inset: 0, zIndex: 8,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      pointerEvents: "none",
+      animation: "bounce-scale-in 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
+    }}>
+      <div style={{
+        color: callout.color,
+        fontSize: "clamp(38px, 9vw, 72px)", fontWeight: 900,
+        letterSpacing: "0.06em", lineHeight: 1,
+        textShadow: `0 0 26px ${callout.color}, 0 0 60px ${callout.color}88, 0 4px 10px rgba(0,0,0,0.7)`,
+        WebkitTextStroke: "1.5px rgba(0,0,0,0.4)",
+      }}>{callout.text}</div>
+      <div style={{
+        color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.18em",
+        marginTop: 8,
+        textShadow: "0 2px 8px rgba(0,0,0,0.8)",
+      }}>{callout.sub}</div>
     </div>
   );
 }
