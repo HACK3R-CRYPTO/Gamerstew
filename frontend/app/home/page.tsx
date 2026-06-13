@@ -745,7 +745,10 @@ export default function HomePage() {
               label: "PLAY\nGAMES",
               icon: <GamepadIcon size={isMobile ? 52 : 76} />,
               iconDark: "#005572", // Deep cyan/teal inset color
-              path: "/connect?next=/games",
+              // Straight to the hub — solo games are free-play now, so
+              // the connect wall would turn away players who just want
+              // to try a round. Saving scores gates at the action layer.
+              path: "/games",
               gradient: "linear-gradient(160deg, #a4f480 0%, #2bd0b9 55%, #05a0cd 100%)",
               wall: "#006282", // Extremely dark heavy bottom base
               shadowGlow: "rgba(5, 160, 205, 0.6)",
@@ -756,7 +759,10 @@ export default function HomePage() {
               label: "CHALLENGE\nAI",
               icon: <RobotIcon size={isMobile ? 54 : 80} />,
               iconDark: "#6b0000", // Deep red inset color
-              path: "/connect?next=/games/challenge-ai",
+              // Route to the game directly; its own useRequireAuth gate
+              // bounces guests to /connect (wagers need a wallet), and
+              // already-connected players skip the extra hop.
+              path: "/games/challenge-ai",
               gradient: "linear-gradient(160deg, #ffc76b 0%, #ff5232 50%, #cc0c0c 100%)",
               wall: "#800000",
               shadowGlow: "rgba(216, 17, 17, 0.6)",

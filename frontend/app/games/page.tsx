@@ -86,7 +86,7 @@ const GAMES = [
     startGlow: "rgba(245,158,11,0.75)",
     art: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/games/rhythm.png" alt="Rhythm Rush" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+      <img src="/games/rhythm.png" alt="Rhythm Rush" width={1024} height={1024} decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
     ),
   },
   {
@@ -106,7 +106,7 @@ const GAMES = [
     startGlow: "rgba(34,197,94,0.75)",
     art: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/games/simon.png" alt="Simon Memory" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+      <img src="/games/simon.png" alt="Simon Memory" width={1024} height={1024} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
     ),
   },
   {
@@ -126,7 +126,7 @@ const GAMES = [
     startGlow: "rgba(167,139,250,0.75)",
     art: (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/games/challenge-ais.png" alt="Challenge AI" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+      <img src="/games/challenge-ais.png" alt="Challenge AI" width={1024} height={1024} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
     ),
   },
   // Coming-soon teaser — deliberately muted vs active games. The chassis
@@ -152,6 +152,7 @@ const GAMES = [
     art: (
       // eslint-disable-next-line @next/next/no-img-element
       <img src="/games/coming-soon.png" alt="More games coming soon"
+        width={1024} height={1024} loading="lazy" decoding="async"
         style={{
           width: "100%", height: "100%", objectFit: "contain",
           filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.6))",

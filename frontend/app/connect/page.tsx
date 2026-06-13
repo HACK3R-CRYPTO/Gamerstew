@@ -469,6 +469,37 @@ function ConnectInner() {
                   }}>
                     On Opera Mini? You auto-connect as MiniPay.
                   </p>
+
+                  {/* Free-play escape hatch — the #1 onboarding complaint
+                      was "let me try the game before signing in". Solo
+                      games run fully as guest; only saving scores needs
+                      a session, and the games pitch that themselves. */}
+                  <button
+                    onClick={() => router.push("/games")}
+                    style={{
+                      marginTop: "4px",
+                      padding: "12px 10px",
+                      width: "100%",
+                      borderRadius: "12px",
+                      border: "1px dashed rgba(251,191,36,0.45)",
+                      background: "rgba(251,191,36,0.07)",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <span style={{
+                      color: "#fde68a", fontSize: "12px", fontWeight: 900,
+                      letterSpacing: "0.1em",
+                    }}>
+                      JUST EXPLORING? PLAY FREE →
+                    </span>
+                    <span style={{
+                      display: "block", marginTop: "3px",
+                      color: "rgba(220,200,255,0.6)", fontSize: "10px", fontWeight: 700,
+                    }}>
+                      No wallet needed. Sign in later to save scores.
+                    </span>
+                  </button>
                 </>
               )}
             </div>

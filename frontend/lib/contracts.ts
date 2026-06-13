@@ -127,6 +127,16 @@ export const ERC20_ABI = [
   },
   {
     inputs: [
+      { internalType: 'address', name: 'owner', type: 'address' },
+      { internalType: 'address', name: 'spender', type: 'address' },
+    ],
+    name: 'allowance',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
       { internalType: 'address', name: 'to', type: 'address' },
       { internalType: 'uint256', name: 'value', type: 'uint256' },
       { internalType: 'bytes', name: 'data', type: 'bytes' },
@@ -143,6 +153,7 @@ export const ARENA_PLATFORM_ABI = [
   { type: 'function', name: 'hasPlayed', inputs: [{ name: '', type: 'uint256', internalType: 'uint256' }, { name: '', type: 'address', internalType: 'address' }], outputs: [{ name: '', type: 'bool', internalType: 'bool' }], stateMutability: 'view' },
   { type: 'function', name: 'matchCounter', inputs: [], outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }], stateMutability: 'view' },
   { type: 'function', name: 'matches', inputs: [{ name: '', type: 'uint256', internalType: 'uint256' }], outputs: [{ name: 'id', type: 'uint256', internalType: 'uint256' }, { name: 'challenger', type: 'address', internalType: 'address' }, { name: 'opponent', type: 'address', internalType: 'address' }, { name: 'wager', type: 'uint256', internalType: 'uint256' }, { name: 'gameType', type: 'uint8', internalType: 'uint8' }, { name: 'status', type: 'uint8', internalType: 'uint8' }, { name: 'winner', type: 'address', internalType: 'address' }, { name: 'createdAt', type: 'uint256', internalType: 'uint256' }], stateMutability: 'view' },
+  { type: 'function', name: 'proposeMatch', inputs: [{ name: '_opponent', type: 'address', internalType: 'address' }, { name: '_gameType', type: 'uint8', internalType: 'uint8' }, { name: '_wager', type: 'uint256', internalType: 'uint256' }], outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }], stateMutability: 'nonpayable' },
   { type: 'function', name: 'playMove', inputs: [{ name: '_matchId', type: 'uint256', internalType: 'uint256' }, { name: '_move', type: 'uint8', internalType: 'uint8' }], outputs: [], stateMutability: 'nonpayable' },
   { type: 'function', name: 'cancelMatch', inputs: [{ name: '_matchId', type: 'uint256', internalType: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
   { type: 'function', name: 'playerMoves', inputs: [{ name: '', type: 'uint256', internalType: 'uint256' }, { name: '', type: 'address', internalType: 'address' }], outputs: [{ name: '', type: 'uint8', internalType: 'uint8' }], stateMutability: 'view' },

@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playFightSlam, playAiRolling, playWin, playLose, playTie } from "@/hooks/useAppAudio";
 import { encodeAbiParameters, formatUnits } from "viem";
 import { CONTRACT_ADDRESSES, ARENA_PLATFORM_ABI, ERC20_ABI } from "@/lib/contracts";
@@ -205,6 +206,7 @@ export default function ChallengeAi() {
   useRequireAuth();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const isMiniPay = useIsMiniPay();
   const isDesktop = useIsDesktop();
   const pet = usePlayerPet(address as `0x${string}` | undefined);
   const agentLiveness = useAgentLiveness();
@@ -571,16 +573,52 @@ export default function ChallengeAi() {
     if (!isConnected || !address) { setError("Connect your wallet first."); return; }
     setSubmittingChallenge(true); setError(null);
     try {
-      const encoded = encodeAbiParameters(
-        [{ type: "uint8" }, { type: "address" }, { type: "uint8" }],
-        [0, aiAddress, game.id],
-      );
-      const hash = await writeContractAsync({
-        address:      CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
-        abi:          ERC20_ABI,
-        functionName: "transferAndCall",
-        args:         [CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`, tier.amountWei, encoded],
-      });
+      let hash: `0x${string}`;
+      if (isMiniPay) {
+        // MiniPay's confirmation sheet can't decode transferAndCall — the
+        // game data rides inside opaque bytes, so the user sees a scary
+        // "cannot decode transaction" warning. Use the contract's standard
+        // approve + proposeMatch path instead: both decode as named calls
+        // (G$ and ArenaPlatform are verified on Celoscan). Skip the approve
+        // tx when the standing allowance already covers the wager.
+        const arena = CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`;
+        const allowance = publicClient
+          ? await publicClient.readContract({
+              address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
+              abi: ERC20_ABI,
+              functionName: "allowance",
+              args: [address as `0x${string}`, arena],
+            }) as bigint
+          : 0n;
+        if (allowance < tier.amountWei) {
+          const approveHash = await writeContractAsync({
+            address:      CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
+            abi:          ERC20_ABI,
+            functionName: "approve",
+            args:         [arena, tier.amountWei],
+          });
+          if (publicClient) await publicClient.waitForTransactionReceipt({ hash: approveHash });
+        }
+        hash = await writeContractAsync({
+          address:      arena,
+          abi:          ARENA_PLATFORM_ABI,
+          functionName: "proposeMatch",
+          args:         [aiAddress, game.id, tier.amountWei],
+        });
+      } else {
+        // Privy embedded wallets sign silently — keep the 1-tx ERC-677
+        // deposit, it's one less confirmation round-trip.
+        const encoded = encodeAbiParameters(
+          [{ type: "uint8" }, { type: "address" }, { type: "uint8" }],
+          [0, aiAddress, game.id],
+        );
+        hash = await writeContractAsync({
+          address:      CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
+          abi:          ERC20_ABI,
+          functionName: "transferAndCall",
+          args:         [CONTRACT_ADDRESSES.ARENA_PLATFORM as `0x${string}`, tier.amountWei, encoded],
+        });
+      }
       if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
       await refetchIds();
       // Kick into the VS sting. Don't blindly time out into match — the
