@@ -20,6 +20,23 @@ interface SelfVerificationContextType {
 
 const SelfVerificationContext = createContext<SelfVerificationContextType | undefined>(undefined);
 
+// Verified-flag cache. Whitelist status practically never revokes inside a
+// week, so a cached "verified" is trustworthy enough to hydrate the UI
+// instantly and to survive RPC hiccups (a failed status call must NOT flip
+// a verified player back to unverified — that was the #1 "game doesn't
+// recognize my verification" complaint).
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+function readVerifiedCache(address: string): boolean {
+  try {
+    const raw = localStorage.getItem(`gd_verified_${address.toLowerCase()}`);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    return cached?.verified === true && Date.now() - (cached.timestamp ?? 0) < CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function SelfVerificationProvider({ children }: { children: React.ReactNode }) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
@@ -111,10 +128,20 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
       return verified;
     } catch (error) {
       console.error('GoodDollar verification check failed:', error);
-      setIsVerified(false);
-      return false;
+      // A failed RPC call is "unknown", not "unverified". Fall back to
+      // the cached flag so flaky networks can't strip a verified player.
+      const cachedOk = readVerifiedCache(address);
+      setIsVerified(cachedOk);
+      return cachedOk;
     }
   }, [address, publicClient, walletClient, identitySDK]);
+
+  // Hydrate from cache the moment an address lands — returning verified
+  // players see their status instantly instead of waiting on (or losing
+  // it to) the network round-trip below.
+  useEffect(() => {
+    if (address && readVerifiedCache(address)) setIsVerified(true);
+  }, [address]);
 
   useEffect(() => {
     if (isConnected && address && identitySDK) {
@@ -122,6 +149,31 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
       checkVerificationStatus();
     }
   }, [isConnected, address, identitySDK, walletClient]); // eslint-disable-line
+
+  // Re-check when the tab regains focus — catches "verified in another
+  // tab / the GoodDollar wallet" and returns with the badge already lit.
+  // Only while unverified: once verified there's nothing to gain.
+  useEffect(() => {
+    if (!isConnected || !address || isVerified) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkVerificationStatus();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [isConnected, address, isVerified, checkVerificationStatus]);
+
+  // Background poll while unverified — same cadence as the in-app
+  // verifyIdentity poller but covers users who never tapped VERIFY here.
+  // Stops as soon as the flag flips; one eth_call per tick.
+  useEffect(() => {
+    if (!isConnected || !address || !identitySDK || isVerified) return;
+    const i = setInterval(checkVerificationStatus, 15000);
+    return () => clearInterval(i);
+  }, [isConnected, address, identitySDK, isVerified, checkVerificationStatus]);
 
   useEffect(() => {
     if (isConnected && identitySDK && address) {
