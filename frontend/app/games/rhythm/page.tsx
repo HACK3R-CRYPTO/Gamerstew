@@ -22,6 +22,7 @@ import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
+import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -577,6 +578,11 @@ export default function RhythmGamePage() {
   // reconcile.
   const [bursts, setBursts] = useState<Burst[]>([]);
   const [comboToast, setComboToast] = useState<string | null>(null);
+
+  // Shared game-feel layer (popups + shake + big combo callouts + danger
+  // vignette). Replaces the existing comboToast at higher milestones and
+  // adds floating "+X" feedback per hit / "MISS" feedback per miss.
+  const juice = useGameJuice();
   const [flashLane, setFlashLane] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number } | null>(null);
 
@@ -713,10 +719,11 @@ export default function RhythmGamePage() {
     setComboToast(null);
     setFlashLane(null);
     setFeedback(null);
+    juice.reset();
     // Anti-cheat: clear session + tap log so a new run gets a fresh ticket
     sessionTokenRef.current = null;
     tapLogRef.current = [];
-  }, []);
+  }, [juice]);
 
   // Countdown → playing
   const startGame = async () => {
@@ -1086,12 +1093,22 @@ export default function RhythmGamePage() {
     setCombo(c => {
       const next = c + 1;
       if (next > maxCombo) setMaxCombo(next);
-      // Combo milestone toast
+      // Combo milestone toast (kept for the first few; the bigger
+      // milestones at 50/100 are handled by the shared callout layer
+      // so they punch in dramatically instead of as a thin top toast).
       if (next === 5) setComboToast("WARMED UP!");
       if (next === 10) setComboToast("ON FIRE 🔥");
       if (next === 15) setComboToast("UNSTOPPABLE!");
       if (next === 25) setComboToast("GOD MODE!");
       if ([5, 10, 15, 25].includes(next)) setTimeout(() => setComboToast(null), 1200);
+      // Big center callouts at 50 and 100 (and the milestone in 50/100/250).
+      if (next === 50 || next === 100 || next === 250) {
+        juice.fireCallout({
+          text: next === 250 ? "MYTHIC" : next === 100 ? "LEGENDARY" : "GOD MODE",
+          sub:  `${Math.floor(next / 5) + 1}× multiplier`,
+          color: "#fbbf24",
+        }, next);
+      }
       return next;
     });
     setHits(h => ({ ...h, [type]: h[type] + 1 }));
@@ -1102,6 +1119,10 @@ export default function RhythmGamePage() {
     const xPct = laneWidth * lane + laneWidth / 2;
     const color = LANES[lane].accent;
     setBursts(bs => [...bs, { id: burstIdRef.current++, x: xPct, y: 90, color: type === "perfect" ? "#fbbf24" : color, born: performance.now() }]);
+
+    // Floating "+X" reward popup at the tap zone. Y is 88% (right above
+    // the hit line) so the number rises into the play area, not the HUD.
+    juice.scorePopup(xPct, 86, gained, type);
 
     // Flash lane briefly
     setFlashLane(lane);
@@ -1285,6 +1306,11 @@ export default function RhythmGamePage() {
           setCombo(0);
           setHits(h => ({ ...h, miss: h.miss + 1 }));
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
+          // Floating "MISS" popup at the lane + light screen shake.
+          // Encore misses shake harder because each one costs a life.
+          const laneWidth = 100 / LANES.length;
+          juice.lossPopup(laneWidth * n.lane + laneWidth / 2, 86, "MISS");
+          juice.bump(phase === "encore" ? 10 : 5);
           // No sound on miss — silence IS the feedback. The player should feel
           // the absence of a note they should have played. Visual cues (MISS
           // text + combo break + red lives in encore) carry the signal instead.
@@ -1445,6 +1471,13 @@ export default function RhythmGamePage() {
           isEncore={phase === "encore"}
           encoreLives={encoreLives}
         />
+      )}
+      {/* Shared juice overlay — floating popups + screen shake + big combo
+          callouts + danger vignette in the last 5 seconds of the main track.
+          Sits over the PlayingView (fixed/absolute container at the page
+          root), pointerEvents:none so input still falls through to lanes. */}
+      {(phase === "playing" || phase === "encore") && (
+        <JuiceOverlay {...juice} timeLeft={timeLeft} dangerSeconds={5} />
       )}
 
       {/* ═══ FINISHED ═══ */}
