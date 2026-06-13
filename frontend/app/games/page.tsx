@@ -9,6 +9,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import BottomNav from "@/components/BottomNav";
 import LevelUpToast from "@/components/LevelUpToast";
 import ChallengeBanner, { useChallenge } from "@/components/ChallengeBanner";
+import { petForLevel } from "@/lib/pets";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -300,6 +301,17 @@ export default function GamesPage() {
       .then(data => setStreak({ streak: data.streak || 0, playedToday: !!data.playedToday }))
       .catch(() => setStreak(null));
   }, [address]);
+
+  // Player level — drives the pet widget (same lookup the game pages use).
+  const [playerLevel, setPlayerLevel] = useState(1);
+  useEffect(() => {
+    if (!address) { setPlayerLevel(1); return; }
+    fetch(`${BACKEND_URL}/api/user/${address}`)
+      .then(r => r.json())
+      .then(d => setPlayerLevel(d.level || 1))
+      .catch(() => {});
+  }, [address]);
+  const pet = petForLevel(playerLevel);
 
   // Daily missions
   type Mission = { id: number; missionId: string; label: string; progress: number; target: number; completed: boolean; claimed: boolean; rewardXp: number };
@@ -609,6 +621,11 @@ export default function GamesPage() {
       border: "1px solid rgba(255,255,255,0.1)",
       overflow: "hidden",
       display: "flex", flexDirection: "column",
+      // Desktop: fill the stretched sidebar so the inner body scroll
+      // engages and every mission/event is reachable. Mobile: natural
+      // height inside the page's own scroll column.
+      flex: isMobile ? "0 0 auto" : 1,
+      minHeight: 0,
     }}>
       <div style={{
         background: "linear-gradient(135deg, #3b1fa3 0%, #6d28d9 60%, #3b1fa3 100%)",
@@ -621,11 +638,16 @@ export default function GamesPage() {
           background: "linear-gradient(180deg,rgba(255,255,255,0.28) 0%,transparent 100%)",
           pointerEvents: "none",
         }}/>
+        {/* Mobile renders missions in the glanceable strip above the
+            game cards, so this card is events-only there. Desktop keeps
+            missions here in the sidebar. */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", position: "relative", zIndex: 1 }}>
-          <span style={{ fontSize: "14px" }}>🎯</span>
-          <span style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.1em" }}>DAILY MISSIONS</span>
+          <span style={{ fontSize: "14px" }}>{isMobile ? "📰" : "🎯"}</span>
+          <span style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.1em" }}>
+            {isMobile ? "EVENTS & NEWS" : "DAILY MISSIONS"}
+          </span>
         </div>
-        {address && missions.length > 0 && (
+        {!isMobile && address && missions.length > 0 && (
           <div style={{ position: "relative", zIndex: 1, color: "#fbbf24", fontSize: "10px", fontWeight: 900, fontFamily: "monospace", textShadow: "0 0 8px rgba(251,191,36,0.6)" }}>
             {fmtCountdown(missionResetSec)}
           </div>
@@ -642,8 +664,9 @@ export default function GamesPage() {
         overflowY: isMobile ? "visible" : "auto",
         flex: isMobile ? "0 0 auto" : 1,
       }}>
-        {/* MISSIONS */}
-        {!address ? (
+        {/* MISSIONS — desktop sidebar only; mobile shows them in the
+            strip above the game cards instead. */}
+        {isMobile ? null : !address ? (
           <div style={{ padding: "20px 8px", textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "10px", fontWeight: 700 }}>
             Connect wallet to see daily missions
           </div>
@@ -708,8 +731,11 @@ export default function GamesPage() {
           })
         )}
 
-        {/* EVENTS */}
-        <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>EVENTS</div>
+        {/* EVENTS — label only needed on desktop where missions sit above;
+            the mobile card header already reads EVENTS & NEWS. */}
+        {!isMobile && (
+          <div style={{ fontSize: "9px", fontWeight: 900, letterSpacing: "0.15em", color: "rgba(200,180,255,0.7)", marginTop: "6px" }}>EVENTS</div>
+        )}
 
         {/* (Challenge banner moved to page top as a hero strip so it reads
             as a "this-is-happening-right-now" signal on both mobile and
@@ -982,6 +1008,132 @@ export default function GamesPage() {
       </div>
     </div>
   );
+
+  // Pet companion card — the pet is the player's progress made visible, so
+  // it belongs on the hub, not buried in the profile. Tapping it goes to
+  // the profile (feed/evolve lives there).
+  const petCard = address ? (
+    <div
+      role="button" tabIndex={0}
+      onClick={() => router.push("/profile")}
+      style={{
+        borderRadius: "16px",
+        background: "rgba(20,10,50,0.82)",
+        border: `1.5px solid ${pet.color}55`,
+        boxShadow: `0 0 18px ${pet.color}22`,
+        padding: "10px 12px",
+        display: "flex", alignItems: "center", gap: "10px",
+        cursor: "pointer", userSelect: "none",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={pet.src} alt={pet.name} width={1024} height={1024} decoding="async"
+        style={{
+          width: "44px", height: "44px", objectFit: "contain",
+          filter: `drop-shadow(0 0 10px ${pet.color}88)`,
+          flexShrink: 0,
+        }}
+      />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {pet.name}
+        </div>
+        <div style={{ color: pet.color, fontSize: "10px", fontWeight: 800, marginTop: "2px" }}>
+          LEVEL {playerLevel}
+        </div>
+      </div>
+      <span style={{ color: "rgba(200,180,255,0.5)", fontSize: "14px", flexShrink: 0 }}>›</span>
+    </div>
+  ) : null;
+
+  // Missions strip — mobile-first glanceable row. The full activity card
+  // sits BELOW the game cards on mobile, which buried missions off-screen
+  // (players told us they never saw them). This strip puts every mission
+  // in a swipeable row right above the games: progress at a glance,
+  // CLAIM inline, no scrolling required.
+  const missionsStrip = address && missions.length > 0 ? (
+    <div style={{ width: "100%", maxWidth: "680px" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 2px", marginBottom: "6px",
+      }}>
+        <span style={{ color: "rgba(220,200,255,0.85)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.16em" }}>
+          🎯 DAILY MISSIONS
+        </span>
+        <span style={{ color: "#fbbf24", fontSize: "9px", fontWeight: 900, fontFamily: "monospace" }}>
+          {fmtCountdown(missionResetSec)}
+        </span>
+      </div>
+      <div
+        className="hide-scrollbar"
+        style={{
+          display: "flex", gap: "8px",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          paddingBottom: "2px",
+        }}
+      >
+        {missions.map(m => {
+          const pct = Math.round((m.progress / m.target) * 100);
+          const ready = m.completed && !m.claimed;
+          const done = m.claimed;
+          return (
+            <div
+              key={m.id}
+              role={ready ? "button" : undefined}
+              tabIndex={ready ? 0 : undefined}
+              onClick={() => { if (ready) claimMission(m.id); }}
+              style={{
+                flex: "0 0 auto",
+                width: "168px",
+                borderRadius: "12px",
+                background: done
+                  ? "linear-gradient(180deg, rgba(34,197,94,0.10) 0%, rgba(0,0,0,0.25) 100%)"
+                  : ready
+                    ? "linear-gradient(180deg, rgba(251,191,36,0.22) 0%, rgba(0,0,0,0.25) 100%)"
+                    : "rgba(20,10,50,0.82)",
+                border: `1.5px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "#fbbf24" : "rgba(167,139,250,0.25)"}`,
+                boxShadow: ready ? "0 0 12px rgba(251,191,36,0.45)" : "none",
+                padding: "8px 10px",
+                opacity: done ? 0.55 : 1,
+                cursor: ready ? "pointer" : "default",
+                userSelect: "none",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "6px", alignItems: "flex-start" }}>
+                <span style={{ color: "white", fontSize: "9.5px", fontWeight: 800, lineHeight: 1.25, flex: 1, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  {m.label}
+                </span>
+                <span style={{ color: "#fbbf24", fontSize: "8.5px", fontWeight: 900, whiteSpace: "nowrap", flexShrink: 0 }}>+{m.rewardXp}XP</span>
+              </div>
+              <div style={{ marginTop: "6px", height: "5px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: "1px solid rgba(167,139,250,0.12)" }}>
+                <div style={{
+                  width: `${pct}%`, height: "100%", borderRadius: "999px",
+                  background: done ? "#22c55e" : ready ? "#fbbf24" : "#a78bfa",
+                  transition: "width 0.3s",
+                }} />
+              </div>
+              <div style={{ marginTop: "5px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800 }}>{m.progress}/{m.target}</span>
+                {done ? (
+                  <span style={{ color: "#22c55e", fontSize: "8.5px", fontWeight: 900, letterSpacing: "0.08em" }}>✓ CLAIMED</span>
+                ) : ready ? (
+                  <span style={{
+                    color: "#1a0a00", fontSize: "8.5px", fontWeight: 900, letterSpacing: "0.08em",
+                    background: "linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)",
+                    borderRadius: "6px", padding: "2px 8px",
+                  }}>CLAIM</span>
+                ) : (
+                  <span style={{ color: "rgba(200,180,255,0.45)", fontSize: "8px", fontWeight: 800 }}>{pct}%</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div style={{
@@ -1411,12 +1563,23 @@ export default function GamesPage() {
             src="/components/game_arena_text.png"
             alt="Game Arena"
             style={{
-              width: isMobile ? "clamp(180px, 55vw, 280px)" : "clamp(180px, 32vw, 420px)",
+              // Smaller than v1 — the logo was eating a third of the
+              // viewport and pushing missions/games below the fold.
+              // It's a header, not the content.
+              width: isMobile ? "clamp(140px, 38vw, 200px)" : "clamp(160px, 22vw, 300px)",
               height: "auto",
               filter: "drop-shadow(0 0 24px rgba(160,100,255,0.6))",
               flexShrink: 0,
             }}
           />
+
+          {/* Mobile: pet + missions live ABOVE the games. Players said
+              they had to scroll past every game card to even discover
+              missions — now both are glanceable before the first card. */}
+          {isMobile && petCard && (
+            <div style={{ width: "100%", maxWidth: "680px" }}>{petCard}</div>
+          )}
+          {isMobile && missionsStrip}
 
           {/* Game cards — no tray. Cards live directly on the page
               atmosphere (Apple Arcade / PSN / Stake pattern). The bg
@@ -1638,10 +1801,14 @@ export default function GamesPage() {
               with live content. ── */}
         {!isMobile && <div style={{
           width: "clamp(220px, 24vw, 290px)", flexShrink: 0,
-          alignSelf: "center",
-          display: "flex", flexDirection: "column",
-          padding: "0 12px 0 8px",
+          // Stretch instead of center: the old centered card collapsed to
+          // ~2 visible missions and wasted the rest of the column. Full
+          // height = pet on top, all missions + events visible below.
+          alignSelf: "stretch", minHeight: 0,
+          display: "flex", flexDirection: "column", gap: "10px",
+          padding: "16px 12px 16px 8px",
         }}>
+          {petCard}
           {activityCard}
         </div>}
       </div>
