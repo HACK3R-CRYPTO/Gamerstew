@@ -110,6 +110,27 @@ const GAMES = [
     ),
   },
   {
+    id: "survivor",
+    title: "SLIME SURVIVOR",
+    wager: "FREE",
+    payout: "—",
+    path: "/games/survivor",
+    active: true,
+    artGrad: "linear-gradient(160deg, #14532d 0%, #166534 55%, #052e16 100%)",
+    glow: "#22c55e",
+    accent: "#86efac",
+    showWager: false,
+    borderColor: "#22c55e",
+    startWall: "#14532d",
+    startGrad: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
+    startGlow: "rgba(34,197,94,0.75)",
+    art: (
+      // Your pet IS the runner — the card art sells the hook directly.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/pets/stage-3-teen.png" alt="Slime Survivor" width={1024} height={1024} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }} />
+    ),
+  },
+  {
     id: "challenge-ai",
     title: "CHALLENGE AI",
     wager: "—",
