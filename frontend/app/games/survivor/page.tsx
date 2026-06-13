@@ -19,6 +19,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { petForLevel, PET_STAGES } from "@/lib/pets";
+import {
+  UPGRADES, type UpgradeId, type UpgradeLevels, type UpgradeEffects,
+  loadCoins, saveCoins, loadLevels, saveLevels, effectsFor, nextCost, maxLevel,
+} from "@/lib/survivorUpgrades";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -38,7 +42,7 @@ const SPIKE_CHANCE_START = 0.22;
 const SPIKE_CHANCE_END = 0.42;  // ramps to this by t=60
 const GEM_CHANCE = 0.06;        // rare, worth 5 coins
 
-type Phase = "idle" | "countdown" | "playing" | "finished";
+type Phase = "idle" | "countdown" | "playing" | "finished" | "shop";
 type Drop = { id: number; kind: "coin" | "spike" | "gem"; x: number; y: number; r: number; spin: number };
 type Burst = { x: number; y: number; color: string; born: number };
 
@@ -56,6 +60,21 @@ export default function SlimeSurvivorPage() {
   const [coinsGot, setCoinsGot] = useState(0);
   const [survived, setSurvived] = useState(false);
   const [localBest, setLocalBest] = useState(0);
+
+  // ─── Upgrade economy (step 2) ─────────────────────────────────────────────
+  // coinBank = persistent currency across runs; levels = owned upgrades.
+  // Effects derived from levels feed the loop via refs (see startGame).
+  const [coinBank, setCoinBank] = useState(0);
+  const [levels, setLevels] = useState<UpgradeLevels>({ heart: 0, magnet: 0, shield: 0, value: 0 });
+  const [lastEarned, setLastEarned] = useState(0);     // coins banked from the run just finished
+  const effectsRef = useRef<UpgradeEffects>(effectsFor({ heart: 0, magnet: 0, shield: 0, value: 0 }, HEARTS));
+  const shieldRef = useRef(0);                          // remaining shield charges this run
+  const [shieldLeft, setShieldLeft] = useState(0);     // HUD mirror
+  const [runMaxHearts, setRunMaxHearts] = useState(HEARTS); // hearts at run start (for HUD)
+  useEffect(() => {
+    setCoinBank(loadCoins());
+    setLevels(loadLevels());
+  }, []);
 
   // Pet = player character. Guests run as the egg — visible incentive to
   // sign in and level ("evolve your runner").
@@ -175,11 +194,15 @@ export default function SlimeSurvivorPage() {
 
   // ─── Start / countdown ─────────────────────────────────────────────────────
   const startGame = useCallback(() => {
+    // Snapshot upgrade effects for this run from the latest owned levels.
+    const eff = effectsFor(loadLevels(), HEARTS);
+    effectsRef.current = eff;
     dropsRef.current = [];
     burstsRef.current = [];
     playerXRef.current = 0.5;
     targetXRef.current = 0.5;
-    heartsRef.current = HEARTS;
+    heartsRef.current = eff.startHearts;
+    shieldRef.current = eff.shieldCharges;
     scoreRef.current = 0;
     streakRef.current = 0;
     bestStreakRef.current = 0;
@@ -187,12 +210,28 @@ export default function SlimeSurvivorPage() {
     invulnUntilRef.current = 0;
     nextSpawnRef.current = 0;
     setScore(0); setStreak(0); setBestStreak(0);
-    setHearts(HEARTS); setTimeLeft(RUN_SECONDS); setCoinsGot(0);
+    setHearts(eff.startHearts); setRunMaxHearts(eff.startHearts);
+    setShieldLeft(eff.shieldCharges);
+    setTimeLeft(RUN_SECONDS); setCoinsGot(0);
     setSurvived(false);
     getAudioCtx(); // unlock audio on user gesture
     setCountdown(3);
     setPhase("countdown");
   }, [getAudioCtx]);
+
+  // Buy the next level of an upgrade if the bank can afford it.
+  const buyUpgrade = useCallback((id: UpgradeId) => {
+    const cur = levels[id];
+    const cost = nextCost(id, cur);
+    if (cost === null) return;                          // maxed
+    if (coinBank < cost) { blip(180, 0.18, 0.18, "sawtooth"); return; }
+    const nextLevels = { ...levels, [id]: cur + 1 };
+    const nextBank = coinBank - cost;
+    setLevels(nextLevels); saveLevels(nextLevels);
+    setCoinBank(nextBank); saveCoins(nextBank);
+    blip(880, 0.12, 0.2); setTimeout(() => blip(1175, 0.16, 0.2), 90);
+    haptic([12, 30, 12]);
+  }, [levels, coinBank, blip, haptic]);
 
   useEffect(() => {
     if (phase !== "countdown") return;
@@ -222,6 +261,10 @@ export default function SlimeSurvivorPage() {
         localStorage.setItem("survivor_best", String(best));
         return best;
       });
+      // Bank the coins caught this run (survival bonus: +50% if you made it).
+      const earned = Math.round(coinsRef.current * (didSurvive ? 1.5 : 1));
+      setLastEarned(earned);
+      setCoinBank(prev => { const next = prev + earned; saveCoins(next); return next; });
       setPhase("finished");
       if (didSurvive) { blip(660, 0.3, 0.2); setTimeout(() => blip(880, 0.4, 0.2), 150); }
       else { blip(130, 0.5, 0.22, "sawtooth"); }
@@ -275,24 +318,45 @@ export default function SlimeSurvivorPage() {
       // ── Move drops + collisions ──
       const fall = BASE_FALL + elapsed * FALL_RAMP;
       const invuln = wall < invulnUntilRef.current;
+      const eff = effectsRef.current;
       const kept: Drop[] = [];
       for (const d of dropsRef.current) {
         d.y += fall * dt * (d.kind === "spike" ? 1.12 : 1);
         d.spin += dt * 3;
+        // Magnet upgrade: coins/gems in range slide horizontally toward the
+        // player. Spikes are never pulled (that would be cruel).
+        if (eff.magnetRange > 0 && d.kind !== "spike") {
+          const adx = d.x - px, ady = d.y - py;
+          if (adx * adx + ady * ady < eff.magnetRange * eff.magnetRange) {
+            d.x += (px - d.x) * Math.min(1, 6 * dt);
+          }
+        }
         const dx = d.x - px, dy = d.y - py;
         const hit = dx * dx + dy * dy < (d.r + PLAYER_R) * (d.r + PLAYER_R);
         if (hit) {
           if (d.kind === "spike") {
             if (!invuln) {
-              heartsRef.current -= 1;
-              streakRef.current = 0;
-              invulnUntilRef.current = wall + INVULN_MS;
-              setHearts(heartsRef.current);
-              setStreak(0);
-              blip(150, 0.25, 0.22, "sawtooth");
-              haptic(60);
-              burstsRef.current.push({ x: d.x, y: d.y, color: "#ef4444", born: wall });
-              if (heartsRef.current <= 0) { finish(false); return; }
+              // Shield upgrade absorbs the hit first — no heart lost, but
+              // the streak still breaks and the mercy window still triggers.
+              if (shieldRef.current > 0) {
+                shieldRef.current -= 1;
+                setShieldLeft(shieldRef.current);
+                invulnUntilRef.current = wall + INVULN_MS;
+                streakRef.current = 0; setStreak(0);
+                blip(420, 0.18, 0.2, "sine");
+                haptic(30);
+                burstsRef.current.push({ x: d.x, y: d.y, color: "#38bdf8", born: wall });
+              } else {
+                heartsRef.current -= 1;
+                streakRef.current = 0;
+                invulnUntilRef.current = wall + INVULN_MS;
+                setHearts(heartsRef.current);
+                setStreak(0);
+                blip(150, 0.25, 0.22, "sawtooth");
+                haptic(60);
+                burstsRef.current.push({ x: d.x, y: d.y, color: "#ef4444", born: wall });
+                if (heartsRef.current <= 0) { finish(false); return; }
+              }
             }
             continue; // spike consumed either way
           }
@@ -300,10 +364,12 @@ export default function SlimeSurvivorPage() {
           const newStreak = streakRef.current + 1;
           streakRef.current = newStreak;
           if (newStreak > bestStreakRef.current) bestStreakRef.current = newStreak;
-          const mult = 1 + Math.floor(newStreak / 10);   // every 10-coin streak = +1x
+          const streakMult = 1 + Math.floor(newStreak / 10);   // every 10-coin streak = +1x
           const base = d.kind === "gem" ? 50 : 10;
-          scoreRef.current += base * mult;
-          coinsRef.current += 1;
+          // Golden Touch upgrade scales score (not the coin bank count, so
+          // the economy stays honest — you bank coins caught, not points).
+          scoreRef.current += Math.round(base * streakMult * eff.coinMultiplier);
+          coinsRef.current += d.kind === "gem" ? 5 : 1;       // gems bank as 5 coins
           setScore(scoreRef.current);
           setStreak(newStreak);
           setCoinsGot(coinsRef.current);
@@ -450,14 +516,23 @@ export default function SlimeSurvivorPage() {
               textShadow: timeLeft <= 10 ? "0 0 14px rgba(239,68,68,0.8)" : "0 0 10px rgba(255,255,255,0.4)",
             }}>{timeLeft}</div>
           </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            {Array.from({ length: HEARTS }).map((_, i) => (
-              <span key={i} style={{
-                fontSize: 20,
-                filter: i < hearts ? "drop-shadow(0 0 6px rgba(239,68,68,0.8))" : "grayscale(1) brightness(0.4)",
-                transition: "filter 0.2s",
-              }}>❤️</span>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {Array.from({ length: runMaxHearts }).map((_, i) => (
+                <span key={i} style={{
+                  fontSize: 20,
+                  filter: i < hearts ? "drop-shadow(0 0 6px rgba(239,68,68,0.8))" : "grayscale(1) brightness(0.4)",
+                  transition: "filter 0.2s",
+                }}>❤️</span>
+              ))}
+            </div>
+            {shieldLeft > 0 && (
+              <div style={{ display: "flex", gap: 3 }}>
+                {Array.from({ length: shieldLeft }).map((_, i) => (
+                  <span key={i} style={{ fontSize: 14, filter: "drop-shadow(0 0 5px rgba(56,189,248,0.8))" }}>🛡️</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -490,6 +565,9 @@ export default function SlimeSurvivorPage() {
             color: "white", fontSize: 16, fontWeight: 900,
             boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
           }}>✕</button>
+
+          {/* Coin bank — your upgrade currency, always visible top-right */}
+          <CoinBankChip coins={coinBank} />
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.4em", color: "rgba(232,121,249,0.7)", textShadow: "0 0 14px rgba(232,121,249,0.7)" }}>GAME ARENA</div>
@@ -543,6 +621,16 @@ export default function SlimeSurvivorPage() {
               </div>
             </div>
           </div>
+
+          <button onClick={() => setPhase("shop")} style={{
+            background: "rgba(20,10,50,0.7)", cursor: "pointer",
+            border: "1.5px solid rgba(251,191,36,0.4)", borderRadius: 12,
+            padding: "10px 20px", color: "#fde68a", fontFamily: "inherit",
+            fontSize: 12, fontWeight: 900, letterSpacing: "0.12em",
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+            🛒 UPGRADE SHOP
+          </button>
         </div>
       )}
 
@@ -595,17 +683,29 @@ export default function SlimeSurvivorPage() {
                 ))}
               </div>
 
-              {/* Step 3 of the build plan replaces this with the GamePass
-                  voucher submit + rank/XP panel from Rhythm/Simon. */}
+              {/* Coins banked — the upgrade hook. Survival bonus called out. */}
               <div style={{
-                marginTop: 14, padding: "10px 12px", borderRadius: 10,
-                background: "rgba(167,139,250,0.08)", border: "1px dashed rgba(167,139,250,0.3)",
-                color: "rgba(200,180,255,0.6)", fontSize: 10, fontWeight: 700, lineHeight: 1.5,
+                marginTop: 14, padding: "12px", borderRadius: 12,
+                background: "linear-gradient(160deg, rgba(251,191,36,0.16) 0%, rgba(20,10,50,0.6) 100%)",
+                border: "1.5px solid rgba(251,191,36,0.4)",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
-                Practice mode — ranked runs &amp; leaderboard coming next update.
+                <CoinIcon size={20} />
+                <span style={{ color: "white", fontSize: 15, fontWeight: 900 }}>+{lastEarned}</span>
+                <span style={{ color: "rgba(220,200,255,0.6)", fontSize: 10, fontWeight: 700 }}>
+                  banked{survived ? " (incl. +50% survival bonus)" : ""} · {coinBank} total
+                </span>
               </div>
 
-              <div style={{ marginTop: 18, display: "flex", gap: 10 }}>
+              {/* Step 3 of the build plan replaces this note with the GamePass
+                  voucher submit + rank/XP panel from Rhythm/Simon. */}
+              <div style={{
+                marginTop: 10, color: "rgba(200,180,255,0.5)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em",
+              }}>
+                Practice mode — ranked leaderboard runs coming next update.
+              </div>
+
+              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
                 <div role="button" tabIndex={0} onClick={startGame} style={{ cursor: "pointer", flex: 1 }}>
                   <div style={{ borderRadius: 14, background: "#14532d", paddingBottom: 5, boxShadow: "0 8px 20px -6px rgba(34,197,94,0.7)" }}>
                     <div style={{
@@ -618,23 +718,202 @@ export default function SlimeSurvivorPage() {
                     </div>
                   </div>
                 </div>
-                <div role="button" tabIndex={0} onClick={() => router.push("/games")} style={{ cursor: "pointer", flex: 1 }}>
-                  <div style={{ borderRadius: 14, background: "#1a0550", paddingBottom: 5 }}>
+                <div role="button" tabIndex={0} onClick={() => setPhase("shop")} style={{ cursor: "pointer", flex: 1 }}>
+                  <div style={{ borderRadius: 14, background: "#7c5004", paddingBottom: 5, boxShadow: "0 8px 20px -6px rgba(251,191,36,0.6)" }}>
                     <div style={{
                       borderRadius: "12px 12px 9px 9px",
-                      background: "linear-gradient(160deg, #c084fc 0%, #a78bfa 50%, #6b21a8 100%)",
-                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.4)",
-                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.45)",
+                      background: "linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #d97706 100%)",
+                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.45)",
+                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.5)",
                     }}>
-                      <span style={{ color: "white", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>EXIT</span>
+                      <span style={{ color: "#451a03", fontSize: 14, fontWeight: 900, letterSpacing: "0.1em" }}>🛒 UPGRADE</span>
                     </div>
                   </div>
                 </div>
               </div>
+
+              <button onClick={() => router.push("/games")} style={{
+                marginTop: 12, background: "transparent", border: "none", cursor: "pointer",
+                color: "rgba(200,180,255,0.55)", fontFamily: "inherit",
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.1em",
+              }}>EXIT TO GAMES</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* UPGRADE SHOP */}
+      {phase === "shop" && (
+        <ShopScreen
+          coins={coinBank}
+          levels={levels}
+          onBuy={buyUpgrade}
+          onBack={() => setPhase("idle")}
+          onPlay={startGame}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Coin visual bits ─────────────────────────────────────────────────────────
+function CoinIcon({ size = 16 }: { size?: number }) {
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: "50%", flexShrink: 0,
+      display: "inline-block",
+      background: "radial-gradient(circle at 35% 30%, #fde68a, #d97706)",
+      boxShadow: "inset 0 1px 2px rgba(255,255,255,0.6), 0 0 6px rgba(251,191,36,0.5)",
+    }} />
+  );
+}
+
+function CoinBankChip({ coins }: { coins: number }) {
+  return (
+    <div style={{
+      position: "absolute", top: 18, right: 18,
+      display: "flex", alignItems: "center", gap: 7,
+      padding: "7px 13px 7px 9px", borderRadius: 999,
+      background: "rgba(20,10,50,0.8)",
+      border: "1.5px solid rgba(251,191,36,0.45)",
+      boxShadow: "0 0 14px rgba(251,191,36,0.2)",
+    }}>
+      <CoinIcon size={18} />
+      <span style={{ color: "white", fontSize: 14, fontWeight: 900 }}>{coins}</span>
+    </div>
+  );
+}
+
+// ─── Shop screen ──────────────────────────────────────────────────────────────
+function ShopScreen({
+  coins, levels, onBuy, onBack, onPlay,
+}: {
+  coins: number;
+  levels: UpgradeLevels;
+  onBuy: (id: UpgradeId) => void;
+  onBack: () => void;
+  onPlay: () => void;
+}) {
+  return (
+    <div style={{
+      position: "absolute", inset: 0, zIndex: 12,
+      background: "linear-gradient(180deg, #1e0762 0%, #0a0228 100%)",
+      display: "flex", flexDirection: "column",
+      padding: "max(16px, env(safe-area-inset-top)) 16px 16px",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <button onClick={onBack} aria-label="Back" style={{
+          width: 38, height: 38, borderRadius: 11, border: "1.5px solid rgba(255,255,255,0.15)",
+          background: "rgba(20,10,50,0.7)", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 900,
+        }}>‹</button>
+        <div style={{ color: "white", fontSize: 16, fontWeight: 900, letterSpacing: "0.14em" }}>UPGRADE SHOP</div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "7px 13px 7px 9px", borderRadius: 999,
+          background: "rgba(20,10,50,0.8)", border: "1.5px solid rgba(251,191,36,0.45)",
+        }}>
+          <CoinIcon size={16} />
+          <span style={{ color: "white", fontSize: 13, fontWeight: 900 }}>{coins}</span>
+        </div>
+      </div>
+
+      <div style={{
+        color: "rgba(220,200,255,0.55)", fontSize: 11, fontWeight: 700,
+        textAlign: "center", marginBottom: 14, lineHeight: 1.5,
+      }}>
+        Spend coins you caught in runs. Upgrades are permanent.
+      </div>
+
+      {/* Upgrade list */}
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+        {UPGRADES.map(u => {
+          const lv = levels[u.id];
+          const max = maxLevel(u.id);
+          const cost = nextCost(u.id, lv);
+          const maxed = cost === null;
+          const afford = cost !== null && coins >= cost;
+          return (
+            <div key={u.id} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: 14, borderRadius: 16,
+              background: "rgba(20,10,50,0.75)",
+              border: `1.5px solid ${maxed ? "rgba(34,197,94,0.4)" : afford ? "rgba(251,191,36,0.35)" : "rgba(255,255,255,0.08)"}`,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                background: "rgba(255,255,255,0.06)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
+              }}>{u.icon}</div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "white", fontSize: 14, fontWeight: 900 }}>{u.name}</span>
+                  {/* Level pips */}
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {Array.from({ length: max }).map((_, i) => (
+                      <span key={i} style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: i < lv ? "#fbbf24" : "rgba(255,255,255,0.18)",
+                        boxShadow: i < lv ? "0 0 6px rgba(251,191,36,0.7)" : "none",
+                      }} />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ color: "rgba(220,200,255,0.6)", fontSize: 10.5, fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>
+                  {u.blurb}
+                </div>
+                <div style={{ color: lv > 0 ? "#86efac" : "rgba(220,200,255,0.4)", fontSize: 10, fontWeight: 800, marginTop: 3 }}>
+                  {lv > 0 ? `Now: ${u.effectLabel(lv)}` : "Not owned"}
+                  {!maxed && <span style={{ color: "rgba(251,191,36,0.85)" }}>{`  →  ${u.effectLabel(lv + 1)}`}</span>}
+                </div>
+              </div>
+
+              {maxed ? (
+                <div style={{
+                  flexShrink: 0, padding: "9px 14px", borderRadius: 10,
+                  background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.45)",
+                  color: "#86efac", fontSize: 11, fontWeight: 900, letterSpacing: "0.08em",
+                }}>MAX</div>
+              ) : (
+                <button
+                  onClick={() => onBuy(u.id)}
+                  disabled={!afford}
+                  style={{
+                    flexShrink: 0, cursor: afford ? "pointer" : "not-allowed",
+                    padding: "9px 12px", borderRadius: 10, fontFamily: "inherit",
+                    border: "none",
+                    background: afford
+                      ? "linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #d97706 100%)"
+                      : "rgba(255,255,255,0.06)",
+                    boxShadow: afford ? "inset 0 2px 5px rgba(255,255,255,0.5)" : "none",
+                    display: "flex", alignItems: "center", gap: 5,
+                    opacity: afford ? 1 : 0.6,
+                  }}
+                >
+                  <CoinIcon size={13} />
+                  <span style={{ color: afford ? "#451a03" : "rgba(220,200,255,0.7)", fontSize: 12, fontWeight: 900 }}>{cost}</span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Play CTA */}
+      <div role="button" tabIndex={0} onClick={onPlay}
+        style={{ cursor: "pointer", marginTop: 14, alignSelf: "center", width: "min(280px, 90vw)" }}>
+        <div style={{ borderRadius: 16, background: "#14532d", paddingBottom: 5, boxShadow: "0 10px 24px -6px rgba(34,197,94,0.7)" }}>
+          <div style={{
+            borderRadius: "14px 14px 10px 10px",
+            background: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
+            padding: "15px 8px", textAlign: "center", border: "2px solid rgba(255,255,255,0.5)",
+            boxShadow: "inset 0 5px 12px rgba(255,255,255,0.55)",
+          }}>
+            <span style={{ color: "white", fontSize: 16, fontWeight: 900, letterSpacing: "0.16em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>PLAY NOW</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
