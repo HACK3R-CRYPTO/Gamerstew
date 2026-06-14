@@ -131,6 +131,42 @@ const GAMES = [
     ),
   },
   {
+    id: "stack",
+    title: "STACK TOWER",
+    wager: "FREE",
+    payout: "—",
+    path: "/games/stack",
+    active: true,
+    artGrad: "linear-gradient(160deg, #0e7490 0%, #075985 55%, #0c4a6e 100%)",
+    glow: "#22d3ee",
+    accent: "#67e8f9",
+    showWager: false,
+    borderColor: "#22d3ee",
+    startWall: "#075985",
+    startGrad: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 50%, #0e7490 100%)",
+    startGlow: "rgba(34,211,238,0.75)",
+    art: (
+      // Inline SVG stacked-blocks illustration so we don't need a new
+      // /public/games/stack.png asset. Reads instantly as "stacking game"
+      // at thumbnail size, scales clean on any DPR.
+      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }}>
+        {[
+          { y: 76, x: 22, w: 56, hue: 195 },
+          { y: 60, x: 26, w: 50, hue: 215 },
+          { y: 44, x: 30, w: 42, hue: 245 },
+          { y: 28, x: 32, w: 38, hue: 275 },
+          { y: 12, x: 36, w: 30, hue: 300 },
+        ].map((b, i) => (
+          <g key={i}>
+            <rect x={b.x} y={b.y + 2} width={b.w} height={12} rx={2} fill={`hsl(${b.hue} 78% 32%)`} />
+            <rect x={b.x} y={b.y} width={b.w} height={10} rx={2} fill={`hsl(${b.hue} 78% 56%)`} />
+            <rect x={b.x} y={b.y} width={b.w} height={2.5} fill="rgba(255,255,255,0.4)" rx={1} />
+          </g>
+        ))}
+      </svg>
+    ),
+  },
+  {
     id: "challenge-ai",
     title: "CHALLENGE AI",
     wager: "—",
