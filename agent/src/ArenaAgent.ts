@@ -413,6 +413,19 @@ const respondedMatches = new Set<string>();
 const processingAcceptance = new Set<string>();
 const completedMatches = new Set<string>(); // Skip these on future scans
 
+// Mutex preventing overlapping scans. setInterval fires every 2s regardless
+// of whether the previous scan finished — without this, slow RPC + 39+
+// active matches caused scans to pile up, each new scan competing for the
+// same RPC budget, which delayed match acceptance by 10+ minutes.
+let scanInFlight = false;
+
+// Window of recent matches the polling loop inspects. The watchEvent
+// listener handles brand-new matches; this scan is the fallback for missed
+// events and accepted-but-not-resolved matches. Anything older than the
+// window is either finalized (in completedMatches) or abandoned (refundable
+// by the player), so scanning from id=0 every cycle is wasteful.
+const SCAN_LOOKBACK = 100n;
+
 // ─── LossCapTracker ─────────────────────────────────────────────────────────
 // Two-layer circuit breaker against draining the agent wallet:
 //
@@ -604,6 +617,8 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, retries = 3): P
 }
 
 async function scanForMatches() {
+    if (scanInFlight) return;
+    scanInFlight = true;
     try {
         const matchCounter = await withRetry(() => publicClient.readContract({
             address: ARENA_ADDRESS,
@@ -615,8 +630,13 @@ async function scanForMatches() {
 
         // Only scan matches we haven't marked as completed
         // Build list of match IDs to check (skip completed ones)
+        // Lookback window: scanning from id=0 every cycle is wasteful once
+        // matchCounter grows. Old matches are either finalized (already in
+        // completedMatches after one boot sweep) or abandoned (player can
+        // refund). The watchEvent listener catches anything brand-new.
+        const start = matchCounter > SCAN_LOOKBACK ? matchCounter - SCAN_LOOKBACK : 0n;
         const toCheck: bigint[] = [];
-        for (let i = 0n; i < matchCounter; i++) {
+        for (let i = start; i < matchCounter; i++) {
             if (!completedMatches.has(i.toString())) {
                 toCheck.push(i);
             }
@@ -679,6 +699,8 @@ async function scanForMatches() {
 
     } catch (e) {
         console.error(chalk.red("Error scanning for matches:"), e);
+    } finally {
+        scanInFlight = false;
     }
 }
 
