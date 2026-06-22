@@ -806,7 +806,11 @@ export default function SimonGamePage() {
           rounds={sequences}
           gameTimeMs={gameTimeMs}
           onPlayAgain={startGame}
-          onExit={() => router.push("/games")}
+          // Exit returns to THIS game's lobby (idle phase) instead of
+          // bouncing to /games. The hub is one bottom-nav tap away;
+          // players who finish almost always want to play again or
+          // check the leaderboard from the same screen.
+          onExit={() => { setPhase("idle"); setScore(0); setSequences(0); setSubmitResult(null); setSubmitError(null); submittedRef.current = false; }}
           submitting={submitting}
           signingOnChain={signingOnChain}
           submitResult={submitResult}

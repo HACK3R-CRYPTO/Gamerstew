@@ -1488,7 +1488,13 @@ export default function RhythmGamePage() {
           score={score} maxCombo={maxCombo} hits={hits}
           total={totalNotes}
           onPlayAgain={startGame}
-          onExit={() => router.push("/games")}
+          // Exit returns to THIS game's lobby (idle phase) instead of
+          // bouncing out to the /games hub. The hub is a separate tap
+          // from the bottom nav; players who finish a run almost always
+          // want one of: play again, see their score linger on the
+          // lobby, or check the leaderboard — all of which live on
+          // this page's idle view.
+          onExit={() => { reset(); setPhase("idle"); }}
           submitting={submitting}
           signingOnChain={signingOnChain}
           submitResult={submitResult}
