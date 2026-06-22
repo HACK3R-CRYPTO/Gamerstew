@@ -378,6 +378,39 @@ export default function HomePage() {
   const [live, setLive] = useState<LiveData | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  // Lock html + body overflow while /home is mounted so iOS Safari can't
+  // drag-scroll the page when its address bar collapses (which changes the
+  // dvh value mid-gesture and creates a few px of overflow underneath my
+  // wrapper). overflow: hidden on the React container alone wasn't enough
+  // because <html>/<body> live above it in the cascade. Restoring on
+  // unmount means other routes (which DO scroll) aren't affected.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    const prevHtmlPos = html.style.position;
+    const prevBodyPos = body.style.position;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    // position: fixed on body kills the iOS bounce/drag that overflow
+    // alone can't fully suppress when the address bar is in motion.
+    // width/height anchor it so layout doesn't collapse to zero.
+    html.style.position = "fixed";
+    body.style.position = "fixed";
+    html.style.width = "100%";
+    body.style.width = "100%";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+      html.style.position = prevHtmlPos;
+      body.style.position = prevBodyPos;
+      html.style.width = "";
+      body.style.width = "";
+    };
+  }, []);
+
   // Auto-open onboarding the first time a wallet signs in. The onboarded key
   // is keyed by wallet address so a different account on the same browser
   // still gets the flow. ?ob=1 forces it open for testing.
