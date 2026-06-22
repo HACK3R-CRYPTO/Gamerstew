@@ -143,6 +143,44 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
     if (address && readVerifiedCache(address)) setIsVerified(true);
   }, [address]);
 
+  // Direct on-chain whitelist read — bypasses the GoodDollar SDK so a
+  // missing walletClient (Privy still hydrating, external wallet not
+  // yet ready, etc.) can't strand a verified player on "Verify to
+  // unlock". Only depends on publicClient. Matches the SDK semantics:
+  // a non-zero whitelistedRoot means whitelisted.
+  useEffect(() => {
+    if (!address || !publicClient) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const root = await publicClient.readContract({
+          address: "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42",
+          abi: [{
+            inputs: [{ name: "account", type: "address" }],
+            name: "getWhitelistedRoot",
+            outputs: [{ name: "", type: "address" }],
+            stateMutability: "view",
+            type: "function",
+          }] as const,
+          functionName: "getWhitelistedRoot",
+          args: [address],
+        });
+        if (cancelled) return;
+        const verified = root !== "0x0000000000000000000000000000000000000000";
+        if (verified) {
+          setIsVerified(true);
+          try {
+            localStorage.setItem(
+              `gd_verified_${address.toLowerCase()}`,
+              JSON.stringify({ verified: true, timestamp: Date.now() })
+            );
+          } catch { /* localStorage unavailable */ }
+        }
+      } catch { /* fall through to SDK-based check below */ }
+    })();
+    return () => { cancelled = true; };
+  }, [address, publicClient]);
+
   useEffect(() => {
     if (isConnected && address && identitySDK) {
       if (lastAddressRef.current !== address) hasCheckedRef.current = false;

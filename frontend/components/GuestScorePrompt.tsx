@@ -7,54 +7,76 @@ import { useRouter } from "next/navigation";
 // is in free-play (no wallet session). Guest runs are never submitted —
 // there's no session ticket, no voucher, no on-chain write — so instead of
 // a silent gap where the rank/XP strip would be, we tell the player what
-// they're missing and give them a one-tap path into the connect flow.
-//
-// The connect flow's next= param brings them straight back to the game,
-// so the loop is: play free → get hooked → sign in → next run counts.
-export default function GuestScorePrompt({ nextPath }: { nextPath: string }) {
+// they're missing and give them a one-tap path back to the home page where
+// the Sign in flow lives. nextPath is kept on the type to stay
+// backwards-compatible with callers, but it's no longer used since the
+// auth entry now sits on /home, not on a separate /connect screen.
+export default function GuestScorePrompt({ nextPath: _nextPath }: { nextPath: string }) {
   const router = useRouter();
   return (
     <div style={{
-      marginTop: "16px", padding: "14px 12px",
-      borderRadius: "12px",
-      background: "linear-gradient(180deg, rgba(251,191,36,0.12) 0%, rgba(251,191,36,0.05) 100%)",
-      border: "1px solid rgba(251,191,36,0.35)",
-      boxShadow: "0 0 20px rgba(251,191,36,0.15)",
-      textAlign: "center",
+      marginTop: 18,
+      borderRadius: 16,
+      background: "linear-gradient(180deg, rgba(251,191,36,0.06) 0%, rgba(232,121,249,0.04) 100%)",
+      border: "1px solid rgba(251,191,36,0.22)",
+      padding: "14px 14px 12px",
+      textAlign: "left",
+      position: "relative",
+      overflow: "hidden",
     }}>
+      {/* soft glow accent in top-right corner — gives the panel some life
+          without the heavy outer drop-shadow the old design relied on */}
+      <span aria-hidden style={{
+        position: "absolute", top: -40, right: -40, width: 120, height: 120,
+        borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(251,191,36,0.18) 0%, transparent 70%)",
+        pointerEvents: "none",
+      }} />
+
+      {/* Eyebrow row · status pill + dot */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: 999,
+          background: "#fbbf24", boxShadow: "0 0 8px #fbbf24",
+        }} />
+        <span style={{
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+          color: "#fde68a", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
+          textTransform: "uppercase",
+        }}>Free play · run not saved</span>
+      </div>
+
       <div style={{
-        color: "#fbbf24", fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em",
-        textShadow: "0 0 12px rgba(251,191,36,0.5)",
+        fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+        color: "rgba(255,255,255,0.92)", fontSize: 14, fontWeight: 700,
+        lineHeight: 1.35, marginTop: 8,
+        letterSpacing: "-0.005em",
       }}>
-        FREE PLAY — SCORE NOT SAVED
+        Sign in to save your next run.
       </div>
       <div style={{
-        color: "rgba(220,200,255,0.75)", fontSize: "11px", fontWeight: 700,
-        lineHeight: 1.5, marginTop: "6px",
+        fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+        color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
+        lineHeight: 1.5, marginTop: 4,
       }}>
-        Sign in to put your next run on the leaderboard,
-        earn XP, and hatch your pet.
+        Land on the leaderboard, earn XP, hatch your pet.
       </div>
+
+      {/* Sign-in CTA · matches the FinishedView's primary button shape */}
       <button
-        onClick={() => router.push(`/connect?next=${encodeURIComponent(nextPath)}`)}
+        onClick={() => router.push("/home")}
         style={{
-          marginTop: "10px", width: "100%",
-          borderRadius: "12px", border: "none", cursor: "pointer",
-          background: "#7c5004", paddingBottom: "4px", fontFamily: "inherit",
-          boxShadow: "0 8px 18px -4px rgba(251,191,36,0.5)",
+          marginTop: 12, width: "100%", cursor: "pointer",
+          borderRadius: 12, padding: "11px 12px",
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+          fontSize: 12.5, fontWeight: 900, letterSpacing: "0.12em",
+          color: "#231005",
+          background: "linear-gradient(180deg, #fde68a 0%, #fbbf24 55%, #d97706 100%)",
+          border: "1px solid rgba(255,255,255,0.45)",
+          boxShadow: "0 10px 22px -6px rgba(251,191,36,0.5), inset 0 1px 0 rgba(255,255,255,0.55)",
         }}
       >
-        <div style={{
-          borderRadius: "10px 10px 8px 8px",
-          background: "linear-gradient(160deg, #fde68a 0%, #fbbf24 50%, #d97706 100%)",
-          border: "2px solid rgba(255,255,255,0.45)",
-          padding: "10px 12px",
-          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.5)",
-        }}>
-          <span style={{
-            color: "#451a03", fontSize: "13px", fontWeight: 900, letterSpacing: "0.12em",
-          }}>SIGN IN &amp; COMPETE</span>
-        </div>
+        SIGN IN &amp; COMPETE
       </button>
     </div>
   );
@@ -65,14 +87,20 @@ export default function GuestScorePrompt({ nextPath }: { nextPath: string }) {
 export function GuestPlayChip() {
   return (
     <div style={{
-      padding: "6px 14px", borderRadius: "999px",
-      background: "rgba(251,191,36,0.1)",
-      border: "1px solid rgba(251,191,36,0.3)",
-      color: "rgba(253,230,138,0.9)",
-      fontSize: "10px", fontWeight: 800, letterSpacing: "0.14em",
-      textAlign: "center",
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "6px 12px", borderRadius: 999,
+      background: "rgba(251,191,36,0.08)",
+      border: "1px solid rgba(251,191,36,0.28)",
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
     }}>
-      FREE PLAY · SIGN IN TO SAVE SCORES &amp; EARN XP
+      <span style={{
+        width: 5, height: 5, borderRadius: 999,
+        background: "#fbbf24", boxShadow: "0 0 6px #fbbf24",
+      }} />
+      <span style={{
+        color: "rgba(253,230,138,0.92)", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+        textTransform: "uppercase",
+      }}>Free play · sign in to save</span>
     </div>
   );
 }

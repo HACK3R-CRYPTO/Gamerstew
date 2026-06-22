@@ -3,327 +3,244 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 
-const D = "/splash_screen_icons/dice.png";
-const G = "/splash_screen_icons/gamepad.png";
-const J = "/splash_screen_icons/joystick.png";
+// Tokens shared with /shop, /settings, /profile so the verify screen
+// feels like a continuation of the rest of the redesigned app.
+const T = {
+  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
+  ink: "#ffffff",
+  inkDim: "rgba(220,210,255,0.7)",
+  inkSoft: "rgba(220,210,255,0.45)",
+  surface: "rgba(40,18,100,0.55)",
+  hairline: "rgba(255,255,255,0.08)",
+  hairlineHi: "rgba(255,255,255,0.16)",
+  accent: "#a78bfa",
+  good: "#22c55e",
+  display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+};
 
-const BG_ICONS = [
-  { src: D, top: "3%",  left: "-14px", size: 100, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18 },
-  { src: G, top: "30%", left: "6px",   size: 90,  delay: 1.4, dur: 6.0, glow: "#aa88ff", rotate: -6  },
-  { src: J, top: "65%", left: "-6px",  size: 85,  delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8  },
-  { src: D, top: "0%",  right: "-18px",size: 95,  delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20  },
-  { src: J, top: "25%", right: "44px", size: 80,  delay: 1.2, dur: 4.8, glow: "#22aaff", rotate: 8   },
-  { src: G, top: "70%", right: "6px",  size: 92,  delay: 1.8, dur: 5.8, glow: "#aa88ff", rotate: -10 },
-];
-
-// Recessed info panel
-function InfoCard({ children, accentColor }: { children: React.ReactNode; accentColor?: string }) {
+function CheckIcon({ size = 15 }: { size?: number }) {
   return (
-    <div style={{
-      borderRadius: "14px",
-      background: "linear-gradient(180deg, rgba(12,4,40,0.95) 0%, rgba(6,1,22,0.98) 100%)",
-      border: `1px solid ${accentColor ? accentColor + "60" : "rgba(110,60,220,0.4)"}`,
-      boxShadow: [
-        `0 0 18px ${accentColor ? accentColor + "25" : "rgba(100,50,200,0.2)"}`,
-        "inset 0 3px 10px rgba(0,0,0,0.75)",
-        "inset 0 0 30px rgba(40,0,100,0.3)",
-      ].join(", "),
-      padding: "clamp(8px, 2.2vw, 12px) clamp(10px, 3vw, 14px)",
-      position: "relative", overflow: "hidden",
-    }}>
-      {accentColor && (
-        <div style={{
-          position: "absolute", top: 0, left: 0, bottom: 0, width: "3px",
-          background: `linear-gradient(180deg, ${accentColor} 0%, ${accentColor}55 100%)`,
-          borderRadius: "14px 0 0 14px",
-          boxShadow: `0 0 10px ${accentColor}99`,
-        }} />
-      )}
-      <div style={{ paddingLeft: accentColor ? "10px" : 0 }}>{children}</div>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12l5 5L20 7" />
+    </svg>
   );
 }
-
-function SectionDivider({ label }: { label: string }) {
+function ChevRightIcon({ size = 14 }: { size?: number }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-      <div style={{ flex: 1, height: "1px", background: "linear-gradient(90deg, transparent 0%, rgba(140,80,255,0.7) 100%)" }} />
-      <span style={{ fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", color: "rgba(190,150,255,0.9)", textShadow: "0 0 14px rgba(160,100,255,0.9)", whiteSpace: "nowrap" }}>{label}</span>
-      <div style={{ flex: 1, height: "1px", background: "linear-gradient(90deg, rgba(140,80,255,0.7) 0%, transparent 100%)" }} />
-    </div>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+function SpinIcon({ size = 20 }: { size?: number }) {
+  return (
+    <span style={{
+      display: "inline-block",
+      width: size, height: size, borderRadius: "50%",
+      border: "2.5px solid rgba(255,255,255,0.35)",
+      borderTopColor: "#fff",
+      animation: "verify-spin 0.8s linear infinite",
+    }} />
   );
 }
 
 function VerifyInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/games";
+  // The post-onboarding flow lands here. `next` defaults to /dashboard
+  // (the new app home) instead of /games so verified players see their
+  // pet + stats first, not the games hub.
+  const next = params.get("next") ?? "/dashboard";
 
   const { authenticated } = usePrivy();
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
   const { isVerified, isVerifying, verifyIdentity } = useSelfVerification();
 
-  // Guard: must be connected to be on this page
+  // GamePass username so the welcome line is real ("Welcome, @lyra!")
+  // instead of generic. Reads only when minted; falls back to "player"
+  // if the read hasn't returned yet.
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const { data: chainUsername } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "getUsername",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && hasMinted === true },
+  });
+  const username = (chainUsername as string | undefined) || "player";
+
+  // Auth guard: must be connected to be on this page.
   useEffect(() => {
     const connected = authenticated || (isMiniPay && !!address);
     if (!connected) {
-      router.replace(`/connect?next=${encodeURIComponent(next)}`);
+      router.replace(`/home`);
     }
-  }, [authenticated, address, isMiniPay, next, router]);
+  }, [authenticated, address, isMiniPay, router]);
 
-  // Auto-advance if already verified
+  // Auto-advance when verified — same hook as before, just with the new
+  // /dashboard default for `next`.
   useEffect(() => {
     if (isVerified) {
       router.replace(next);
     }
   }, [isVerified, next, router]);
 
-  const unlocks = [
-    { icon: "💰", label: "CLAIM G$ WEEKLY", desc: "Free GoodDollar every week. No purchase needed.", accent: "#fde68a" },
-    { icon: "🏆", label: "TOP THE LEADERBOARD", desc: "Your verified score counts. Unverified plays don't rank.", accent: "#c084fc" },
-    { icon: "⚡", label: "WAGER & WIN", desc: "Place wagers in skill games. Win real G$.", accent: "#86efac" },
-  ];
-
-  const steps = [
-    { num: "1", text: "Tap Verify below. We generate a secure link." },
-    { num: "2", text: "A GoodDollar tab opens. Complete the face scan." },
-    { num: "3", text: "Return here. You're verified for life." },
+  const benefits = [
+    { icon: "🪙", txt: "Claim free G$ every 24 hours" },
+    { icon: "🏆", txt: "Enter prize pools & seasonal cups" },
+    { icon: "🤖", txt: "Play head-to-head matches for G$" },
   ];
 
   return (
     <div style={{
       position: "fixed", inset: 0, overflow: "hidden",
-      background: "radial-gradient(ellipse 80% 60% at 50% 15%, #6a18c8 0%, #3b0a9e 30%, #1a044a 60%, #0a0120 100%)",
+      background: `radial-gradient(ellipse 95% 55% at 50% 16%, rgba(34,197,94,0.18) 0%, transparent 60%), ${T.bg}`,
+      color: T.ink, fontFamily: T.body,
+      animation: "verify-fade 0.25s ease both",
     }}>
-      {/* Vignette */}
-      <div style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        background: "radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(5,1,20,0.55) 100%)",
-      }} />
-
-      {/* Background floating icons */}
-      {BG_ICONS.map((icon, i) => (
-        <div key={i} className="icon-float" style={{
-          position: "absolute",
-          top: icon.top,
-          ...("left" in icon ? { left: icon.left as string } : { right: icon.right as string }),
-          width: icon.size, height: icon.size,
-          transform: `rotate(${icon.rotate}deg)`,
-          filter: `drop-shadow(0 0 8px ${icon.glow}99)`,
-          ["--dur" as string]: `${icon.dur}s`,
-          ["--delay" as string]: `${icon.delay}s`,
-          userSelect: "none", pointerEvents: "none",
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
+      <style>{`
+        @keyframes verify-fade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes verify-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes verify-float-gentle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        @keyframes verify-sparkle-a { 0%, 100% { opacity: 0.7; transform: translateY(0) rotate(0); } 50% { opacity: 1; transform: translateY(-4px) rotate(8deg); } }
+        @keyframes verify-sparkle-b { 0%, 100% { opacity: 0.6; transform: translateY(0) rotate(0); } 50% { opacity: 1; transform: translateY(-6px) rotate(-10deg); } }
+      `}</style>
 
       <main style={{
         position: "absolute", inset: 0, overflowY: "auto",
-        display: "flex", flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        padding: "clamp(10px, 2.5vw, 28px) clamp(12px, 3.5vw, 24px) clamp(20px, 4vw, 40px)",
-        paddingTop: "max(clamp(10px, 2.5vw, 28px), env(safe-area-inset-top, 0px))",
-        paddingBottom: "max(clamp(20px, 4vw, 40px), env(safe-area-inset-bottom, 0px))",
-        gap: "clamp(8px, 2vw, 24px)",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        padding: "clamp(20px, 4vw, 32px) clamp(16px, 4vw, 22px) clamp(24px, 5vw, 40px)",
+        paddingTop: "max(clamp(20px, 4vw, 32px), env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(clamp(24px, 5vw, 40px), env(safe-area-inset-bottom, 0px))",
+        gap: 16,
       }}>
-        {/* Logo — much smaller on mobile. On a 700px-tall phone the old
-            logo (180-380px wide) ate ~80px of vertical space before the
-            ONE-TIME SETUP card even started, pushing VERIFY below the fold. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/components/game_arena_text.png"
-          alt="Game Arena"
-          style={{ width: "clamp(120px, 24vw, 380px)", height: "auto", animation: "bounce-scale-in 0.7s cubic-bezier(0.34,1.56,0.64,1) both", flexShrink: 0 }}
-        />
 
-        {/* Panel wall */}
-        <div style={{
-          width: "100%", maxWidth: "420px",
-          borderRadius: "28px",
-          background: "#1a0550",
-          paddingBottom: "8px",
-          boxShadow: "0 0 0 3px #5b21b6, 0 0 60px rgba(109,40,217,0.6), 0 40px 80px rgba(0,0,0,0.95)",
-          animation: "scaleIn 0.25s cubic-bezier(0.16,1,0.3,1) both",
-        }}>
-          {/* Panel face */}
+        {/* Compact welcome — celebration folded in here, no separate
+            "You're in → Continue" step. Lands directly on the choice. */}
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>YOU&apos;RE IN 🎉</div>
+          <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>Welcome, @{username}!</h2>
+        </div>
+
+        {/* G$ coin hero — green gradient sphere with soft glow + sparkles */}
+        <div style={{ position: "relative", width: 120, height: 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{
-            borderRadius: "26px 26px 20px 20px",
-            background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 45%, #07021a 100%)",
-            border: "2px solid rgba(255,255,255,0.12)",
-            boxShadow: "inset 0 8px 24px rgba(160,100,255,0.15)",
-            overflow: "hidden", position: "relative",
+            position: "absolute", width: 120, height: 120, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(34,197,94,0.4), transparent 70%)",
+            filter: "blur(10px)",
+          }} />
+          <span style={{
+            position: "absolute", top: "6%", left: "12%", fontSize: 18,
+            animation: "verify-sparkle-a 2.8s ease-in-out infinite",
+          }}>✨</span>
+          <span style={{
+            position: "absolute", top: "16%", right: "10%", fontSize: 14,
+            animation: "verify-sparkle-b 3.3s ease-in-out infinite 0.3s",
+          }}>⭐</span>
+          <div style={{
+            width: 104, height: 104, borderRadius: "50%",
+            background: "radial-gradient(circle at 35% 30%, #86efac, #16a34a 55%, #14532d)",
+            border: "3px solid rgba(255,255,255,0.45)",
+            boxShadow: "0 0 36px rgba(34,197,94,0.5), inset 0 -6px 14px rgba(0,0,0,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "relative", zIndex: 1,
+            animation: "verify-float-gentle 3.4s ease-in-out infinite",
           }}>
-            {/* Top gloss */}
-            <div style={{
-              position: "absolute", top: 0, left: 0, right: 0, height: "70px",
-              background: "linear-gradient(180deg, rgba(200,160,255,0.14) 0%, transparent 100%)",
-              borderRadius: "26px 26px 0 0", pointerEvents: "none",
-            }} />
-
-            {/* Header — tighter padding on mobile so the card reserves
-                more room for content below. */}
-            <div style={{
-              background: "linear-gradient(90deg, #4c1d95 0%, #7c3aed 40%, #9333ea 60%, #7c3aed 80%, #4c1d95 100%)",
-              padding: "clamp(12px, 3vw, 18px) clamp(16px, 4vw, 24px)",
-              borderBottom: "2px solid rgba(255,255,255,0.18)",
-              boxShadow: "inset 0 6px 16px rgba(255,255,255,0.2)",
-              position: "relative", overflow: "hidden",
-            }}>
-              <div style={{
-                position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-                background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%)",
-                borderRadius: "26px 26px 60px 60px", pointerEvents: "none",
-              }} />
-              <h2 style={{
-                margin: 0, fontSize: "clamp(13px, 3.6vw, 15px)", fontWeight: 900, letterSpacing: "0.12em",
-                color: "white", textShadow: "0px 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,150,255,0.6)",
-                position: "relative", zIndex: 1,
-              }}>ONE-TIME SETUP</h2>
-              <p style={{
-                margin: "3px 0 0", fontSize: "clamp(10px, 2.8vw, 12px)", color: "rgba(255,255,255,0.7)",
-                position: "relative", zIndex: 1,
-              }}>Verify once. Unlock everything. Never again.</p>
-            </div>
-
-            {/* Content — tighter padding and gaps on mobile. */}
-            <div style={{
-              padding: "clamp(10px, 3vw, 18px)",
-              display: "flex", flexDirection: "column",
-              gap: "clamp(8px, 2vw, 14px)",
-            }}>
-
-              <SectionDivider label="WHAT YOU UNLOCK" />
-
-              {unlocks.map(u => (
-                <InfoCard key={u.label} accentColor={u.accent}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "clamp(18px, 5vw, 22px)", flexShrink: 0 }}>{u.icon}</span>
-                    <div>
-                      <div style={{ color: "white", fontSize: "clamp(11px, 3vw, 12px)", fontWeight: 900, letterSpacing: "0.06em" }}>{u.label}</div>
-                      <div style={{ color: "rgba(180,150,255,0.8)", fontSize: "clamp(10.5px, 2.8vw, 11.5px)", marginTop: "2px", lineHeight: 1.35 }}>{u.desc}</div>
-                    </div>
-                  </div>
-                </InfoCard>
-              ))}
-
-              <SectionDivider label="HOW IT WORKS" />
-
-              {/* Compact step list — used to be 3 full InfoCards stacked.
-                  That ate ~150px of vertical real estate pushing the
-                  VERIFY button below the fold. Now a single borderless
-                  ordered list: small purple numbered bullet + one line. */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "0 4px" }}>
-                {steps.map(s => (
-                  <div key={s.num} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <div style={{
-                      flexShrink: 0, width: "20px", height: "20px", borderRadius: "50%",
-                      background: "radial-gradient(circle at 38% 32%, #c084fc, #5b21b6 70%)",
-                      border: "1.5px solid rgba(200,150,255,0.5)",
-                      boxShadow: "0 0 8px rgba(140,70,255,0.5)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      <span style={{ fontSize: "10px", fontWeight: 900, color: "white" }}>{s.num}</span>
-                    </div>
-                    <div style={{ color: "rgba(200,175,255,0.85)", fontSize: "clamp(11px, 3vw, 12.5px)", lineHeight: 1.4 }}>{s.text}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Verify CTA button */}
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => !isVerifying && verifyIdentity()}
-                style={{
-                  cursor: isVerifying ? "default" : "pointer",
-                  userSelect: "none",
-                  transition: "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
-                  opacity: isVerifying ? 0.85 : 1,
-                  marginTop: "4px",
-                }}
-                onMouseEnter={e => { if (!isVerifying) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.03) translateY(-3px)"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
-                onMouseDown={e => { if (!isVerifying) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(5px)"; }}
-                onMouseUp={e => { if (!isVerifying) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.03) translateY(-3px)"; }}
-              >
-                {/* Wall */}
-                <div style={{
-                  borderRadius: "20px",
-                  background: isVerifying ? "#1a4a00" : "#003a00",
-                  paddingBottom: "7px",
-                  boxShadow: `0 12px 28px -6px ${isVerifying ? "rgba(34,197,94,0.3)" : "rgba(34,197,94,0.65)"}, inset 0 -3px 8px rgba(0,0,0,0.4)`,
-                }}>
-                  {/* Face — fluid padding so the button stays juicy on
-                      desktop without over-sized tapping zone on phones. */}
-                  <div style={{
-                    borderRadius: "18px 18px 14px 14px",
-                    background: isVerifying
-                      ? "linear-gradient(160deg, #4ade80 0%, #16a34a 50%, #166534 100%)"
-                      : "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
-                    padding: "clamp(12px, 3.5vw, 18px) clamp(16px, 4vw, 24px)",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                    position: "relative", overflow: "hidden",
-                    border: "2.5px solid rgba(255,255,255,0.45)",
-                    boxShadow: "inset 0 10px 22px rgba(255,255,255,0.8), inset 0 -5px 12px rgba(0,0,0,0.25)",
-                  }}>
-                    {/* Gloss */}
-                    <div style={{
-                      position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-                      background: "linear-gradient(180deg, rgba(255,255,255,0.75) 0%, transparent 100%)",
-                      borderRadius: "16px 16px 80px 80px", pointerEvents: "none",
-                    }} />
-                    {/* Specular */}
-                    <div style={{
-                      position: "absolute", top: "8px", left: "20px", width: "32px", height: "12px",
-                      background: "rgba(255,255,255,0.9)", borderRadius: "50%",
-                      filter: "blur(2px)", transform: "rotate(-15deg)", pointerEvents: "none",
-                    }} />
-                    {isVerifying ? (
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" style={{ zIndex: 1, animation: "icon-float 1s ease-in-out infinite" }}>
-                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                      </svg>
-                    ) : (
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="white" style={{ zIndex: 1, filter: "drop-shadow(0px 2px 3px rgba(0,0,0,0.4))" }}>
-                        <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                      </svg>
-                    )}
-                    <span style={{
-                      zIndex: 1, color: "white",
-                      // Fluid so "VERIFY WITH GOODDOLLAR" (22 chars) fits
-                      // the button width on 360px phones without clipping.
-                      fontSize: "clamp(12px, 3.4vw, 16px)",
-                      fontWeight: 900,
-                      letterSpacing: "0.06em", textShadow: "0px 2px 4px rgba(0,0,0,0.35)",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {isVerifying ? "VERIFYING..." : "VERIFY WITH GOODDOLLAR"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Skip */}
-              <button
-                onClick={() => router.push(next)}
-                style={{
-                  background: "none", border: "none", cursor: "pointer",
-                  color: "rgba(160,130,210,0.55)", fontSize: "11.5px",
-                  letterSpacing: "0.06em", textAlign: "center", fontFamily: "inherit",
-                  padding: "4px 0 8px",
-                }}
-              >
-                Skip for now — I'll verify later
-              </button>
-            </div>
+            <span style={{
+              fontFamily: T.display, fontSize: 40, color: "#fff",
+              textShadow: "0 2px 6px rgba(0,0,0,0.35)",
+            }}>G$</span>
           </div>
+        </div>
+
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.16em" }}>FREE DAILY REWARD</div>
+          <h2 style={{ fontFamily: T.display, fontSize: 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em" }}>Claim free G$ every day</h2>
+        </div>
+
+        {/* What verifying unlocks · three benefit rows */}
+        <div style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 8 }}>
+          {benefits.map((r, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 11,
+              padding: "11px 13px", borderRadius: 13,
+              background: T.surface, border: `1px solid ${T.hairline}`,
+            }}>
+              <span style={{ fontSize: 17, flexShrink: 0 }}>{r.icon}</span>
+              <span style={{ flex: 1, fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 600 }}>{r.txt}</span>
+              <span style={{ color: "#22c55e", display: "inline-flex" }}><CheckIcon /></span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", marginTop: -6 }}>
+          One quick face check proves you&apos;re human. Takes ~30s.
+        </div>
+
+        {/* Primary CTA — Verify & claim G$ (green gradient pill) */}
+        <button
+          onClick={() => { if (!isVerifying) verifyIdentity(); }}
+          disabled={isVerifying}
+          style={{
+            width: "100%", maxWidth: 340,
+            fontFamily: T.display, fontSize: 18, color: "#fff",
+            padding: "16px", borderRadius: 16,
+            background: "linear-gradient(180deg, #22c55e, #15803d)",
+            border: "1.5px solid #22c55e",
+            boxShadow: "0 14px 30px -8px rgba(34,197,94,0.6), inset 0 1px 0 rgba(255,255,255,0.4)",
+            cursor: isVerifying ? "default" : "pointer",
+            opacity: isVerifying ? 0.85 : 1,
+            letterSpacing: "0.01em",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+          }}
+        >
+          {isVerifying ? (
+            <>
+              <SpinIcon size={18} /> Verifying…
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: 17 }}>🌍</span> Verify &amp; claim G$
+            </>
+          )}
+        </button>
+
+        <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", marginTop: -8, lineHeight: 1.4 }}>
+          You can verify anytime from your profile.
+        </div>
+
+        {/* Skip — equal-weight outlined choice, not faint ghost text.
+            Most casual players take this path; it must read as safe. */}
+        <button
+          onClick={() => router.push(next)}
+          style={{
+            width: "100%", maxWidth: 340,
+            fontFamily: T.display, fontSize: 16, color: T.ink,
+            padding: "14px", borderRadius: 16,
+            background: "rgba(255,255,255,0.05)",
+            border: `1.5px solid ${T.hairlineHi}`,
+            cursor: "pointer", letterSpacing: "0.01em",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}
+        >
+          Skip — just start playing <ChevRightIcon />
+        </button>
+
+        <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", marginTop: -8, lineHeight: 1.4 }}>
+          No rush — this stays here for whenever.
         </div>
       </main>
     </div>

@@ -1,3652 +1,1114 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+// Events page · matches the legacy /leaderboard's data model 1:1.
+//
+// LIVE tab    → events happening now:
+//                 · 3-Week Cup (api/competition)
+//                 · Current Season (api/seasons)
+//                 · Community Challenge (api/weekly-challenge)
+//                 · MARKOV Climb (api/markov-climb)
+//
+// PAST tab    → ── COMPLETED EVENTS ── (newest first, all three types
+//                                       interleaved by sealed-at date):
+//                 · Past Seasons     (api/season/past) — Team Wars + Solo Ladder
+//                 · Past Cups        (api/competition/past) — 3-Week competitions
+//                 · Past Challenges  (api/challenges/past) — weekly community challenges
+//
+// ALL-TIME tab → cross-game all-time combined leaderboard (subgraph).
+//                Per-game leaderboards live INSIDE each game; this is the
+//                arena-wide ladder.
+
+import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { usePrivy } from "@privy-io/react-auth";
-import { captureReferralFromUrl, readPendingReferral } from "@/lib/referral";
-import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import BottomNav from "@/components/BottomNav";
-import MobileStreakChip from "@/components/MobileStreakChip";
-import { useChallenge } from "@/components/ChallengeBanner";
-import { HabitatChip } from "@/components/HabitatChip";
-import { fetchLeaderboard, fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
+import AppHeader from "@/components/AppHeader";
+import AppBottomNav from "@/components/AppBottomNav";
+import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 
-// ─── Splash icons ──────────────────────────────────────────────────────────────
-const D = "/splash_screen_icons/dice.png";
-const G = "/splash_screen_icons/gamepad.png";
-const J = "/splash_screen_icons/joystick.png";
-const M = "/splash_screen_icons/golden_music.png";
-const V = "/splash_screen_icons/vending.png";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+const PAGE_SIZE = 16;
 
-// Desktop decoratives — curated 3+3 at the edges. Matches home/games.
-// Hidden on mobile via `.icon-float--desktop`.
-const LEFT_ICONS = [
-  { src: D, top: "2%", left: "-22px", size: 110, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.8 },
-  { src: J, top: "48%", left: "-14px", size: 90, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.65 },
-  { src: G, top: "82%", left: "-10px", size: 100, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.7 },
-];
-const RIGHT_ICONS = [
-  { src: D, top: "4%", right: "-24px", size: 100, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.75 },
-  { src: V, top: "44%", right: "-8px", size: 105, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.65 },
-  { src: M, top: "80%", right: "-6px", size: 86, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.7 },
-];
-
-// Mobile decoratives — 3+3 smaller at viewport edges. Podium art is the
-// hero, so icons are pushed past the edge and half-visible, reading as
-// atmosphere rather than competing elements. Hidden on desktop via CSS.
-type MobileIcon = {
-  src: string;
-  top: string;
-  left?: string;
-  right?: string;
-  size: number;
-  delay: number;
-  dur: number;
-  glow: string;
-  rotate: number;
-  opacity: number;
-};
-const MOBILE_LEFT_ICONS: MobileIcon[] = [
-  { src: D, top: "6%", left: "-24px", size: 60, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.45 },
-  { src: J, top: "48%", left: "-22px", size: 54, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8, opacity: 0.4 },
-  { src: G, top: "84%", left: "-18px", size: 58, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.4 },
-];
-const MOBILE_RIGHT_ICONS: MobileIcon[] = [
-  { src: D, top: "10%", right: "-26px", size: 58, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20, opacity: 0.45 },
-  { src: V, top: "52%", right: "-20px", size: 62, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4, opacity: 0.4 },
-  { src: M, top: "86%", right: "-18px", size: 52, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.45 },
-];
-
-const NAV_ITEMS = [
-  { label: "Home", path: "/home", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg> },
-  { label: "Games", path: "/games", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 00-1 1v10a1 1 0 001 1h18a1 1 0 001-1V7a1 1 0 00-1-1zm-10 7H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 1a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-3a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" /></svg> },
-  { label: "Leaderboard", path: "/leaderboard", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M11 21H5a2 2 0 01-2-2v-7a2 2 0 012-2h6v11zm2 0V6a2 2 0 012-2h4a2 2 0 012 2v13h-8z" /></svg> },
-  { label: "Profile", path: "/profile", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" /></svg> },
-];
-
-const TABS = [
-  { id: "rankings", label: "WEEKLY",    mobileLabel: "WEEKLY",   wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "alltime",  label: "ALL-TIME",  mobileLabel: "ALL-TIME", wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "seasons",  label: "SEASONS",   mobileLabel: "SEASONS",  wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-  { id: "pvp",      label: "PVP ARENA", mobileLabel: "PVP",      wallColor: "#083a6b", faceGrad: "linear-gradient(180deg, #60a5fa 0%, #2563eb 50%, #1e40af 100%)", glow: "rgba(59,130,246,0.7)" },
-];
-
-const GAME_TABS = [
-  { id: "rhythm", label: "RHYTHM_RUSH", accent: "#c026d3" },
-  { id: "simon", label: "SIMON_MEMORY", accent: "#06b6d4" },
-];
-
-// Tier pyramid — elite tiers stay rare (like LoL: <1% Master, ~3% Diamond).
-//   #1       → MASTER    (the king)
-//   #2-3     → DIAMOND   (podium runners-up)
-//   #4-6     → PLATINUM  (elite competitive)
-//   #7-15    → GOLD      (solid regulars)
-//   #16-50   → SILVER    (active players)
-//   #51+     → BRONZE    (everyone else)
-function rowColorByRank(rank: number): string {
-  if (rank === 1) return "#f472b6"; // MASTER
-  if (rank <= 3) return "#a78bfa"; // DIAMOND
-  if (rank <= 6) return "#67e8f9"; // PLATINUM
-  if (rank <= 15) return "#fbbf24"; // GOLD
-  if (rank <= 50) return "#c0c0c0"; // SILVER
-  return "#cd7f32";                    // BRONZE
-}
-
-function tierLabelByRank(rank: number): string {
-  if (rank === 1) return "MASTER I";
-  if (rank <= 3) return `DIAMOND ${rank === 2 ? "I" : "II"}`;
-  if (rank <= 6) return `PLATINUM ${rank === 4 ? "I" : rank === 5 ? "II" : "III"}`;
-  if (rank <= 15) return `GOLD ${rank <= 9 ? "I" : rank <= 12 ? "II" : "III"}`;
-  if (rank <= 50) return `SILVER ${rank <= 25 ? "I" : rank <= 38 ? "II" : "III"}`;
-  if (rank <= 200) return `BRONZE ${rank <= 100 ? "I" : "II"}`;
-  return "BRONZE III";
-}
-
-type Entry = { player: string; username?: string; score: number; timestamp: number; streak?: number; subText?: string };
-
-// /api/seasons response
-type PastSeason = {
-  season: number;
-  startTs: number;
-  endTs: number;
-  prizePot: number;
-  sealedAt: number;
-  totalPlayers?: number;
-  rhythm: Entry[];
-  simon: Entry[];
-};
-type SeasonsData = {
-  currentSeason: number;
-  currentEndsAt: number;
-  live: { rhythm: Entry[]; simon: Entry[] };
-  past: PastSeason[];
+const T = {
+  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
+  ink: "#ffffff",
+  inkDim: "rgba(220,210,255,0.7)",
+  inkSoft: "rgba(220,210,255,0.45)",
+  surface: "rgba(40,18,100,0.55)",
+  hairline: "rgba(255,255,255,0.08)",
+  accent: "#a78bfa",
+  display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
-// /api/competition response
-type CompRanking = { wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number };
+// ─── data shapes (mirror the legacy types) ──────────────────────────────
+type CompPrizes = { first: number; second: number; third: number };
 type CompetitionData = {
   weeks: number[];
-  prizes: { first: number; second: number; third: number };
+  prizes: CompPrizes;
   compEnd: number;
   weeksLeft: number;
   currentWeek: number;
-  rankings: CompRanking[];
+  rankings: Array<{ wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number }>;
+};
+type SeasonsMeta = { currentSeason: number; currentEndsAt: number; currentStartsAt?: number };
+// Real shape from games-backend (matches legacy weeklyChallengeLB).
+type WeeklyChallengeData = {
+  target: number;
+  progress: number;
+  playersIn: number;
+  hit: boolean;
+  daysLeft: number;
+  rewardG: number;
+  ubiG: number;
+  capPerPlayer: number;
+  myContribution: number | null;
+  windowEnd: string;
+  contributors?: Array<{ wallet: string; username: string | null; games: number }>;
+};
+type PastSeasonV1 = {
+  season_id: number;
+  starts_at: string;
+  ends_at: string;
+  standings: {
+    teams: Array<{ team: string; counted: number }>;
+    soloTop10: Array<{ rank: number; username?: string; wallet?: string; points: number }>;
+  };
+  prize_winners?: { closing_surprise?: { username?: string; wallet: string; amount_usdc?: number } };
+};
+// Real shapes from games-backend (legacy /leaderboard uses these exact fields).
+type PastCompetition = {
+  id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  weeks: number[];
+  prizes: CompPrizes;
+  winners: Array<{ rank: number; wallet: string; username: string | null; total: number; totalRhythm?: number; totalSimon?: number }>;
+};
+type PastChallenge = {
+  id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  min_plays: number;
+  top_n: number;
+  prize_usdc: number;
+  winners: Array<{ rank: number; wallet: string; username: string | null; plays: number }>;
+};
+type MarkovClimbData = {
+  event?: { phase: string; endsAt: string; minMatchesToQualify?: number; prizes?: { first?: { usdc?: number; g_dollar?: number } } };
+  leaderboard?: Array<{ rank: number; wallet: string; username: string; matches: number }>;
 };
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+type Tab = "live" | "past" | "all-time";
 
-function fmtName(addr: string, username?: string | null) {
-  if (username) return username;
-  return `${addr.slice(0, 4)}...${addr.slice(-3)}`;
+// ─── helpers ────────────────────────────────────────────────────────────
+function fmtCountdown(endsAt: number): string {
+  const left = endsAt - Math.floor(Date.now() / 1000);
+  if (left <= 0) return "Ended";
+  const d = Math.floor(left / 86400);
+  const h = Math.floor((left % 86400) / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  if (d >= 1) return `${d}d ${h}h left`;
+  if (h >= 1) return `${h}h ${m}m left`;
+  return `${m}m left`;
 }
-function avatarUrl(address: string, username?: string | null) {
-  // Always seed with BOTH username and address — guarantees uniqueness per
-  // wallet. Address is lowercased so wagmi's checksum casing and the API's
-  // lowercase don't collide into two different faces for the same player.
-  const seed = `${username || ""}-${address.toLowerCase()}`;
-  return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9,fbbf24,f97316,c026d3`;
+function fmtName(addr: string, username?: string | null): string {
+  if (username && username.trim()) return `@${username.replace(/^@/, "")}`;
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+function safeDate(input: string | number | undefined): Date | null {
+  if (!input) return null;
+  const d = typeof input === "number" ? new Date(input * 1000) : new Date(input);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtDateRange(start: Date | null, end: Date | null): string {
+  if (!start || !end) return "";
+  const s = start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const e = end.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${s} → ${e}`;
 }
 
-// ─── Juicy Pill Tab ────────────────────────────────────────────────────────────
-function PillTab({
-  label, active, wallColor, faceGrad, glow, onClick, compact = false,
-}: {
-  label: string; active: boolean; wallColor: string; faceGrad: string;
-  glow: string; onClick: () => void;
-  // compact: mobile shrinks padding, font, shadow spread. The default
-  // shadow blooms ~40px past the pill — on a 390px viewport that caused
-  // the active pill's glow to bleed off-screen.
-  compact?: boolean;
+// ─── unified past-event card (works for season, cup, or challenge) ──────
+type SelectedEvent =
+  | { type: "season"; data: PastSeasonV1 }
+  | { type: "cup"; data: PastCompetition }
+  | { type: "challenge"; data: PastChallenge }
+  // LIVE variants — clicking a live card opens its current data in the same
+  // modal infrastructure so the page reads as interactive end-to-end.
+  | { type: "live-cup"; data: CompetitionData }
+  | { type: "live-community"; data: WeeklyChallengeData }
+  | { type: "live-climb"; data: MarkovClimbData };
+
+// Card layout supports up to three highlighted rows so the season card
+// can show team winner + solo #1 + closing surprise simultaneously
+// (matching the legacy /leaderboard card 1:1). icon overridable per row
+// so each detail can carry its own visual hook (🏆 / 🥇 / 🎁).
+type DetailRow = { label: string; name: string; value: string; tint: string; icon?: string };
+type UnifiedPastEvent = {
+  key: string;
+  kind: "season" | "cup" | "challenge";
+  sortTs: number;
+  title: string;
+  dateRange: string;
+  primary: DetailRow | null;
+  secondary?: DetailRow;
+  tertiary?: DetailRow;
+  myMedal?: { color: string; medal: string };
+  accent: string;
+  raw: SelectedEvent;
+};
+
+function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      style={{
+        borderRadius: 14,
+        background: "rgba(20,10,50,0.6)",
+        border: ev.myMedal ? `1.5px solid ${ev.myMedal.color}88` : "1px solid rgba(167,139,250,0.28)",
+        boxShadow: ev.myMedal
+          ? `0 0 12px ${ev.myMedal.color}33, 0 6px 14px rgba(0,0,0,0.5)`
+          : "0 6px 14px rgba(0,0,0,0.5)",
+        padding: "12px 14px",
+        cursor: "pointer", userSelect: "none",
+        transition: "transform 0.15s, border-color 0.15s",
+      }}
+      onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; if (!ev.myMedal) el.style.borderColor = "rgba(167,139,250,0.6)"; }}
+      onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ""; if (!ev.myMedal) el.style.borderColor = "rgba(167,139,250,0.28)"; }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ color: ev.accent, fontSize: 11, fontWeight: 900, letterSpacing: "0.05em" }}>{ev.title}</div>
+        {ev.myMedal && (
+          <div style={{ padding: "2px 8px", borderRadius: 999, background: `${ev.myMedal.color}1a`, border: `1px solid ${ev.myMedal.color}66` }}>
+            <span style={{ fontSize: 10 }}>{ev.myMedal.medal}</span>
+            <span style={{ color: ev.myMedal.color, fontSize: 9, fontWeight: 900, marginLeft: 4 }}>YOU</span>
+          </div>
+        )}
+      </div>
+      {[ev.primary, ev.secondary, ev.tertiary].filter((r): r is DetailRow => !!r).map((row, i, all) => (
+        <div key={`${row.label}-${i}`} style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 8px", borderRadius: 8,
+          background: `${row.tint}14`, border: `1px solid ${row.tint}44`,
+          marginBottom: i === all.length - 1 ? 8 : 6,
+        }}>
+          <span style={{ fontSize: 13 }}>{row.icon ?? (i === 0 ? "🏆" : i === 1 ? "🥇" : "🎁")}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: row.tint, fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.75 }}>{row.label}</div>
+            <div style={{ color: "#fff", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
+          </div>
+          <div style={{ color: row.tint, fontSize: 12, fontWeight: 900 }}>{row.value}</div>
+        </div>
+      ))}
+      <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700 }}>{ev.dateRange}</div>
+    </div>
+  );
+}
+
+// ─── live event card (one of: cup, season, community, climb) ────────────
+function LiveEventCard({ icon, color, tag, title, sub, progress, rightAction, onClick }: {
+  icon: string; color: string; tag: string; title: string; sub: string;
+  progress?: { value: number; total: number };
+  rightAction?: React.ReactNode;
+  onClick?: () => void;
 }) {
   return (
-    <div role="button" tabIndex={0} onClick={onClick}
-      style={{ cursor: "pointer", userSelect: "none", transition: "transform 0.15s" }}
-      onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.95) translateY(3px)"; }}
-      onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
+    <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      style={{
+        padding: "14px 16px", borderRadius: 16,
+        background: T.surface,
+        border: `1px solid ${color}44`,
+        display: "flex", flexDirection: "column", gap: 8,
+        cursor: onClick ? "pointer" : "default",
+        transition: "transform 0.15s, border-color 0.15s",
+      }}
+      onMouseEnter={onClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLDivElement).style.borderColor = `${color}88`; } : undefined}
+      onMouseLeave={onClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = ""; (e.currentTarget as HTMLDivElement).style.borderColor = `${color}44`; } : undefined}
     >
-      <div style={{
-        borderRadius: "999px",
-        background: active ? wallColor : "#1a0550",
-        paddingBottom: compact ? "4px" : "5px",
-        boxShadow: active
-          ? compact
-            ? `0 0 0 1.5px #3b82f6, 0 0 12px ${glow}, 0 6px 16px -4px ${glow}`
-            : `0 0 0 2px #3b82f6, 0 0 20px ${glow}, 0 0 40px ${glow}, 0 10px 24px -4px ${glow}`
-          : "0 6px 16px -4px rgba(0,0,0,0.5)",
-        transition: "all 0.2s",
-      }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{
-          borderRadius: "999px",
-          background: active ? faceGrad : "linear-gradient(180deg, #3b1fa3 0%, #1e0762 100%)",
-          padding: compact ? "7px 14px" : "10px 22px",
-          textAlign: "center",
-          position: "relative",
-          overflow: "hidden",
-          border: active ? "2px solid rgba(255,255,255,0.5)" : "2px solid rgba(255,255,255,0.12)",
-          boxShadow: active
-            ? "inset 0 6px 14px rgba(255,255,255,0.7), inset 0 -3px 6px rgba(0,0,0,0.35)"
-            : "inset 0 3px 8px rgba(255,255,255,0.06), inset 0 -2px 5px rgba(0,0,0,0.35)",
-        }}>
-          {/* Gloss crescent */}
-          {active && (
-            <div style={{
-              position: "absolute", top: "2px", left: "6%", right: "6%", height: "46%",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-              borderRadius: "999px", pointerEvents: "none",
-            }} />
-          )}
-          <span style={{
-            position: "relative", zIndex: 1,
-            color: active ? "white" : "rgba(220,200,255,0.6)",
-            fontSize: compact ? "11px" : "13px",
-            fontWeight: 900, letterSpacing: "0.08em",
-            textShadow: active ? "0 2px 4px rgba(0,0,0,0.4)" : "none",
-            whiteSpace: "nowrap",
-          }}>{label}</span>
+          width: 34, height: 34, borderRadius: 11, flexShrink: 0,
+          background: `radial-gradient(circle at 35% 30%, ${color}cc, ${color}33)`,
+          border: `1px solid ${color}66`,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+        }}>{icon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "#f43f5e", boxShadow: "0 0 6px #f43f5e" }} />
+            <span style={{ fontFamily: T.body, fontSize: 8.5, color, fontWeight: 800, letterSpacing: "0.12em" }}>{tag}</span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, marginTop: 2 }}>{title}</div>
         </div>
+        {rightAction}
+      </div>
+      <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, lineHeight: 1.4 }}>{sub}</div>
+      {progress && progress.total > 0 && (
+        <div style={{ height: 5, borderRadius: 999, background: "rgba(0,0,0,0.45)", overflow: "hidden" }}>
+          <div style={{ width: `${Math.min(100, (progress.value / progress.total) * 100)}%`, height: "100%", background: `linear-gradient(90deg, ${color}99, ${color})`, boxShadow: `0 0 8px ${color}` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 3-Week Cup featured card · headline LIVE event ─────────────────────
+function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: CompetitionData; isDesktop: boolean; address?: string; onClick?: () => void }) {
+  const myIdx = address ? comp.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase()) : -1;
+  const myRank = myIdx >= 0 ? myIdx + 1 : 0;
+  const myPoints = myIdx >= 0 ? comp.rankings[myIdx].total : 0;
+  const isFinal = comp.weeksLeft === 1;
+  const totalPot = comp.prizes.first + comp.prizes.second + comp.prizes.third;
+
+  return (
+    <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      style={{
+        gridColumn: isDesktop ? "1 / -1" : "auto",
+        padding: isDesktop ? "20px 24px" : "16px 18px",
+        borderRadius: 20,
+        background: "linear-gradient(135deg, rgba(251,191,36,0.15), rgba(180,83,9,0.35))",
+        border: "1px solid rgba(251,191,36,0.4)",
+        cursor: onClick ? "pointer" : "default",
+        transition: "transform 0.15s, border-color 0.15s",
+      }}
+      onMouseEnter={onClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(251,191,36,0.7)"; } : undefined}
+      onMouseLeave={onClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = ""; (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(251,191,36,0.4)"; } : undefined}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(244,63,94,0.16)", border: "1px solid rgba(244,63,94,0.5)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: "#f43f5e", boxShadow: "0 0 8px #f43f5e" }} />
+              <span style={{ fontFamily: T.body, fontSize: 9, color: "#fda4af", fontWeight: 800, letterSpacing: "0.1em" }}>LIVE</span>
+            </span>
+            <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, fontFamily: T.body, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em", background: "#fbbf241f", color: "#fbbf24", border: "1px solid #fbbf2455" }}>
+              3-WEEK CUP{isFinal ? " · FINAL WEEK" : ` · WEEK ${comp.currentWeek}`}
+            </span>
+          </div>
+          <div style={{ fontFamily: T.display, fontSize: isDesktop ? 26 : 21, color: T.ink, marginTop: 8, letterSpacing: "-0.005em" }}>
+            ${totalPot} prize pool
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 3 }}>
+            Cumulative points across all games · {fmtCountdown(comp.compEnd)}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, lineHeight: 1 }}>{myRank > 0 ? `#${myRank}` : "—"}</span>
+            <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your rank</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, lineHeight: 1 }}>{myPoints.toLocaleString()}</span>
+            <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your pts</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        {[
+          { r: "1st", p: `$${comp.prizes.first}`, c: "#fbbf24" },
+          { r: "2nd", p: `$${comp.prizes.second}`, c: "#cbd5e1" },
+          { r: "3rd", p: `$${comp.prizes.third}`,  c: "#cd7f32" },
+        ].map(x => (
+          <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "8px 6px", borderRadius: 12, background: "rgba(0,0,0,0.25)", border: `1px solid ${x.c}44` }}>
+            <div style={{ fontFamily: T.body, fontSize: 9, color: x.c, fontWeight: 800, letterSpacing: "0.1em" }}>{x.r}</div>
+            <div style={{ fontFamily: T.display, fontSize: 17, color: T.ink, marginTop: 2 }}>{x.p}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// ─── Confetti sparkle particles ────────────────────────────────────────────────
+// ─── confetti + StagePodium + PlayerRow for ALL-TIME tab ────────────────
 const CONFETTI = [
-  { left: "8%", top: "25%", color: "#f9a8d4", size: 10, shape: "star", dur: 3.5, delay: 0.0 },
+  { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
   { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "22%", top: "20%", color: "#22d3ee", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note", dur: 4.8, delay: 1.5 },
-  { left: "38%", top: "15%", color: "#e879f9", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle", dur: 4.0, delay: 0.8 },
+  { left: "22%", top: "20%", color: "#22d3ee", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#e879f9", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
   { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
-  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star", dur: 4.5, delay: 0.2 },
-  { left: "78%", top: "28%", color: "#34d399", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note", dur: 4.1, delay: 0.7 },
-  { left: "92%", top: "22%", color: "#fbbf24", size: 10, shape: "sparkle", dur: 3.9, delay: 1.6 },
-  { left: "10%", top: "40%", color: "#22d3ee", size: 11, shape: "triangle", dur: 4.3, delay: 1.8 },
+  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#34d399", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
 ];
-
 function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
-  const base = {
-    position: "absolute" as const,
-    left: p.left, top: p.top,
-    width: p.size, height: p.size,
-    animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`,
-    pointerEvents: "none" as const,
-    filter: `drop-shadow(0 0 6px ${p.color})`,
-  };
+  const base = { position: "absolute" as const, left: p.left, top: p.top, width: p.size, height: p.size, animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`, pointerEvents: "none" as const, filter: `drop-shadow(0 0 6px ${p.color})` };
   if (p.shape === "dot") return <div style={{ ...base, background: p.color, borderRadius: "50%" }} />;
-  if (p.shape === "triangle") return (
-    <div style={{ ...base, width: 0, height: 0, borderLeft: `${p.size / 2}px solid transparent`, borderRight: `${p.size / 2}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}`, background: "transparent" }} />
-  );
+  if (p.shape === "triangle") return <div style={{ ...base, width: 0, height: 0, borderLeft: `${p.size / 2}px solid transparent`, borderRight: `${p.size / 2}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}`, background: "transparent" }} />;
   if (p.shape === "note") return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>♪</div>;
   if (p.shape === "sparkle") return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>✦</div>;
   return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
 }
-
-// ─── Stage Podium (podium.png background + 3 character PNGs on top) ────────────
-function StagePodium({ podium }: { podium: Entry[] }) {
-  const first = podium[0];
-  const second = podium[1];
-  const third = podium[2];
-
-  // LOCKED — character placements tuned to podium.png (1536x1024). Don't change
-  // unless you also regenerate the podium image with different pedestal positions.
+function StagePodium({ podium }: { podium: (AllTimeEntry | undefined)[] }) {
   const placements = [
-    { char: "/characters/char1.png", entry: first, color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: second, color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
-    { char: "/characters/char3.png", entry: third, color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
-
   return (
-    <div style={{
-      position: "relative",
-      width: "100%", maxWidth: "620px",
-      aspectRatio: "3 / 2",
-      margin: "0 auto",
-    }}>
-      {/* Podium background */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/characters/podium.png"
-        alt="podium"
-        style={{
-          position: "absolute", inset: 0,
-          width: "100%", height: "100%",
-          objectFit: "contain",
-          filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))",
-          zIndex: 1,
-        }}
-      />
-
-      {/* Floating confetti sparkles */}
+    <div style={{ position: "relative", width: "100%", maxWidth: 620, aspectRatio: "3 / 2", margin: "0 auto" }}>
+      <img src="/characters/podium.png" alt="podium" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))", zIndex: 1 }} />
       {CONFETTI.map((p, i) => <ConfettiParticle key={i} p={p} />)}
-
-      {/* Characters */}
-      {placements.map((pl) => (
-        <div key={pl.rank} style={{
-          position: "absolute",
-          left: `${pl.leftPct}%`,
-          bottom: `${pl.bottomPct}%`,
-          transform: "translateX(-50%)",
-          width: `${pl.widthPct}%`,
-          zIndex: pl.z,
-          display: "flex", flexDirection: "column", alignItems: "center",
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={pl.char}
-            alt={`rank ${pl.rank}`}
-            style={{
-              width: "100%", height: "auto",
-              objectFit: "contain",
-              filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)`,
-            }}
-          />
+      {placements.map(pl => (
+        <div key={pl.rank} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${pl.bottomPct}%`, transform: "translateX(-50%)", width: `${pl.widthPct}%`, zIndex: pl.z, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <img src={pl.char} alt={`rank ${pl.rank}`} style={{ width: "100%", height: "auto", objectFit: "contain", filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)` }} />
         </div>
       ))}
-
-      {/* Name + score labels — placed just above the character's head */}
-      {placements.map((pl) => {
-        // Character portrait is 2:3 so visible height = widthPct * 1.5 (as % of container width).
-        // Container is 3:2 so 1% of container height = 1.5% of container width.
-        // Character height as % of container height = widthPct * 1.5 / 1.5 * 1.5 = widthPct * 1.5.
-        // Actually: height_in_px = widthPct/100 * W * 1.5;  height_pct_of_H = (widthPct/100 * W * 1.5) / (W * 2/3) * 100 = widthPct * 2.25
+      {placements.map(pl => {
         const charHeightPct = pl.widthPct * 2.25;
         const labelBottom = pl.bottomPct + charHeightPct + 1;
         return (
-          <div key={`label-${pl.rank}`} style={{
-            position: "absolute",
-            left: `${pl.leftPct}%`,
-            bottom: `${labelBottom}%`,
-            transform: "translateX(-50%)",
-            textAlign: "center",
-            zIndex: 4,
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
-          }}>
-            <div style={{
-              color: "white", fontSize: "12px", fontWeight: 900,
-              letterSpacing: "0.04em",
-              textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)`,
-            }}>
-              {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
-            </div>
-            <div style={{
-              color: pl.color, fontSize: "13px", fontWeight: 900,
-              textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`,
-              marginTop: "2px",
-            }}>
-              {pl.entry ? pl.entry.score : 0}
-            </div>
-            {pl.entry?.subText && (
-              <div style={{
-                color: "rgba(255,255,255,0.75)",
-                fontSize: "10px", fontWeight: 800,
-                letterSpacing: "0.06em",
-                marginTop: "1px",
-                textShadow: "0 1px 3px rgba(0,0,0,0.9)",
-              }}>
-                {pl.entry.subText}
-              </div>
-            )}
+          <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
+            <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>{pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}</div>
+            <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>{pl.entry ? pl.entry.score.toLocaleString() : 0}</div>
           </div>
         );
       })}
     </div>
   );
 }
-
-// ─── Player Row (neon bordered pill) ───────────────────────────────────────────
-// Compact number formatter for the breakdown chip. Below 10k stays exact
-// because Simon scores live in single digits to low hundreds and need to
-// be readable as-is. Above 10k collapses to "Xk" so a long Rhythm score
-// doesn't push the row off-screen.
-function fmtCompact(n: number): string {
-  if (n < 10000) return n.toLocaleString();
-  return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}k`;
-}
-
-function PlayerRow({
-  entry, rank, color, isMe, breakdown, subText,
-}: {
-  entry: Entry;
-  rank: number;
-  color: string;
-  isMe: boolean;
-  // Optional R/S split for the ALL-TIME tab. Renders a small line under
-  // the total so players can read "this player is rhythm-heavy" at a glance.
-  breakdown?: { rhythm: number; simon: number };
-  // Generic sub-line under the score · used by the PVP tab to surface
-  // wins + win-rate ("W 5 · 38%") without forcing every leaderboard
-  // surface to ship a custom breakdown shape.
-  subText?: string;
-}) {
+function PlayerRow({ entry, rank, isMe }: { entry: AllTimeEntry; rank: number; isMe: boolean }) {
+  const color = T.accent;
   return (
-    <div style={{
-      borderRadius: "999px",
-      padding: "2.5px",
-      background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`,
-      boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)`,
-    }}>
-      <div style={{
-        borderRadius: "999px",
-        background: isMe
-          ? `linear-gradient(90deg, ${color}26 0%, rgba(20,10,50,0.9) 100%)`
-          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
-        padding: "8px 14px 8px 10px",
-        display: "flex", alignItems: "center", gap: "10px",
-        position: "relative", overflow: "hidden",
-      }}>
-        {/* Rank */}
-        <div style={{
-          minWidth: "22px", textAlign: "center",
-          color: color, fontSize: "15px", fontWeight: 900,
-          textShadow: `0 0 10px ${color}`,
-        }}>{rank}</div>
-        {/* Avatar — DiceBear personas face */}
-        <div style={{
-          width: "34px", height: "34px", borderRadius: "50%",
-          border: `2px solid ${color}aa`,
-          boxShadow: `0 0 8px ${color}77`,
-          flexShrink: 0, overflow: "hidden",
-          background: "#1a0550",
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={avatarUrl(entry.player, entry.username)}
-            alt=""
-            width={34}
-            height={34}
-            style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        </div>
-        {/* Name + tier subtitle (Wild Rift style — tier explicit under the name) */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <HabitatChip address={entry.player} size={18} />
-            <div style={{
-              color: isMe ? color : "white",
-              fontSize: "12px", fontWeight: 800, lineHeight: 1.15,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              minWidth: 0, flex: 1,
-            }}>
-              {isMe ? "YOU" : fmtName(entry.player, entry.username)}
-            </div>
-          </div>
-          <div style={{
-            color: color, fontSize: "8.5px", fontWeight: 800,
-            letterSpacing: "0.1em", marginTop: "1px",
-            textShadow: `0 0 6px ${color}88`,
-          }}>
-            {tierLabelByRank(rank)}
-          </div>
-        </div>
-        {/* Streak flex chip — shown after at least one return (>= 2 days) */}
-        {entry.streak && entry.streak >= 2 && (
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: "3px",
-            padding: "2px 7px", borderRadius: "999px",
-            background: "rgba(249,115,22,0.15)",
-            border: "1px solid rgba(249,115,22,0.5)",
-            boxShadow: "0 0 8px rgba(249,115,22,0.35)",
-            flexShrink: 0,
-          }}>
-            <span style={{ fontSize: "10px" }}>🔥</span>
-            <span style={{ color: "#fbbf24", fontSize: "10px", fontWeight: 900, textShadow: "0 0 6px rgba(251,191,36,0.6)" }}>{entry.streak}</span>
-          </div>
-        )}
-        {/* Score (with optional R/S breakdown for ALL-TIME) */}
-        <div style={{ flexShrink: 0, textAlign: "right" }}>
-          <div style={{
-            color: "#fbbf24", fontSize: "11px", fontWeight: 900,
-            letterSpacing: "0.12em",
-            textShadow: "0 0 10px rgba(251,191,36,0.7)",
-          }}>
-            {entry.score.toLocaleString()}
-          </div>
-          {breakdown && (
-            <div style={{
-              color: "rgba(254,215,170,0.6)",
-              fontSize: "8px", fontWeight: 800,
-              letterSpacing: "0.06em",
-              marginTop: "2px",
-              fontFeatureSettings: '"tnum" 1',
-            }}>
-              R {fmtCompact(breakdown.rhythm)} · S {fmtCompact(breakdown.simon)}
-            </div>
-          )}
-          {subText && !breakdown && (
-            <div style={{
-              color: "rgba(254,215,170,0.6)",
-              fontSize: "8px", fontWeight: 800,
-              letterSpacing: "0.06em",
-              marginTop: "2px",
-              fontFeatureSettings: '"tnum" 1',
-            }}>
-              {subText}
-            </div>
-          )}
-        </div>
+    <div style={{ borderRadius: 999, padding: 2.5, background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`, boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)` }}>
+      <div style={{ borderRadius: 999, background: isMe ? `linear-gradient(90deg, ${color}26 0%, rgba(20,10,50,0.9) 100%)` : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)", padding: "8px 14px 8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${color}1f`, border: `1px solid ${color}66`, fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em" }}>#{rank}</span>
+        <span style={{ flex: 1, fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? `You · ${fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}</span>
+        <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{entry.score.toLocaleString()}</span>
       </div>
     </div>
   );
 }
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
-function LeaderboardInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+// ─── page ───────────────────────────────────────────────────────────────
+export default function EventsPage() {
   const { address } = useAccount();
-  // Mobile swaps the 68px left sidebar for a fixed bottom tab bar.
-  const isMobile = useIsMobile();
-  // Deep-link support: ?tab=seasons routes from the Games page 3-Week
-  // Cup event card directly to the Seasons tab where the Cup rankings
-  // live. Before this, the event card always landed on Rankings, which
-  // is a different leaderboard entirely.
-  const initialTab = (() => {
-    const t = searchParams.get("tab");
-    if (t === "seasons" || t === "pvp" || t === "alltime") return t;
-    return "rankings";
-  })();
-  const [activeTab, setActiveTab] = useState<"rankings" | "alltime" | "seasons" | "pvp">(initialTab);
-  const [gameTab, setGameTab] = useState<"rhythm" | "simon">("rhythm");
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [tab, setTab] = useState<Tab>("live");
 
-  // Deep-link scroll. The Games page banner sends players here with
-  // #team-wars-card so they land on the team picker, not the page top.
-  // Polls briefly because the card mounts after season1Lb fetches —
-  // scrolling on first paint would silently miss the target.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (activeTab !== "seasons") return;
-    const hash = window.location.hash.replace(/^#/, "");
-    if (!hash) return;
-    let tries = 0;
-    const tick = () => {
-      const el = document.getElementById(hash);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      if (tries++ < 20) setTimeout(tick, 100);
-    };
-    tick();
-  }, [activeTab]);
-
-  // 72-hour Arena Cup — shared hook returns null outside the event window,
-  // so the banner below only renders while the challenge is live.
-  const challenge = useChallenge(address);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [streak, setStreak] = useState<{ streak: number; playedToday: boolean } | null>(null);
-
-  useEffect(() => {
-    if (!address) { setStreak(null); return; }
-    fetch(`${BACKEND_URL}/api/streak/${address}`)
-      .then(r => r.json())
-      .then(d => setStreak({ streak: d.streak || 0, playedToday: !!d.playedToday }))
-      .catch(() => setStreak(null));
-  }, [address]);
-
-  // Weekly community challenge — shown in the EVENTS section alongside
-  // 72-hr cups and the 3-week competition so players see it in context.
-  const [weeklyChallengeLB, setWeeklyChallengeLB] = useState<{
-    target: number; progress: number; playersIn: number;
-    hit: boolean; daysLeft: number; rewardG: number; ubiG: number;
-    capPerPlayer: number; myContribution: number | null; windowEnd: string;
-    contributors: { wallet: string; username: string | null; games: number }[];
-  } | null>(null);
-
-  // PVP Arena lifetime leaderboard · all-time Challenge-AI stats per
-  // wallet. Powers the PVP ARENA tab. Same shape as MARKOV Climb so the
-  // UI can render through similar primitives, but the window covers
-  // the entire history (not just an event slice) and includes a wins +
-  // win-rate breakdown so it reads as both a grind ranking and a skill
-  // ranking simultaneously.
-  type PvpEntry = {
-    rank: number; wallet: string; username: string | null;
-    matches: number; wins: number; ties: number; winRate: number;
-  };
-  const [pvpData, setPvpData] = useState<{ totalPlayers: number; totalMatches: number; leaderboard: PvpEntry[] } | null>(null);
-
-  // MARKOV Climb · 23-day Challenge-AI match-count leaderboard. Powers the
-  // flagship hackathon-window event card. Ranked by total resolved matches
-  // vs MARKOV inside the configured event window (Jun 3 → Jun 25). Top 3
-  // share $5 USDC + 1,750 G$ at deadline.
-  type MarkovClimb = {
-    event: {
-      id: string;
-      name: string;
-      tagline: string;
-      startsAt: string;
-      endsAt: string;
-      phase: "upcoming" | "live" | "ended";
-      minMatchesToQualify: number;
-      prizes: {
-        first:  { usdc: number; g_dollar: number };
-        second: { usdc: number; g_dollar: number };
-        third:  { usdc: number; g_dollar: number };
-      };
-    };
-    leaderboard: { rank: number; wallet: string; username: string | null; matches: number; qualified: boolean }[];
-  };
-  const [markovClimb, setMarkovClimb] = useState<MarkovClimb | null>(null);
-
-  // Seasons + competition data (for SEASONS tab)
-  const [seasonsData, setSeasonsData] = useState<SeasonsData | null>(null);
-  const [competition, setCompetition] = useState<CompetitionData | null>(null);
-  const [selectedSeason, setSelectedSeason] = useState<PastSeason | null>(null);
-  // Past hosted challenges (72-hr Arena Cup and future short-burst events).
-  // Each row is a frozen snapshot written at event end, immutable. Rendered
-  // alongside past seasons in the Seasons tab so players see every past
-  // competition we've run in one place.
-  type PastChallenge = {
-    id: string;
-    name: string;
-    starts_at: string;
-    ends_at: string;
-    min_plays: number;
-    top_n: number;
-    prize_usdc: number;
-    winners: { rank: number; wallet: string; username: string | null; plays: number }[];
-  };
-  type PastCompetition = {
-    id: string;
-    name: string;
-    starts_at: string;
-    ends_at: string;
-    weeks: number[];
-    prizes: { first: number; second: number; third: number };
-    winners: { rank: number; wallet: string; username: string | null; total: number; totalRhythm: number; totalSimon: number }[];
-  };
-  // Frozen Team-Wars + Solo-Ladder seasons. Sealed by the seal_season_v1()
-  // RPC when ends_at passes, immutable thereafter. Renders inside Completed
-  // Events alongside the legacy challenge + competition card types.
-  type PastSeasonV1 = {
-    season_id: number;
-    sealed_at: string;
-    starts_at: string;
-    ends_at: string;
-    standings: {
-      teams: { team: "alpha" | "nova" | "pulse"; counted: number; players: number; qualifiers: number }[];
-      soloTop10: { rank: number; wallet: string; username: string | null; points: number; streak?: number }[];
-    };
-    prize_winners: {
-      closing_surprise?: {
-        wallet: string;
-        username?: string | null;
-        amount_usdc?: number;
-        tx_hash?: string;
-      };
-    };
-  };
-  type SelectedEvent =
-    | { type: "challenge"; data: PastChallenge }
-    | { type: "competition"; data: PastCompetition }
-    | { type: "season"; data: PastSeasonV1 };
-  const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
-  const [pastCompetitions, setPastCompetitions] = useState<PastCompetition[]>([]);
-  const [pastSeasonsV1, setPastSeasonsV1] = useState<PastSeasonV1[]>([]);
+  const [meta, setMeta] = useState<SeasonsMeta | null>(null);
+  const [comp, setComp] = useState<CompetitionData | null>(null);
+  const [community, setCommunity] = useState<WeeklyChallengeData | null>(null);
+  const [climb, setClimb] = useState<MarkovClimbData | null>(null);
+  const [pastSeasons, setPastSeasons] = useState<PastSeasonV1[] | null>(null);
+  const [pastCups, setPastCups] = useState<PastCompetition[] | null>(null);
+  const [pastChallenges, setPastChallenges] = useState<PastChallenge[] | null>(null);
+  // All-time tab state
+  const [allEntries, setAllEntries] = useState<AllTimeEntry[] | null>(null);
+  const [allPage, setAllPage] = useState(0);
+  const [myAllRank, setMyAllRank] = useState<{ rank: number; peak: number } | null>(null);
+  // Detail modal · opens when a past event card is tapped.
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
 
-  // Season 1 — Team Wars + Solo Ladder. Lives inside the seasons tab so
-  // players see it next to the active Season N hero + past competitions
-  // instead of on a separate page.
-  type Season1Team = "alpha" | "nova" | "pulse";
-  type Season1Lb = {
-    meta: { startsAt: string; endsAt: string; targetPerTeam: number; bestEffortFloor: number };
-    teams: { team: Season1Team; counted: number; players: number; qualifiers: number; hitTarget: boolean }[];
-    soloTop10: { wallet: string; username?: string | null; points: number; rank: number }[];
-  };
-  type Season1Me = {
-    wallet: string;
-    username?: string | null;
-    team: Season1Team | null;
-    games: number; counted: number; qualified: boolean;
-    minGames: number; maxCounted: number;
-    soloPoints: number; soloRank: number | null;
-    soloBreakdown?: Record<string, { count: number; points: number }>;
-    referralCount: number;
-  };
-  const [season1Lb, setSeason1Lb] = useState<Season1Lb | null>(null);
-  const [season1Me, setSeason1Me] = useState<Season1Me | null>(null);
-  const [season1Joining, setSeason1Joining] = useState<Season1Team | null>(null);
-  const [season1JoinError, setSeason1JoinError] = useState<string | null>(null);
-
   useEffect(() => {
-    if (activeTab !== "seasons") return;
-    fetch(`${BACKEND_URL}/api/seasons`).then(r => r.json()).then(setSeasonsData).catch(() => setSeasonsData(null));
-    fetch(`${BACKEND_URL}/api/competition`).then(r => r.json()).then(setCompetition).catch(() => setCompetition(null));
-    fetch(`${BACKEND_URL}/api/challenges/past`)
-      .then(r => r.json())
-      .then(d => setPastChallenges(d.challenges || []))
-      .catch(() => setPastChallenges([]));
-    fetch(`${BACKEND_URL}/api/competition/past`)
-      .then(r => r.json())
-      .then(d => setPastCompetitions(d.competitions || []))
-      .catch(() => setPastCompetitions([]));
-    // Past Season 1-style events (Team Wars + Solo Ladder). Lives on the Next.js
-    // side, not Railway — reads season_v1_results directly from Supabase.
-    fetch("/api/season/past", { cache: "no-store" })
-      .then(r => r.json())
-      .then(d => setPastSeasonsV1(d.seasons || []))
-      .catch(() => setPastSeasonsV1([]));
-    // MARKOV Climb · flagship hackathon event. Endpoint reads
-    // agent_match_state directly so the leaderboard reflects whatever
-    // matches have actually resolved in the event window.
+    const update = () => setIsDesktop(window.innerWidth >= 900);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // LIVE + PAST data — pulled from the same endpoints the legacy /leaderboard uses.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${BACKEND_URL}/api/seasons`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setMeta({ currentSeason: d.currentSeason, currentEndsAt: d.currentEndsAt, currentStartsAt: d.currentStartsAt }); })
+      .catch(() => {});
+    fetch(`${BACKEND_URL}/api/competition`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setComp(d as CompetitionData); })
+      .catch(() => {});
+    fetch(`${BACKEND_URL}/api/weekly-challenge`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setCommunity(d as WeeklyChallengeData); })
+      .catch(() => {});
     fetch("/api/markov-climb", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
-      .then(d => setMarkovClimb(d ?? null))
-      .catch(() => setMarkovClimb(null));
-    const wUrl = address
-      ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address}`
-      : `${BACKEND_URL}/api/weekly-challenge`;
-    fetch(wUrl).then(r => r.json()).then(setWeeklyChallengeLB).catch(() => {});
-    // Season 1 polls — same cadence as the other seasons-tab sources.
-    fetch("/api/season/leaderboard", { cache: "no-store" })
+      .then(d => { if (!cancelled && d) setClimb(d as MarkovClimbData); })
+      .catch(() => {});
+
+    fetch("/api/season/past", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
-      .then(d => setSeason1Lb(d ?? null))
-      .catch(() => setSeason1Lb(null));
-    if (address) {
-      fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => setSeason1Me(d ?? null))
-        .catch(() => setSeason1Me(null));
-    } else {
-      setSeason1Me(null);
-    }
-  }, [activeTab, address]);
-
-  // PVP Arena tab fetch · separate effect because the seasons-tab effect
-  // returns early before pvpData would load. Refreshes every 30s while
-  // the tab is active so live match counts roll in without a manual
-  // page reload.
-  useEffect(() => {
-    if (activeTab !== "pvp") return;
-    let cancelled = false;
-    const fetchPvp = () => {
-      fetch("/api/pvp-leaderboard", { cache: "no-store" })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (!cancelled) setPvpData(d ?? null); })
-        .catch(() => { if (!cancelled) setPvpData(null); });
-    };
-    fetchPvp();
-    const i = setInterval(fetchPvp, 30000);
-    return () => { cancelled = true; clearInterval(i); };
-  }, [activeTab]);
-
-  // Soft-cap aware: the smallest team sets the join ceiling for the others.
-  const season1Counts = useMemo<Record<Season1Team, number>>(() => {
-    const m: Record<Season1Team, number> = { alpha: 0, nova: 0, pulse: 0 };
-    for (const t of season1Lb?.teams ?? []) m[t.team] = t.players;
-    return m;
-  }, [season1Lb]);
-  const season1Smallest = useMemo(() => Math.min(...Object.values(season1Counts)), [season1Counts]);
-  const season1TeamOpen = useCallback((team: Season1Team) => {
-    if (season1Smallest === 0) return true;
-    return season1Counts[team] < season1Smallest * 1.5;
-  }, [season1Counts, season1Smallest]);
-
-  // Referral capture. Three layers, URL wins, localStorage rescues:
-  //   1. ?ref=<wallet> on the share link is captured immediately into
-  //      localStorage on first paint (captureReferralFromUrl below) so
-  //      it survives the connect → mint → verify chain that strips
-  //      query params.
-  //   2. If the URL still carries it on this render, we use that
-  //      (canonical).
-  //   3. Otherwise we read the localStorage fallback — handles users
-  //      coming back from /mint where the URL no longer carries ref.
-  // The /api/season/join endpoint also falls back to the server-side
-  // intent table populated at /mint, so cross-device flows still
-  // credit correctly.
-  useEffect(() => {
-    captureReferralFromUrl();
-  }, [searchParams]);
-  const referrerFromUrl = useMemo(() => {
-    const norm = (raw: string | null): string | null => {
-      if (!raw) return null;
-      const v = raw.toLowerCase().trim();
-      if (!/^0x[a-f0-9]{40}$/.test(v)) return null;
-      if (address && v === address.toLowerCase()) return null;
-      return v;
-    };
-    const fromUrl = norm(searchParams.get("ref") ?? null);
-    if (fromUrl) return fromUrl;
-    return norm(readPendingReferral());
-  }, [searchParams, address]);
-
-  // Bounce unauthenticated visitors arriving via a share link through
-  // the canonical onboarding chain instead of dumping them on a team
-  // picker they can't act on. The ref survives via localStorage; once
-  // they finish mint + verify they land back on this same view, this
-  // time authenticated, and the team picker actually works.
-  const { ready, authenticated, getAccessToken } = usePrivy();
-  const isMiniPay = useIsMiniPay();
-  useEffect(() => {
-    if (!ready) return;
-    if (authenticated || address) return; // already connected, render normally
-    const refOnLink = searchParams.get("ref");
-    if (!refOnLink) return;
-    const dest = `/leaderboard?tab=seasons&ref=${encodeURIComponent(refOnLink)}`;
-    router.replace(`/connect?next=${encodeURIComponent(dest)}`);
-  }, [ready, authenticated, address, searchParams, router]);
-
-  const joinSeason1 = useCallback(async (team: Season1Team) => {
-    if (!address || season1Joining) return;
-    setSeason1Joining(team);
-    setSeason1JoinError(null);
-    try {
-      // Auth path. Browser users send a Privy access token; the API
-      // verifies the linked wallet matches the one being joined.
-      // MiniPay users pass the isMiniPay marker (no signing path).
-      const accessToken = isMiniPay ? null : await getAccessToken();
-      if (!isMiniPay && !accessToken) {
-        setSeason1JoinError("Sign in required to pick a team.");
-        return;
-      }
-      const r = await fetch("/api/season/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet: address.toLowerCase(),
-          team,
-          referrerWallet: referrerFromUrl,
-          accessToken,
-          isMiniPay,
-        }),
-      });
-      const j = await r.json();
-      if (!r.ok) { setSeason1JoinError(j.message ?? j.error ?? "Could not join."); return; }
-      const meRes = await fetch(`/api/season/me/${address.toLowerCase()}`, { cache: "no-store" });
-      if (meRes.ok) setSeason1Me(await meRes.json());
-      const lbRes = await fetch("/api/season/leaderboard", { cache: "no-store" });
-      if (lbRes.ok) setSeason1Lb(await lbRes.json());
-    } catch { setSeason1JoinError("Network error."); }
-    finally { setSeason1Joining(null); }
-  }, [address, season1Joining, referrerFromUrl, isMiniPay, getAccessToken]);
-
-  // Live countdown to season end (refreshes every second)
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    if (activeTab !== "seasons") return;
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, [activeTab]);
-  function formatCountdown(secondsLeft: number) {
-    if (secondsLeft <= 0) return "ENDED";
-    const d = Math.floor(secondsLeft / 86400);
-    const h = Math.floor((secondsLeft % 86400) / 3600);
-    const m = Math.floor((secondsLeft % 3600) / 60);
-    const s = secondsLeft % 60;
-    if (d > 0) return `${d}D ${h}H ${m}M`;
-    if (h > 0) return `${h}H ${m}M ${s}S`;
-    return `${m}M ${s}S`;
-  }
-
-  const fetchEntries = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Match the backend's season math exactly so the leaderboard rolls
-      // over the moment a new season starts, not 7 days later. Backend uses
-      // SEASON_EPOCH = 1770249600 with 7-day weeks; we mirror it here.
-      const SEASON_EPOCH = 1770249600;
-      const WEEK_SECONDS = 7 * 86400;
-      const nowSec = Math.floor(Date.now() / 1000);
-      const elapsed = nowSec - SEASON_EPOCH;
-      const seasonNumber = Math.floor(elapsed / WEEK_SECONDS) + 1;
-      const seasonStart = SEASON_EPOCH + (seasonNumber - 1) * WEEK_SECONDS;
-      const gameType = gameTab === "rhythm" ? 0 : 1;
-      const fetched = await fetchLeaderboard(gameType, seasonStart, 20);
-      setEntries(fetched);
-    } catch {
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [gameTab]);
-
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
-
-  // All-time combined leaderboard — best rhythm + best simon per player.
-  // ONE global ranking, no game split. Players see their forever standing
-  // overall instead of a per-game peak. Fetches lazily on tab activation.
-  // Pulls a wide window (500) so client-side pagination has headroom even
-  // as the population grows. Page size of 16 (even) so the 2-column grid
-  // on desktop fills cleanly (8 + 8) — odd page sizes left an orphan row
-  // at the bottom of every page. The orphan only appears now on the last
-  // page when total entries aren't divisible by 16, which is expected.
-  const ALL_TIME_PAGE_SIZE = 16;
-  // AllTimeEntry extends Entry with bestRhythm + bestSimon so PlayerRow's
-  // breakdown chip ("R 290k · S 768") can render under the total score.
-  const [allTimeEntries, setAllTimeEntries] = useState<AllTimeEntry[]>([]);
-  const [allTimeLoading, setAllTimeLoading] = useState(false);
-  const [allTimePage, setAllTimePage] = useState(0);
-  const fetchAllTime = useCallback(async () => {
-    setAllTimeLoading(true);
-    try {
-      const fetched = await fetchAllTimeLeaderboard(500);
-      setAllTimeEntries(fetched);
-    } catch {
-      setAllTimeEntries([]);
-    } finally {
-      setAllTimeLoading(false);
-    }
+      .then(d => { if (!cancelled && d?.seasons) setPastSeasons(d.seasons as PastSeasonV1[]); else if (!cancelled) setPastSeasons([]); })
+      .catch(() => { if (!cancelled) setPastSeasons([]); });
+    fetch(`${BACKEND_URL}/api/competition/past`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d?.competitions) setPastCups(d.competitions as PastCompetition[]); else if (!cancelled) setPastCups([]); })
+      .catch(() => { if (!cancelled) setPastCups([]); });
+    fetch(`${BACKEND_URL}/api/challenges/past`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d?.challenges) setPastChallenges(d.challenges as PastChallenge[]); else if (!cancelled) setPastChallenges([]); })
+      .catch(() => { if (!cancelled) setPastChallenges([]); });
+    return () => { cancelled = true; };
   }, []);
-  useEffect(() => {
-    if (activeTab === "alltime") fetchAllTime();
-  }, [activeTab, fetchAllTime]);
 
-  // Reset to page 1 whenever the player switches into the ALL-TIME tab so
-  // the experience always opens at the top of the board.
+  // ALL-TIME data — fetched lazily on tab activation (subgraph query).
   useEffect(() => {
-    if (activeTab === "alltime") setAllTimePage(0);
-  }, [activeTab]);
+    if (tab !== "all-time" || allEntries !== null) return;
+    let cancelled = false;
+    fetchAllTimeLeaderboard(500)
+      .then(r => { if (!cancelled) setAllEntries(r); })
+      .catch(() => { if (!cancelled) setAllEntries([]); });
+    return () => { cancelled = true; };
+  }, [tab, allEntries]);
 
-  // Player's own all-time combined rank + peak — used by the sticky
-  // "Your rank" chip that's ALWAYS visible regardless of which page is
-  // currently showing. Computed from the fetched window when possible
-  // (cheap), falls back to a dedicated subgraph query for players outside
-  // the 500-entry fetch window.
-  const [myAllTime, setMyAllTime] = useState<{ rank: number; peak: number } | null>(null);
   useEffect(() => {
-    if (activeTab !== "alltime" || !address) { setMyAllTime(null); return; }
-    const idx = allTimeEntries.findIndex(e => e.player.toLowerCase() === address.toLowerCase());
-    if (idx >= 0) {
-      setMyAllTime({ rank: idx + 1, peak: allTimeEntries[idx].score });
-      return;
-    }
+    if (!address || !allEntries) { setMyAllRank(null); return; }
+    const i = allEntries.findIndex(e => e.player.toLowerCase() === address.toLowerCase());
+    if (i >= 0) { setMyAllRank({ rank: i + 1, peak: allEntries[i].score }); return; }
+    let cancelled = false;
     fetchPlayerAllTimeCombinedStats(address).then(s => {
-      if (s) setMyAllTime({ rank: s.rank, peak: s.peak });
+      if (cancelled) return;
+      setMyAllRank(s ? { rank: s.rank, peak: s.peak } : null);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [address, allEntries]);
+
+  // Combined PAST events list, sorted by sealed_at (newest first).
+  const pastUnified: UnifiedPastEvent[] = useMemo(() => {
+    const out: UnifiedPastEvent[] = [];
+    (pastSeasons ?? []).forEach(s => {
+      const teamWinner = s.standings.teams[0];
+      const soloWinner = s.standings.soloTop10[0];
+      const closing = s.prize_winners?.closing_surprise;
+      const teamColor = teamWinner?.team === "alpha" ? "#fb923c" : teamWinner?.team === "nova" ? "#67e8f9" : teamWinner?.team === "pulse" ? "#a78bfa" : "#fbbf24";
+      const myFinish = address ? s.standings.soloTop10.findIndex(p => p.wallet?.toLowerCase() === address.toLowerCase()) + 1 : 0;
+      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const start = safeDate(s.starts_at);
+      const end = safeDate(s.ends_at);
+      out.push({
+        key: `season-${s.season_id}`,
+        kind: "season",
+        sortTs: end ? end.getTime() : 0,
+        title: `SEASON ${s.season_id} · TEAM WARS`,
+        dateRange: fmtDateRange(start, end),
+        primary: teamWinner ? { label: "TEAM WINNER", name: teamWinner.team.toUpperCase(), value: String(teamWinner.counted ?? 0), tint: teamColor, icon: "🏆" } : null,
+        secondary: soloWinner ? { label: "SOLO #1", name: soloWinner.username || (soloWinner.wallet ? fmtName(soloWinner.wallet) : "anon"), value: String(soloWinner.points), tint: "#fbbf24", icon: "🥇" } : undefined,
+        tertiary: closing ? { label: "CLOSING SURPRISE", name: closing.username || fmtName(closing.wallet), value: `$${closing.amount_usdc ?? 10}`, tint: "#22c55e", icon: "🎁" } : undefined,
+        myMedal,
+        accent: "#c4b5fd",
+        raw: { type: "season", data: s },
+      });
     });
-  }, [activeTab, address, allTimeEntries]);
+    (pastCups ?? []).forEach(c => {
+      const winner = c.winners?.[0];
+      const myFinish = address ? (c.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
+      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const start = safeDate(c.starts_at);
+      const end = safeDate(c.ends_at);
+      out.push({
+        key: `cup-${c.id}`,
+        kind: "cup",
+        sortTs: end ? end.getTime() : 0,
+        title: c.name?.toUpperCase() || "3-WEEK CUP",
+        dateRange: fmtDateRange(start, end),
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.total} pts`, tint: "#fbbf24" } : null,
+        myMedal,
+        accent: "#fde68a",
+        raw: { type: "cup", data: c },
+      });
+    });
+    (pastChallenges ?? []).forEach(ch => {
+      const winner = ch.winners?.[0];
+      const myFinish = address ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
+      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const start = safeDate(ch.starts_at);
+      const end = safeDate(ch.ends_at);
+      out.push({
+        key: `challenge-${ch.id}`,
+        kind: "challenge",
+        sortTs: end ? end.getTime() : 0,
+        title: ch.name?.toUpperCase() || "WEEKLY CHALLENGE",
+        dateRange: fmtDateRange(start, end),
+        primary: winner ? { label: "TOP GRINDER", name: fmtName(winner.wallet, winner.username), value: `${winner.plays} plays`, tint: "#22c55e" } : null,
+        myMedal,
+        accent: "#86efac",
+        raw: { type: "challenge", data: ch },
+      });
+    });
+    out.sort((a, b) => b.sortTs - a.sortTs);
+    return out;
+  }, [pastSeasons, pastCups, pastChallenges, address]);
 
-  // Pagination math — the top 3 (podium) stay visible on every page so
-  // the "champions" you're chasing are always in view. Pagination only
-  // applies to ranks 4+ in the grid below the podium.
-  const allTimePodium = allTimeEntries.slice(0, 3);
-  const allTimeRestEntries = allTimeEntries.slice(3);
-  const allTimeTotalPages = Math.max(1, Math.ceil(allTimeRestEntries.length / ALL_TIME_PAGE_SIZE));
-  const allTimePageEntries = allTimeRestEntries.slice(
-    allTimePage * ALL_TIME_PAGE_SIZE,
-    (allTimePage + 1) * ALL_TIME_PAGE_SIZE,
-  );
-  // myAllTimePage = which page the player's row lives on (-1 if podium or none)
-  const myAllTimePage = myAllTime
-    ? (myAllTime.rank <= 3 ? -1 : Math.floor((myAllTime.rank - 4) / ALL_TIME_PAGE_SIZE))
-    : -1;
+  // ALL-TIME pagination
+  const podium = (allEntries ?? []).slice(0, 3);
+  const restAll = (allEntries ?? []).slice(3);
+  const totalPages = Math.max(1, Math.ceil(restAll.length / PAGE_SIZE));
+  const rest = restAll.slice(allPage * PAGE_SIZE, (allPage + 1) * PAGE_SIZE);
+  const myAllPage = myAllRank ? (myAllRank.rank <= 3 ? -1 : Math.floor((myAllRank.rank - 4) / PAGE_SIZE)) : -1;
 
-  const podium = entries.slice(0, 3);
-  const rest = entries.slice(3, 13);
+  const pastLoading = pastSeasons === null || pastCups === null || pastChallenges === null;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0,
-      background: "radial-gradient(ellipse 80% 60% at 50% 15%, #6a18c8 0%, #3b0a9e 30%, #1a044a 60%, #0a0120 100%)",
-      display: "flex", flexDirection: "column", overflow: "hidden",
-    }}>
-      {/* Floating icons — split by breakpoint via CSS. No SSR flash. */}
-      {LEFT_ICONS.map((ic, i) => (
-        <div key={`l${i}`} className="icon-float icon-float--desktop" style={{
-          position: "absolute", top: ic.top, left: ic.left, width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 8px ${ic.glow}77)`,
-          opacity: ic.opacity,
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          userSelect: "none", pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-      {RIGHT_ICONS.map((ic, i) => (
-        <div key={`r${i}`} className="icon-float icon-float--desktop" style={{
-          position: "absolute", top: ic.top, right: ic.right, width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 8px ${ic.glow}77)`,
-          opacity: ic.opacity,
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          userSelect: "none", pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-      {MOBILE_LEFT_ICONS.map((ic, i) => (
-        <div key={`ml${i}`} className="icon-float icon-float--mobile" style={{
-          position: "absolute", top: ic.top, left: ic.left, width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 6px ${ic.glow}55)`,
-          opacity: ic.opacity,
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          userSelect: "none", pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-      {MOBILE_RIGHT_ICONS.map((ic, i) => (
-        <div key={`mr${i}`} className="icon-float icon-float--mobile" style={{
-          position: "absolute", top: ic.top, right: ic.right, width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`, filter: `drop-shadow(0 0 6px ${ic.glow}55)`,
-          opacity: ic.opacity,
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          userSelect: "none", pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
+    <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
+      <AppHeader />
 
-      {/* Body row: sidebar + center */}
-      <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative", zIndex: 2 }}>
+      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* Sidebar — desktop only; mobile uses BottomNav below */}
-        {!isMobile && <div style={{
-          width: "68px", flexShrink: 0, alignSelf: "stretch",
-          background: "rgba(4,1,18,0.95)", borderRight: "1px solid rgba(255,255,255,0.06)",
-          display: "flex", flexDirection: "column", alignItems: "center",
-          padding: "16px 0", gap: "6px",
-        }}>
-          {/* Streak chip — played today warm orange, not played today FROZEN
-              (blue flame via hue-rotate + cyan glow). Same chip across
-              profile / games / leaderboard. */}
-          {address && streak && streak.streak > 0 && (
-            <div style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: "1px",
-              padding: "7px 6px", borderRadius: "12px",
-              background: streak.playedToday
-                ? "linear-gradient(180deg, #7c2d00 0%, #3f1300 100%)"
-                : "linear-gradient(180deg, #0c2742 0%, #041022 100%)",
-              border: `2px solid ${streak.playedToday ? "#f97316" : "#38bdf8"}`,
-              boxShadow: streak.playedToday
-                ? "0 0 14px rgba(249,115,22,0.7), 0 0 28px rgba(249,115,22,0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "0 0 10px rgba(56,189,248,0.45), 0 0 22px rgba(56,189,248,0.15), inset 0 1px 0 rgba(186,230,253,0.15)",
-              minWidth: "46px",
-            }}>
-              <span style={{
-                fontSize: "16px", lineHeight: 1,
-                filter: streak.playedToday
-                  ? "drop-shadow(0 0 6px rgba(249,115,22,0.9))"
-                  : "hue-rotate(190deg) saturate(1.3) brightness(0.95) drop-shadow(0 0 4px rgba(56,189,248,0.7))",
-              }}>🔥</span>
-              <span style={{
-                color: streak.playedToday ? "#fbbf24" : "#bae6fd",
-                fontSize: "13px", fontWeight: 900, lineHeight: 1.1,
-                textShadow: streak.playedToday
-                  ? "0 0 8px rgba(251,191,36,0.7)"
-                  : "0 0 6px rgba(56,189,248,0.6)",
-              }}>{streak.streak}</span>
-            </div>
-          )}
+        <div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>EVENTS</div>
+          <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
+        </div>
 
-          <div style={{ flex: 1 }} />
-
-          {NAV_ITEMS.map(item => {
-            const active = item.path === "/leaderboard";
+        {/* LIVE / PAST / ALL-TIME tab switcher */}
+        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+          {([
+            { id: "live" as Tab, label: "LIVE" },
+            { id: "past" as Tab, label: "PAST" },
+            { id: "all-time" as Tab, label: "ALL-TIME" },
+          ]).map(opt => {
+            const active = tab === opt.id;
             return (
-              <button key={item.path} onClick={() => router.push(item.path)} style={{
-                width: "54px", borderRadius: "12px", padding: "8px 4px 6px",
-                background: active ? "rgba(255,255,255,0.18)" : "transparent", border: "none",
-                color: active ? "white" : "rgba(255,255,255,0.55)",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
-                cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-                boxShadow: active ? "0 0 0 1px rgba(255,255,255,0.15), 0 4px 12px rgba(0,0,0,0.4)" : "none",
-              }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)"; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)"; }}
-              >
-                {item.icon}
-                <span style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "0.04em" }}>{item.label.toUpperCase()}</span>
-              </button>
+              <button key={opt.id} onClick={() => setTab(opt.id)} style={{
+                padding: "8px 18px", borderRadius: 10, cursor: "pointer",
+                background: active ? T.accent : "transparent", border: "none",
+                color: active ? "#fff" : T.inkSoft,
+                fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
+                boxShadow: active ? `0 6px 14px -4px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
+              }}>{opt.label}</button>
             );
           })}
+        </div>
 
-          <div style={{ flex: 1 }} />
-        </div>}
+        {/* LIVE */}
+        {tab === "live" && (
+          <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 12 }}>
+            {comp && comp.weeksLeft > 0 && <CupFeatureCard comp={comp} isDesktop={isDesktop} address={address} onClick={() => setSelectedEvent({ type: "live-cup", data: comp })} />}
 
-        {/* Center */}
-        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{
-            flex: 1, display: "flex", flexDirection: "column",
-            alignItems: "center",
-            // Top padding on mobile needs to clear the active tab's glow
-            // shadow (~20px) or the pill clips against the viewport edge.
-            // Extra bottom padding clears the fixed BottomNav.
-            padding: isMobile ? "24px 14px 96px" : "18px 16px 20px",
-            gap: "14px", overflowY: "auto",
-          }}>
+            {meta && (
+              <LiveEventCard
+                icon="💎"
+                color={T.accent}
+                tag={`SEASON ${meta.currentSeason} · ACTIVE`}
+                title={`Season ends in ${fmtCountdown(meta.currentEndsAt)}`}
+                sub="Open Rhythm or Simon to see the season's per-game standings"
+              />
+            )}
 
-            {/* Cup banner intentionally NOT rendered at the top of the
-                leaderboard. The full live participation card lives inside
-                the Seasons tab below, alongside the 3-Week Cup and past
-                events. Two surfaces for the same event would split focus
-                and double-count attention; leaderboard is the data home,
-                /games and /home stay the urgency surfaces. */}
+            {community && community.target > 0 && !community.hit && (
+              <LiveEventCard
+                icon="🌍"
+                color="#22c55e"
+                tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
+                title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
+                sub={`Hit the milestone to split ${community.rewardG.toLocaleString()} G$${community.ubiG ? ` · ${community.ubiG} G$ to GoodDollar` : ""}${community.myContribution != null ? ` · You: ${community.myContribution}/${community.capPerPlayer}` : ` · Cap ${community.capPerPlayer}/player`}`}
+                progress={{ value: community.progress, total: community.target }}
+                onClick={() => setSelectedEvent({ type: "live-community", data: community })}
+              />
+            )}
+            {community && community.hit && (
+              <LiveEventCard
+                icon="🎉"
+                color="#22c55e"
+                tag="COMMUNITY · MILESTONE HIT"
+                title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
+                sub={`${community.rewardG.toLocaleString()} G$ splitting now between ${community.playersIn} qualifying players`}
+                progress={{ value: community.progress, total: community.target }}
+                onClick={() => setSelectedEvent({ type: "live-community", data: community })}
+              />
+            )}
 
-            {/* Juicy pill tabs — compact on mobile, with horizontal scroll
-                fallback so 4 tabs never get clipped on narrow viewports.
-                Mobile labels shorten where useful (PVP ARENA → PVP) so we
-                rarely have to scroll, but the scroll is there as a safety
-                net for any future tab additions. */}
-            <div
-              className="hide-scrollbar"
-              style={{
-                display: "flex", gap: isMobile ? "6px" : "10px",
-                flexShrink: 0,
-                overflowX: "auto",
-                overflowY: "hidden",
-                WebkitOverflowScrolling: "touch",
-                // Padding prevents the active tab's glow from being clipped
-                // by the scroll container's edges.
-                padding: "4px 2px",
-                margin: "-4px -2px",
-              }}
-            >
-              {TABS.map(t => (
-                <PillTab
-                  key={t.id}
-                  label={isMobile ? t.mobileLabel : t.label}
-                  active={activeTab === t.id}
-                  wallColor={t.wallColor}
-                  faceGrad={t.faceGrad}
-                  glow={t.glow}
-                  compact={isMobile}
-                  onClick={() => setActiveTab(t.id as typeof activeTab)}
-                />
-              ))}
-            </div>
+            {climb && climb.event && climb.event.phase === "live" && (
+              <LiveEventCard
+                icon="🤖"
+                color="#22c55e"
+                tag="MARKOV CLIMB"
+                title={`${fmtCountdown(new Date(climb.event.endsAt).getTime() / 1000)} · ${climb.event.minMatchesToQualify ?? 30}+ matches qualifies`}
+                sub={climb.event.prizes?.first ? `Top 3 take $${climb.event.prizes.first.usdc ?? 0} USDC + ${(climb.event.prizes.first.g_dollar ?? 0).toLocaleString()} G$` : "Top 3 take the climb pool"}
+                onClick={() => setSelectedEvent({ type: "live-climb", data: climb })}
+              />
+            )}
 
-            {/* Game sub-tabs — stronger fill/border on mobile so the
-                active state reads as a real selection, not a ghost.
-                Hidden on ALL-TIME because that view combines both games
-                (best rhythm + best simon) into one global ranking. */}
-            {activeTab !== "pvp" && activeTab !== "alltime" && (
-              <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-                {GAME_TABS.map(t => {
-                  const active = gameTab === t.id;
-                  return (
-                    <button key={t.id} onClick={() => setGameTab(t.id as typeof gameTab)} style={{
-                      padding: isMobile ? "7px 16px" : "6px 14px",
-                      borderRadius: "999px", fontFamily: "inherit",
-                      background: active
-                        ? `linear-gradient(180deg, ${t.accent}55 0%, ${t.accent}22 100%)`
-                        : "rgba(255,255,255,0.04)",
-                      border: `1.5px solid ${active ? t.accent : "rgba(255,255,255,0.14)"}`,
-                      color: active ? "white" : "rgba(200,180,255,0.65)",
-                      fontSize: isMobile ? "11px" : "10px",
-                      fontWeight: 800, letterSpacing: "0.1em",
-                      cursor: "pointer", transition: "all 0.15s",
-                      boxShadow: active
-                        ? `0 0 18px ${t.accent}77, inset 0 1px 0 rgba(255,255,255,0.15)`
-                        : "none",
-                      textShadow: active ? `0 0 10px ${t.accent}` : "none",
-                    }}>{t.label}</button>
-                  );
+            {!comp && !meta && !community && !climb && (
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading live events…</div>
+            )}
+          </div>
+        )}
+
+        {/* PAST — all sealed events, newest first, type-agnostic grid */}
+        {tab === "past" && (
+          <>
+            <div style={{
+              fontSize: 10, fontWeight: 900, letterSpacing: "0.2em",
+              color: "rgba(254,215,170,0.85)", textAlign: "center",
+              textShadow: "0 0 14px rgba(251,191,36,0.6)", marginBottom: 4,
+            }}>── COMPLETED EVENTS ──</div>
+            {pastLoading && (
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px", textAlign: "center" }}>Loading past events…</div>
+            )}
+            {!pastLoading && pastUnified.length === 0 && (
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px", textAlign: "center" }}>No sealed events yet — check back after the first cycle closes.</div>
+            )}
+            {pastUnified.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+                {pastUnified.map(ev => <PastEventCard key={ev.key} ev={ev} onClick={() => setSelectedEvent(ev.raw)} />)}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ALL-TIME — cross-game ladder */}
+        {tab === "all-time" && (
+          <>
+            {/* Personal-status chip in same slot as per-game leaderboards. */}
+            {address && allEntries && myAllRank && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${T.accent}1f, rgba(0,0,0,0.25))`, border: `1px solid ${T.accent}55` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>You&apos;re #{myAllRank.rank}</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Combined best: {myAllRank.peak.toLocaleString()}</div>
+                </div>
+                {myAllPage >= 0 && myAllPage !== allPage && (
+                  <button onClick={() => setAllPage(myAllPage)} style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, border: "none", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", cursor: "pointer", boxShadow: `0 0 12px ${T.accent}55` }}>JUMP TO MY ROW</button>
+                )}
+              </div>
+            )}
+            {address && allEntries && !myAllRank && (
+              <a href="/games" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${T.accent}55`, textDecoration: "none" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked yet</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Play a game to claim a spot on the board</div>
+                </div>
+                <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${T.accent}55` }}>PLAY ›</span>
+              </a>
+            )}
+
+            <StagePodium podium={podium} />
+
+            {allEntries === null && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, textAlign: "center", padding: "12px 0" }}>Loading all-time ladder…</div>}
+
+            {rest.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(2, 1fr)" : "1fr", gap: isDesktop ? "8px 14px" : 8 }}>
+                {rest.map((e, i) => {
+                  const rank = 4 + allPage * PAGE_SIZE + i;
+                  const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                  return <PlayerRow key={e.player} entry={e} rank={rank} isMe={isMe} />;
                 })}
               </div>
             )}
 
-            {/* RANKINGS — Podium + rows */}
-            {activeTab === "rankings" && (
-              <>
-                {loading ? (
-                  <div style={{ padding: "60px", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING...</div>
-                ) : entries.length === 0 ? (
-                  <div style={{
-                    width: "100%", maxWidth: "440px",
-                    margin: "20px auto",
-                    padding: "32px 24px",
-                    borderRadius: "20px",
-                    background: "linear-gradient(180deg, rgba(167,139,250,0.12) 0%, rgba(20,10,50,0.8) 100%)",
-                    border: "1.5px solid rgba(167,139,250,0.4)",
-                    boxShadow: "0 0 30px rgba(167,139,250,0.2), 0 12px 30px rgba(0,0,0,0.5)",
-                    textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: "44px", marginBottom: "10px" }}>🏆</div>
-                    <div style={{
-                      color: "white", fontSize: "16px", fontWeight: 900, letterSpacing: "0.04em",
-                      textShadow: "0 0 12px rgba(167,139,250,0.7)",
-                    }}>
-                      Be the first on the board
-                    </div>
-                    <div style={{
-                      color: "rgba(200,180,255,0.75)", fontSize: "12px",
-                      marginTop: "10px", lineHeight: 1.6,
-                    }}>
-                      No {gameTab === "rhythm" ? "Rhythm Rush" : "Simon Memory"} scores yet this week.
-                      Play a round and your name lands on the leaderboard.
-                    </div>
-                    <button
-                      onClick={() => router.push(`/games/${gameTab}`)}
-                      style={{
-                        marginTop: "18px",
-                        padding: "11px 24px", borderRadius: "999px",
-                        background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
-                        border: "none",
-                        color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.12em",
-                        cursor: "pointer",
-                        boxShadow: "0 0 20px rgba(124,58,237,0.5), 0 6px 14px rgba(0,0,0,0.4)",
-                      }}
-                    >
-                      PLAY {gameTab === "rhythm" ? "RHYTHM" : "SIMON"} →
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Podium with character PNGs */}
-                    <StagePodium podium={podium} />
-
-                    {/* Rows grid — 1 column on mobile (each row reads
-                        left-to-right as a full-width list item), 2 columns
-                        from tablet up. The old fixed 2-col layout put
-                        rank 4 next to rank 5 on a 360px phone, each
-                        squeezed into ~168px, and the alternating pairs
-                        felt like random clusters instead of a ranking.
-                        A vertical stack is the universal leaderboard
-                        pattern on mobile (PUBG, Clash Royale, Brawl
-                        Stars) and lets each row breathe. */}
-                    <div style={{
-                      width: "100%", maxWidth: "720px",
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-                      gap: isMobile ? "8px" : "10px 14px",
-                      marginTop: "4px",
-                    }}>
-                      {rest.map((e, i) => {
-                        const rank = i + 4;
-                        const color = rowColorByRank(rank);
-                        const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                        return <PlayerRow key={e.player} entry={e} rank={rank} color={color} isMe={isMe} />;
-                      })}
-                    </div>
-
-                    {/* Player-not-on-board chip — when the connected wallet
-                        has not posted a score this season they see no
-                        familiar row on the list. Show a small CTA so they
-                        know how to get on the board. Skipped if they're
-                        already in `entries` (they have a row to find). */}
-                    {address && !entries.find(e => e.player.toLowerCase() === address.toLowerCase()) && entries.length > 3 && (
-                      <div style={{
-                        width: "100%", maxWidth: "520px", marginTop: "12px",
-                        padding: "12px 16px", borderRadius: "14px",
-                        background: "rgba(167,139,250,0.1)",
-                        border: "1px solid rgba(167,139,250,0.35)",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: "10px", flexWrap: "wrap",
-                      }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
-                            You&apos;re not on the board yet
-                          </div>
-                          <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "10.5px", marginTop: "2px" }}>
-                            Play one round to claim your rank.
-                          </div>
-                        </div>
-                        <button onClick={() => router.push(`/games/${gameTab}`)}
-                          style={{
-                            padding: "8px 16px", borderRadius: "999px",
-                            background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
-                            border: "none",
-                            color: "white", fontSize: "10px", fontWeight: 900, letterSpacing: "0.12em",
-                            cursor: "pointer",
-                            boxShadow: "0 0 14px rgba(124,58,237,0.5)",
-                          }}>
-                          PLAY ▸
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Sparse-list empty state — instead of a huge void
-                        below the podium when there are only 1-3 entries,
-                        show a CTA card that fills the space and pushes
-                        users to play. Top-game leaderboards never leave
-                        this dead; they always drive the next action. */}
-                    {entries.length <= 3 && (
-                      <div style={{
-                        width: "100%", maxWidth: "520px", marginTop: "12px",
-                        borderRadius: "18px",
-                        padding: "2.5px",
-                        background: "linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #c026d3 100%)",
-                        boxShadow: "0 16px 36px -8px rgba(251,191,36,0.4), 0 0 40px rgba(192,38,211,0.25)",
-                      }}>
-                        <div style={{
-                          borderRadius: "16px",
-                          background: "linear-gradient(180deg, #1a0550 0%, #0a0230 100%)",
-                          padding: "18px 18px 16px",
-                          textAlign: "center",
-                          border: "1.5px solid rgba(255,255,255,0.08)",
-                        }}>
-                          <div style={{ fontSize: "28px", marginBottom: "6px" }}>🏆</div>
-                          <div style={{
-                            color: "white", fontSize: "13px", fontWeight: 900,
-                            letterSpacing: "0.08em", marginBottom: "4px",
-                            textShadow: "0 0 14px rgba(251,191,36,0.6)",
-                          }}>
-                            FRESH LEADERBOARD
-                          </div>
-                          <div style={{
-                            color: "rgba(200,170,255,0.75)", fontSize: "11px",
-                            lineHeight: 1.5, marginBottom: "14px",
-                          }}>
-                            Only {entries.length} player{entries.length > 1 ? "s have" : " has"} posted a score this week. Play now to claim a spot on the podium before it fills up.
-                          </div>
-                          <div role="button" tabIndex={0}
-                            onClick={() => router.push("/games")}
-                            style={{ cursor: "pointer", userSelect: "none", display: "inline-block" }}
-                            onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(2px)"; }}
-                            onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
-                          >
-                            <div style={{
-                              borderRadius: "12px",
-                              background: "#7c2d00",
-                              paddingBottom: "4px",
-                              boxShadow: "0 8px 18px -4px rgba(251,191,36,0.6)",
-                            }}>
-                              <div style={{
-                                borderRadius: "10px 10px 8px 8px",
-                                background: "linear-gradient(160deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
-                                padding: "9px 26px",
-                                border: "2px solid rgba(255,255,255,0.5)",
-                                boxShadow: "inset 0 4px 10px rgba(255,255,255,0.6), inset 0 -2px 6px rgba(0,0,0,0.3)",
-                              }}>
-                                <span style={{
-                                  color: "white", fontSize: "12px", fontWeight: 900,
-                                  letterSpacing: "0.18em",
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.5)",
-                                }}>PLAY NOW ▸</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* ─── ALL-TIME TAB ───────────────────────────────────────────────
-                Combined-game forever leaderboard. Best Rhythm + Best Simon
-                per player, summed. Never resets. No prizes. Pure status.
-                Rendered with the same StagePodium + PlayerRow components
-                as the WEEKLY tab so the layout is instantly familiar. */}
-            {activeTab === "alltime" && (
-              <>
-                {allTimeLoading ? (
-                  <div style={{ padding: "60px", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING...</div>
-                ) : allTimeEntries.length === 0 ? (
-                  <div style={{
-                    width: "100%", maxWidth: "440px",
-                    margin: "20px auto",
-                    padding: "32px 24px",
-                    borderRadius: "20px",
-                    background: "linear-gradient(180deg, rgba(167,139,250,0.12) 0%, rgba(20,10,50,0.8) 100%)",
-                    border: "1.5px solid rgba(167,139,250,0.4)",
-                    boxShadow: "0 0 30px rgba(167,139,250,0.2), 0 12px 30px rgba(0,0,0,0.5)",
-                    textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: "44px", marginBottom: "10px" }}>🏆</div>
-                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900, letterSpacing: "0.04em", textShadow: "0 0 12px rgba(167,139,250,0.7)" }}>
-                      Be the first on the all-time board
-                    </div>
-                    <div style={{ color: "rgba(200,180,255,0.75)", fontSize: "12px", marginTop: "10px", lineHeight: 1.6 }}>
-                      No scores recorded yet. Play a round in either game and your name lands here forever.
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Sticky "Your position" chip — ALWAYS visible regardless
-                        of which page is showing. Tells the player where they
-                        stand at a glance. If they're on a different page than
-                        their own row, JUMP TO MY ROW seeks to that page. */}
-                    {address && myAllTime && (
-                      <div style={{
-                        width: "100%", maxWidth: "520px",
-                        margin: "0 auto",
-                        padding: "10px 14px", borderRadius: "12px",
-                        background: "rgba(124,58,237,0.18)",
-                        border: "1.5px solid rgba(167,139,250,0.55)",
-                        boxShadow: "0 0 14px rgba(124,58,237,0.25)",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: "10px", flexWrap: "wrap",
-                      }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.04em" }}>
-                            You&apos;re #{myAllTime.rank}
-                          </div>
-                          <div style={{ color: "rgba(220,210,255,0.75)", fontSize: "10.5px", marginTop: "2px" }}>
-                            Combined best: {myAllTime.peak.toLocaleString()}
-                          </div>
-                        </div>
-                        {myAllTimePage >= 0 && myAllTimePage !== allTimePage && (
-                          <button
-                            onClick={() => setAllTimePage(myAllTimePage)}
-                            style={{
-                              padding: "7px 14px", borderRadius: "999px",
-                              background: "linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)",
-                              border: "none", color: "white",
-                              fontSize: "10px", fontWeight: 900, letterSpacing: "0.1em",
-                              cursor: "pointer",
-                              boxShadow: "0 0 12px rgba(124,58,237,0.45)",
-                            }}
-                          >JUMP TO MY ROW</button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Podium ALWAYS visible — top 3 are the champions you're
-                        chasing, so they stay in view on every page. Keeps the
-                        aspirational target onscreen even when scrolling deeper. */}
-                    <StagePodium podium={allTimePodium} />
-
-                    <div style={{
-                      width: "100%", maxWidth: "720px",
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-                      gap: isMobile ? "8px" : "10px 14px",
-                      marginTop: "4px",
-                    }}>
-                      {allTimePageEntries.map((e, i) => {
-                        const rank = 4 + allTimePage * ALL_TIME_PAGE_SIZE + i;
-                        const color = rowColorByRank(rank);
-                        const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                        return (
-                          <PlayerRow
-                            key={e.player}
-                            entry={e}
-                            rank={rank}
-                            color={color}
-                            isMe={isMe}
-                            breakdown={{ rhythm: e.bestRhythm, simon: e.bestSimon }}
-                          />
-                        );
-                      })}
-                    </div>
-
-                    {/* Pagination controls — only shown when there's more than
-                        one page worth of entries. Buttons disable at boundaries
-                        so players can't seek past the ends. */}
-                    {allTimeTotalPages > 1 && (
-                      <div style={{
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        gap: "12px", marginTop: "16px",
-                      }}>
-                        <button
-                          onClick={() => setAllTimePage(p => Math.max(0, p - 1))}
-                          disabled={allTimePage === 0}
-                          style={{
-                            padding: "8px 14px", borderRadius: "999px",
-                            background: allTimePage === 0 ? "rgba(255,255,255,0.04)" : "rgba(124,58,237,0.18)",
-                            border: `1.5px solid ${allTimePage === 0 ? "rgba(255,255,255,0.12)" : "rgba(167,139,250,0.5)"}`,
-                            color: allTimePage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
-                            fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
-                            cursor: allTimePage === 0 ? "not-allowed" : "pointer",
-                          }}
-                        >‹ PREV</button>
-                        <span style={{
-                          color: "rgba(200,180,255,0.85)",
-                          fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
-                        }}>PAGE {allTimePage + 1} / {allTimeTotalPages}</span>
-                        <button
-                          onClick={() => setAllTimePage(p => Math.min(allTimeTotalPages - 1, p + 1))}
-                          disabled={allTimePage === allTimeTotalPages - 1}
-                          style={{
-                            padding: "8px 14px", borderRadius: "999px",
-                            background: allTimePage === allTimeTotalPages - 1 ? "rgba(255,255,255,0.04)" : "rgba(124,58,237,0.18)",
-                            border: `1.5px solid ${allTimePage === allTimeTotalPages - 1 ? "rgba(255,255,255,0.12)" : "rgba(167,139,250,0.5)"}`,
-                            color: allTimePage === allTimeTotalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
-                            fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
-                            cursor: allTimePage === allTimeTotalPages - 1 ? "not-allowed" : "pointer",
-                          }}
-                        >NEXT ›</button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* SEASONS / PVP placeholders */}
-            {activeTab === "seasons" && (
-              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", gap: "16px" }}>
-
-
-                {/* ── ACTIVE SEASON HERO ── */}
-                {seasonsData && (() => {
-                  const liveEntries = (gameTab === "rhythm" ? seasonsData.live.rhythm : seasonsData.live.simon) || [];
-                  const top3 = liveEntries.slice(0, 3);
-                  const myEntry = address ? liveEntries.find(e => e.player.toLowerCase() === address.toLowerCase()) : undefined;
-                  const myRank = myEntry ? liveEntries.findIndex(e => e.player.toLowerCase() === address!.toLowerCase()) + 1 : 0;
-                  const secondsLeft = Math.max(0, seasonsData.currentEndsAt - now);
-                  return (
-                    <div style={{
-                      borderRadius: "20px", padding: "3px",
-                      background: "linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #fbbf24 100%)",
-                      boxShadow: "0 0 32px rgba(251,191,36,0.4), 0 0 60px rgba(249,115,22,0.2), 0 12px 30px rgba(0,0,0,0.6)",
-                    }}>
-                      <div style={{
-                        borderRadius: "18px",
-                        background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
-                        padding: "18px 18px 16px",
-                        position: "relative", overflow: "hidden",
-                      }}>
-                        {/* Top gloss */}
-                        <div style={{
-                          position: "absolute", top: 0, left: 0, right: 0, height: "60px",
-                          background: "linear-gradient(180deg, rgba(251,191,36,0.18) 0%, transparent 100%)",
-                          pointerEvents: "none",
-                        }} />
-
-                        {/* Header row */}
-                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-                          <div>
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                              <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e", animation: "icon-float 1.5s ease-in-out infinite" }} />
-                              <span style={{ color: "#22c55e", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em" }}>LIVE NOW</span>
-                            </div>
-                            <div style={{ color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.04em", textShadow: "0 0 16px rgba(251,191,36,0.6)" }}>
-                              SEASON {seasonsData.currentSeason}
-                            </div>
-                          </div>
-                          {/* Countdown */}
-                          <div style={{
-                            padding: "6px 12px", borderRadius: "12px",
-                            background: "rgba(0,0,0,0.5)",
-                            border: "1.5px solid rgba(251,191,36,0.6)",
-                            boxShadow: "inset 0 2px 6px rgba(0,0,0,0.6)",
-                            textAlign: "right",
-                          }}>
-                            <div style={{ color: "rgba(251,191,36,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>ENDS IN</div>
-                            <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, fontFamily: "monospace", textShadow: "0 0 8px rgba(251,191,36,0.7)" }}>
-                              {formatCountdown(secondsLeft)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Players chip only — prize pool hidden for now.
-                            Players thought the 50 G$ was a real-money
-                            entry fee or a cash prize, not a free in-game
-                            currency, and bounced. We'll bring it back once
-                            the explainer on /about makes G$ obvious. */}
-                        <div style={{ position: "relative", zIndex: 1, marginBottom: "14px" }}>
-                          <div style={{
-                            borderRadius: "14px",
-                            background: "linear-gradient(180deg, rgba(167,139,250,0.18) 0%, rgba(0,0,0,0.3) 100%)",
-                            border: "1.5px solid rgba(167,139,250,0.5)",
-                            padding: "10px 14px",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                          }}>
-                            <span style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 14px rgba(167,139,250,0.7)" }}>
-                              {liveEntries.length}
-                            </span>
-                            <span style={{ color: "rgba(200,180,255,0.75)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.14em" }}>
-                              PLAYER{liveEntries.length !== 1 ? "S" : ""} THIS SEASON
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Mini podium (top 3 chips) */}
-                        {top3.length > 0 && (
-                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <div style={{ color: "rgba(200,180,255,0.7)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.16em", marginBottom: "2px" }}>
-                              CURRENT TOP 3 — {gameTab === "rhythm" ? "RHYTHM RUSH" : "SIMON MEMORY"}
-                            </div>
-                            {top3.map((e, i) => {
-                              const medalColor = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";
-                              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
-                              const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                              return (
-                                <div key={e.player} style={{
-                                  display: "flex", alignItems: "center", gap: "10px",
-                                  padding: "7px 12px", borderRadius: "10px",
-                                  background: isMe ? `${medalColor}26` : "rgba(255,255,255,0.04)",
-                                  border: `1px solid ${isMe ? medalColor : "rgba(255,255,255,0.07)"}`,
-                                }}>
-                                  <span style={{ fontSize: "16px" }}>{medal}</span>
-                                  <span style={{ flex: 1, color: isMe ? medalColor : "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {isMe ? "YOU" : fmtName(e.player, e.username)}
-                                  </span>
-                                  <span style={{ color: medalColor, fontSize: "13px", fontWeight: 900, textShadow: `0 0 8px ${medalColor}` }}>{e.score}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Your status */}
-                        {myEntry && myRank > 3 && (
-                          <div style={{
-                            position: "relative", zIndex: 1, marginTop: "10px",
-                            padding: "8px 12px", borderRadius: "10px",
-                            background: "rgba(192,38,211,0.12)",
-                            border: "1px solid rgba(192,38,211,0.45)",
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                          }}>
-                            <span style={{ color: "rgba(244,182,253,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
-                              YOU&apos;RE #{myRank}
-                            </span>
-                            <span style={{ color: "#e879f9", fontSize: "13px", fontWeight: 900, textShadow: "0 0 8px rgba(232,121,249,0.6)" }}>
-                              {myEntry.score} pts
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── EVENTS — unified section for all live + past competitions.
-                    Arena Cups, 3-Week Competition, Team Wars + Solo Ladder
-                    (Season 1), and future events all live here so players
-                    have one place to check what's running and what's
-                    already ended. ── */}
-                {(markovClimb || challenge || (competition && competition.weeksLeft > 0) || weeklyChallengeLB || season1Lb || pastChallenges.length > 0 || pastCompetitions.length > 0) && (
-                  <div style={{
-                    fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
-                    color: "rgba(251,215,100,0.9)", textAlign: "center",
-                    textShadow: "0 0 14px rgba(251,191,36,0.7)",
-                  }}>── EVENTS ──</div>
-                )}
-
-                {/* ── MARKOV CLIMB · flagship hackathon event card ──
-                    Sits at the top of EVENTS during the Jun 3-25 window so
-                    it's the first thing players see when they hit the page.
-                    Renders three phases:
-                      · upcoming · "Starts in Xd Yh" countdown, no leaderboard
-                      · live     · live leaderboard top 3 + "Xd left" countdown
-                      · ended    · winners line + "Concluded" marker
-                    Cyan-indigo accent distinguishes it from the amber Arena Cup
-                    cards and the green community-challenge card. */}
-                {markovClimb && markovClimb.event.phase !== "ended" && (() => {
-                  const ev = markovClimb.event;
-                  const phase = ev.phase;
-                  const nowMs = Date.now();
-                  const startMs = Date.parse(ev.startsAt);
-                  const endMs = Date.parse(ev.endsAt);
-                  const targetMs = phase === "upcoming" ? startMs : endMs;
-                  const diffMs = Math.max(0, targetMs - nowMs);
-                  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-                  const hours = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-                  const countdownLabel = phase === "upcoming" ? "STARTS IN" : "LEFT";
-                  const top3 = markovClimb.leaderboard.slice(0, 3);
-                  return (
-                    <div style={{
-                      borderRadius: "18px", padding: "2px",
-                      background: "linear-gradient(180deg, #22d3ee 0%, #6366f1 50%, #1e1b4b 100%)",
-                      boxShadow: "0 0 22px rgba(99,102,241,0.35), 0 10px 24px rgba(0,0,0,0.6)",
-                    }}>
-                      <div style={{
-                        borderRadius: "16px",
-                        background: "linear-gradient(180deg, #0e0830 0%, #07021a 100%)",
-                        padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
-                        position: "relative", overflow: "hidden",
-                        display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
-                      }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "55%", background: "linear-gradient(180deg, rgba(99,102,241,0.12) 0%, transparent 100%)", pointerEvents: "none" }} />
-
-                        {/* Header */}
-                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-                          <div>
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(99,102,241,0.18)", border: "1px solid rgba(99,102,241,0.5)", marginBottom: "6px" }}>
-                              <span style={{ color: "#a5b4fc", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>ARENA EVENT · {phase === "upcoming" ? "STARTS JUN 3 · 8 AM WAT" : "LIVE"}</span>
-                            </div>
-                            <div style={{ color: "white", fontSize: "clamp(15px,4.4vw,18px)", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
-                              MARKOV CLIMB
-                            </div>
-                            <div style={{ color: "rgba(165,180,252,0.8)", fontSize: "10px", fontWeight: 700, marginTop: "3px", letterSpacing: "0.04em" }}>
-                              {ev.tagline}
-                            </div>
-                          </div>
-                          <div style={{ padding: "5px 10px", borderRadius: "10px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(99,102,241,0.4)", textAlign: "right", flexShrink: 0 }}>
-                            <div style={{ color: "rgba(165,180,252,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>{countdownLabel}</div>
-                            <div style={{ color: "#a5b4fc", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1 }}>
-                              {days}d {hours}h
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Prize tiers */}
-                        <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px" }}>
-                          {[
-                            { medal: "🥇", label: "1ST", g: ev.prizes.first.g_dollar,  usdc: ev.prizes.first.usdc,  accent: "#fbbf24" },
-                            { medal: "🥈", label: "2ND", g: ev.prizes.second.g_dollar, usdc: ev.prizes.second.usdc, accent: "#e2e8f0" },
-                            { medal: "🥉", label: "3RD", g: ev.prizes.third.g_dollar,  usdc: ev.prizes.third.usdc,  accent: "#f97316" },
-                          ].map(p => (
-                            <div key={p.label} style={{ padding: "8px 10px", borderRadius: "10px", background: "rgba(0,0,0,0.4)", border: `1px solid ${p.accent}55`, textAlign: "center" }}>
-                              <div style={{ fontSize: "14px", lineHeight: 1 }}>{p.medal}</div>
-                              <div style={{ color: p.accent, fontSize: "9px", fontWeight: 900, letterSpacing: "0.14em", marginTop: "4px" }}>{p.label}</div>
-                              <div style={{ color: "white", fontSize: "11px", fontWeight: 900, marginTop: "3px" }}>
-                                {p.usdc > 0 ? `$${p.usdc} + ` : ""}{p.g} G$
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Eligibility line */}
-                        <div style={{ position: "relative", zIndex: 1, color: "rgba(165,180,252,0.65)", fontSize: "10px", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>
-                          Rank by Challenge-AI matches · min {ev.minMatchesToQualify} to qualify · every match settles on chain
-                        </div>
-
-                        {/* Leaderboard top 3 OR empty state */}
-                        {phase === "live" && top3.length > 0 && (
-                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <div style={{ color: "rgba(165,180,252,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em" }}>
-                              CURRENT TOP {top3.length}
-                            </div>
-                            {top3.map(p => (
-                              <div key={p.wallet} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: "8px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(99,102,241,0.2)" }}>
-                                <span style={{ color: "white", fontSize: "11px", fontWeight: 800 }}>
-                                  #{p.rank} · {p.username || `${p.wallet.slice(0, 6)}…${p.wallet.slice(-4)}`}
-                                </span>
-                                <span style={{ color: "#a5b4fc", fontSize: "11px", fontWeight: 900 }}>{p.matches}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {phase === "live" && top3.length === 0 && (
-                          <div style={{ position: "relative", zIndex: 1, padding: "10px 12px", borderRadius: "10px", background: "rgba(99,102,241,0.08)", border: "1px dashed rgba(99,102,241,0.4)", textAlign: "center", color: "rgba(165,180,252,0.85)", fontSize: "11px", fontWeight: 700 }}>
-                            Leaderboard empty. Be the first to qualify · play 30 matches.
-                          </div>
-                        )}
-
-                        {/* Play CTA */}
-                        <a href="/games/challenge-ai" style={{ position: "relative", zIndex: 1, display: "block", textAlign: "center", padding: "10px 14px", borderRadius: "12px", background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.1em", textDecoration: "none", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}>
-                          {phase === "upcoming" ? "WARM UP · PLAY CHALLENGE-AI" : "PLAY · CLIMB THE BOARD"}
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Empty state when no live cup AND no active competition.
-                    The header still shows because past events exist below;
-                    leaving the gap blank reads as a layout bug. Calm violet
-                    treatment (no golden glow) so it never gets mistaken for
-                    a live event. The CTA drives notification opt-ins —
-                    aligned with the "real players hear about future events
-                    first" community strategy. */}
-                {!challenge && (!competition || competition.weeksLeft === 0) && !weeklyChallengeLB && (pastChallenges.length > 0 || pastCompetitions.length > 0) && (
-                  <div style={{
-                    borderRadius: "16px",
-                    background: "linear-gradient(180deg, rgba(20,10,50,0.7) 0%, rgba(10,5,30,0.85) 100%)",
-                    border: "1px dashed rgba(167,139,250,0.35)",
-                    padding: "18px 18px",
-                    textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: "26px", marginBottom: "6px" }}>🏁</div>
-                    <div style={{
-                      color: "rgba(230,220,255,0.92)",
-                      fontSize: "13px", fontWeight: 900, letterSpacing: "0.04em",
-                    }}>
-                      No live event right now
-                    </div>
-                    <div style={{
-                      color: "rgba(200,180,255,0.6)",
-                      fontSize: "11px", fontWeight: 600,
-                      marginTop: "6px", lineHeight: 1.5,
-                      maxWidth: "320px", margin: "6px auto 0",
-                    }}>
-                      The next one drops without warning. Players with notifications on hear first.
-                    </div>
-                    <button
-                      onClick={() => router.push("/profile?tab=settings")}
-                      style={{
-                        marginTop: "12px",
-                        display: "inline-flex", alignItems: "center", gap: "6px",
-                        padding: "7px 14px", borderRadius: "999px",
-                        background: "rgba(124,58,237,0.18)",
-                        border: "1.5px solid rgba(167,139,250,0.55)",
-                        boxShadow: "0 0 12px rgba(124,58,237,0.3)",
-                        color: "rgba(230,220,255,0.95)",
-                        fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.1em",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span>🔔</span>
-                      <span>TURN ON NOTIFICATIONS</span>
-                      <span style={{ fontSize: "12px", lineHeight: 1 }}>›</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* ── SEASON 1 · TEAM WARS — Event card matching the
-                    Community Challenge / 3-Week Cup pattern. Team picker
-                    inline; standings as mini progress bars. ─ */}
-                {season1Lb && (() => {
-                  const lb = season1Lb;
-                  const me = season1Me;
-                  // Pre-launch: count down to the season start so players see
-                  // the suspense window honestly. Post-launch: count down to
-                  // end as before. Without this both cards advertised 12d
-                  // when only 9.5d of scoring actually exists.
-                  const startSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
-                  const endSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
-                  const preLaunch = now < startSec;
-                  const secondsLeft = preLaunch
-                    ? Math.max(0, startSec - now)
-                    : Math.max(0, endSec - now);
-                  if (secondsLeft === 0) return null;
-                  const countdownLabel = preLaunch ? "STARTS IN" : "ENDS IN";
-                  const teamColor: Record<Season1Team, string> = { alpha: "#f97316", nova: "#06b6d4", pulse: "#a78bfa" };
-                  const sortedTeams = [...lb.teams].sort((a, b) => b.counted - a.counted);
-                  const isJoined = !!me && !!me.team;
-                  const myTeam = me?.team ?? null;
-                  const myCounted = me?.counted ?? 0;
-                  const myMin = me?.minGames ?? 40;
-                  const myMax = me?.maxCounted ?? 100;
-                  const myQualified = !!me?.qualified;
-
-                  return (
-                    <div id="team-wars-card" style={{
-                      borderRadius: "18px", padding: "2px",
-                      background: "linear-gradient(135deg, #f97316 0%, #c026d3 60%, #7c3aed 100%)",
-                      boxShadow: "0 0 22px rgba(192,38,211,0.28), 0 10px 24px rgba(0,0,0,0.6)",
-                      scrollMarginTop: "80px",
-                    }}>
-                      <div style={{
-                        borderRadius: "16px",
-                        background: "linear-gradient(180deg, rgba(40,10,80,0.96) 0%, rgba(10,2,40,0.98) 100%)",
-                        padding: "14px",
-                        display: "flex", flexDirection: "column", gap: "10px",
-                      }}>
-                        {/* Header */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                            <span style={{ fontSize: "14px" }}>🏟️</span>
-                            <span style={{
-                              color: "#f97316", fontSize: "clamp(10px, 2.6vw, 11.5px)",
-                              fontWeight: 900, letterSpacing: "0.16em",
-                              textShadow: "0 0 10px rgba(249,115,22,0.55)",
-                            }}>SEASON 1 · TEAM WARS</span>
-                          </div>
-                          <div style={{
-                            padding: "3px 10px", borderRadius: "999px",
-                            background: "rgba(249,115,22,0.18)",
-                            border: "1px solid rgba(249,115,22,0.55)",
-                            color: "#fde68a",
-                            fontSize: "10.5px", fontWeight: 900,
-                            fontFamily: "monospace", whiteSpace: "nowrap",
-                          }}>{preLaunch ? "🚀" : "⏳"} {countdownLabel} · {formatCountdown(secondsLeft)}</div>
-                        </div>
-
-                        {/* Headline */}
-                        <div style={{
-                          color: "rgba(230,220,255,0.9)",
-                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
-                        }}>
-                          1st team takes <strong style={{ color: "#fde68a" }}>2,400 G$</strong> — first is first.
-                          2nd wins <strong style={{ color: "#fde68a" }}>1,200 G$</strong> and 3rd wins <strong style={{ color: "#fde68a" }}>600 G$</strong>,
-                          but only if they hit <strong style={{ color: "#fde68a" }}>500 games</strong>.
-                        </div>
-
-                        {/* Mini standings — three progress bars, compact */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                          {sortedTeams.map(t => {
-                            const c = teamColor[t.team];
-                            const pct = Math.min(100, Math.round((t.counted / lb.meta.targetPerTeam) * 100));
-                            const isMine = myTeam === t.team;
-                            return (
-                              <div key={t.team}>
-                                <div style={{
-                                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                                  marginBottom: "3px", fontSize: "10px", fontWeight: 800,
-                                }}>
-                                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span style={{ width: "7px", height: "7px", borderRadius: "999px", background: c, boxShadow: `0 0 6px ${c}` }} />
-                                    <span style={{ color: "white", letterSpacing: "0.06em" }}>TEAM {t.team.toUpperCase()}</span>
-                                    {t.hitTarget && (
-                                      <span style={{ color: "#86efac", fontSize: "8px", fontWeight: 900, letterSpacing: "0.1em" }}>✓ QUALIFIED</span>
-                                    )}
-                                    {isMine && (
-                                      <span style={{ color: "rgba(220,210,255,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>YOU</span>
-                                    )}
-                                  </span>
-                                  <span style={{ color: "rgba(220,210,255,0.7)", fontFamily: "monospace" }}>
-                                    {t.counted}/{lb.meta.targetPerTeam}
-                                  </span>
-                                </div>
-                                <div style={{ height: "5px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: `1px solid ${c}22` }}>
-                                  <div style={{
-                                    width: `${pct}%`, height: "100%",
-                                    background: t.hitTarget ? "linear-gradient(90deg, #22c55e, #86efac)" : `linear-gradient(90deg, ${c}99, ${c})`,
-                                    boxShadow: t.hitTarget ? "0 0 6px rgba(34,197,94,0.5)" : `0 0 6px ${c}66`,
-                                    transition: "width 0.4s",
-                                  }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Unauthenticated visitors: explicit Connect CTA
-                            instead of nothing. Without this the team
-                            picker silently disappears for anyone who
-                            isn't signed in, which made it look broken
-                            when the Telegram reminder dropped. Privy
-                            login wraps the rest of the onboarding chain. */}
-                        {!address && ready && (
-                          <div style={{
-                            borderTop: "1px dashed rgba(167,139,250,0.2)",
-                            paddingTop: "10px",
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            gap: "8px",
-                          }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ color: "rgba(220,210,255,0.7)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em" }}>SIGN IN TO PICK A TEAM</div>
-                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "3px" }}>
-                                3 teams, 9.5 days, 5,400 G$ pool.
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => router.push(`/connect?next=${encodeURIComponent("/leaderboard?tab=seasons")}`)}
-                              style={{
-                                padding: "9px 14px", borderRadius: "10px",
-                                background: "linear-gradient(160deg, #fbbf24 0%, #f59e0b 50%, #b45309 100%)",
-                                border: "1.5px solid rgba(255,255,255,0.45)",
-                                color: "white", fontSize: "11px", fontWeight: 900, letterSpacing: "0.08em",
-                                cursor: "pointer", whiteSpace: "nowrap",
-                                boxShadow: "0 4px 12px rgba(245,158,11,0.35), inset 0 2px 4px rgba(255,255,255,0.25)",
-                              }}
-                            >
-                              CONNECT
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Your status — joined badge or team picker */}
-                        {address && me && !isJoined && (
-                          <div style={{
-                            borderTop: "1px dashed rgba(167,139,250,0.2)",
-                            paddingTop: "10px",
-                          }}>
-                            <div style={{
-                              display: "flex", alignItems: "center", justifyContent: "space-between",
-                              gap: "6px", marginBottom: "8px",
-                            }}>
-                              <div style={{
-                                color: "rgba(220,210,255,0.7)", fontSize: "10px",
-                                fontWeight: 900, letterSpacing: "0.18em",
-                              }}>PICK YOUR TEAM</div>
-                              {/* Referrer badge: lets the new joiner see who
-                                  invited them before they commit, so they
-                                  know joining via this link credits a friend. */}
-                              {referrerFromUrl && (
-                                <div style={{
-                                  display: "inline-flex", alignItems: "center", gap: "4px",
-                                  padding: "3px 8px", borderRadius: "999px",
-                                  background: "rgba(134,239,172,0.14)",
-                                  border: "1px solid rgba(134,239,172,0.4)",
-                                  color: "#86efac", fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.1em",
-                                  fontFamily: "monospace", whiteSpace: "nowrap",
-                                }}>
-                                  <span>🔗</span>
-                                  <span>REF · {referrerFromUrl.slice(0,4)}…{referrerFromUrl.slice(-3)}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
-                              {(["alpha","nova","pulse"] as Season1Team[]).map(id => {
-                                const c = teamColor[id];
-                                const open = season1TeamOpen(id);
-                                const joining = season1Joining === id;
-                                return (
-                                  <button
-                                    key={id}
-                                    onClick={() => open && !season1Joining && joinSeason1(id)}
-                                    disabled={!open || !!season1Joining}
-                                    style={{
-                                      padding: "9px 6px",
-                                      background: open ? `linear-gradient(180deg, ${c}33 0%, ${c}11 100%)` : "rgba(255,255,255,0.05)",
-                                      border: `1.5px solid ${open ? c : "rgba(255,255,255,0.1)"}`,
-                                      borderRadius: "10px",
-                                      cursor: open && !season1Joining ? "pointer" : "not-allowed",
-                                      opacity: open ? 1 : 0.5,
-                                      boxShadow: open ? `0 0 10px ${c}33` : "none",
-                                    }}
-                                  >
-                                    <div style={{
-                                      color: c, fontSize: "11px", fontWeight: 900, letterSpacing: "0.06em",
-                                      textShadow: `0 0 6px ${c}99`,
-                                    }}>{id.toUpperCase()}</div>
-                                    <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "2px" }}>
-                                      {season1Counts[id]} player{season1Counts[id] === 1 ? "" : "s"}
-                                    </div>
-                                    <div style={{
-                                      marginTop: "3px",
-                                      color: open ? "white" : "rgba(255,255,255,0.4)",
-                                      fontSize: "9px", fontWeight: 900, letterSpacing: "0.1em",
-                                    }}>{joining ? "JOINING…" : open ? "JOIN" : "FULL"}</div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {season1JoinError && (
-                              <div style={{
-                                marginTop: "6px", color: "#fda4af",
-                                fontSize: "10px", fontWeight: 700, textAlign: "center",
-                              }}>{season1JoinError}</div>
-                            )}
-                          </div>
-                        )}
-
-                        {address && isJoined && me && myTeam && (
-                          <div style={{
-                            borderTop: "1px dashed rgba(167,139,250,0.2)",
-                            paddingTop: "10px",
-                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                          }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 900, letterSpacing: "0.18em" }}>YOUR TEAM</div>
-                              <div style={{
-                                color: teamColor[myTeam], fontSize: "13px", fontWeight: 900,
-                                textShadow: `0 0 8px ${teamColor[myTeam]}77`,
-                              }}>TEAM {myTeam.toUpperCase()}</div>
-                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "2px" }}>
-                                {myCounted}/{myMax} counted games
-                              </div>
-                            </div>
-                            <div style={{
-                              padding: "4px 10px", borderRadius: "999px",
-                              background: myQualified ? "rgba(134,239,172,0.16)" : "rgba(253,164,175,0.14)",
-                              border: `1px solid ${myQualified ? "rgba(134,239,172,0.45)" : "rgba(253,164,175,0.4)"}`,
-                              color: myQualified ? "#86efac" : "#fda4af",
-                              fontSize: "10px", fontWeight: 900, letterSpacing: "0.14em",
-                              whiteSpace: "nowrap",
-                            }}>
-                              {myQualified ? "✓ QUALIFIED" : `${Math.max(0, myMin - (me?.games ?? 0))} TO QUALIFY`}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── SEASON 1 · SOLO LADDER — Companion event card.
-                    Same anatomy as the Community Challenge card right
-                    below: gradient border, dark inner gradient with top
-                    gloss, header row, dual stat row, contributors list
-                    with avatars, my-score pill, drill-in CTA. ─ */}
-                {season1Lb && (() => {
-                  const lb = season1Lb;
-                  const me = season1Me;
-                  // Same pre-launch / post-launch countdown swap as the
-                  // Team Wars card above so both cards agree on whether
-                  // we're waiting for kickoff or already running.
-                  const soloStartSec = Math.floor(new Date(lb.meta.startsAt).getTime() / 1000);
-                  const soloEndSec   = Math.floor(new Date(lb.meta.endsAt).getTime() / 1000);
-                  const soloPreLaunch = now < soloStartSec;
-                  const secondsLeft = soloPreLaunch
-                    ? Math.max(0, soloStartSec - now)
-                    : Math.max(0, soloEndSec - now);
-                  if (secondsLeft === 0) return null;
-                  const soloCountdownLabel = soloPreLaunch ? "STARTS IN" : "ENDS IN";
-                  // soloTop10 is the canonical top-N; first 5 fit comfortably here.
-                  // Top 3 is the right scope for a card: it's the
-                  // universal podium (gold/silver/bronze) and creates
-                  // curiosity to drill in. The full top-10 lives on
-                  // /leaderboard/solo-ladder. Previously showed top 5
-                  // here, too much content for a card slot, competed
-                  // with the YOUR SCORE pill above for attention.
-                  const top3 = lb.soloTop10.slice(0, 3);
-                  const mySoloPts = me?.soloPoints ?? 0;
-                  const mySoloRank = me?.soloRank ?? null;
-                  const myUsername = me?.username ?? null;
-                  // (meInTop3 dropped. It was dead code carried over from
-                  // when the podium was top-5. Self-position is shown via
-                  // the YOUR SCORE pill above the list, not via row
-                  // highlighting in the podium.)
-                  // Same DiceBear avatar seed the rest of the app uses
-                  // (`${username}-${wallet}`), so the same person shows
-                  // up under the same face across rankings, profile, and
-                  // every event card. The limited 5-color palette
-                  // matches /profile so the family of avatars looks
-                  // cohesive.
-                  const avatarFor = (w: string, u?: string | null) =>
-                    `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(`${u || ""}-${w.toLowerCase()}`)}&backgroundType=gradientLinear&backgroundColor=ffdfbf,ffd5dc,c0aede,b6e3f4,d1d4f9`;
-
-                  return (
-                    <div style={{
-                      borderRadius: "18px", padding: "2px",
-                      background: "linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #c2410c 100%)",
-                      boxShadow: "0 0 22px rgba(251,191,36,0.25), 0 10px 24px rgba(0,0,0,0.6)",
-                    }}>
-                      <div style={{
-                        borderRadius: "16px",
-                        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-                        padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
-                        position: "relative", overflow: "hidden",
-                        display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
-                      }}>
-                        <div style={{
-                          position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-                          background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
-                          pointerEvents: "none",
-                        }} />
-
-                        {/* Header — left tag pill + headline; right boxed countdown */}
-                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-                          <div>
-                            <div style={{
-                              display: "inline-flex", alignItems: "center", gap: "5px",
-                              padding: "2px 8px", borderRadius: "999px",
-                              background: "rgba(251,191,36,0.15)",
-                              border: "1px solid rgba(251,191,36,0.5)",
-                              marginBottom: "6px",
-                            }}>
-                              <span style={{ color: "#fde68a", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>SEASON 1 EVENT</span>
-                            </div>
-                            <div style={{
-                              color: "white", fontSize: "clamp(14px,4vw,16px)",
-                              fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
-                            }}>
-                              SOLO LADDER
-                            </div>
-                          </div>
-                          <div style={{
-                            padding: "5px 10px", borderRadius: "10px",
-                            background: "rgba(0,0,0,0.5)",
-                            border: "1px solid rgba(251,191,36,0.4)",
-                            textAlign: "right", flexShrink: 0,
-                          }}>
-                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>
-                              {soloCountdownLabel}
-                            </div>
-                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1, fontFamily: "monospace" }}>
-                              {formatCountdown(secondsLeft)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Headline explanation — mirrors the Team Wars card
-                            so a player landing on the seasons tab can
-                            understand what Solo Ladder is without
-                            clicking through. Calls out the contributors
-                            (games + wagers + refs + streak) so they see
-                            this isn't only about high-score grinding. */}
-                        <div style={{
-                          position: "relative", zIndex: 1,
-                          color: "rgba(230,220,255,0.9)",
-                          fontSize: "clamp(11px, 2.8vw, 12px)", lineHeight: 1.45,
-                        }}>
-                          Every <strong style={{ color: "#fde68a" }}>game</strong>, <strong style={{ color: "#fde68a" }}>wager win</strong>, <strong style={{ color: "#fde68a" }}>claim</strong>, <strong style={{ color: "#fde68a" }}>habitat</strong>, <strong style={{ color: "#fde68a" }}>referral</strong> and <strong style={{ color: "#fde68a" }}>active day</strong> earns points.
-                          Top <strong style={{ color: "#fde68a" }}>10</strong> split <strong style={{ color: "#fde68a" }}>1,200 G$</strong>.
-                        </div>
-
-                        {/* Prize + leader stat row */}
-                        <div style={{
-                          position: "relative", zIndex: 1,
-                          padding: "10px 12px", borderRadius: "10px",
-                          background: "rgba(0,0,0,0.35)",
-                          border: "1px solid rgba(251,191,36,0.3)",
-                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
-                        }}>
-                          <div>
-                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
-                              PRIZE POOL
-                            </div>
-                            <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px" }}>
-                              1,200 G$ · Top 10
-                            </div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>
-                              TOP SCORE
-                            </div>
-                            <div style={{ color: "#fde68a", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px", fontFamily: "monospace" }}>
-                              {top3[0] ? top3[0].points.toLocaleString() : "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Your share pill — mirrors Community Challenge */}
-                        {address && me && (mySoloPts > 0 || mySoloRank) && (
-                          <div style={{
-                            position: "relative", zIndex: 1,
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "8px 12px", borderRadius: "10px",
-                            background: "rgba(251,191,36,0.08)",
-                            border: "1px solid rgba(251,191,36,0.3)",
-                          }}>
-                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
-                              YOUR SCORE
-                            </span>
-                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, fontFamily: "monospace" }}>
-                              {mySoloPts.toLocaleString()} pts {mySoloRank ? `· #${mySoloRank}` : "· unranked"}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Top 3 podium — gold/silver/bronze only. The
-                            full top-10 lives on /leaderboard/solo-ladder
-                            so a card stays a card, not a mini-page. */}
-                        {top3.length === 0 ? (
-                          <div style={{
-                            position: "relative", zIndex: 1, padding: "12px",
-                            color: "rgba(220,210,255,0.5)", fontSize: "11px",
-                            textAlign: "center", fontStyle: "italic",
-                          }}>
-                            No points logged yet. Play to start the ladder.
-                          </div>
-                        ) : (
-                          <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <div style={{
-                              color: "rgba(254,215,170,0.7)",
-                              fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
-                            }}>PODIUM · TOP 3</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                              {top3.map(r => {
-                                const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
-                                const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "🏅";
-                                return (
-                                  <div key={r.wallet} style={{
-                                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                                    gap: "10px",
-                                    padding: "8px 10px", borderRadius: "10px",
-                                    background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
-                                    border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                                  }}>
-                                    <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
-                                      <span style={{
-                                        fontSize: "12px",
-                                        color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
-                                        fontWeight: 900, letterSpacing: "0.05em",
-                                        flexShrink: 0, minWidth: "22px",
-                                      }}>#{r.rank}</span>
-                                      <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
-                                      <span style={{
-                                        width: 24, height: 24, minWidth: 24, borderRadius: "50%",
-                                        overflow: "hidden", flexShrink: 0,
-                                        background: "#1a0550",
-                                        border: `1.5px solid ${isMe ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.15)"}`,
-                                      }}>
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={avatarFor(r.wallet, r.username)} alt=""
-                                          width={24} height={24}
-                                          style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                                      </span>
-                                      <span style={{
-                                        color: isMe ? "#fde68a" : "rgba(255,255,255,0.92)",
-                                        fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
-                                        fontWeight: isMe ? 900 : 700,
-                                        fontFamily: r.username ? "system-ui, -apple-system, sans-serif" : "monospace",
-                                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                      }}>
-                                        {r.username || `${r.wallet.slice(0, 4)}…${r.wallet.slice(-3)}`}
-                                        {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
-                                      </span>
-                                    </span>
-                                    <span style={{
-                                      color: "#fbbf24",
-                                      fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
-                                      fontFamily: "monospace", flexShrink: 0,
-                                      textShadow: "0 0 6px rgba(251,191,36,0.4)",
-                                    }}>
-                                      {r.points.toLocaleString()}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Drill-in CTA */}
-                        <div
-                          role="button" tabIndex={0}
-                          onClick={() => router.push("/leaderboard/solo-ladder")}
-                          style={{
-                            position: "relative", zIndex: 1,
-                            cursor: "pointer", userSelect: "none",
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            paddingTop: "4px",
-                            transition: "transform 0.12s",
-                          }}
-                          onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.98)"; }}
-                          onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}
-                        >
-                          <span style={{ color: "rgba(220,210,255,0.65)", fontSize: "10.5px", fontWeight: 700 }}>
-                            View full ladder · your breakdown · referral link
-                          </span>
-                          <span style={{
-                            padding: "5px 11px", borderRadius: "999px",
-                            background: "rgba(251,191,36,0.18)",
-                            border: "1px solid rgba(251,191,36,0.55)",
-                            color: "#fde68a",
-                            fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.12em",
-                            whiteSpace: "nowrap",
-                          }}>VIEW ›</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── COMMUNITY CHALLENGE — weekly community games milestone ─ */}
-                {weeklyChallengeLB && !weeklyChallengeLB.hit && (
-                  <div style={{
-                    borderRadius: "18px", padding: "2px",
-                    background: "linear-gradient(180deg, #22c55e 0%, #16a34a 50%, #065f46 100%)",
-                    boxShadow: "0 0 22px rgba(34,197,94,0.25), 0 10px 24px rgba(0,0,0,0.6)",
-                  }}>
-                    <div style={{
-                      borderRadius: "16px",
-                      background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-                      padding: "clamp(12px,3.5vw,18px) clamp(14px,4vw,20px)",
-                      position: "relative", overflow: "hidden",
-                      display: "flex", flexDirection: "column", gap: "clamp(10px,2.4vw,14px)",
-                    }}>
-                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "55%", background: "linear-gradient(180deg, rgba(34,197,94,0.1) 0%, transparent 100%)", pointerEvents: "none" }} />
-
-                      {/* Header */}
-                      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-                        <div>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.5)", marginBottom: "6px" }}>
-                            <span style={{ color: "#86efac", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>COMMUNITY EVENT</span>
-                          </div>
-                          <div style={{ color: "white", fontSize: "clamp(14px,4vw,16px)", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
-                            WEEKLY CHALLENGE
-                          </div>
-                        </div>
-                        <div style={{ padding: "5px 10px", borderRadius: "10px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(34,197,94,0.4)", textAlign: "right", flexShrink: 0 }}>
-                          <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>{weeklyChallengeLB.daysLeft}d LEFT</div>
-                          <div style={{ color: "#86efac", fontSize: "clamp(13px,3.6vw,16px)", fontWeight: 900, lineHeight: 1 }}>
-                            {weeklyChallengeLB.progress}<span style={{ fontSize: "10px", color: "rgba(134,239,172,0.5)" }}>/{weeklyChallengeLB.target}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Prize + progress */}
-                      <div style={{ position: "relative", zIndex: 1, padding: "10px 12px", borderRadius: "10px", background: "rgba(0,0,0,0.35)", border: "1px solid rgba(34,197,94,0.3)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                        <div>
-                          <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>PRIZE POOL</div>
-                          <div style={{ color: "#fbbf24", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px" }}>{weeklyChallengeLB.rewardG} G$ split</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ color: "rgba(134,239,172,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS IN</div>
-                          <div style={{ color: "#86efac", fontSize: "clamp(13px,3.6vw,15px)", fontWeight: 900, marginTop: "2px" }}>{weeklyChallengeLB.playersIn}</div>
-                        </div>
-                      </div>
-
-                      {/* Progress bar */}
-                      <div style={{ position: "relative", zIndex: 1 }}>
-                        <div style={{ height: "6px", borderRadius: "999px", background: "rgba(0,0,0,0.5)", overflow: "hidden", border: "1px solid rgba(34,197,94,0.15)" }}>
-                          <div style={{ width: `${Math.min(100, Math.round((weeklyChallengeLB.progress / weeklyChallengeLB.target) * 100))}%`, height: "100%", borderRadius: "999px", background: "linear-gradient(90deg, #16a34a 0%, #86efac 100%)", transition: "width 0.6s" }} />
-                        </div>
-                        <div style={{ color: "rgba(134,239,172,0.45)", fontSize: "8px", fontWeight: 700, marginTop: "4px" }}>
-                          Max {weeklyChallengeLB.capPerPlayer} games per player · {weeklyChallengeLB.ubiG} G$ to GoodDollar when hit
-                        </div>
-                      </div>
-
-                      {/* Your share */}
-                      {weeklyChallengeLB.myContribution != null && (
-                        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: "10px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)" }}>
-                          <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>YOUR SHARE</span>
-                          <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{weeklyChallengeLB.myContribution} / {weeklyChallengeLB.capPerPlayer}</span>
-                        </div>
-                      )}
-
-                      {/* All contributors — mirrors the 72-hr cup row pattern
-                          (rank · medal · name · count). Backend returns up to
-                          50; we render every row the server sends. Long lists
-                          scroll inside a max-height container. */}
-                      {Array.isArray(weeklyChallengeLB.contributors) && weeklyChallengeLB.contributors.length > 0 && (
-                        <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                          <div style={{
-                            color: "rgba(134,239,172,0.7)",
-                            fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
-                          }}>CONTRIBUTORS · {weeklyChallengeLB.contributors.length} PLAYING · {weeklyChallengeLB.capPerPlayer} GAMES MAX</div>
-                          <div style={{
-                            display: "flex", flexDirection: "column", gap: "6px",
-                            maxHeight: "360px", overflowY: "auto", paddingRight: "2px",
-                          }}>
-                          {weeklyChallengeLB.contributors.map((rawC, i) => {
-                            // Defensive: backend may briefly return the old shape (string[])
-                            // during the rolling deploy. Normalize either way.
-                            const c = typeof rawC === "string"
-                              ? { wallet: rawC, username: null, games: 0 }
-                              : rawC;
-                            if (!c?.wallet) return null;
-                            const isMe = !!address && c.wallet.toLowerCase() === address.toLowerCase();
-                            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🏅";
-                            return (
-                              <div key={c.wallet} style={{
-                                display: "flex", alignItems: "center", justifyContent: "space-between",
-                                gap: "10px",
-                                padding: "8px 10px", borderRadius: "10px",
-                                background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
-                                border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                              }}>
-                                <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
-                                  <span style={{
-                                    fontSize: "12px",
-                                    color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
-                                    fontWeight: 900, letterSpacing: "0.05em",
-                                    flexShrink: 0, minWidth: "22px",
-                                  }}>#{i + 1}</span>
-                                  <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
-                                  <span style={{
-                                    color: isMe ? "#fde68a" : "rgba(255,255,255,0.92)",
-                                    fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
-                                    fontWeight: isMe ? 900 : 700,
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                  }}>
-                                    {c.username || `${c.wallet.slice(0, 4)}…${c.wallet.slice(-3)}`}
-                                    {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
-                                  </span>
-                                </span>
-                                <span style={{
-                                  color: "#86efac",
-                                  fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
-                                  fontFamily: "monospace",
-                                  flexShrink: 0,
-                                }}>
-                                  {c.games}
-                                </span>
-                              </div>
-                            );
-                          })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {weeklyChallengeLB?.hit && (
-                  <div style={{ borderRadius: "16px", background: "rgba(20,10,50,0.6)", border: "1.5px solid rgba(134,239,172,0.45)", padding: "14px 16px", textAlign: "center" }}>
-                    <div style={{ color: "#86efac", fontSize: "13px", fontWeight: 900 }}>🎉 Community milestone hit!</div>
-                    <div style={{ color: "rgba(134,239,172,0.65)", fontSize: "10px", marginTop: "4px" }}>{weeklyChallengeLB.rewardG} G$ split among all players · {weeklyChallengeLB.ubiG} G$ to GoodDollar</div>
-                  </div>
-                )}
-
-                {/* ── 72-HR ARENA CUP — live participation board ──
-                    Pinned above the 3-Week Competition because it's the
-                    most time-bound thing on the screen. Shows the top
-                    challenge.topN players (matches the actual prize
-                    structure), the prize line, the live countdown, and
-                    the user's own rank chip if they're on the board.
-                    Visible only while the event is active or pending. */}
-                {challenge && (
-                  <div style={{
-                    borderRadius: "18px", padding: "2px",
-                    background: "linear-gradient(180deg, #fbbf24 0%, #f97316 50%, #c026d3 100%)",
-                    boxShadow: "0 0 22px rgba(251,191,36,0.35), 0 10px 24px rgba(0,0,0,0.6)",
-                  }}>
-                    <div style={{
-                      borderRadius: "16px",
-                      background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-                      padding: "clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 20px)",
-                      position: "relative", overflow: "hidden",
-                      display: "flex", flexDirection: "column",
-                      gap: "clamp(10px, 2.4vw, 14px)",
-                    }}>
-                      <div style={{
-                        position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-                        background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
-                        pointerEvents: "none",
-                      }} />
-
-                      {/* Header — title + countdown chip */}
-                      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{
-                            display: "inline-flex", alignItems: "center", gap: "5px",
-                            padding: "2px 8px", borderRadius: "999px",
-                            background: challenge.pending ? "rgba(167,139,250,0.18)" : "rgba(251,191,36,0.18)",
-                            border: `1px solid ${challenge.pending ? "rgba(167,139,250,0.5)" : "rgba(251,191,36,0.5)"}`,
-                            marginBottom: "6px",
-                          }}>
-                            <span style={{
-                              color: challenge.pending ? "#e9d5ff" : "#fbbf24",
-                              fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em",
-                            }}>{challenge.pending ? "STARTING SOON" : "LIVE NOW"}</span>
-                          </div>
-                          <div style={{
-                            color: "white",
-                            fontSize: "clamp(14px, 4vw, 16px)",
-                            fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1,
-                          }}>
-                            {challenge.name.toUpperCase()}
-                          </div>
-                        </div>
-                        <div style={{
-                          padding: "5px 10px", borderRadius: "10px",
-                          background: "rgba(0,0,0,0.5)",
-                          border: `1px solid ${challenge.pending ? "rgba(167,139,250,0.4)" : "rgba(251,191,36,0.4)"}`,
-                          textAlign: "right", flexShrink: 0,
-                        }}>
-                          <div style={{
-                            color: challenge.pending ? "rgba(233,213,255,0.7)" : "rgba(254,215,170,0.7)",
-                            fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em",
-                          }}>{challenge.pending ? "STARTS IN" : "TIME LEFT"}</div>
-                          <div style={{
-                            color: challenge.pending ? "#e9d5ff" : "#fbbf24",
-                            fontSize: "clamp(13px, 3.6vw, 16px)", fontWeight: 900, lineHeight: 1,
-                            fontFamily: "monospace",
-                          }}>
-                            {formatCountdown(challenge.pending ? challenge.secondsUntilStart : challenge.secondsLeft)}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Prize line — single chip because every winner gets same amount */}
-                      <div style={{
-                        position: "relative", zIndex: 1,
-                        padding: "10px 12px", borderRadius: "10px",
-                        background: "rgba(0,0,0,0.35)",
-                        border: "1px solid rgba(251,191,36,0.4)",
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: "10px",
-                      }}>
-                        <div>
-                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>PRIZE POOL</div>
-                          <div style={{ color: "#fbbf24", fontSize: "clamp(13px, 3.6vw, 15px)", fontWeight: 900, marginTop: "2px" }}>
-                            ${challenge.totalPrizePool} USDC · top {challenge.topN}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.14em" }}>EACH WINS</div>
-                          <div style={{ color: "#fbbf24", fontSize: "clamp(13px, 3.6vw, 15px)", fontWeight: 900, marginTop: "2px" }}>
-                            ${challenge.prizeUsdc}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Live top N — only render when event has actually started */}
-                      {!challenge.pending && challenge.rankings.length > 0 && (
-                        <div style={{
-                          position: "relative", zIndex: 1,
-                          display: "flex", flexDirection: "column",
-                          gap: "6px",
-                        }}>
-                          <div style={{
-                            color: "rgba(254,215,170,0.7)",
-                            fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em",
-                          }}>LIVE TOP 5 · {challenge.minPlays} PLAYS TO QUALIFY</div>
-                          {challenge.rankings.slice(0, 5).map((p, i) => {
-                            const isMe = address && p.wallet.toLowerCase() === address.toLowerCase();
-                            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🏅";
-                            return (
-                              <div key={p.wallet} style={{
-                                display: "flex", alignItems: "center", justifyContent: "space-between",
-                                gap: "10px",
-                                padding: "8px 10px", borderRadius: "10px",
-                                background: isMe ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.04)",
-                                border: isMe ? "1px solid rgba(251,191,36,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                              }}>
-                                <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
-                                  <span style={{
-                                    fontSize: "12px",
-                                    color: isMe ? "#fbbf24" : "rgba(255,255,255,0.55)",
-                                    fontWeight: 900, letterSpacing: "0.05em",
-                                    flexShrink: 0, minWidth: "22px",
-                                  }}>#{i + 1}</span>
-                                  <span style={{ fontSize: "13px", flexShrink: 0 }}>{medal}</span>
-                                  <span style={{
-                                    color: isMe ? "#fde68a" : p.qualified ? "rgba(255,255,255,0.92)" : "rgba(200,180,255,0.7)",
-                                    fontSize: "clamp(11.5px, 2.9vw, 12.5px)",
-                                    fontWeight: isMe ? 900 : 700,
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                  }}>
-                                    {p.username || `${p.wallet.slice(0, 4)}…${p.wallet.slice(-3)}`}
-                                    {isMe && <span style={{ marginLeft: "6px", color: "#fbbf24", fontSize: "9px", letterSpacing: "0.1em" }}>YOU</span>}
-                                  </span>
-                                </span>
-                                <span style={{
-                                  color: p.qualified ? "#86efac" : "#fde68a",
-                                  fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 900,
-                                  fontFamily: "monospace",
-                                  flexShrink: 0,
-                                }}>
-                                  {p.plays}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* My rank chip — when player is in top 20 but outside top N */}
-                      {!challenge.pending && address && (() => {
-                        const myIdx = challenge.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase());
-                        if (myIdx < 0 || myIdx < challenge.topN) return null;
-                        const me = challenge.rankings[myIdx];
-                        return (
-                          <div style={{
-                            position: "relative", zIndex: 1,
-                            padding: "8px 12px", borderRadius: "10px",
-                            background: "rgba(251,191,36,0.08)",
-                            border: "1px solid rgba(251,191,36,0.4)",
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                          }}>
-                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
-                              YOU&apos;RE #{myIdx + 1} · KEEP PLAYING
-                            </span>
-                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
-                              {me.plays} plays
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Empty state — pending or no qualifiers yet */}
-                      {!challenge.pending && challenge.rankings.length === 0 && (
-                        <div style={{
-                          position: "relative", zIndex: 1,
-                          padding: "14px 12px", borderRadius: "10px",
-                          background: "rgba(0,0,0,0.3)",
-                          color: "rgba(200,180,255,0.55)",
-                          fontSize: "11px", textAlign: "center", fontWeight: 700,
-                        }}>
-                          No plays yet. Be the first to qualify.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── 3-WEEK COMPETITION SPECIAL EVENT — single gold accent ── */}
-                {competition && competition.weeksLeft > 0 && (
-                  <div style={{
-                    borderRadius: "18px", padding: "2px",
-                    background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
-                    boxShadow: "0 0 18px rgba(251,191,36,0.3), 0 10px 24px rgba(0,0,0,0.6)",
-                  }}>
-                    <div style={{
-                      borderRadius: "16px",
-                      background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-                      padding: "16px 18px",
-                      position: "relative", overflow: "hidden",
-                    }}>
-                      <div style={{
-                        position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-                        background: "linear-gradient(180deg, rgba(251,191,36,0.1) 0%, transparent 100%)",
-                        pointerEvents: "none",
-                      }} />
-                      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-                        <div>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "2px 8px", borderRadius: "999px", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.5)", marginBottom: "6px" }}>
-                            <span style={{ color: "#fbbf24", fontSize: "8px", fontWeight: 900, letterSpacing: "0.16em" }}>SPECIAL EVENT</span>
-                          </div>
-                          <div style={{ color: "white", fontSize: "15px", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>
-                            3-WEEK COMPETITION
-                          </div>
-                        </div>
-                        <div style={{
-                          padding: "5px 10px", borderRadius: "10px",
-                          background: "rgba(0,0,0,0.5)",
-                          border: "1px solid rgba(251,191,36,0.4)",
-                          textAlign: "right",
-                        }}>
-                          <div style={{ color: "rgba(254,215,170,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.14em" }}>
-                            {competition.weeksLeft === 1 ? "FINAL WEEK" : "WEEKS LEFT"}
-                          </div>
-                          <div style={{ color: "#fbbf24", fontSize: "16px", fontWeight: 900, lineHeight: 1 }}>
-                            {competition.weeksLeft === 1 ? "🏁" : competition.weeksLeft}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
-                        {[
-                          { rank: "1ST", emoji: "🥇", color: "#fbbf24", prize: competition.prizes.first },
-                          { rank: "2ND", emoji: "🥈", color: "#e2e8f0", prize: competition.prizes.second },
-                          { rank: "3RD", emoji: "🥉", color: "#f97316", prize: competition.prizes.third },
-                        ].map(p => (
-                          <div key={p.rank} style={{
-                            borderRadius: "10px",
-                            background: "rgba(0,0,0,0.35)",
-                            border: `1px solid ${p.color}55`,
-                            padding: "8px 4px", textAlign: "center",
-                          }}>
-                            <div style={{ fontSize: "14px" }}>{p.emoji}</div>
-                            <div style={{ color: p.color, fontSize: "15px", fontWeight: 900, marginTop: "2px" }}>
-                              ${p.prize}
-                            </div>
-                            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em", marginTop: "1px" }}>{p.rank}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {address && (() => {
-                        const myCompRank = competition.rankings.findIndex(r => r.wallet === address.toLowerCase());
-                        if (myCompRank < 0) return null;
-                        const me = competition.rankings[myCompRank];
-                        return (
-                          <div style={{
-                            position: "relative", zIndex: 1, marginTop: "10px",
-                            padding: "8px 12px", borderRadius: "10px",
-                            background: "rgba(251,191,36,0.08)",
-                            border: "1px solid rgba(251,191,36,0.4)",
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                          }}>
-                            <span style={{ color: "rgba(254,215,170,0.85)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.08em" }}>
-                              YOU&apos;RE #{myCompRank + 1} OVERALL
-                            </span>
-                            <span style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
-                              {me.total} pts
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* ── 3-WEEK CUP RANKINGS ──
-                          Full cumulative leaderboard for the competition.
-                          Was previously only accessible via the /api/competition
-                          endpoint with no UI — users saw the "3-WEEK COMPETITION"
-                          card advertising $15/$10/$5 prizes but had no way to
-                          check who was winning or where they stood (unless they
-                          were already in the top 20).
-                          Top 10 shown; the "you're #N" chip above covers ranks
-                          beyond that. Rhythm+Simon split in the score cell so
-                          players see both contributions at a glance. */}
-                      {competition.rankings.length > 0 && (
-                        <div style={{
-                          position: "relative", zIndex: 1, marginTop: "14px",
-                          padding: "12px",
-                          borderRadius: "12px",
-                          background: "rgba(0,0,0,0.3)",
-                          border: "1px solid rgba(251,191,36,0.2)",
-                        }}>
-                          <div style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            marginBottom: "10px",
-                          }}>
-                            <span style={{
-                              color: "rgba(254,215,170,0.9)", fontSize: "10px",
-                              fontWeight: 900, letterSpacing: "0.16em",
-                            }}>CUP RANKINGS</span>
-                            <span style={{
-                              color: "rgba(200,180,255,0.55)", fontSize: "9px",
-                              fontWeight: 700, letterSpacing: "0.08em",
-                            }}>RHYTHM + SIMON COMBINED</span>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            {competition.rankings.slice(0, 10).map((r, i) => {
-                              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
-                              const medalColor = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : i === 2 ? "#f97316" : "rgba(200,180,255,0.6)";
-                              const isMe = !!address && r.wallet === address.toLowerCase();
-                              const display = r.username || `${r.wallet.slice(0, 4)}...${r.wallet.slice(-3)}`;
-                              return (
-                                <div key={r.wallet} style={{
-                                  display: "flex", alignItems: "center", gap: "10px",
-                                  padding: "7px 10px",
-                                  borderRadius: "8px",
-                                  background: isMe ? "rgba(251,191,36,0.12)" : (i < 3 ? `${medalColor}10` : "rgba(255,255,255,0.025)"),
-                                  border: isMe ? "1px solid rgba(251,191,36,0.45)" : `1px solid ${i < 3 ? medalColor + "33" : "transparent"}`,
-                                }}>
-                                  <span style={{
-                                    minWidth: "22px", textAlign: "center",
-                                    fontSize: medal ? "14px" : "10px",
-                                    color: medalColor,
-                                    fontWeight: 800,
-                                  }}>
-                                    {medal || `#${i + 1}`}
-                                  </span>
-                                  <span style={{
-                                    flex: 1, minWidth: 0,
-                                    color: isMe ? "#fde68a" : "white",
-                                    fontSize: "11.5px",
-                                    fontWeight: isMe ? 900 : 700,
-                                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                  }}>
-                                    {isMe ? "YOU" : display}
-                                  </span>
-                                  <span style={{
-                                    color: "rgba(200,180,255,0.5)",
-                                    fontSize: "9px", fontWeight: 700,
-                                    letterSpacing: "0.04em",
-                                    whiteSpace: "nowrap",
-                                  }}>
-                                    🥁 {r.totalRhythm} · 🧠 {r.totalSimon}
-                                  </span>
-                                  <span style={{
-                                    minWidth: "48px", textAlign: "right",
-                                    color: isMe ? "#fbbf24" : (i < 3 ? medalColor : "white"),
-                                    fontSize: "13px", fontWeight: 900,
-                                    textShadow: i < 3 ? `0 0 8px ${medalColor}66` : "none",
-                                  }}>
-                                    {r.total}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── COMPLETED EVENTS — grid cards matching Completed Seasons style ── */}
-                {(pastChallenges.length > 0 || pastCompetitions.length > 0 || pastSeasonsV1.length > 0) && (
-                  <div>
-                    <div style={{
-                      fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
-                      color: "rgba(254,215,170,0.85)", textAlign: "center",
-                      textShadow: "0 0 14px rgba(251,191,36,0.6)", marginBottom: "12px",
-                    }}>── COMPLETED EVENTS ──</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "10px" }}>
-                      {/* Past Team-Wars + Solo-Ladder seasons (newest first) */}
-                      {pastSeasonsV1.map(s => {
-                        const teamWinner = s.standings.teams[0];
-                        const soloWinner = s.standings.soloTop10[0];
-                        const closing = s.prize_winners.closing_surprise;
-                        const teamLabel = teamWinner ? teamWinner.team.toUpperCase() : "—";
-                        const teamColor =
-                          teamWinner?.team === "alpha" ? "#fb923c" :
-                          teamWinner?.team === "nova"  ? "#67e8f9" :
-                          teamWinner?.team === "pulse" ? "#a78bfa" : "#fbbf24";
-                        return (
-                          <div key={`season-${s.season_id}`}
-                            role="button" tabIndex={0}
-                            onClick={() => setSelectedEvent({ type: "season", data: s })}
-                            style={{
-                              borderRadius: "14px",
-                              background: "rgba(20,10,50,0.6)",
-                              border: "1px solid rgba(167,139,250,0.28)",
-                              boxShadow: "0 6px 14px rgba(0,0,0,0.5)",
-                              padding: "12px 14px", cursor: "pointer", userSelect: "none",
-                              transition: "transform 0.15s, border-color 0.15s",
-                            }}
-                            onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; el.style.borderColor = "rgba(167,139,250,0.6)"; }}
-                            onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ""; el.style.borderColor = "rgba(167,139,250,0.28)"; }}
-                          >
-                            <div style={{ color: "#c4b5fd", fontSize: "12px", fontWeight: 900, letterSpacing: "0.05em", marginBottom: "8px" }}>
-                              SEASON {s.season_id} · TEAM WARS
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: `${teamColor}14`, border: `1px solid ${teamColor}55`, marginBottom: "6px" }}>
-                              <span style={{ fontSize: "13px" }}>🏆</span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>TEAM WINNER</div>
-                                <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{teamLabel}</div>
-                              </div>
-                              <div style={{ color: teamColor, fontSize: "12px", fontWeight: 900 }}>{teamWinner?.counted ?? 0}</div>
-                            </div>
-                            {soloWinner && (
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", marginBottom: "6px" }}>
-                                <span style={{ fontSize: "13px" }}>🥇</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>SOLO #1</div>
-                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {soloWinner.username || `${soloWinner.wallet.slice(0, 4)}…${soloWinner.wallet.slice(-3)}`}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900 }}>{soloWinner.points}</div>
-                              </div>
-                            )}
-                            {closing && (
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)", marginBottom: "6px" }}>
-                                <span style={{ fontSize: "13px" }}>🎁</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(187,247,208,0.7)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>CLOSING SURPRISE</div>
-                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {closing.username || `${closing.wallet.slice(0, 4)}…${closing.wallet.slice(-3)}`}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#22c55e", fontSize: "11px", fontWeight: 900 }}>${closing.amount_usdc ?? 10}</div>
-                              </div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                              <span style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700 }}>
-                                {new Date(s.starts_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })} → {new Date(s.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                              </span>
-                              <span style={{ color: "rgba(167,139,250,0.8)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {pastCompetitions.map(comp => {
-                        const winner = comp.winners[0];
-                        const myFinish = address ? (comp.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-                        const placed = myFinish > 0 && myFinish <= 3;
-                        const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
-                        const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
-                        return (
-                          <div key={comp.id}
-                            role="button" tabIndex={0}
-                            onClick={() => setSelectedEvent({ type: "competition", data: comp })}
-                            style={{
-                              borderRadius: "14px",
-                              background: "rgba(20,10,50,0.6)",
-                              border: placed ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(251,191,36,0.18)",
-                              boxShadow: placed ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)` : "0 6px 14px rgba(0,0,0,0.5)",
-                              padding: "12px 14px", cursor: "pointer", userSelect: "none",
-                              transition: "transform 0.15s, border-color 0.15s",
-                            }}
-                            onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; if (!placed) el.style.borderColor = "rgba(251,191,36,0.45)"; }}
-                            onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ""; if (!placed) el.style.borderColor = "rgba(251,191,36,0.18)"; }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                              <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                                {comp.name.toUpperCase()}
-                              </div>
-                              {myMedal && (
-                                <div style={{ padding: "2px 8px", borderRadius: "999px", background: `${myMedalColor}1a`, border: `1px solid ${myMedalColor}66`, flexShrink: 0, marginLeft: "6px" }}>
-                                  <span style={{ fontSize: "10px" }}>{myMedal}</span>
-                                  <span style={{ color: myMedalColor!, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>YOU</span>
-                                </div>
-                              )}
-                            </div>
-                            {winner ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", marginBottom: "8px" }}>
-                                <span style={{ fontSize: "13px" }}>🏆</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
-                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {winner.username || `${winner.wallet.slice(0, 4)}…${winner.wallet.slice(-3)}`}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{winner.total}</div>
-                              </div>
-                            ) : (
-                              <div style={{ color: "rgba(200,180,255,0.4)", fontSize: "10px", textAlign: "center", padding: "12px 0" }}>No results</div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: "9px", fontWeight: 700 }}>
-                              <span>💰 ${comp.prizes.first + comp.prizes.second + comp.prizes.third} pool</span>
-                              <span style={{ color: "rgba(251,191,36,0.7)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {pastChallenges.map(ch => {
-                        const winner = ch.winners[0];
-                        const myFinish = address ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-                        const placed = myFinish > 0 && myFinish <= ch.top_n;
-                        const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : myFinish > 0 ? "#a78bfa" : null;
-                        const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : myFinish > 0 ? "🏅" : null;
-                        return (
-                          <div key={ch.id}
-                            role="button" tabIndex={0}
-                            onClick={() => setSelectedEvent({ type: "challenge", data: ch })}
-                            style={{
-                              borderRadius: "14px",
-                              background: "rgba(20,10,50,0.6)",
-                              border: placed ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(251,191,36,0.18)",
-                              boxShadow: placed ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)` : "0 6px 14px rgba(0,0,0,0.5)",
-                              padding: "12px 14px", cursor: "pointer", userSelect: "none",
-                              transition: "transform 0.15s, border-color 0.15s",
-                            }}
-                            onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; if (!placed) el.style.borderColor = "rgba(251,191,36,0.45)"; }}
-                            onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ""; if (!placed) el.style.borderColor = "rgba(251,191,36,0.18)"; }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                              <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                                {ch.name.toUpperCase()}
-                              </div>
-                              {myMedal && (
-                                <div style={{ padding: "2px 8px", borderRadius: "999px", background: `${myMedalColor}1a`, border: `1px solid ${myMedalColor}66`, flexShrink: 0, marginLeft: "6px" }}>
-                                  <span style={{ fontSize: "10px" }}>{myMedal}</span>
-                                  <span style={{ color: myMedalColor!, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>YOU</span>
-                                </div>
-                              )}
-                            </div>
-                            {winner ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", marginBottom: "8px" }}>
-                                <span style={{ fontSize: "13px" }}>🏆</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
-                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {winner.username || `${winner.wallet.slice(0, 4)}…${winner.wallet.slice(-3)}`}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>{winner.plays}</div>
-                              </div>
-                            ) : (
-                              <div style={{ color: "rgba(200,180,255,0.4)", fontSize: "10px", textAlign: "center", padding: "12px 0" }}>No results</div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: "9px", fontWeight: 700 }}>
-                              <span>🏅 {ch.winners.length}/{ch.top_n} qualified</span>
-                              <span style={{ color: "rgba(251,191,36,0.7)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── PAST SEASONS HISTORY ── */}
-                {seasonsData && seasonsData.past.length > 0 && (
-                  <div>
-                    <div style={{
-                      fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em",
-                      color: "rgba(200,180,255,0.8)", textAlign: "center",
-                      textShadow: "0 0 14px rgba(160,100,255,0.8)", marginBottom: "12px",
-                    }}>── COMPLETED SEASONS ──</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
-                      {seasonsData.past.slice(0, 12).map(s => {
-                        const entries = (gameTab === "rhythm" ? s.rhythm : s.simon) || [];
-                        const winner = entries[0];
-                        const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
-                        const placedTop3 = myFinish > 0 && myFinish <= 3;
-                        const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
-                        const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
-                        return (
-                          <div key={s.season}
-                            role="button" tabIndex={0}
-                            onClick={() => setSelectedSeason(s)}
-                            style={{
-                              borderRadius: "14px",
-                              background: "rgba(20,10,50,0.6)",
-                              border: placedTop3
-                                ? `1.5px solid ${myMedalColor}88`
-                                : "1px solid rgba(167,139,250,0.18)",
-                              boxShadow: placedTop3
-                                ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
-                                : "0 6px 14px rgba(0,0,0,0.5)",
-                              padding: "12px 14px",
-                              cursor: "pointer", userSelect: "none",
-                              transition: "transform 0.15s, border-color 0.15s",
-                            }}
-                            onMouseEnter={e => {
-                              const el = e.currentTarget as HTMLDivElement;
-                              el.style.transform = "translateY(-2px)";
-                              if (!placedTop3) el.style.borderColor = "rgba(167,139,250,0.5)";
-                            }}
-                            onMouseLeave={e => {
-                              const el = e.currentTarget as HTMLDivElement;
-                              el.style.transform = "";
-                              if (!placedTop3) el.style.borderColor = "rgba(167,139,250,0.18)";
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                              <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em" }}>
-                                SEASON {s.season}
-                              </div>
-                              {myMedal && (
-                                <div style={{
-                                  padding: "2px 8px", borderRadius: "999px",
-                                  background: `${myMedalColor}1a`, border: `1px solid ${myMedalColor}66`,
-                                }}>
-                                  <span style={{ fontSize: "10px" }}>{myMedal}</span>
-                                  <span style={{ color: myMedalColor!, fontSize: "9px", fontWeight: 900, marginLeft: "4px" }}>YOU</span>
-                                </div>
-                              )}
-                            </div>
-                            {winner ? (
-                              <div style={{
-                                display: "flex", alignItems: "center", gap: "8px",
-                                padding: "6px 8px", borderRadius: "8px",
-                                background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
-                                marginBottom: "8px",
-                              }}>
-                                <span style={{ fontSize: "13px" }}>🏆</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: "rgba(254,215,170,0.65)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
-                                  <div style={{ color: "white", fontSize: "11px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {fmtName(winner.player, winner.username)}
-                                  </div>
-                                </div>
-                                <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900 }}>
-                                  {winner.score}
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ color: "rgba(200,180,255,0.4)", fontSize: "10px", textAlign: "center", padding: "12px 0" }}>
-                                No scores
-                              </div>
-                            )}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: "9px", fontWeight: 700 }}>
-                              <span>👥 {s.totalPlayers || entries.length} player{(s.totalPlayers || entries.length) !== 1 ? "s" : ""}</span>
-                              <span style={{ color: "rgba(167,139,250,0.7)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em" }}>VIEW →</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {!seasonsData && (
-                  <div style={{
-                    padding: "40px 20px", textAlign: "center",
-                    color: "rgba(200,180,255,0.5)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.15em",
-                  }}>LOADING SEASONS...</div>
-                )}
-
-                {/* (Old "PAST CHALLENGES" block lived here. It moved up
-                    next to the live cup so the cup family stays grouped.) */}
+            {totalPages > 1 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 4 }}>
+                <button onClick={() => setAllPage(p => Math.max(0, p - 1))} disabled={allPage === 0} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === 0 ? "rgba(255,255,255,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === 0 ? "rgba(255,255,255,0.12)" : T.accent + "80"}`, color: allPage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === 0 ? "not-allowed" : "pointer", fontFamily: T.body }}>‹ PREV</button>
+                <span style={{ color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>PAGE {allPage + 1} / {totalPages}</span>
+                <button onClick={() => setAllPage(p => Math.min(totalPages - 1, p + 1))} disabled={allPage === totalPages - 1} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === totalPages - 1 ? "rgba(255,255,255,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === totalPages - 1 ? "rgba(255,255,255,0.12)" : T.accent + "80"}`, color: allPage === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body }}>NEXT ›</button>
               </div>
             )}
+          </>
+        )}
+      </div>
 
-            {activeTab === "pvp" && (
-              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                {/* Header strip · totals + context line */}
-                <div style={{
-                  padding: "14px 18px", borderRadius: "16px",
-                  background: "linear-gradient(180deg, rgba(99,102,241,0.18) 0%, rgba(20,10,50,0.7) 100%)",
-                  border: "1px solid rgba(99,102,241,0.4)",
-                  boxShadow: "0 0 22px rgba(99,102,241,0.25)",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "22px" }}>⚔️</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ color: "white", fontSize: "14px", fontWeight: 900, letterSpacing: "0.06em" }}>PVP ARENA · vs MARKOV</div>
-                      <div style={{ color: "rgba(165,180,252,0.65)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                        All-time Challenge-AI standings · G$ wagers · settled on-chain
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "16px" }}>
-                    <div>
-                      <div style={{ color: "rgba(165,180,252,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS</div>
-                      <div style={{ color: "#a5b4fc", fontSize: "16px", fontWeight: 900 }}>{pvpData?.totalPlayers ?? "—"}</div>
-                    </div>
-                    <div>
-                      <div style={{ color: "rgba(165,180,252,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.12em" }}>MATCHES</div>
-                      <div style={{ color: "#a5b4fc", fontSize: "16px", fontWeight: 900 }}>{pvpData?.totalMatches ?? "—"}</div>
-                    </div>
-                  </div>
-                </div>
+      {/* Detail modal · opens on past-event card click. Click backdrop or
+          ✕ to dismiss. Mirrors the legacy /leaderboard event detail layout. */}
+      {selectedEvent && <EventDetailSheet sel={selectedEvent} onClose={() => setSelectedEvent(null)} address={address} />}
 
-                {/* Empty / loading state */}
-                {!pvpData && (
-                  <div style={{ padding: "40px", textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "11px", letterSpacing: "0.15em" }}>LOADING…</div>
-                )}
-                {pvpData && pvpData.leaderboard.length === 0 && (
-                  <div style={{
-                    width: "100%", maxWidth: "440px", margin: "20px auto",
-                    padding: "32px 24px", borderRadius: "20px",
-                    background: "linear-gradient(180deg, rgba(99,102,241,0.12) 0%, rgba(20,10,50,0.8) 100%)",
-                    border: "1.5px solid rgba(99,102,241,0.4)",
-                    boxShadow: "0 0 30px rgba(99,102,241,0.2)",
-                    textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: "44px", marginBottom: "10px" }}>🤖</div>
-                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900 }}>Be the first to challenge MARKOV</div>
-                    <div style={{ color: "rgba(200,180,255,0.75)", fontSize: "12px", marginTop: "10px", lineHeight: 1.6 }}>
-                      No matches resolved yet. Play one round, claim the top of the board.
-                    </div>
-                    <button
-                      onClick={() => router.push("/games/challenge-ai")}
-                      style={{
-                        marginTop: "18px", padding: "11px 24px", borderRadius: "999px",
-                        background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)",
-                        border: "none", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
-                        boxShadow: "0 0 20px rgba(99,102,241,0.5)",
-                      }}
-                    >
-                      PLAY MARKOV →
-                    </button>
-                  </div>
-                )}
+      <AppBottomNav wide={isDesktop} />
+    </div>
+  );
+}
 
-                {/* Top 3 podium · uses the same StagePodium component as
-                    the WEEKLY and ALL-TIME tabs. Adapter maps PvpEntry to
-                    the Entry shape the component expects: match count is
-                    the headline score. Layout, characters, glow, confetti
-                    are all identical to the other tabs so the PVP arena
-                    reads as a first-class leaderboard surface. */}
-                {pvpData && pvpData.leaderboard.length > 0 && (
-                  <StagePodium
-                    podium={pvpData.leaderboard.slice(0, 3).map(p => ({
-                      player: p.wallet,
-                      username: p.username ?? undefined,
-                      score: p.matches,
-                      timestamp: 0,
-                      subText: p.matches >= 10
-                        ? `W ${p.wins} · ${p.winRate}%`
-                        : `W ${p.wins}`,
-                    }))}
-                  />
-                )}
+// ─── detail bottom sheet ────────────────────────────────────────────────
+// Bottom-sheet pattern matches modern mobile UX (Pokémon Unite, Brawl Stars,
+// Instagram, TikTok, Discord). Slides up from the bottom edge with spring
+// physics, rounded only at the top, drag handle indicator, scrollable body.
+// On desktop the sheet anchors to the bottom with a max-width so the same
+// component reads great on both surfaces — no responsive switch needed.
+const SHEET_KEYFRAMES = `
+  @keyframes ev-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes ev-sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+`;
 
-                {/* Rows 4+ · same PlayerRow component the WEEKLY tab uses.
-                    Single column on mobile, 2-column grid on tablet+ so
-                    the visual rhythm matches the rest of the app. Score
-                    column reads as match count. */}
-                {pvpData && pvpData.leaderboard.length > 3 && (
-                  <div style={{
-                    width: "100%", maxWidth: "720px",
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-                    gap: isMobile ? "8px" : "10px 14px",
-                    marginTop: "4px",
-                  }}>
-                    {pvpData.leaderboard.slice(3).map(p => {
-                      const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
-                      const color = rowColorByRank(p.rank);
-                      const showWinRate = p.matches >= 10;
-                      const subText = showWinRate
-                        ? `W ${p.wins} · ${p.winRate}%`
-                        : `W ${p.wins}`;
-                      return (
-                        <PlayerRow
-                          key={p.wallet}
-                          entry={{
-                            player: p.wallet,
-                            username: p.username ?? undefined,
-                            score: p.matches,
-                            timestamp: 0,
-                          }}
-                          rank={p.rank}
-                          color={color}
-                          isMe={isMe}
-                          subText={subText}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClose: () => void; address?: string }) {
+  // Header copy per event type · LIVE variants surface "happening now"
+  // framing; PAST variants show the sealed end date.
+  let name = "";
+  let subline = "";
+  let accent = "#fbbf24";
+  if (sel.type === "season") {
+    name = `SEASON ${sel.data.season_id} · TEAM WARS`;
+    subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    accent = "#a78bfa";
+  } else if (sel.type === "cup" || sel.type === "challenge") {
+    name = sel.data.name?.toUpperCase() || (sel.type === "cup" ? "3-WEEK CUP" : "WEEKLY CHALLENGE");
+    subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    accent = sel.type === "cup" ? "#fbbf24" : "#86efac";
+  } else if (sel.type === "live-cup") {
+    name = `3-WEEK CUP · WEEK ${sel.data.currentWeek}${sel.data.weeksLeft === 1 ? " · FINAL" : ""}`;
+    subline = `LIVE · ${fmtCountdown(sel.data.compEnd)}`;
+    accent = "#fbbf24";
+  } else if (sel.type === "live-community") {
+    name = "COMMUNITY CHALLENGE";
+    subline = sel.data.hit ? "LIVE · MILESTONE HIT" : `LIVE · ${sel.data.daysLeft}d LEFT`;
+    accent = "#22c55e";
+  } else if (sel.type === "live-climb") {
+    const ev = sel.data.event;
+    name = "MARKOV CLIMB · LIVE";
+    subline = ev ? `LIVE · ${fmtCountdown(Math.floor(new Date(ev.endsAt).getTime() / 1000))}` : "LIVE";
+    accent = "#22c55e";
+  }
 
-                {/* CTA at bottom when leaderboard is populated */}
-                {pvpData && pvpData.leaderboard.length > 0 && (
-                  <button
-                    onClick={() => router.push("/games/challenge-ai")}
-                    style={{
-                      alignSelf: "center", marginTop: "8px",
-                      padding: "12px 28px", borderRadius: "999px",
-                      background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)",
-                      border: "none", color: "white", fontSize: "12px", fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
-                      boxShadow: "0 0 20px rgba(99,102,241,0.5)",
-                    }}
-                  >
-                    PLAY MARKOV →
-                  </button>
-                )}
-              </div>
-            )}
-            <div style={{ flex: 1 }} />
+  // Light haptic-feeling spring on enter via cubic-bezier(0.16, 1, 0.3, 1) —
+  // the iOS sheet curve. Backdrop fades in slightly slower so the sheet
+  // arrives before the screen behind goes dark, which reads as more responsive.
+  return (
+    <>
+      <style>{SHEET_KEYFRAMES}</style>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          background: "rgba(4,0,20,0.72)", backdropFilter: "blur(10px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          animation: "ev-sheet-fade 0.22s ease both",
+        }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={name}
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            maxHeight: "88vh",
+            borderRadius: "24px 24px 0 0",
+            background: "linear-gradient(180deg, rgba(30,12,80,0.98) 0%, rgba(12,4,40,0.99) 60%, rgba(7,2,26,1) 100%)",
+            border: `1px solid ${accent}33`,
+            borderBottom: "none",
+            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
+            display: "flex", flexDirection: "column", overflow: "hidden",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            animation: "ev-sheet-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both",
+          }}
+        >
+          {/* Drag handle · visual affordance that this is a sheet you can dismiss */}
+          <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px", flexShrink: 0 }}>
+            <span style={{ width: 38, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.22)" }} />
+          </div>
+
+          {/* Header */}
+          <div style={{
+            padding: "10px 18px 14px",
+            borderBottom: `1px solid ${accent}1a`,
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            flexShrink: 0,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: accent, fontSize: 16, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+              <div style={{ color: T.inkSoft, fontSize: 10.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>{subline}</div>
+            </div>
+            <button onClick={onClose} aria-label="Close" style={{
+              width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.7)", fontSize: 15, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>✕</button>
+          </div>
+
+          {/* Body — discriminated by event type */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 20px", WebkitOverflowScrolling: "touch" }}>
+            {(sel.type === "challenge" || sel.type === "cup") && <ChallengeOrCupBody sel={sel} address={address} />}
+            {sel.type === "season" && <SeasonBody data={sel.data} address={address} />}
+            {sel.type === "live-cup" && <LiveCupBody data={sel.data} address={address} />}
+            {sel.type === "live-community" && <LiveCommunityBody data={sel.data} address={address} />}
+            {sel.type === "live-climb" && <LiveClimbBody data={sel.data} address={address} />}
           </div>
         </div>
       </div>
+    </>
+  );
+}
 
-      {/* ── Season Detail Modal ── */}
-      {selectedSeason && (() => {
-        const s = selectedSeason;
-        const entries = (gameTab === "rhythm" ? s.rhythm : s.simon) || [];
-        const top10 = entries.slice(0, 10);
-        const myRank = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
-        const startDate = new Date(s.startTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        const endDate = new Date(s.endTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return (
-          <div onClick={() => setSelectedSeason(null)}
-            style={{
-              position: "fixed", inset: 0, zIndex: 100,
-              background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "20px",
-            }}
-          >
-            <div onClick={e => e.stopPropagation()} style={{
-              width: "100%", maxWidth: "440px", maxHeight: "88vh",
-              borderRadius: "24px",
-              background: "#1a0550", paddingBottom: "6px",
-              boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.5), 0 30px 60px rgba(0,0,0,0.9)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div style={{
-                flex: 1, minHeight: 0,
-                borderRadius: "22px 22px 18px 18px",
-                background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
-                border: "2px solid rgba(255,255,255,0.12)",
-                display: "flex", flexDirection: "column", overflow: "hidden",
+function ChallengeOrCupBody({ sel, address }: { sel: Extract<SelectedEvent, { type: "cup" | "challenge" }>; address?: string }) {
+  const isChallenge = sel.type === "challenge";
+  const winners = sel.data.winners ?? [];
+  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
+
+  return (
+    <>
+      <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>
+        FINAL STANDINGS · {winners.length} {isChallenge ? "QUALIFIER" : "FINALIST"}{winners.length !== 1 ? "S" : ""}
+      </div>
+      {winners.length === 0 ? (
+        <div style={{ padding: 20, textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: 11, fontWeight: 700 }}>No results recorded</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {winners.map(w => {
+            const isMe = !!address && w.wallet.toLowerCase() === address.toLowerCase();
+            const rc = rankColor(w.rank);
+            const rm = rankMedal(w.rank);
+            const score = isChallenge ? `${(w as PastChallenge["winners"][number]).plays} plays` : `${(w as PastCompetition["winners"][number]).total} pts`;
+            const sub = !isChallenge && (w as PastCompetition["winners"][number]).totalRhythm != null
+              ? `🥁 ${(w as PastCompetition["winners"][number]).totalRhythm} + 🧠 ${(w as PastCompetition["winners"][number]).totalSimon}`
+              : isChallenge ? `${sel.data.min_plays} plays to qualify` : "";
+            const prize = isChallenge ? sel.data.prize_usdc : w.rank === 1 ? sel.data.prizes.first : w.rank === 2 ? sel.data.prizes.second : w.rank === 3 ? sel.data.prizes.third : 0;
+            return (
+              <div key={w.wallet + w.rank} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px", borderRadius: 12,
+                background: isMe ? `${rc}18` : w.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
+                border: isMe ? `1.5px solid ${rc}77` : `1px solid ${w.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
               }}>
-                {/* Header */}
-                <div style={{
-                  padding: "16px 18px",
-                  borderBottom: "1px solid rgba(167,139,250,0.18)",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "linear-gradient(180deg, rgba(167,139,250,0.1) 0%, transparent 100%)",
-                }}>
-                  <div>
-                    <div style={{ color: "white", fontSize: "16px", fontWeight: 900, letterSpacing: "0.06em" }}>
-                      SEASON {s.season}
-                    </div>
-                    <div style={{ color: "rgba(200,180,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                      {startDate} – {endDate} · {gameTab === "rhythm" ? "RHYTHM RUSH" : "SIMON MEMORY"}
-                    </div>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>{rm}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: isMe ? rc : "#fff", fontSize: 13, fontWeight: isMe ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: T.body }}>
+                    {isMe ? "YOU" : (w.username || fmtName(w.wallet))}
                   </div>
-                  <button onClick={() => setSelectedSeason(null)} style={{
-                    width: "32px", height: "32px", borderRadius: "50%",
-                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
-                    color: "rgba(200,180,255,0.7)", fontSize: "16px", cursor: "pointer", fontFamily: "inherit",
-                  }}>×</button>
+                  {sub && <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 2 }}>{sub}</div>}
+                  <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>RANK #{w.rank} · ${prize} USDC</div>
                 </div>
-
-                {/* Stats strip */}
-                <div style={{
-                  padding: "10px 18px",
-                  display: "flex", justifyContent: "space-between", gap: "8px",
-                  borderBottom: "1px solid rgba(255,255,255,0.05)",
-                }}>
-                  <div>
-                    <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS</div>
-                    <div style={{ color: "#a78bfa", fontSize: "14px", fontWeight: 900 }}>{s.totalPlayers || entries.length}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>POOL</div>
-                    <div style={{ color: "#fbbf24", fontSize: "14px", fontWeight: 900 }}>{s.prizePot || 50} G$</div>
-                  </div>
-                  {myRank > 0 && (
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em" }}>YOUR FINISH</div>
-                      <div style={{
-                        color: myRank <= 3 ? (myRank === 1 ? "#fbbf24" : myRank === 2 ? "#e2e8f0" : "#f97316") : "#a78bfa",
-                        fontSize: "14px", fontWeight: 900,
-                      }}>#{myRank}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Top 10 list */}
-                <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px" }}>
-                  {top10.length === 0 ? (
-                    <div style={{ padding: "30px", textAlign: "center", color: "rgba(200,180,255,0.5)", fontSize: "11px" }}>
-                      No scores recorded for this season
-                    </div>
-                  ) : top10.map((e, i) => {
-                    const rank = i + 1;
-                    const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                    const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
-                    const medalColor = rank === 1 ? "#fbbf24" : rank === 2 ? "#e2e8f0" : rank === 3 ? "#f97316" : null;
-                    return (
-                      <div key={e.player} style={{
-                        display: "flex", alignItems: "center", gap: "10px",
-                        padding: "8px 10px", borderRadius: "10px",
-                        background: isMe ? "rgba(167,139,250,0.15)" : "transparent",
-                        border: `1px solid ${isMe ? "rgba(167,139,250,0.4)" : "transparent"}`,
-                        marginBottom: "4px",
-                      }}>
-                        <div style={{
-                          minWidth: "26px", textAlign: "center",
-                          color: medalColor || "rgba(200,180,255,0.6)",
-                          fontSize: medal ? "16px" : "11px", fontWeight: 900,
-                        }}>{medal || `#${rank}`}</div>
-                        <div style={{
-                          width: "30px", height: "30px", borderRadius: "50%",
-                          border: "1.5px solid rgba(167,139,250,0.4)", flexShrink: 0, overflow: "hidden",
-                          background: "#1a0550",
-                        }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={avatarUrl(e.player, e.username)} alt="" width={30} height={30}
-                            style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                        </div>
-                        <div style={{
-                          flex: 1, minWidth: 0, color: isMe ? "#a78bfa" : "white", fontSize: "12px", fontWeight: 800,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
-                        }}>
-                          {isMe ? "YOU" : fmtName(e.player, e.username)}
-                        </div>
-                        <div style={{ color: "#fbbf24", fontSize: "13px", fontWeight: 900, flexShrink: 0 }}>
-                          {e.score}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <div style={{ color: rc, fontSize: 14, fontWeight: 900, textShadow: `0 0 8px ${rc}88`, flexShrink: 0, fontFamily: T.display }}>{score}</div>
               </div>
-            </div>
-          </div>
-        );
-      })()}
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
 
-      {/* ── Event Detail Modal — same pattern as Season Detail Modal ── */}
-      {selectedEvent && (selectedEvent.type === "challenge" || selectedEvent.type === "competition") && (() => {
-        const isChallenge = selectedEvent.type === "challenge";
-        const name = isChallenge ? selectedEvent.data.name : selectedEvent.data.name;
-        const endsAt = isChallenge ? selectedEvent.data.ends_at : selectedEvent.data.ends_at;
-        const endDate = new Date(endsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        type AnyWinner = { rank: number; wallet: string; username: string | null; plays?: number; total?: number; totalRhythm?: number; totalSimon?: number };
-        const winners: AnyWinner[] = isChallenge ? selectedEvent.data.winners : selectedEvent.data.winners;
-        const prizeFor = (rank: number) =>
-          isChallenge
-            ? selectedEvent.data.prize_usdc
-            : rank === 1 ? selectedEvent.data.prizes.first : rank === 2 ? selectedEvent.data.prizes.second : selectedEvent.data.prizes.third;
-        const scoreLabel = isChallenge ? "plays" : "pts";
-        const scoreOf = (w: AnyWinner) => isChallenge ? (w.plays ?? 0) : (w.total ?? 0);
-        const subLabel = (w: AnyWinner) =>
-          !isChallenge && w.totalRhythm != null
-            ? `🥁 ${w.totalRhythm} + 🧠 ${w.totalSimon}`
-            : isChallenge ? `${selectedEvent.data.min_plays} plays to qualify` : "";
-        const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
-        const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
-        return (
-          <div onClick={() => setSelectedEvent(null)}
-            style={{
-              position: "fixed", inset: 0, zIndex: 100,
-              background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "20px",
-            }}
-          >
-            <div onClick={e => e.stopPropagation()} style={{
-              width: "100%", maxWidth: "440px", maxHeight: "88vh",
-              borderRadius: "24px",
-              background: "#1a0520", paddingBottom: "6px",
-              boxShadow: "0 0 0 3px #92400e, 0 0 50px rgba(251,191,36,0.35), 0 30px 60px rgba(0,0,0,0.9)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div style={{
-                flex: 1, minHeight: 0,
-                borderRadius: "22px 22px 18px 18px",
-                background: "linear-gradient(180deg, #2a1000 0%, #13060a 50%, #07021a 100%)",
-                border: "2px solid rgba(251,191,36,0.2)",
-                display: "flex", flexDirection: "column", overflow: "hidden",
-              }}>
-                {/* Header */}
-                <div style={{
-                  padding: "16px 18px",
-                  borderBottom: "1px solid rgba(251,191,36,0.15)",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "linear-gradient(180deg, rgba(251,191,36,0.08) 0%, transparent 100%)",
+function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string }) {
+  const teams = data.standings.teams ?? [];
+  const solo = data.standings.soloTop10 ?? [];
+  const closing = data.prize_winners?.closing_surprise;
+  const teamColor = (team: string) => team === "alpha" ? "#fb923c" : team === "nova" ? "#67e8f9" : team === "pulse" ? "#a78bfa" : "#fbbf24";
+  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Team standings */}
+      {teams.length > 0 && (
+        <div>
+          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>TEAM STANDINGS</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {teams.map((t, i) => {
+              const tc = teamColor(t.team);
+              return (
+                <div key={t.team} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: `${tc}14`, border: `1px solid ${tc}44` }}>
+                  <span style={{ width: 22, textAlign: "center", fontSize: 13, fontWeight: 900, color: tc, fontFamily: T.display }}>#{i + 1}</span>
+                  <span style={{ flex: 1, color: "#fff", fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", fontFamily: T.body }}>{t.team.toUpperCase()}</span>
+                  <span style={{ color: tc, fontSize: 13, fontWeight: 900, fontFamily: T.display }}>{t.counted}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Solo top 10 */}
+      {solo.length > 0 && (
+        <div>
+          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>SOLO TOP {Math.min(10, solo.length)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {solo.slice(0, 10).map(p => {
+              const isMe = !!address && p.wallet?.toLowerCase() === address.toLowerCase();
+              const rc = rankColor(p.rank);
+              const rm = rankMedal(p.rank);
+              return (
+                <div key={p.wallet} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 12px", borderRadius: 10,
+                  background: isMe ? `${rc}18` : p.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
+                  border: isMe ? `1.5px solid ${rc}77` : `1px solid ${p.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
                 }}>
-                  <div>
-                    <div style={{ color: "#fbbf24", fontSize: "16px", fontWeight: 900, letterSpacing: "0.06em" }}>
-                      {name.toUpperCase()}
-                    </div>
-                    <div style={{ color: "rgba(254,215,170,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                      ENDED {endDate}
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedEvent(null)} style={{
-                    width: "32px", height: "32px", borderRadius: "50%",
-                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
-                    color: "rgba(255,255,255,0.7)", fontSize: "16px", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>✕</button>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{rm}</span>
+                  <span style={{ flex: 1, color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {isMe ? "YOU" : (p.username || (p.wallet ? fmtName(p.wallet) : "anon"))}
+                  </span>
+                  <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display, textShadow: `0 0 6px ${rc}66` }}>{p.points}</span>
                 </div>
-                {/* Finalists list */}
-                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: "7px" }}>
-                  <div style={{ color: "rgba(254,215,170,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "4px" }}>
-                    FINAL STANDINGS · {winners.length} {isChallenge ? "QUALIFIER" : "FINALIST"}{winners.length !== 1 ? "S" : ""}
-                  </div>
-                  {winners.length === 0 ? (
-                    <div style={{ padding: "20px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "11px", fontWeight: 700 }}>
-                      No results recorded
-                    </div>
-                  ) : winners.map(w => {
-                    const isMe = !!address && w.wallet.toLowerCase() === address.toLowerCase();
-                    const rc = rankColor(w.rank);
-                    const rm = rankMedal(w.rank);
-                    const sub = subLabel(w);
-                    return (
-                      <div key={w.wallet} style={{
-                        display: "flex", alignItems: "center", gap: "10px",
-                        padding: "10px 12px", borderRadius: "12px",
-                        background: isMe ? `${rc}18` : w.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
-                        border: isMe ? `1.5px solid ${rc}77` : `1px solid ${w.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
-                      }}>
-                        <span style={{ fontSize: "18px", flexShrink: 0 }}>{rm}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ color: isMe ? rc : "white", fontSize: "13px", fontWeight: isMe ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {isMe ? "YOU" : (w.username || `${w.wallet.slice(0, 4)}…${w.wallet.slice(-3)}`)}
-                          </div>
-                          {sub && (
-                            <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700, marginTop: "2px" }}>
-                              {sub}
-                            </div>
-                          )}
-                          <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "9px", fontWeight: 700, marginTop: "1px" }}>
-                            RANK #{w.rank} · ${prizeFor(w.rank)} USDC
-                          </div>
-                        </div>
-                        <div style={{ color: rc, fontSize: "14px", fontWeight: 900, textShadow: `0 0 8px ${rc}88`, flexShrink: 0 }}>
-                          {scoreOf(w)} {scoreLabel}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* ── Past Season Detail Modal — different shape from challenge/competition,
-              so it gets its own block. Shows team standings, frozen Solo top 10,
-              and the closing-surprise winner if patched in. ── */}
-      {selectedEvent && selectedEvent.type === "season" && (() => {
-        const s = selectedEvent.data;
-        const endDate = new Date(s.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        const teams = s.standings?.teams ?? [];
-        const solo = s.standings?.soloTop10 ?? [];
-        const closing = s.prize_winners?.closing_surprise;
-        const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
-        const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
-        const teamColor = (t: string) =>
-          t === "alpha" ? "#fb923c" : t === "nova" ? "#67e8f9" : t === "pulse" ? "#a78bfa" : "#fbbf24";
-        return (
-          <div onClick={() => setSelectedEvent(null)}
-            style={{
-              position: "fixed", inset: 0, zIndex: 100,
-              background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "20px",
-            }}
-          >
-            <div onClick={e => e.stopPropagation()} style={{
-              width: "100%", maxWidth: "440px", maxHeight: "88vh",
-              borderRadius: "24px",
-              background: "#150525", paddingBottom: "6px",
-              boxShadow: "0 0 0 3px #4c1d95, 0 0 50px rgba(167,139,250,0.35), 0 30px 60px rgba(0,0,0,0.9)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div style={{
-                flex: 1, minHeight: 0,
-                borderRadius: "22px 22px 18px 18px",
-                background: "linear-gradient(180deg, #2a0a40 0%, #13062a 50%, #07021a 100%)",
-                border: "2px solid rgba(167,139,250,0.25)",
-                display: "flex", flexDirection: "column", overflow: "hidden",
-              }}>
-                {/* Header */}
-                <div style={{
-                  padding: "16px 18px",
-                  borderBottom: "1px solid rgba(167,139,250,0.18)",
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "linear-gradient(180deg, rgba(167,139,250,0.1) 0%, transparent 100%)",
-                }}>
-                  <div>
-                    <div style={{ color: "#c4b5fd", fontSize: "16px", fontWeight: 900, letterSpacing: "0.06em" }}>
-                      SEASON {s.season_id} · TEAM WARS
-                    </div>
-                    <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "10px", fontWeight: 700, marginTop: "2px" }}>
-                      ENDED {endDate}
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedEvent(null)} style={{
-                    width: "32px", height: "32px", borderRadius: "50%",
-                    background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
-                    color: "rgba(255,255,255,0.7)", fontSize: "16px", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>✕</button>
-                </div>
-
-                {/* Scrollable body — team race, solo ladder, closing surprise */}
-                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: "16px" }}>
-
-                  {/* Team race */}
-                  <div>
-                    <div style={{ color: "rgba(220,210,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
-                      TEAM RACE · FINAL
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {teams.map((t, i) => {
-                        const tc = teamColor(t.team);
-                        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "·";
-                        return (
-                          <div key={t.team} style={{
-                            display: "flex", alignItems: "center", gap: "10px",
-                            padding: "10px 12px", borderRadius: "12px",
-                            background: i === 0 ? `${tc}1a` : `${tc}0a`,
-                            border: `1.5px solid ${tc}55`,
-                          }}>
-                            <span style={{ fontSize: "16px", flexShrink: 0 }}>{medal}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ color: tc, fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em" }}>
-                                {t.team.toUpperCase()}
-                              </div>
-                              <div style={{ color: "rgba(220,210,255,0.55)", fontSize: "9px", fontWeight: 700, marginTop: "1px" }}>
-                                {t.players} player{t.players === 1 ? "" : "s"} · {t.qualifiers} qualified
-                              </div>
-                            </div>
-                            <div style={{ color: tc, fontSize: "14px", fontWeight: 900, textShadow: `0 0 8px ${tc}88`, flexShrink: 0 }}>
-                              {t.counted} games
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Solo Ladder top 10 */}
-                  <div>
-                    <div style={{ color: "rgba(254,215,170,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
-                      SOLO LADDER · TOP 10
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {solo.length === 0 ? (
-                        <div style={{ padding: "16px", textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: "11px", fontWeight: 700 }}>
-                          No Solo Ladder entries
-                        </div>
-                      ) : solo.map(p => {
-                        const isMe = !!address && p.wallet.toLowerCase() === address.toLowerCase();
-                        const rc = rankColor(p.rank);
-                        return (
-                          <div key={p.wallet} style={{
-                            display: "flex", alignItems: "center", gap: "10px",
-                            padding: "9px 11px", borderRadius: "11px",
-                            background: isMe ? `${rc}18` : p.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
-                            border: isMe ? `1.5px solid ${rc}77` : `1px solid ${p.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
-                          }}>
-                            <span style={{ fontSize: "16px", flexShrink: 0 }}>{rankMedal(p.rank)}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ color: isMe ? rc : "white", fontSize: "12px", fontWeight: isMe ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {isMe ? "YOU" : (p.username || `${p.wallet.slice(0, 4)}…${p.wallet.slice(-3)}`)}
-                              </div>
-                              {p.streak != null && p.streak > 0 && (
-                                <div style={{ color: "rgba(251,146,60,0.85)", fontSize: "9px", fontWeight: 700, marginTop: "1px" }}>
-                                  🔥 {p.streak}
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ color: rc, fontSize: "13px", fontWeight: 900, textShadow: `0 0 8px ${rc}66`, flexShrink: 0 }}>
-                              {p.points} pts
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Closing surprise — only renders if patched in via UPDATE on season_v1_results */}
-                  {closing && (
-                    <div>
-                      <div style={{ color: "rgba(187,247,208,0.7)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.18em", marginBottom: "6px" }}>
-                        CLOSING SURPRISE WINNER
-                      </div>
-                      <div style={{
-                        display: "flex", alignItems: "center", gap: "10px",
-                        padding: "12px 14px", borderRadius: "12px",
-                        background: "rgba(34,197,94,0.12)",
-                        border: "1.5px solid rgba(34,197,94,0.5)",
-                      }}>
-                        <span style={{ fontSize: "20px", flexShrink: 0 }}>🎁</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ color: "#22c55e", fontSize: "13px", fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {closing.username || `${closing.wallet.slice(0, 4)}…${closing.wallet.slice(-3)}`}
-                          </div>
-                          {closing.tx_hash && (
-                            <a href={`https://celoscan.io/tx/${closing.tx_hash}`} target="_blank" rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              style={{ color: "rgba(187,247,208,0.7)", fontSize: "9px", fontWeight: 700, textDecoration: "underline", marginTop: "2px", display: "inline-block" }}>
-                              tx · {closing.tx_hash.slice(0, 6)}…{closing.tx_hash.slice(-4)} →
-                            </a>
-                          )}
-                        </div>
-                        <div style={{ color: "#22c55e", fontSize: "14px", fontWeight: 900, flexShrink: 0 }}>
-                          ${closing.amount_usdc ?? 10} USDC
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+      {/* Closing surprise */}
+      {closing && (
+        <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 18 }}>🎁</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: "#86efac", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>CLOSING SURPRISE</div>
+            <div style={{ color: "#fff", fontSize: 12, fontWeight: 800, marginTop: 2, fontFamily: T.body }}>{closing.username || fmtName(closing.wallet)}</div>
           </div>
-        );
-      })()}
-
-      {/* Mobile bottom tab nav — replaces the desktop sidebar when < 768px */}
-      {isMobile && <BottomNav />}
-
-      {/* Mobile streak chip — sidebar is hidden on mobile so this floats
-          top-right instead. */}
-      {isMobile && streak && (
-        <MobileStreakChip streak={streak.streak} playedToday={streak.playedToday} />
+          <div style={{ color: "#22c55e", fontSize: 13, fontWeight: 900, fontFamily: T.display }}>${closing.amount_usdc ?? 10}</div>
+        </div>
       )}
     </div>
   );
 }
 
-// useSearchParams requires a Suspense boundary in the app router, matching
-// the pattern used on /verify and /mint elsewhere in this app.
-export default function LeaderboardPage() {
+// ─── LIVE event detail bodies ────────────────────────────────────────────
+// Cup body · cumulative standings (top 25) + your row highlighted + prize ladder.
+function LiveCupBody({ data, address }: { data: CompetitionData; address?: string }) {
+  const top = data.rankings.slice(0, 25);
+  const myIdx = address ? data.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase()) : -1;
+  const myRank = myIdx >= 0 ? myIdx + 1 : 0;
+  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
   return (
-    <Suspense>
-      <LeaderboardInner />
-    </Suspense>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Prize ladder reminder */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {[
+          { r: "1st", p: `$${data.prizes.first}`, c: "#fbbf24" },
+          { r: "2nd", p: `$${data.prizes.second}`, c: "#cbd5e1" },
+          { r: "3rd", p: `$${data.prizes.third}`,  c: "#cd7f32" },
+        ].map(x => (
+          <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "6px 4px", borderRadius: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${x.c}33` }}>
+            <div style={{ color: x.c, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{x.r}</div>
+            <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, marginTop: 2, fontFamily: T.display }}>{x.p}</div>
+          </div>
+        ))}
+      </div>
+      {myRank > 0 && (
+        <div style={{ padding: "8px 12px", borderRadius: 10, background: `${T.accent}1f`, border: `1px solid ${T.accent}55`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, fontWeight: 700 }}>Your position</span>
+          <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>#{myRank} · {data.rankings[myIdx].total} pts</span>
+        </div>
+      )}
+      <div>
+        <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CURRENT STANDINGS · TOP {top.length}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {top.map((r, i) => {
+            const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
+            const rc = rankColor(i + 1);
+            return (
+              <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{rankMedal(i + 1)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : (r.username || fmtName(r.wallet))}</div>
+                  <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>🥁 {r.totalRhythm} · 🧠 {r.totalSimon}</div>
+                </div>
+                <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display, textShadow: `0 0 6px ${rc}66` }}>{r.total}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Community body · headline progress + top contributors + your contribution.
+function LiveCommunityBody({ data, address }: { data: WeeklyChallengeData; address?: string }) {
+  const pct = Math.min(100, Math.round((data.progress / Math.max(1, data.target)) * 100));
+  const contributors = data.contributors ?? [];
+  const myContrib = data.myContribution ?? 0;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Headline progress */}
+      <div style={{ padding: "12px 14px", borderRadius: 14, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span style={{ color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>COMMUNITY GOAL</span>
+          <span style={{ color: data.hit ? "#86efac" : "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{data.hit ? "MILESTONE HIT 🎉" : `${data.daysLeft}D LEFT`}</span>
+        </div>
+        <div style={{ fontFamily: T.display, fontSize: 22, color: "#fff", marginTop: 4 }}>
+          {data.progress.toLocaleString()} <span style={{ color: "rgba(134,239,172,0.6)", fontSize: 14 }}>/ {data.target.toLocaleString()}</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 999, background: "rgba(0,0,0,0.4)", overflow: "hidden", marginTop: 8 }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #16a34a, #86efac)", boxShadow: "0 0 8px #22c55e" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontFamily: T.body, fontSize: 10.5, color: "rgba(220,230,220,0.85)", fontWeight: 700 }}>
+          <span>🎁 {data.rewardG.toLocaleString()} G$ split{data.ubiG ? ` · ${data.ubiG} G$ to GoodDollar` : ""}</span>
+          <span>👥 {data.playersIn} qualifying</span>
+        </div>
+      </div>
+
+      {/* Your contribution */}
+      {address && (
+        <div style={{ padding: "10px 14px", borderRadius: 12, background: `${T.accent}1f`, border: `1px solid ${T.accent}55`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, fontWeight: 700 }}>Your contribution</span>
+          <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{myContrib} / {data.capPerPlayer}</span>
+        </div>
+      )}
+
+      {/* Contributors list */}
+      {contributors.length > 0 && (
+        <div>
+          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>TOP CONTRIBUTORS · {contributors.length}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {contributors.slice(0, 25).map((c, i) => {
+              const isMe = !!address && c.wallet.toLowerCase() === address.toLowerCase();
+              const rc = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : i === 2 ? "#f97316" : "#86efac";
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🌍";
+              return (
+                <div key={c.wallet + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{medal}</span>
+                  <span style={{ flex: 1, color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : (c.username || fmtName(c.wallet))}</span>
+                  <span style={{ color: rc, fontSize: 12, fontWeight: 900, fontFamily: T.display }}>{c.games} games</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Climb body · MARKOV climb standings (match count, qualified flag).
+function LiveClimbBody({ data, address }: { data: MarkovClimbData; address?: string }) {
+  const ev = data.event;
+  const board = data.leaderboard ?? [];
+  const minQ = ev?.minMatchesToQualify ?? 30;
+  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#22c55e";
+  const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🤖";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {ev?.prizes?.first && (
+        <div style={{ padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(22,101,52,0.4) 100%)", border: "1px solid rgba(34,197,94,0.4)" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+            <span style={{ color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>1ST PRIZE</span>
+            <span style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, fontFamily: T.body }}>{minQ}+ matches qualifies</span>
+          </div>
+          <div style={{ fontFamily: T.display, fontSize: 18, color: "#fff", marginTop: 4 }}>
+            ${ev.prizes.first.usdc ?? 0} USDC + {(ev.prizes.first.g_dollar ?? 0).toLocaleString()} G$
+          </div>
+        </div>
+      )}
+      <div>
+        <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CLIMB STANDINGS · {board.length}</div>
+        {board.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: 11 }}>No challengers yet — be first.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {board.slice(0, 25).map(r => {
+              const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
+              const rc = rankColor(r.rank);
+              const remaining = Math.max(0, minQ - r.matches);
+              return (
+                <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : r.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${r.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{rankMedal(r.rank)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : r.username}</div>
+                    <div style={{ color: remaining === 0 ? "#86efac" : "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>{remaining === 0 ? "QUALIFIED" : `${remaining} more to qualify`}</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                    <span style={{ color: rc, fontSize: 14, fontWeight: 900, fontFamily: T.display }}>{r.matches}</span>
+                    <span style={{ color: "rgba(200,180,255,0.45)", fontSize: 8, fontWeight: 700, letterSpacing: "0.08em" }}>MATCHES</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

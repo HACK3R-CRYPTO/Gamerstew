@@ -359,6 +359,19 @@ async function sendToWallet(supabase, walletAddress, category, payload) {
     payload_tag: payload.tag || null,
   });
 
+  // Preserve the full payload in the in-app feed (notifications_feed)
+  // so the bell icon can render this delivery later — including for
+  // devices that weren't subscribed at send time. Fire-and-forget;
+  // a failed insert here must not block the push response path.
+  supabase.from('notifications_feed').insert({
+    wallet_address: lower,
+    category,
+    title: payload.title || category,
+    body: payload.body || null,
+    url: payload.url || null,
+    tag: payload.tag || null,
+  }).then(() => {}, () => {});
+
   return true;
 }
 
@@ -367,6 +380,19 @@ async function sendToWallet(supabase, walletAddress, category, payload) {
 // players who turned off all promo can't be force-fed announcements.
 async function sendBroadcast(supabase, payload) {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return { sent: 0, skipped: 0 };
+
+  // Log the broadcast ONCE (wallet_address NULL) before fanning out, so
+  // even players who weren't subscribed at send-time (no push device,
+  // tab not open) still see it in their bell when they next open the
+  // app. One row per broadcast, every player reads it via OR filter.
+  supabase.from('notifications_feed').insert({
+    wallet_address: null,
+    category: 'broadcast',
+    title: payload.title || 'Game Arena',
+    body: payload.body || null,
+    url: payload.url || null,
+    tag: payload.tag || null,
+  }).then(() => {}, () => {});
 
   // Pull all subscriptions and the prefs map in parallel
   const [{ data: subs }, { data: prefs }] = await Promise.all([
