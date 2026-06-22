@@ -385,8 +385,12 @@ const MISSION_TEMPLATES = [
   { id: 'play_5_games',     label: 'Play 5 games today',                   target: 5,   reward: 80,  match: () => 1 },
   { id: 'win_1_game',       label: 'Win 1 game today',                     target: 1,   reward: 60,  match: ({ isWin }) => isWin ? 1 : 0 },
   { id: 'win_3_games',      label: 'Win 3 games today',                    target: 3,   reward: 120, match: ({ isWin }) => isWin ? 1 : 0 },
-  { id: 'rhythm_300',       label: 'Score 300+ in Rhythm Rush',            target: 1,   reward: 70,  match: ({ game, score }) => game === 'rhythm' && score >= 300 ? 1 : 0 },
-  { id: 'rhythm_500',       label: 'Score 500+ in Rhythm Rush',            target: 1,   reward: 100, match: ({ game, score }) => game === 'rhythm' && score >= 500 ? 1 : 0 },
+  // Daily mission thresholds calibrated to real Rhythm Rush ranges
+  // (clean runs land in 30k–100k+). Dailies should challenge a focused
+  // session without being trivially clearable — the easy "show up"
+  // tier is already covered by play_3_games / win_1_game above.
+  { id: 'rhythm_300',       label: 'Score 30,000+ in Rhythm Rush',         target: 1,   reward: 40,  match: ({ game, score }) => game === 'rhythm' && score >= 30000 ? 1 : 0 },
+  { id: 'rhythm_500',       label: 'Score 80,000+ in Rhythm Rush',         target: 1,   reward: 60,  match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
   { id: 'simon_5',          label: 'Reach round 5 in Simon Memory',        target: 1,   reward: 60,  match: ({ game, score }) => game === 'simon'  && score >= 5   ? 1 : 0 },
   { id: 'simon_10',         label: 'Reach round 10 in Simon Memory',       target: 1,   reward: 100, match: ({ game, score }) => game === 'simon'  && score >= 10  ? 1 : 0 },
   { id: 'beat_personal_best', label: 'Beat your personal best',            target: 1,   reward: 80,  match: ({ isNewPb }) => isNewPb ? 1 : 0 },
@@ -482,12 +486,18 @@ const ACHIEVEMENT_CATALOG = [
     check: async ({ totalGames }) => totalGames >= 25 },
   { id: 'games_100',    icon: '💎', name: 'Veteran',            desc: 'Play 100 games total',
     check: async ({ totalGames }) => totalGames >= 100 },
-  { id: 'rhythm_300',   icon: '🥁', name: 'Drum Apprentice',    desc: 'Score 300+ in Rhythm Rush',
-    check: async ({ game, score }) => game === 'rhythm' && score >= 300 },
-  { id: 'rhythm_500',   icon: '🥁', name: 'Rhythm Master',      desc: 'Score 500+ in Rhythm Rush',
-    check: async ({ game, score }) => game === 'rhythm' && score >= 500 },
-  { id: 'rhythm_700',   icon: '👑', name: 'Rhythm Legend',      desc: 'Score 700+ in Rhythm Rush',
-    check: async ({ game, score }) => game === 'rhythm' && score >= 700 },
+  // Rhythm achievement thresholds — long-term milestones. The 80k
+  // daily-mission ceiling lives below Apprentice (60k? — daily is
+  // easier on purpose, see below) wait — actually we set them at 60k
+  // / 200k / 400k. Geometric 2× progression: clearing the Master
+  // daily a couple times nudges you into Apprentice; sustained skill
+  // takes you to Master; Legend is a stretch goal for top players.
+  { id: 'rhythm_300',   icon: '🥁', name: 'Drum Apprentice',    desc: 'Score 60,000+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 60000 },
+  { id: 'rhythm_500',   icon: '🥁', name: 'Rhythm Master',      desc: 'Score 200,000+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 200000 },
+  { id: 'rhythm_700',   icon: '👑', name: 'Rhythm Legend',      desc: 'Score 400,000+ in Rhythm Rush',
+    check: async ({ game, score }) => game === 'rhythm' && score >= 400000 },
   // Skill unlocks — tracked per-run via fullCombo / allPerfect flags in the
   // submit-score scoreData payload. Rhythm-specific bragging rights.
   { id: 'rhythm_fc',    icon: '✨', name: 'Full Combo',         desc: 'Clear the rhythm chart without missing a note',
@@ -1631,6 +1641,49 @@ app.get('/api/badges/:address', async (req, res) => {
       streakLabel,
     },
   });
+});
+
+// ─── GET /api/notifications/:address ───────────────────────────────────────
+// In-app notification feed. Merges two row types from `notifications_feed`:
+//   1. Per-wallet sends — every push sendToWallet logs the payload here,
+//      so the bell can render achievement unlocks, rank changes, wager
+//      results, etc., even on devices that weren't subscribed at send time.
+//   2. Broadcasts — single rows with `wallet_address = NULL`. EVERY
+//      wallet's feed includes them via the OR filter.
+//
+// Query is the simplest form of "merged feed". The frontend de-dupes and
+// merges with achievements + badges (which it already fetches separately)
+// to build the full bell content.
+app.get('/api/notifications/:address', async (req, res) => {
+  const addr = (req.params.address || '').toLowerCase();
+  if (!addr) return res.status(400).json({ error: 'address required' });
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+  const { data, error } = await supabase
+    .from('notifications_feed')
+    .select('id, wallet_address, category, title, body, url, tag, sent_at')
+    .or(`wallet_address.eq.${addr},wallet_address.is.null`)
+    .order('sent_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.warn('notifications_feed read failed:', error.message || error);
+    return res.json({ notifications: [] });
+  }
+
+  const notifications = (data || []).map(r => ({
+    id: String(r.id),
+    // "broadcast" vs everything else — frontend uses it for icon/color.
+    isBroadcast: r.wallet_address === null,
+    category: r.category,
+    title: r.title,
+    body: r.body,
+    url: r.url,
+    tag: r.tag,
+    sentAt: Math.floor(new Date(r.sent_at).getTime() / 1000),
+  }));
+
+  res.json({ notifications });
 });
 
 // ─── GET /api/achievements/:address ─────────────────────────────────────────

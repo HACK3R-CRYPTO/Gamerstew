@@ -91,7 +91,10 @@ function JuicyBtn({
 function ConnectInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/games";
+  // Post-auth destination defaults to the dashboard (the new app home),
+  // not the games hub. Anything wanting the games hub should pass it
+  // explicitly via ?next=/games.
+  const next = params.get("next") ?? "/dashboard";
 
   const { login, logout, authenticated, ready } = usePrivy();
   const { address } = useAccount();
@@ -106,10 +109,13 @@ function ConnectInner() {
   // wait for the shim. If MiniPay is connected, skip straight to the next
   // route so the user never sees this screen at all.
   useEffect(() => {
-    if (isMiniPay && isConnected) {
-      router.replace(`/mint?next=${encodeURIComponent(next)}`);
+    // After Privy / MiniPay auth lands, drop the user on /home where the
+    // new Onboarding overlay handles name + GamePass mint + verify. The old
+    // /mint redirect is gone — the overlay is the source of truth now.
+    if (isConnected) {
+      router.replace(`/home?next=${encodeURIComponent(next)}`);
     }
-  }, [isMiniPay, isConnected, next, router]);
+  }, [isConnected, next, router]);
   const shortAddr = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null;
   const source = isMiniPay ? "MiniPay" : "Privy";
 
@@ -370,18 +376,17 @@ function ConnectInner() {
                     )}
                   </div>
 
-                  {/* Continue juicy button — routes through /mint first.
-                      /mint reads hasMinted() and either shows the username
-                      form or short-circuits to /verify if the pass already
-                      exists, so this is the right step for both new and
-                      returning players. */}
+                  {/* Continue button — drops the player on /home where the
+                      new Onboarding overlay handles name + GamePass + verify
+                      in one flow. The overlay reads hasMinted() and
+                      short-circuits returning players straight through. */}
                   <JuicyBtn
-                    onClick={() => router.push(`/mint?next=${encodeURIComponent(next)}`)}
+                    onClick={() => router.push(`/home?next=${encodeURIComponent(next)}`)}
                     wall="#003a00"
                     gradient="linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)"
                     glow="rgba(34,197,94,0.6)"
                     label="CONTINUE"
-                    sub="Next: pick your name + mint Game Pass"
+                    sub="Pick your name and you're in"
                     icon={
                       <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
                         <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.707 9.293a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L12.586 13H8a1 1 0 110-2h4.586l-1.293-1.293a1 1 0 011.414-1.414l3 3z"/>

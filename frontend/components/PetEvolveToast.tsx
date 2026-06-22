@@ -19,6 +19,7 @@
 
 import { useEffect, useRef } from "react";
 import { playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
+import { useAudioSettings } from "@/hooks/useAudioSettings";
 
 type Pet = { id: string; name: string; src: string; color: string; minLevel: number };
 
@@ -30,6 +31,7 @@ type Props = {
 
 export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
   const playedForPetRef = useRef<string | null>(null);
+  const { hapticsOn } = useAudioSettings();
 
   useEffect(() => {
     if (!pet) { playedForPetRef.current = null; return; }
@@ -44,8 +46,9 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
     const b = setTimeout(() => playAchievementChime(), 600);
     const c = setTimeout(() => playAchievementChime(), 1200);
 
-    // Haptic — pokemon-style longer triple pulse for a bigger moment
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    // Haptic — pokemon-style longer triple pulse for a bigger moment.
+    // Gated on the user's Haptics preference (Settings → Audio).
+    if (hapticsOn && typeof navigator !== "undefined" && "vibrate" in navigator) {
       try { navigator.vibrate?.([25, 40, 25, 40, 60]); } catch {}
     }
 

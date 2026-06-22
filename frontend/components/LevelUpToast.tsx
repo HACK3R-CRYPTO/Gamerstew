@@ -31,6 +31,7 @@
 
 import { useEffect, useRef } from "react";
 import { playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
+import { useAudioSettings } from "@/hooks/useAudioSettings";
 
 type Props = {
   level: number | null;
@@ -41,6 +42,7 @@ const LETTERS = ["L", "E", "V", "E", "L", " ", "U", "P", "!"];
 
 export default function LevelUpToast({ level, onClose }: Props) {
   const playedForLevelRef = useRef<number | null>(null);
+  const { hapticsOn } = useAudioSettings();
 
   useEffect(() => {
     if (level == null) {
@@ -57,8 +59,9 @@ export default function LevelUpToast({ level, onClose }: Props) {
     const chimeT = setTimeout(() => playAchievementChime(), 720);
 
     // Mobile haptic — quick tap-then-hold rhythm. Matches the flash +
-    // letter cascade beat. No-op on unsupported browsers.
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    // letter cascade beat. Gated on the user's Haptics preference so
+    // the Settings toggle is the single source of truth.
+    if (hapticsOn && typeof navigator !== "undefined" && "vibrate" in navigator) {
       try { navigator.vibrate?.([20, 30, 60]); } catch {}
     }
 

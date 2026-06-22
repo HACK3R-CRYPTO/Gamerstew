@@ -7,6 +7,14 @@ import { wagmiConfig, supportedChains } from '@/lib/wagmiConfig';
 import { Toaster } from 'react-hot-toast';
 import { SelfVerificationProvider } from '@/contexts/SelfVerificationContext';
 import MiniPayConnector from '@/components/MiniPayConnector';
+import { useWalletAuthSync } from '@/hooks/useWalletAuthSync';
+
+// Sentinel that runs useWalletAuthSync inside the Privy + Wagmi tree.
+// Renders nothing; the hook itself owns the auto-logout effect.
+function WalletAuthSync() {
+  useWalletAuthSync();
+  return null;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           logo: '/components/game_arena_text.png',
           showWalletLoginFirst: false,
         },
-        loginMethods: ['email', 'wallet', 'google'],
+        loginMethods: ['google', 'email', 'wallet'],
         defaultChain: supportedChains[0],
         supportedChains: [...supportedChains],
         embeddedWallets: {
@@ -45,6 +53,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           <MiniPayConnector />
+          <WalletAuthSync />
           <SelfVerificationProvider>
             <Toaster
               position="top-center"

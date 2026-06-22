@@ -17,6 +17,7 @@ import {
   startGameMiniPay as startGameMiniPayAction,
 } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
+import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -738,7 +739,7 @@ export default function SimonGamePage() {
       }} />
 
       {/* IDLE */}
-      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} guest={!authed} />}
+      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} onLeaderboard={() => router.push("/games/simon/leaderboard")} guest={!authed} />}
 
       {/* COUNTDOWN */}
       {phase === "countdown" && <CountdownView n={countdown} />}
@@ -806,7 +807,7 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, guest }: { onStart: () => void; onExit: () => void; guest?: boolean }) {
+function IdleView({ onStart, onExit, onLeaderboard, guest }: { onStart: () => void; onExit: () => void; onLeaderboard: () => void; guest?: boolean }) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
@@ -833,6 +834,7 @@ function IdleView({ onStart, onExit, guest }: { onStart: () => void; onExit: () 
           </svg>
         </div>
       </button>
+
 
       <div style={{ textAlign: "center" }}>
         <div style={{
@@ -862,6 +864,11 @@ function IdleView({ onStart, onExit, guest }: { onStart: () => void; onExit: () 
       </div>
 
       {guest && <GuestPlayChip />}
+
+      {/* Top players preview · leaderboard becomes content on the play
+          surface, not chrome in the corner. Reads live Season N data so it
+          stays in sync with the leaderboard's LIVE tab. */}
+      <SimonTopPlayersPreview onViewAll={onLeaderboard} />
 
       {/* START button */}
       <div role="button" tabIndex={0} onClick={onStart}
@@ -1559,98 +1566,114 @@ function FinishedView({
   const seconds = Math.max(0, Math.floor(gameTimeMs / 1000));
   return (
     <div style={{
-      position: "absolute", inset: 0, zIndex: 15,
-      background: "rgba(4,0,20,0.82)", backdropFilter: "blur(10px)",
-      display: "flex",
-      // Same fix as Rhythm's FinishedView: scroll the overlay so all
-      // callouts + Play Again / Exit stay reachable on short viewports.
-      alignItems: "flex-start", justifyContent: "center",
-      overflowY: "auto",
-      padding: "clamp(12px, 4vw, 20px)",
-      paddingTop: "max(clamp(12px, 4vw, 20px), env(safe-area-inset-top, 0px))",
-      paddingBottom: "max(clamp(24px, 6vw, 40px), env(safe-area-inset-bottom, 0px))",
-      animation: "fadeIn 0.3s ease both",
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(2,0,12,0.78)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      animation: "simon-sheet-fade 0.28s ease both",
     }}>
       <div style={{
-        width: "100%", maxWidth: "440px",
-        borderRadius: "26px", background: "#1a0550", paddingBottom: "7px",
-        boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.6), 0 30px 60px rgba(0,0,0,0.9)",
-        animation: "scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both",
-        marginTop: "auto", marginBottom: "auto",
+        width: "100%", maxWidth: "520px",
+        maxHeight: "92vh", overflowY: "auto",
+        borderRadius: "26px 26px 0 0",
+        background: "linear-gradient(180deg, rgba(8,30,52,0.98) 0%, rgba(4,12,30,0.99) 100%)",
+        border: "1px solid rgba(6,182,212,0.22)",
+        borderBottom: "none",
+        boxShadow: "0 -24px 60px -10px rgba(6,182,212,0.22), 0 -2px 0 rgba(255,255,255,0.04) inset",
+        paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
+        animation: "simon-sheet-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both",
+        position: "relative",
       }}>
-        <div style={{
-          borderRadius: "24px 24px 20px 20px",
-          background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 50%, #07021a 100%)",
-          border: "2px solid rgba(255,255,255,0.12)",
-          padding: "clamp(18px, 5vw, 28px) clamp(16px, 5vw, 24px)",
-          textAlign: "center",
-          overflow: "hidden", position: "relative",
-        }}>
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: "100px",
-            background: "linear-gradient(180deg, rgba(200,160,255,0.16) 0%, transparent 100%)",
-            pointerEvents: "none",
-          }} />
+        <style>{`
+          @keyframes simon-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          @keyframes simon-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
+          @keyframes simon-grade-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+          @keyframes simon-score-rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        `}</style>
 
-          {/* Grade */}
-          <div style={{ position: "relative", zIndex: 1 }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "11px", fontWeight: 900, letterSpacing: "0.2em", marginBottom: "8px" }}>
-              {grade.desc}
-            </div>
+        {/* Drag handle */}
+        <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
+          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+        </div>
+
+        <div style={{ padding: "8px 22px 22px", textAlign: "center", position: "relative" }}>
+          {/* Confetti dots around grade · subtle, not arcade */}
+          {[...Array(8)].map((_, i) => {
+            const angle = (i / 8) * Math.PI * 2;
+            return (
+              <span key={i} aria-hidden style={{
+                position: "absolute", top: "78px", left: "50%",
+                width: 4, height: 4, borderRadius: 999,
+                background: grade.color, opacity: 0.55,
+                filter: `drop-shadow(0 0 6px ${grade.color})`,
+                transform: `translate(${Math.cos(angle) * 96 - 2}px, ${Math.sin(angle) * 96 - 2}px)`,
+                animation: `pet-sparkle ${2.4 + i * 0.18}s ease-in-out ${i * 0.25}s infinite`,
+                pointerEvents: "none",
+              }} />
+            );
+          })}
+
+          {/* Eyebrow + grade letter */}
+          <div style={{
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+            color: grade.color, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.24em",
+            textTransform: "uppercase",
+            opacity: 0.85, marginTop: 6,
+          }}>{grade.desc}</div>
+
+          <div style={{
+            position: "relative", zIndex: 1,
+            width: 116, height: 116, margin: "12px auto 0",
+            borderRadius: "50%",
+            padding: 2,
+            background: `conic-gradient(from 220deg, ${grade.color}, ${grade.color}55, ${grade.color})`,
+            boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 38px ${grade.color}55`,
+            animation: "simon-grade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both",
+          }}>
             <div style={{
-              width: "clamp(108px, 32vw, 140px)",
-              height: "clamp(108px, 32vw, 140px)",
-              margin: "0 auto",
-              borderRadius: "50%", padding: "5px",
-              background: `conic-gradient(from 0deg, ${grade.color}, ${grade.color}aa, ${grade.color})`,
-              boxShadow: `0 0 40px ${grade.color}88, 0 0 80px ${grade.color}44`,
+              width: "100%", height: "100%", borderRadius: "50%",
+              background: "linear-gradient(180deg, rgba(8,30,52,0.96) 0%, rgba(4,12,30,1) 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <div style={{
-                width: "100%", height: "100%", borderRadius: "50%",
-                background: "linear-gradient(180deg, #13063a 0%, #07021a 100%)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                {/* Letter: white core with colored glow around it.
-                    Colored-on-colored (e.g. cyan text + cyan shadow) blurs
-                    into itself and reads as a washed-out smear on mobile.
-                    White inside + colored halo outside = high contrast
-                    letter AND the grade color still dominates the badge. */}
-                <span style={{
-                  fontSize: "clamp(68px, 22vw, 92px)",
-                  fontWeight: 900,
-                  color: "white",
-                  textShadow: `0 0 16px ${grade.color}, 0 0 34px ${grade.color}bb, 0 0 60px ${grade.color}66, 0 3px 6px rgba(0,0,0,0.8)`,
-                  WebkitTextStroke: `1px ${grade.color}`,
-                  lineHeight: 1,
-                }}>{grade.letter}</span>
-              </div>
+              <span style={{
+                fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+                fontSize: 72, fontWeight: 900,
+                color: "#fff",
+                textShadow: `0 0 14px ${grade.color}, 0 0 30px ${grade.color}aa, 0 2px 4px rgba(0,0,0,0.7)`,
+                WebkitTextStroke: `0.6px ${grade.color}`,
+                lineHeight: 1,
+              }}>{grade.letter}</span>
             </div>
           </div>
 
           {/* Score */}
-          <div style={{ marginTop: "20px" }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "10px", fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
-            <div style={{
-              color: "#fbbf24",
-              fontSize: "clamp(32px, 10vw, 46px)",
-              fontWeight: 900,
-              textShadow: "0 0 20px rgba(251,191,36,0.8), 0 2px 6px rgba(0,0,0,0.6)",
-              lineHeight: 1, marginTop: "3px",
-            }}>{score}</div>
-          </div>
-
-          {/* Rounds + time */}
           <div style={{
-            marginTop: "16px",
-            display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px",
+            marginTop: 16,
+            animation: "simon-score-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both",
           }}>
-            <MiniStat label="ROUNDS"  value={String(rounds)}      color="#a78bfa" />
-            <MiniStat label="TIME"    value={`${seconds}s`}       color="#22c55e" />
+            <div style={{
+              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+              color: "rgba(220,210,255,0.5)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
+            }}>SCORE</div>
+            <div style={{
+              fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+              color: "#fde68a",
+              fontSize: "clamp(36px, 9vw, 46px)", fontWeight: 900,
+              textShadow: "0 0 22px rgba(251,191,36,0.55), 0 2px 8px rgba(0,0,0,0.55)",
+              lineHeight: 1, marginTop: 4,
+              letterSpacing: "0.01em",
+            }}>{score.toLocaleString()}</div>
           </div>
 
-          {/* Reward panel (same as rhythm). Guests get the sign-in CTA
-              instead: their run was never submitted, so there's no
-              rank/XP to show. */}
+          {/* Stats · Simon has only rounds + time */}
+          <div style={{
+            marginTop: 18,
+            display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8,
+          }}>
+            <StatChip label="ROUNDS" value={String(rounds)} color="#06b6d4" />
+            <StatChip label="TIME"   value={`${seconds}s`}  color="#22c55e" />
+          </div>
+
+          {/* Reward panel (or guest CTA) — unchanged behavior */}
           {guest ? (
             <GuestScorePrompt nextPath="/games/simon" />
           ) : (
@@ -1664,14 +1687,10 @@ function FinishedView({
             />
           )}
 
-          {/* CTAs */}
-          <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
-            <JuicyBtn label="PLAY AGAIN" wall="#083a6b"
-              face="linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)"
-              onClick={onPlayAgain} />
-            <JuicyBtn label="EXIT" wall="#1a0550"
-              face="linear-gradient(160deg, #c084fc 0%, #a78bfa 50%, #6b21a8 100%)"
-              onClick={onExit} />
+          {/* CTAs · cyan-tinted primary fits Simon's color identity */}
+          <div style={{ marginTop: 22, display: "flex", gap: 10 }}>
+            <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
+            <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
           </div>
         </div>
       </div>
@@ -1679,49 +1698,52 @@ function FinishedView({
   );
 }
 
-function MiniStat({ label, value, color }: { label: string; value: string; color: string }) {
+// ─── Refined stat chip · matches rhythm's StatChip ────────────────────────
+function StatChip({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div style={{
-      borderRadius: "10px",
-      background: "rgba(255,255,255,0.04)",
-      border: `1px solid ${color}44`,
-      padding: "8px 4px", textAlign: "center",
+      borderRadius: 11,
+      background: "rgba(255,255,255,0.03)",
+      border: `1px solid ${color}33`,
+      padding: "9px 4px 7px",
+      textAlign: "center",
+      boxShadow: `inset 0 0 16px ${color}10`,
     }}>
-      <div style={{ color, fontSize: "17px", fontWeight: 900, textShadow: `0 0 10px ${color}88` }}>{value}</div>
-      <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "8px", fontWeight: 800, letterSpacing: "0.12em", marginTop: "2px" }}>{label}</div>
+      <div style={{
+        fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+        color, fontSize: 17, fontWeight: 900,
+        textShadow: `0 0 10px ${color}66`,
+        lineHeight: 1,
+      }}>{value}</div>
+      <div style={{
+        fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+        color: "rgba(220,210,255,0.5)", fontSize: 8.5, fontWeight: 800,
+        letterSpacing: "0.14em", marginTop: 4,
+      }}>{label}</div>
     </div>
   );
 }
 
-function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string; face: string; onClick: () => void }) {
+// ─── Refined dual CTA · primary cyan-filled, ghost outline ───────────────
+function SheetBtn({ label, variant, onClick }: { label: string; variant: "primary" | "ghost"; onClick: () => void }) {
+  const primary = variant === "primary";
   return (
-    <div role="button" tabIndex={0} onClick={onClick}
-      style={{ flex: 1, cursor: "pointer", userSelect: "none" }}>
-      <div style={{
-        borderRadius: "14px", background: wall, paddingBottom: "5px",
-        boxShadow: "0 10px 22px -4px rgba(0,0,0,0.6)",
-      }}>
-        <div style={{
-          borderRadius: "12px 12px 10px 10px",
-          background: face,
-          padding: "12px 8px", textAlign: "center",
-          border: "2px solid rgba(255,255,255,0.45)",
-          boxShadow: "inset 0 6px 14px rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.3)",
-          position: "relative", overflow: "hidden",
-        }}>
-          <div style={{
-            position: "absolute", top: "2px", left: "4%", right: "4%", height: "46%",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)",
-            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
-          }} />
-          <span style={{
-            position: "relative", zIndex: 1,
-            color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.14em",
-            textShadow: "0 1px 2px rgba(0,0,0,0.4)",
-          }}>{label}</span>
-        </div>
-      </div>
-    </div>
+    <button onClick={onClick} style={{
+      flex: 1, cursor: "pointer", userSelect: "none",
+      borderRadius: 14,
+      padding: "13px 10px",
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+      fontSize: 12.5, fontWeight: 900, letterSpacing: "0.14em",
+      color: "#fff",
+      background: primary
+        ? "linear-gradient(180deg, #a5f3fc 0%, #06b6d4 50%, #0e7490 100%)"
+        : "rgba(255,255,255,0.04)",
+      border: primary ? "1px solid rgba(255,255,255,0.35)" : "1px solid rgba(6,182,212,0.35)",
+      boxShadow: primary
+        ? "0 10px 22px -6px rgba(6,182,212,0.55), inset 0 1px 0 rgba(255,255,255,0.35)"
+        : "inset 0 1px 0 rgba(255,255,255,0.06)",
+      transition: "transform 0.15s ease",
+    }}>{label}</button>
   );
 }
 
@@ -2083,6 +2105,99 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         }}>
         {copied ? "✓ Copied" : "Copy wallet ID"}
       </button>
+    </div>
+  );
+}
+
+// ─── Top players preview on the lobby ─────────────────────────────────────
+// Mirrors Rhythm's pattern with Simon's cyan accent. Reads the current-season
+// Simon leaderboard directly from the SUBGRAPH (Goldsky · on-chain Score
+// events). Season boundary fetched once from the backend; the rows come
+// from chain truth.
+const SIMON_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+
+function SimonTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let seasonStart = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+      try {
+        const r = await fetch(`${SIMON_BACKEND_URL}/api/seasons`, { cache: "no-store" });
+        if (r.ok) {
+          const d = await r.json();
+          if (d) {
+            setSeasonNum(d.currentSeason ?? null);
+            if (typeof d.currentStartsAt === "number") seasonStart = d.currentStartsAt;
+            else if (typeof d.currentEndsAt === "number") seasonStart = d.currentEndsAt - 7 * 24 * 60 * 60;
+          }
+        }
+      } catch { /* fall through */ }
+      try {
+        const rows = await fetchLeaderboard(1, seasonStart, 3);
+        if (!cancelled) setTop(rows.slice(0, 3));
+      } catch {
+        if (!cancelled) setTop([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";
+  const medal = (i: number) => i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
+  const fmtName = (e: LeaderboardEntry) => e.username ? `@${e.username.replace(/^@/, "")}` : `${e.player.slice(0, 6)}…${e.player.slice(-4)}`;
+
+  return (
+    <div style={{
+      width: "min(320px, 86vw)",
+      borderRadius: 18,
+      padding: 2,
+      background: "linear-gradient(135deg, rgba(6,182,212,0.6), rgba(6,182,212,0.18))",
+      boxShadow: "0 8px 22px -8px rgba(6,182,212,0.55), 0 0 32px rgba(6,182,212,0.15)",
+    }}>
+      <div style={{
+        borderRadius: 16,
+        background: "linear-gradient(180deg, rgba(15,5,42,0.92), rgba(8,2,28,0.95))",
+        padding: "12px 14px 10px",
+        display: "flex", flexDirection: "column", gap: 6,
+      }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", fontFamily: "inherit" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 900, letterSpacing: "0.18em",
+            color: "rgba(103,232,249,0.9)",
+            textTransform: "uppercase",
+          }}>Top players</span>
+          <span style={{ fontSize: 9.5, color: "rgba(220,200,255,0.45)", fontWeight: 800, letterSpacing: "0.08em" }}>{seasonNum ? `SEASON ${seasonNum} · LIVE` : "LIVE"}</span>
+        </div>
+
+        {top === null && (
+          <div style={{ fontSize: 11, color: "rgba(220,200,255,0.55)", padding: "6px 2px" }}>Loading…</div>
+        )}
+        {top !== null && top.length === 0 && (
+          <div style={{ fontSize: 11, color: "rgba(220,200,255,0.55)", padding: "6px 2px" }}>No scores yet — be first.</div>
+        )}
+        {top !== null && top.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {top.map((e, i) => (
+              <div key={e.player} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span style={{ width: 18, textAlign: "center", fontSize: 13, color: tierColor(i), textShadow: `0 0 6px ${tierColor(i)}88` }}>{medal(i)}</span>
+                <span style={{ flex: 1, color: "rgba(255,255,255,0.95)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtName(e)}</span>
+                <span style={{ color: tierColor(i), fontWeight: 900, textShadow: `0 0 6px ${tierColor(i)}55`, letterSpacing: "0.02em" }}>{e.score.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={onViewAll} style={{
+          marginTop: 2, padding: "7px 0", borderRadius: 10,
+          background: "transparent", border: "none",
+          color: "#22d3ee", fontFamily: "inherit",
+          fontSize: 11, fontWeight: 900, letterSpacing: "0.12em",
+          cursor: "pointer",
+        }}>VIEW LEADERBOARD ›</button>
+      </div>
     </div>
   );
 }

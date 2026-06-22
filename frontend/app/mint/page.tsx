@@ -35,7 +35,9 @@ const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 function MintInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/games";
+  // Post-auth flow lands on the dashboard (the new app home with pet
+  // card + missions + games strip), not the bare games hub.
+  const next = params.get("next") ?? "/dashboard";
   // After mint we send the user through verify next, so they claim G$ and
   // unlock leaderboard + wager eligibility. Preserves the originally
   // requested destination through the chain of redirects.
