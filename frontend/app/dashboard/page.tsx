@@ -699,10 +699,13 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
     if (!address || claimingId !== null) return;
     setClaimingId(id);
     try {
+      // Backend expects { wallet, missionId } · sending walletAddress/
+      // missionDbId returned 400 "Missing wallet or missionId" so claims
+      // silently failed and the row stayed in CLAIM-able state forever.
       await fetch(`${MISSIONS_BACKEND_URL}/api/missions/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: address, missionDbId: id }),
+        body: JSON.stringify({ wallet: address, missionId: id }),
       });
     } catch { /* fall through to refetch — server is the source of truth */ }
     setClaimingId(null);
