@@ -10,7 +10,7 @@
 create table if not exists game_sessions (
   token       text primary key,
   wallet      text not null,
-  game        text not null check (game in ('rhythm', 'simon')),
+  game        text not null check (game in ('rhythm', 'simon', 'stack')),
   started_at  timestamptz not null default now(),
   used        boolean not null default false,
   used_at     timestamptz,
