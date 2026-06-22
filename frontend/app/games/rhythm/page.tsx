@@ -18,6 +18,7 @@ import {
 } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -2828,35 +2829,24 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
 const RHYTHM_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function RhythmTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
-  const [top, setTop] = useState<LeaderboardEntry[] | null>(null);
-  const [seasonNum, setSeasonNum] = useState<number | null>(null);
+  // Seed from the shared cache so a warm cache renders the real data on
+  // the first paint · no "Loading…" flash. The cache is populated by
+  // prefetchPreview() on game-card tap from /games and /dashboard.
+  const seed = getCachedPreview(0);
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(seed?.top ?? null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(seed?.seasonNum ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // Step 1 · season boundary from backend (when did the current season start?)
-      let seasonStart = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      try {
-        const r = await fetch(`${RHYTHM_BACKEND_URL}/api/seasons`, { cache: "no-store" });
-        if (r.ok) {
-          const d = await r.json();
-          if (d) {
-            setSeasonNum(d.currentSeason ?? null);
-            if (typeof d.currentStartsAt === "number") seasonStart = d.currentStartsAt;
-            else if (typeof d.currentEndsAt === "number") seasonStart = d.currentEndsAt - 7 * 24 * 60 * 60;
-          }
-        }
-      } catch { /* fall through to default 7d window */ }
-
-      // Step 2 · top 3 Rhythm scores within that window from the subgraph
-      try {
-        const rows = await fetchLeaderboard(0, seasonStart, 3);
-        if (!cancelled) setTop(rows.slice(0, 3));
-      } catch {
-        if (!cancelled) setTop([]);
-      }
-    })();
+    // Stale-while-revalidate · always refetch on mount to keep the lobby
+    // current, but the user already sees the cached data while this runs.
+    fetchPreview(0).then(v => {
+      if (cancelled) return;
+      setTop(v.top);
+      setSeasonNum(v.seasonNum);
+    }).catch(() => { if (!cancelled && top === null) setTop([]); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";

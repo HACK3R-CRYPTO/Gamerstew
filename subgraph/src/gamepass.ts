@@ -55,6 +55,11 @@ export function handleScoreRecorded(event: ScoreRecorded): void {
   } else if (gameType == 1) {
     player.simonPlays = player.simonPlays.plus(ONE_BI);
     if (score.gt(player.bestSimonScore)) player.bestSimonScore = score;
+  } else if (gameType == 2) {
+    // Stack Tower — uint8 gameType is open on GamePass, no contract
+    // change needed; we just bucket gameType=2 events as stack plays.
+    player.stackPlays = player.stackPlays.plus(ONE_BI);
+    if (score.gt(player.bestStackScore)) player.bestStackScore = score;
   }
   player.save();
 
@@ -74,6 +79,7 @@ export function handleScoreRecorded(event: ScoreRecorded): void {
   day.scoresRecorded = day.scoresRecorded.plus(ONE_BI);
   if (gameType == 0) day.rhythmPlays = day.rhythmPlays.plus(ONE_BI);
   else if (gameType == 1) day.simonPlays = day.simonPlays.plus(ONE_BI);
+  else if (gameType == 2) day.stackPlays = day.stackPlays.plus(ONE_BI);
   day.save();
 
   // Global aggregate
@@ -81,5 +87,6 @@ export function handleScoreRecorded(event: ScoreRecorded): void {
   global.totalScores = global.totalScores.plus(ONE_BI);
   if (gameType == 0) global.totalRhythmPlays = global.totalRhythmPlays.plus(ONE_BI);
   else if (gameType == 1) global.totalSimonPlays = global.totalSimonPlays.plus(ONE_BI);
+  else if (gameType == 2) global.totalStackPlays = global.totalStackPlays.plus(ONE_BI);
   global.save();
 }

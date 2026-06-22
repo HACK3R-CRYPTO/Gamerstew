@@ -28,11 +28,33 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   }
 }
 
+// ─── Schema feature detection ───────────────────────────────────────────────
+// The frontend ships ahead of the subgraph deploy: this codebase knows
+// about Stack Tower's bestStackScore field, but the live Goldsky subgraph
+// may still be running the previous schema version. Querying a field that
+// doesn't exist yet fails the WHOLE query, which used to wipe the all-time
+// board for everyone. So we introspect the Player type on first call,
+// cache the result for the session, and build query strings that omit
+// fields the deployed schema doesn't expose. Once Goldsky's schema is
+// updated, the detection flips to true automatically · no code change.
+let stackFieldSupportedPromise: Promise<boolean> | null = null;
+function isStackFieldSupported(): Promise<boolean> {
+  if (stackFieldSupportedPromise) return stackFieldSupportedPromise;
+  stackFieldSupportedPromise = (async () => {
+    const data = await gql<{ __type: { fields: { name: string }[] } | null }>(
+      `query { __type(name: "Player") { fields { name } } }`,
+    );
+    const fields = data?.__type?.fields ?? [];
+    return fields.some(f => f.name === "bestStackScore");
+  })();
+  return stackFieldSupportedPromise;
+}
+
 // ─── Leaderboard ────────────────────────────────────────────────────────────
-// `gameType` 0 = Rhythm Rush, 1 = Simon Memory. We query scores within the
-// current-week window and dedupe per-player client-side, mirroring the
-// previous Supabase logic. Scores are immutable so the subgraph never
-// double-counts.
+// `gameType` 0 = Rhythm Rush, 1 = Simon Memory, 2 = Stack Tower.
+// Mirrors GamePass.sol uint8 gameType + the backend's GAME_TYPE map. We
+// query scores within the current-week window and dedupe per-player
+// client-side. Scores are immutable so the subgraph never double-counts.
 
 export type LeaderboardEntry = {
   player: string;          // wallet address (lowercase)
@@ -50,8 +72,10 @@ type ScoreRow = {
 
 // Returns the top players for the current week's leaderboard. Pulls a wide
 // score window from the subgraph (top 500 by score) and dedupes per-player.
+export type GameTypeId = 0 | 1 | 2;
+
 export async function fetchLeaderboard(
-  gameType: 0 | 1,
+  gameType: GameTypeId,
   weekStartUnix: number,
   limit = 50,
 ): Promise<LeaderboardEntry[]> {
@@ -107,17 +131,29 @@ type PlayerRow = {
   username: string | null;
   bestRhythmScore: string;
   bestSimonScore: string;
+  bestStackScore?: string;   // optional · only present when the deployed schema includes it
 };
 
 export type AllTimeEntry = LeaderboardEntry & {
   bestRhythm: number;
   bestSimon: number;
+  bestStack: number;
 };
 
 export async function fetchAllTimeLeaderboard(limit = 50): Promise<AllTimeEntry[]> {
   // Pull all players who have ever scored. With a small population we can
   // pull the lot and sort client-side. If the population grows we can swap
   // in server-side ordering by a derived combined-best field.
+  //
+  // Combined score = sum of every per-game best. Each new game lands here
+  // by adding its best{Game}Score field below — players who diversify
+  // get a higher combined number, which is the intended incentive.
+  //
+  // bestStackScore is included conditionally: if the deployed subgraph
+  // doesn't expose it yet, asking for it would fail the whole query and
+  // wipe the board. Detection runs once per session.
+  const stack = await isStackFieldSupported();
+  const stackField = stack ? "bestStackScore" : "";
   const data = await gql<{ players: PlayerRow[] }>(
     `query AllTime {
       players(first: 1000) {
@@ -125,6 +161,7 @@ export async function fetchAllTimeLeaderboard(limit = 50): Promise<AllTimeEntry[
         username
         bestRhythmScore
         bestSimonScore
+        ${stackField}
       }
     }`,
   );
@@ -135,13 +172,15 @@ export async function fetchAllTimeLeaderboard(limit = 50): Promise<AllTimeEntry[
     .map(p => {
       const bestRhythm = Number(p.bestRhythmScore);
       const bestSimon  = Number(p.bestSimonScore);
+      const bestStack  = Number(p.bestStackScore ?? 0);
       return {
         player: p.id.toLowerCase(),
         username: p.username || undefined,
-        score: bestRhythm + bestSimon,
+        score: bestRhythm + bestSimon + bestStack,
         timestamp: 0, // combined view doesn't track a single peak moment
         bestRhythm,
         bestSimon,
+        bestStack,
       };
     })
     .filter(e => e.score > 0)
@@ -151,10 +190,13 @@ export async function fetchAllTimeLeaderboard(limit = 50): Promise<AllTimeEntry[
 
 export async function fetchPlayerAllTimeCombinedStats(
   address: string,
-): Promise<{ peak: number; rank: number; bestRhythm: number; bestSimon: number } | null> {
+): Promise<{ peak: number; rank: number; bestRhythm: number; bestSimon: number; bestStack: number } | null> {
   // Fetch the player's bests + count anyone whose combined best is higher.
   // Sums are computed client-side because the subgraph doesn't index a
   // derived combined-best field directly.
+  const stack = await isStackFieldSupported();
+  const stackField = stack ? "bestStackScore" : "";
+
   const me = await gql<{ player: PlayerRow | null }>(
     `query MyBest($id: ID!) {
       player(id: $id) {
@@ -162,6 +204,7 @@ export async function fetchPlayerAllTimeCombinedStats(
         username
         bestRhythmScore
         bestSimonScore
+        ${stackField}
       }
     }`,
     { id: address.toLowerCase() },
@@ -170,19 +213,20 @@ export async function fetchPlayerAllTimeCombinedStats(
   if (!p) return null;
   const bestRhythm = Number(p.bestRhythmScore);
   const bestSimon  = Number(p.bestSimonScore);
-  const myCombined = bestRhythm + bestSimon;
+  const bestStack  = Number(p.bestStackScore ?? 0);
+  const myCombined = bestRhythm + bestSimon + bestStack;
   if (myCombined === 0) return null;
 
   // Pull everyone, count how many have a higher combined best.
   const all = await gql<{ players: PlayerRow[] }>(
-    `query All { players(first: 1000) { id bestRhythmScore bestSimonScore } }`,
+    `query All { players(first: 1000) { id bestRhythmScore bestSimonScore ${stackField} } }`,
   );
   const above = (all?.players || []).filter(o => {
-    const c = Number(o.bestRhythmScore) + Number(o.bestSimonScore);
+    const c = Number(o.bestRhythmScore) + Number(o.bestSimonScore) + Number(o.bestStackScore ?? 0);
     return c > myCombined && o.id.toLowerCase() !== address.toLowerCase();
   }).length;
 
-  return { peak: myCombined, rank: above + 1, bestRhythm, bestSimon };
+  return { peak: myCombined, rank: above + 1, bestRhythm, bestSimon, bestStack };
 }
 
 // ─── Player all-time stats ──────────────────────────────────────────────────
@@ -190,27 +234,45 @@ export async function fetchPlayerAllTimeCombinedStats(
 // rank vs everyone else. Used by the ALL-TIME tab to render the
 // "Your rank: #N · Your best: X" chip when they're outside the top 50.
 
+const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bestStackScore"> = {
+  0: "bestRhythmScore",
+  1: "bestSimonScore",
+  2: "bestStackScore",
+};
+
 export async function fetchPlayerAllTimeStats(
   address: string,
-  gameType: 0 | 1,
+  gameType: GameTypeId,
 ): Promise<{ peak: number; rank: number } | null> {
-  const orderField = gameType === 0 ? "bestRhythmScore" : "bestSimonScore";
+  const orderField = BEST_FIELD[gameType];
+  const stack = await isStackFieldSupported();
+  // Asking for stack on gameType=2 when the subgraph doesn't index it yet
+  // would always return 0; signal "no data yet" cleanly instead of pretending.
+  if (gameType === 2 && !stack) return null;
+  const stackField = stack ? "bestStackScore" : "";
+
   const data = await gql<{
-    player: { id: string; bestRhythmScore: string; bestSimonScore: string } | null;
+    player: {
+      id: string;
+      bestRhythmScore: string;
+      bestSimonScore: string;
+      bestStackScore?: string;
+    } | null;
   }>(
     `query MyBest($id: ID!) {
       player(id: $id) {
         id
         bestRhythmScore
         bestSimonScore
+        ${stackField}
       }
     }`,
     { id: address.toLowerCase() },
   );
   const my = data?.player;
   if (!my) return null;
-  const myBest = gameType === 0 ? my.bestRhythmScore : my.bestSimonScore;
-  if (myBest === "0") return null;
+  const myBest = my[orderField];
+  if (!myBest || myBest === "0") return null;
 
   const above = await gql<{ players: { id: string }[] }>(
     `query Above($best: BigInt!) {
@@ -229,35 +291,20 @@ export async function fetchPlayerAllTimeStats(
 
 export async function fetchPlayerRank(
   address: string,
-  gameType: 0 | 1,
+  gameType: GameTypeId,
 ): Promise<number | null> {
-  const orderField = gameType === 0 ? "bestRhythmScore" : "bestSimonScore";
-  const data = await gql<{
-    me: { id: string } | null;
-    abovePlayers: { id: string }[];
-  }>(
-    `query Rank($id: ID!, $myScore: BigInt!) {
-      me: player(id: $id) { id }
-      abovePlayers: players(
-        first: 1000,
-        where: { ${orderField}_gt: $myScore }
-      ) { id }
-    }`,
-    {
-      id: address.toLowerCase(),
-      // We don't know myScore here yet, so we use 0 to count anyone above 0,
-      // then adjust below. Simpler approach: fetch the player first, then count.
-      myScore: "0",
-    },
-  );
-  if (!data?.me) return null;
+  const orderField = BEST_FIELD[gameType];
+  const stack = await isStackFieldSupported();
+  // gameType=2 against an unmigrated subgraph has no truth to report.
+  if (gameType === 2 && !stack) return null;
+  const stackField = stack ? "bestStackScore" : "";
 
-  // Two-step query for accuracy: get player's best, then count above
   const playerData = await gql<{
     player: {
       id: string;
       bestRhythmScore: string;
       bestSimonScore: string;
+      bestStackScore?: string;
     } | null;
   }>(
     `query MyBest($id: ID!) {
@@ -265,6 +312,7 @@ export async function fetchPlayerRank(
         id
         bestRhythmScore
         bestSimonScore
+        ${stackField}
       }
     }`,
     { id: address.toLowerCase() },
@@ -272,8 +320,8 @@ export async function fetchPlayerRank(
   const my = playerData?.player;
   if (!my) return null;
 
-  const myBest = gameType === 0 ? my.bestRhythmScore : my.bestSimonScore;
-  if (myBest === "0") return null;
+  const myBest = my[orderField];
+  if (!myBest || myBest === "0") return null;
 
   const countData = await gql<{ players: { id: string }[] }>(
     `query Above($best: BigInt!) {

@@ -28,7 +28,16 @@ const T = {
 };
 
 type Tab = "live" | "past";
-type GameKind = "rhythm" | "simon";
+type GameKind = "rhythm" | "simon" | "stack";
+
+// gameType ID mirrors GamePass.sol uint8 + backend's GAME_TYPE map.
+// Add a row here when a new game lands · everything else flows from it.
+const GAME_TYPE_ID: Record<GameKind, 0 | 1 | 2> = { rhythm: 0, simon: 1, stack: 2 };
+const GAME_HREF: Record<GameKind, string> = {
+  rhythm: "/games/rhythm",
+  simon: "/games/simon",
+  stack: "/games/stack",
+};
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the
 // backend's per-season entries. Both expose player + username + score.
@@ -36,8 +45,7 @@ type Entry = LeaderboardEntry;
 type PastSeason = {
   season: number; startTs: number; endTs: number;
   prizePot: number; sealedAt: number; totalPlayers?: number;
-  rhythm: Entry[]; simon: Entry[];
-};
+} & Partial<Record<GameKind, Entry[]>>;
 type SeasonsMetadata = {
   currentSeason: number;
   currentEndsAt: number;
@@ -177,7 +185,7 @@ function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; 
 
 // ─── past-season champion card · matches previous /leaderboard card 1:1 ──
 function SeasonChampionCard({ season, gameKind, address }: { season: PastSeason; gameKind: GameKind; address?: string }) {
-  const entries = (gameKind === "rhythm" ? season.rhythm : season.simon) ?? [];
+  const entries = season[gameKind] ?? [];
   const winner = entries[0];
   const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
   const placedTop3 = myFinish > 0 && myFinish <= 3;
@@ -260,7 +268,7 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
     let cancelled = false;
     const seasonStart = meta?.currentStartsAt
       ?? (meta?.currentEndsAt ? meta.currentEndsAt - 7 * 24 * 60 * 60 : Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60);
-    const gameType: 0 | 1 = gameKind === "rhythm" ? 0 : 1;
+    const gameType = GAME_TYPE_ID[gameKind];
     fetchLeaderboard(gameType, seasonStart, 50)
       .then(rows => { if (!cancelled) setLiveEntries(rows); })
       .catch(() => { if (!cancelled) setLiveEntries([]); });
@@ -338,7 +346,7 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
                 </div>
               )}
               {address && liveEntries && !myLive && (
-                <a href={gameKind === "rhythm" ? "/games/rhythm" : "/games/simon"} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${accent}55`, textDecoration: "none" }}>
+                <a href={GAME_HREF[gameKind]} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${accent}55`, textDecoration: "none" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked this season</div>
                     <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Score this season to claim a spot</div>

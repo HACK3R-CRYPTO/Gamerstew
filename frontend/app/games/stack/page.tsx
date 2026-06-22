@@ -19,11 +19,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
-import { petForLevel } from "@/lib/pets";
+import { useAccount, useSignMessage, useWriteContract } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useAuthStatus } from "@/hooks/useRequireAuth";
+import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
+import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
+import LevelUpToast from "@/components/LevelUpToast";
+import PetEvolveToast from "@/components/PetEvolveToast";
+import { PushOptInModal } from "@/components/PushOptInModal";
+import {
+  signScore, signScoreMiniPay,
+  submitScore, submitScoreMiniPay,
+  startGame as startGameAction,
+  startGameMiniPay as startGameMiniPayAction,
+} from "@/app/actions/game";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
+import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+
+// Hard session cap · matches simon. Backend rejects vouchers from sessions
+// older than 11 minutes (server.js:963), so 10 minutes leaves a safety margin
+// for the on-chain tx + voucher round trip to land.
+const GAME_DURATION_MS = 10 * 60 * 1000;
 
 // ─── Tuning ──────────────────────────────────────────────────────────────────
 const BLOCK_H = 28;                 // pixel height of each stacked slab
@@ -53,9 +74,10 @@ export default function StackTowerPage() {
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [localBest, setLocalBest] = useState(0);
+  const [timeLeftMs, setTimeLeftMs] = useState(GAME_DURATION_MS);
 
-  // Player level → pet sprite shown on the idle screen, same incentive
-  // as Survivor: signing in and leveling unlocks evolutions.
+  // Player level drives the pet-evolution celebration after a successful
+  // submit (petForLevel diff at submit-result time).
   const [playerLevel, setPlayerLevel] = useState(1);
   useEffect(() => {
     if (!address) return;
@@ -64,11 +86,50 @@ export default function StackTowerPage() {
       .then(d => setPlayerLevel(d.level || 1))
       .catch(() => {});
   }, [address]);
-  const pet = petForLevel(playerLevel);
 
   useEffect(() => {
     setLocalBest(Number(localStorage.getItem("stack_best") || 0));
   }, []);
+
+  // ═══ Score submission — mirrors simon's three-step gated flow ═══════════
+  // Signed-in players land on the same on-chain ladder as Rhythm and Simon
+  // (gameType=2). Guests keep the local-best fallback above so the practice
+  // loop still feels rewarding before they sign in.
+  type SubmitResult = {
+    rank?: number;
+    xpEarned?: number;
+    xp?: number;
+    level?: number;
+    leveledUp?: boolean;
+    isNewPb?: boolean;
+    prevBest?: number;
+    newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
+  };
+  const sessionTokenRef = useRef<string | null>(null);
+  const startingRef = useRef(false);
+  const submittedRef = useRef(false);
+  const gameStartMsRef = useRef(0);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [signingOnChain, setSigningOnChain] = useState(false);
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [levelUpToastLevel, setLevelUpToastLevel] = useState<number | null>(null);
+  const [petEvolveToPet, setPetEvolveToPet] = useState<typeof PET_STAGES[number] | null>(null);
+  const [petEvolveAtLevel, setPetEvolveAtLevel] = useState<number>(1);
+
+  const { authed } = useAuthStatus();
+  const { getAccessToken, user } = usePrivy();
+  // signMessageAsync is unused for stack (no tap-log replay) but kept here
+  // so the import shape matches simon · easier diff when we add anti-replay.
+  useSignMessage();
+  const { writeContractAsync } = useWriteContract();
+  const isMiniPay = useIsMiniPay();
+  const isEmbeddedWallet = user?.linkedAccounts?.some(
+    (a: { type: string; walletClientType?: string }) =>
+      a.type === "wallet" && a.walletClientType === "privy"
+  );
 
   // ─── Game state refs (never re-renders) ──────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -241,7 +302,13 @@ export default function StackTowerPage() {
   }, [blip, haptic, juice]);
 
   // ─── Start a fresh run ────────────────────────────────────────────────────
-  const startGame = useCallback(() => {
+  const startGame = useCallback(async () => {
+    // Re-entry guard — bails if a session ticket request is already in flight.
+    // Without this a double-click during the ~500ms /api/start-game round
+    // trip inserts two game_sessions rows for one actual run.
+    if (startingRef.current) return;
+    startingRef.current = true;
+
     const { w } = sizeRef.current;
     const startW = Math.min(280, Math.max(START_W_MIN, w * START_W_FRAC));
     stackRef.current = [
@@ -259,16 +326,57 @@ export default function StackTowerPage() {
     levelRef.current = 1;
     setScore(0); setCombo(0);
     juice.reset();
+    submittedRef.current = false;
+    sessionTokenRef.current = null;
+    setSubmitResult(null);
+    setSubmitError(null);
+    setTxError(null);
+
+    // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══════
+    // No ticket = backend refuses to sign the score at submit time. Guests
+    // skip this branch and the run stays local-only (localStorage best).
+    if (address) {
+      try {
+        let res;
+        if (isMiniPay) {
+          // MiniPay forbids personal_sign · identity is enforced on-chain
+          // when the player signs the score-submit tx later.
+          res = await startGameMiniPayAction(address, "", "", "stack");
+        } else {
+          const token = await getAccessToken();
+          if (!token) {
+            setSubmitError("Sign in required to start a ranked run.");
+            startingRef.current = false;
+            return;
+          }
+          res = await startGameAction(token, address, "stack");
+        }
+        if (!res.success) {
+          setSubmitError(res.error || "Couldn't start session. Try again.");
+          startingRef.current = false;
+          return;
+        }
+        sessionTokenRef.current = res.sessionToken;
+      } catch {
+        setSubmitError("Couldn't start session. Try again.");
+        startingRef.current = false;
+        return;
+      }
+    }
+
     getAudioCtx();
     setCountdown(3);
     setPhase("countdown");
-  }, [getAudioCtx, juice]);
+    startingRef.current = false;
+  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "countdown") return;
     if (countdown <= 0) {
       blip(784, 0.2, 0.2);
+      gameStartMsRef.current = Date.now();   // wall-clock anchor for submit gameTime
+      setTimeLeftMs(GAME_DURATION_MS);
       setPhase("playing");
       return;
     }
@@ -276,6 +384,181 @@ export default function StackTowerPage() {
     const t = setTimeout(() => setCountdown(c => c - 1), 700);
     return () => clearTimeout(t);
   }, [phase, countdown, blip]);
+
+  // ─── Hard 10-minute timer · matches backend's 11-min session TTL ─────────
+  // Ticks 4×/sec, computes remaining time off gameStartMsRef so animation
+  // pauses don't desync the countdown. At 0, finish() ends the run with the
+  // current score (same path as a missed drop).
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const tick = () => {
+      const remaining = GAME_DURATION_MS - (Date.now() - gameStartMsRef.current);
+      if (remaining <= 0) {
+        setTimeLeftMs(0);
+        finish();
+        return;
+      }
+      setTimeLeftMs(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [phase, finish]);
+
+  // ═══ Submit score · same three-step flow as simon ════════════════════════
+  // 1. signScore                    backend EIP-712 voucher
+  // 2. recordScoreWithBackendSig    on-chain tx · the signature gate
+  // 3. submitScore                  off-chain save (Supabase, XP, achievements)
+  // Guests with no wallet skip this entirely · their best stays in localStorage.
+  useEffect(() => {
+    if (phase !== "finished") return;
+    if (submittedRef.current) return;
+    if (!address) return;
+    submittedRef.current = true;
+
+    const rawGameTime = Date.now() - gameStartMsRef.current;
+    const gameTime = Math.max(5000, rawGameTime);
+    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(scoreRef.current)));
+
+    // 0-score + sub-5s ends are the player tapping START and bailing.
+    // Skip the network round-trip and surface a calm message.
+    if (scoreToSubmit === 0 && rawGameTime < 5000) {
+      setSubmitting(false);
+      setTxError(null);
+      setSubmitError("No score yet. Tap BUILD AGAIN and stack a few blocks to land on the board.");
+      return;
+    }
+
+    const baseScoreData = { game: "stack" as const, score: scoreToSubmit, gameTime };
+
+    (async () => {
+      setSubmitting(true);
+      setTxError(null);
+      try {
+        // ── STEP 1: voucher ──
+        let sig:
+          | { success: true; signature: string; nonce: string; gameType: number; score?: number }
+          | { success: false; error: string };
+        let authToken: string | null = null;
+
+        const sessionToken = sessionTokenRef.current;
+        if (!sessionToken) {
+          setSubmitError("Session missing. Tap BUILD AGAIN to start a fresh run.");
+          return;
+        }
+
+        if (isMiniPay) {
+          sig = await signScoreMiniPay(
+            address, "", "",
+            { game: "stack", score: scoreToSubmit },
+            sessionToken,
+          );
+        } else {
+          authToken = await getAccessToken();
+          if (!authToken) {
+            setSubmitError("Not signed in · score not recorded");
+            return;
+          }
+          sig = await signScore(
+            authToken, address,
+            { game: "stack", score: scoreToSubmit },
+            sessionToken,
+          );
+        }
+
+        if (!sig.success) {
+          setSubmitError(sig.error || "Voucher signing failed");
+          return;
+        }
+
+        // ── STEP 2: on-chain tx · THE SIGNATURE GATE ──
+        let txHash: string | null = null;
+        setSigningOnChain(true);
+        try {
+          txHash = await writeContractAsync({
+            address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+            abi: GAME_PASS_ABI,
+            functionName: "recordScoreWithBackendSig",
+            args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            ...(isEmbeddedWallet ? { gas: 300000n } : {}),
+            ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
+          });
+        } catch (err: unknown) {
+          const e = err as {
+            name?: string; code?: number;
+            message?: string; shortMessage?: string; details?: string;
+            cause?: { name?: string; code?: string; message?: string };
+          };
+          const name      = e?.name ?? "";
+          const code      = e?.code ?? 0;
+          const causeName = e?.cause?.name ?? "";
+          const causeCode = e?.cause?.code ?? "";
+          const msg       = (e?.message ?? e?.shortMessage ?? e?.details ?? e?.cause?.message ?? "").toLowerCase();
+          const isRejected =
+            name === "UserRejectedRequestError" || code === 4001 || code === -32003 ||
+            causeName === "UserRejectedRequestError" ||
+            causeCode === "policy_violation" ||
+            msg.includes("user rejected") ||
+            msg.includes("rejected the request") ||
+            msg.includes("user denied");
+          const isGasOrFunds =
+            name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
+            code === -32000 || code === -32010 || code === -32603 ||
+            causeCode === "insufficient_funds" ||
+            msg.includes("insufficient funds") || msg.includes("insufficient balance") ||
+            msg.includes("gas limit") || msg.includes("exceeds gas") ||
+            msg.includes("gas required") || msg.includes("intrinsic gas") ||
+            msg.includes("cannot estimate") || msg.includes("estimate gas");
+          if (isRejected)        setTxError("Transaction rejected. Tap BUILD AGAIN to try again.");
+          else if (isGasOrFunds) setTxError("Score didn't save · needs a top up.");
+          else                   setTxError("Score didn't save. Tap BUILD AGAIN to try again.");
+          return;
+        } finally {
+          setSigningOnChain(false);
+        }
+
+        // ── STEP 3: save off-chain ──
+        let result;
+        const fullScoreData = { ...baseScoreData, txHash };
+        if (isMiniPay) {
+          result = await submitScoreMiniPay(address, "", "", fullScoreData);
+        } else if (authToken) {
+          result = await submitScore(authToken, address, fullScoreData);
+        }
+
+        if (result?.success) {
+          setSubmitResult({
+            rank: result.rank,
+            xpEarned: result.xpEarned,
+            xp: result.xp,
+            level: result.level,
+            leveledUp: result.leveledUp,
+            isNewPb: result.isNewPb,
+            prevBest: result.prevBest,
+            newAchievements: result.newAchievements || [],
+          });
+          if (result.leveledUp && typeof result.level === "number") {
+            const newLv = result.level;
+            const prevLv = playerLevel;
+            const prevPet = petForLevel(prevLv);
+            const newPet = petForLevel(newLv);
+            setTimeout(() => setLevelUpToastLevel(newLv), 700);
+            if (prevPet.id !== newPet.id) {
+              setPetEvolveAtLevel(newLv);
+              setTimeout(() => setPetEvolveToPet(newPet), 700 + 3800);
+            }
+          }
+        } else {
+          setSubmitError(result?.error || "Score not recorded");
+        }
+      } catch {
+        setSubmitError("Unexpected error · score not recorded");
+      } finally {
+        setSubmitting(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // ─── Input ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -413,7 +696,7 @@ export default function StackTowerPage() {
     }}>
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
 
-      {/* HUD — minimal: score top-left, combo top-right, best score subtle */}
+      {/* HUD — score top-left, time + combo top-right */}
       {(phase === "playing" || phase === "countdown") && (
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0,
@@ -430,18 +713,32 @@ export default function StackTowerPage() {
               </div>
             )}
           </div>
-          {combo >= 2 && (
-            <div style={{
-              padding: "8px 12px", borderRadius: 12,
-              background: "rgba(232,121,249,0.18)",
-              border: "1.5px solid rgba(232,121,249,0.55)",
-              color: "#f0abfc",
-              fontSize: 13, fontWeight: 900, letterSpacing: "0.1em",
-              textShadow: "0 0 10px rgba(232,121,249,0.7)",
-            }}>
-              {combo}× PERFECT
-            </div>
-          )}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            {phase === "playing" && (
+              <div style={{
+                padding: "6px 12px", borderRadius: 12,
+                background: timeLeftMs < 60_000 ? "rgba(239,68,68,0.18)" : "rgba(34,211,238,0.14)",
+                border: `1.5px solid ${timeLeftMs < 60_000 ? "rgba(239,68,68,0.55)" : "rgba(34,211,238,0.45)"}`,
+                color: timeLeftMs < 60_000 ? "#fca5a5" : "#67e8f9",
+                fontSize: 12, fontWeight: 900, letterSpacing: "0.1em",
+                textShadow: `0 0 8px ${timeLeftMs < 60_000 ? "rgba(239,68,68,0.6)" : "rgba(34,211,238,0.6)"}`,
+              }}>
+                {Math.floor(timeLeftMs / 60000)}:{String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, "0")}
+              </div>
+            )}
+            {combo >= 2 && (
+              <div style={{
+                padding: "8px 12px", borderRadius: 12,
+                background: "rgba(232,121,249,0.18)",
+                border: "1.5px solid rgba(232,121,249,0.55)",
+                color: "#f0abfc",
+                fontSize: 13, fontWeight: 900, letterSpacing: "0.1em",
+                textShadow: "0 0 10px rgba(232,121,249,0.7)",
+              }}>
+                {combo}× PERFECT
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -464,62 +761,81 @@ export default function StackTowerPage() {
         <JuiceOverlay {...juice} />
       )}
 
-      {/* IDLE */}
+      {/* IDLE · same shape as rhythm/simon · back X, title, copy, guest chip,
+            leaderboard preview, START. No decorative preview tower or stray
+            "YOUR BEST" line · the leaderboard preview shows where you stand. */}
       {phase === "idle" && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 10,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 26, padding: 24, textAlign: "center",
+          gap: 32, padding: 24, textAlign: "center",
         }}>
           <button onClick={() => router.push("/games")} aria-label="Back" style={{
             position: "absolute", top: 18, left: 18, width: 40, height: 40,
-            borderRadius: 12, border: "none", cursor: "pointer",
-            background: "linear-gradient(160deg, #ff6060, #b00000)",
-            color: "white", fontSize: 16, fontWeight: 900,
+            borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "inherit",
+            background: "#6b0000", paddingBottom: 4,
             boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-          }}>✕</button>
+          }}>
+            <div style={{
+              width: "100%", height: 36, borderRadius: "10px 10px 8px 8px",
+              background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
+              border: "2px solid rgba(255,255,255,0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </div>
+          </button>
 
           <div>
             <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.4em", color: "rgba(34,211,238,0.7)", textShadow: "0 0 14px rgba(34,211,238,0.7)" }}>GAME ARENA</div>
-            <div style={{ fontSize: "clamp(34px, 8vw, 60px)", fontWeight: 900, color: "white", marginTop: 6, lineHeight: 1.05, textShadow: "0 0 24px rgba(34,211,238,0.9)" }}>
+            <div style={{ fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em", color: "white", marginTop: 6, lineHeight: 1, textShadow: "0 0 24px rgba(34,211,238,0.9), 0 4px 10px rgba(0,0,0,0.7)" }}>
               STACK<br />TOWER
             </div>
           </div>
 
-          {/* Tiny preview tower — animates a few perfect drops to sell the loop */}
-          <PreviewTower />
-
-          <div style={{ maxWidth: 340, color: "rgba(220,200,255,0.75)", fontSize: 13, fontWeight: 700, lineHeight: 1.6 }}>
-            Tap to drop the block on the tower.
+          <div style={{
+            maxWidth: 360, textAlign: "center",
+            color: "rgba(220,200,255,0.75)", fontSize: 13, fontWeight: 700, lineHeight: 1.6,
+          }}>
+            Tap to drop the block.
             Overhang gets sliced off.
-            Land it perfectly for a combo and full width.
             <br />
-            <span style={{ color: "rgba(251,191,36,0.85)" }}>Tap anywhere · or SPACE to drop</span>
+            <span style={{ color: "rgba(251,191,36,0.85)" }}>
+              Perfect alignment keeps full width and builds combos
+            </span>
           </div>
 
-          {localBest > 0 && (
-            <div style={{ color: "#fbbf24", fontSize: 12, fontWeight: 900, letterSpacing: "0.1em" }}>
-              YOUR BEST: {localBest}
-            </div>
-          )}
+          {!authed && <GuestPlayChip />}
 
-          {!address && (
-            <div style={{ color: "rgba(220,200,255,0.55)", fontSize: 11, fontWeight: 700 }}>
-              {pet.name} watches. Sign in &amp; level up to evolve.
-            </div>
-          )}
+          <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
 
           <div role="button" tabIndex={0} onClick={startGame}
-            style={{ cursor: "pointer", width: "min(240px, 80vw)" }}>
-            <div style={{ borderRadius: 18, background: "#075985", paddingBottom: 6, boxShadow: "0 12px 28px -6px rgba(34,211,238,0.75)" }}>
+            style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
+            <div style={{
+              borderRadius: 18, background: "#083a6b", paddingBottom: 6,
+              boxShadow: "0 12px 28px -6px rgba(34,211,238,0.75), 0 0 40px rgba(34,211,238,0.3)",
+            }}>
               <div style={{
                 borderRadius: "16px 16px 12px 12px",
-                background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 50%, #0e7490 100%)",
-                padding: "18px 28px",
+                background: "linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)",
+                padding: "18px 28px", textAlign: "center",
                 border: "2px solid rgba(255,255,255,0.5)",
-                boxShadow: "inset 0 6px 14px rgba(255,255,255,0.6)",
+                position: "relative", overflow: "hidden",
+                boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
               }}>
-                <span style={{ color: "white", fontSize: 20, fontWeight: 900, letterSpacing: "0.18em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>STACK IT</span>
+                <div style={{
+                  position: "absolute", top: 2, left: "4%", right: "4%", height: "48%",
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+                  borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
+                }} />
+                <span style={{
+                  position: "relative", zIndex: 1,
+                  color: "white", fontSize: 20, fontWeight: 900, letterSpacing: "0.18em",
+                  textShadow: "0 2px 4px rgba(0,0,0,0.45)",
+                }}>STACK IT</span>
               </div>
             </div>
           </div>
@@ -577,12 +893,21 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
-              <div style={{
-                marginTop: 14, color: "rgba(200,180,255,0.5)", fontSize: 9.5,
-                fontWeight: 700, letterSpacing: "0.04em",
-              }}>
-                Practice mode — ranked leaderboard runs coming next update.
-              </div>
+              {/* Submit status · guest CTA · or reward panel for signed-in runs */}
+              {!authed ? (
+                <div style={{ marginTop: 14 }}>
+                  <GuestScorePrompt nextPath="/games/stack" />
+                </div>
+              ) : (
+                <StackRewardPanel
+                  submitting={submitting}
+                  signingOnChain={signingOnChain}
+                  result={submitResult}
+                  error={submitError}
+                  txError={txError}
+                  score={score}
+                />
+              )}
 
               <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
                 <div role="button" tabIndex={0} onClick={startGame} style={{ cursor: "pointer", flex: 1 }}>
@@ -597,7 +922,14 @@ export default function StackTowerPage() {
                     </div>
                   </div>
                 </div>
-                <div role="button" tabIndex={0} onClick={() => router.push("/games")} style={{ cursor: "pointer", flex: 1 }}>
+                <div role="button" tabIndex={0}
+                  onClick={() => {
+                    setPhase("idle");
+                    setScore(0); setCombo(0);
+                    setSubmitResult(null); setSubmitError(null); setTxError(null);
+                    submittedRef.current = false;
+                  }}
+                  style={{ cursor: "pointer", flex: 1 }}>
                   <div style={{ borderRadius: 14, background: "#1a0550", paddingBottom: 5 }}>
                     <div style={{
                       borderRadius: "12px 12px 9px 9px",
@@ -610,39 +942,271 @@ export default function StackTowerPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Leaderboard nudge · only after a clean submit so it's a reward, not noise */}
+              {submitResult && (
+                <div role="button" tabIndex={0}
+                  onClick={() => router.push("/games/stack/leaderboard")}
+                  style={{
+                    marginTop: 12, cursor: "pointer", textAlign: "center",
+                    color: "#67e8f9", fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
+                    opacity: 0.85,
+                  }}>
+                  SEE THE LEADERBOARD →
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* ═══ LEVEL-UP CELEBRATION ═══ */}
+      <LevelUpToast
+        level={levelUpToastLevel}
+        onClose={() => setLevelUpToastLevel(null)}
+      />
+
+      {/* ═══ PET EVOLUTION CELEBRATION ═══ */}
+      <PetEvolveToast
+        pet={petEvolveToPet}
+        newLevel={petEvolveAtLevel}
+        onClose={() => setPetEvolveToPet(null)}
+      />
+
+      {/* ═══ PUSH OPT-IN · fires only after a successful submit so the ask
+            lands after value is delivered, gated to once per device. ═══ */}
+      <PushOptInModal
+        walletAddress={address}
+        trigger={!!submitResult}
+      />
     </div>
   );
 }
 
-// ─── Idle-screen preview tower ───────────────────────────────────────────────
-// Static decorative stack: 5 cyan slabs in a tidy column, slight perspective
-// so it reads as a tower not a barcode. Keeps the idle screen feeling like
-// the game it's about to launch.
-function PreviewTower() {
-  const blocks = [
-    { w: 120, off: 0 },
-    { w: 110, off: 4 },
-    { w: 100, off: -2 },
-    { w: 92,  off: 3 },
-    { w: 82,  off: 0 },
-  ];
+// ─── Stack reward panel · slim variant of simon's RewardPanel ────────────────
+// Shows the submit-state machine inside the finished sheet:
+//   signingOnChain → "CONFIRM IN YOUR WALLET"
+//   submitting     → "SAVING SCORE…"
+//   txError/error  → small banner with retry copy
+//   result         → rank + xp grid · achievements unlocked
+function StackRewardPanel({
+  submitting, signingOnChain, result, error, txError, score,
+}: {
+  submitting: boolean;
+  signingOnChain: boolean;
+  result: {
+    rank?: number;
+    xpEarned?: number;
+    level?: number;
+    leveledUp?: boolean;
+    isNewPb?: boolean;
+    prevBest?: number;
+    newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
+  } | null;
+  error: string | null;
+  txError: string | null;
+  score: number;
+}) {
+  if (signingOnChain) {
+    return (
+      <div style={{
+        marginTop: 14, padding: 12, borderRadius: 10,
+        background: "rgba(251,191,36,0.1)",
+        border: "1px solid rgba(251,191,36,0.35)",
+        color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
+        textAlign: "center", boxShadow: "0 0 16px rgba(251,191,36,0.2)",
+      }}>
+        ✦ CONFIRM IN YOUR WALLET ✦
+        <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", marginTop: 4 }}>
+          Signing records your score on-chain
+        </div>
+      </div>
+    );
+  }
+  if (submitting) {
+    return (
+      <div style={{
+        marginTop: 14, padding: "10px 12px", borderRadius: 10,
+        background: "rgba(167,139,250,0.08)",
+        border: "1px solid rgba(167,139,250,0.2)",
+        color: "rgba(200,180,255,0.7)",
+        fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
+        textAlign: "center",
+      }}>SAVING SCORE…</div>
+    );
+  }
+  if (txError) {
+    const low = txError.toLowerCase();
+    const isGasError = low.includes("top up");
+    return (
+      <div style={{
+        marginTop: 14, padding: "10px 12px", borderRadius: 10,
+        background: isGasError ? "rgba(251,146,60,0.1)" : "rgba(239,68,68,0.08)",
+        border: `1px solid ${isGasError ? "rgba(251,146,60,0.32)" : "rgba(239,68,68,0.2)"}`,
+        color: isGasError ? "#fdba74" : "rgba(252,165,165,0.85)",
+        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+        textAlign: "center", lineHeight: 1.45,
+      }}>{txError}</div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{
+        marginTop: 14, padding: "10px 12px", borderRadius: 10,
+        background: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(239,68,68,0.2)",
+        color: "rgba(252,165,165,0.85)",
+        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+        textAlign: "center", lineHeight: 1.45,
+      }}>{error}</div>
+    );
+  }
+  if (!result) return null;
+
+  const { rank, xpEarned, isNewPb, prevBest, newAchievements = [] } = result;
+  const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
+  return (
+    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {rank ? (
+          <div style={{
+            padding: "10px 8px", borderRadius: 10,
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.28)",
+            textAlign: "center",
+          }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
+            <div style={{ color: "#fbbf24", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: 2 }}>
+              #{rank}
+            </div>
+          </div>
+        ) : <div />}
+        {typeof xpEarned === "number" ? (
+          <div style={{
+            padding: "10px 8px", borderRadius: 10,
+            background: "rgba(167,139,250,0.1)",
+            border: "1px solid rgba(167,139,250,0.3)",
+            textAlign: "center",
+          }}>
+            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
+            <div style={{ color: "#a78bfa", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: 2 }}>
+              +{xpEarned}
+            </div>
+          </div>
+        ) : <div />}
+      </div>
+
+      {showPbDelta && typeof prevBest === "number" && (
+        <div style={{
+          padding: "10px 12px", borderRadius: 10,
+          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
+          border: "1px solid rgba(6,182,212,0.4)",
+          textAlign: "center",
+          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
+        }}>
+          <div style={{ color: "#67e8f9", fontSize: 12, fontWeight: 900, letterSpacing: "0.2em" }}>
+            ★ NEW PERSONAL BEST ★
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: 800, marginTop: 3 }}>
+            Beat your previous {prevBest} by{" "}
+            <span style={{ color: "#86efac", fontWeight: 900 }}>+{Math.max(0, score - prevBest)}</span>
+          </div>
+        </div>
+      )}
+
+      {newAchievements.length > 0 && newAchievements.map(a => (
+        <div key={a.id} style={{
+          padding: "10px 12px", borderRadius: 10,
+          background: "rgba(251,191,36,0.08)",
+          border: "1px solid rgba(251,191,36,0.32)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <div style={{ fontSize: 22 }}>{a.icon || "🏆"}</div>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>UNLOCKED</div>
+            <div style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>{a.name}</div>
+            {a.desc && <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 10, fontWeight: 700 }}>{a.desc}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Lobby top-3 preview · same pattern as Rhythm/Simon ─────────────────────
+// Pulls live top 3 from the subgraph using the current season's window. The
+// season-window fetch goes through the backend so the cutoff matches sealed
+// /api/seasons data; falls back to a 7d window if the backend is slow.
+function StackTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
+  // Cache-seeded initial state · prefetch from /games or /dashboard
+  // tap warms the cache, so on mount we already have data to paint.
+  const seed = getCachedPreview(2);
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(seed?.top ?? null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(seed?.seasonNum ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPreview(2).then(v => {
+      if (cancelled) return;
+      setTop(v.top);
+      setSeasonNum(v.seasonNum);
+    }).catch(() => { if (!cancelled && top === null) setTop([]); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";
+  const medal = (i: number) => i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
+  const fmtName = (e: LeaderboardEntry) => e.username ? `@${e.username.replace(/^@/, "")}` : `${e.player.slice(0, 6)}…${e.player.slice(-4)}`;
+
   return (
     <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-      filter: "drop-shadow(0 6px 18px rgba(34,211,238,0.4))",
+      width: "min(320px, 86vw)",
+      borderRadius: 18,
+      padding: 2,
+      background: "linear-gradient(135deg, rgba(251,146,60,0.6), rgba(251,146,60,0.16))",
+      boxShadow: "0 8px 22px -8px rgba(251,146,60,0.55), 0 0 32px rgba(251,146,60,0.15)",
     }}>
-      {blocks.map((b, i) => (
-        <div key={i} style={{
-          width: b.w, height: 20, marginLeft: b.off,
-          background: `linear-gradient(160deg, hsl(${195 + i * 12} 78% 62%), hsl(${195 + i * 12} 78% 42%))`,
-          borderRadius: 4,
-          boxShadow: "inset 0 2px 4px rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.25)",
-        }} />
-      ))}
+      <div style={{
+        borderRadius: 16,
+        background: "linear-gradient(180deg, rgba(15,5,42,0.92), rgba(8,2,28,0.95))",
+        padding: "12px 14px 10px",
+        display: "flex", flexDirection: "column", gap: 6,
+      }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 900, letterSpacing: "0.18em",
+            color: "rgba(253,186,116,0.9)", textTransform: "uppercase",
+          }}>Tallest this week</span>
+          <span style={{ fontSize: 9.5, color: "rgba(220,200,255,0.45)", fontWeight: 800, letterSpacing: "0.08em" }}>{seasonNum ? `SEASON ${seasonNum} · LIVE` : "LIVE"}</span>
+        </div>
+
+        {top === null && (
+          <div style={{ fontSize: 11, color: "rgba(220,200,255,0.55)", padding: "6px 2px" }}>Loading…</div>
+        )}
+        {top !== null && top.length === 0 && (
+          <div style={{ fontSize: 11, color: "rgba(220,200,255,0.55)", padding: "6px 2px" }}>No towers yet · be first.</div>
+        )}
+        {top !== null && top.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {top.map((e, i) => (
+              <div key={e.player} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span style={{ width: 18, textAlign: "center", fontSize: 13, color: tierColor(i), textShadow: `0 0 6px ${tierColor(i)}88` }}>{medal(i)}</span>
+                <span style={{ flex: 1, color: "rgba(255,255,255,0.95)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtName(e)}</span>
+                <span style={{ color: tierColor(i), fontWeight: 900, textShadow: `0 0 6px ${tierColor(i)}55`, letterSpacing: "0.02em" }}>{e.score.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={onViewAll} style={{
+          marginTop: 2, padding: "7px 0", borderRadius: 10,
+          background: "transparent", border: "none",
+          color: "#fb923c", fontFamily: "inherit",
+          fontSize: 11, fontWeight: 900, letterSpacing: "0.12em",
+          cursor: "pointer",
+        }}>VIEW LEADERBOARD ›</button>
+      </div>
     </div>
   );
 }

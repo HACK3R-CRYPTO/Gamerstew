@@ -19,6 +19,7 @@ import {
 } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -2155,32 +2156,21 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
 const SIMON_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function SimonTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
-  const [top, setTop] = useState<LeaderboardEntry[] | null>(null);
-  const [seasonNum, setSeasonNum] = useState<number | null>(null);
+  // Cache-seeded initial state · prefetch from /games or /dashboard
+  // tap warms the cache, so on mount we already have data to paint.
+  const seed = getCachedPreview(1);
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(seed?.top ?? null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(seed?.seasonNum ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      let seasonStart = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      try {
-        const r = await fetch(`${SIMON_BACKEND_URL}/api/seasons`, { cache: "no-store" });
-        if (r.ok) {
-          const d = await r.json();
-          if (d) {
-            setSeasonNum(d.currentSeason ?? null);
-            if (typeof d.currentStartsAt === "number") seasonStart = d.currentStartsAt;
-            else if (typeof d.currentEndsAt === "number") seasonStart = d.currentEndsAt - 7 * 24 * 60 * 60;
-          }
-        }
-      } catch { /* fall through */ }
-      try {
-        const rows = await fetchLeaderboard(1, seasonStart, 3);
-        if (!cancelled) setTop(rows.slice(0, 3));
-      } catch {
-        if (!cancelled) setTop([]);
-      }
-    })();
+    fetchPreview(1).then(v => {
+      if (cancelled) return;
+      setTop(v.top);
+      setSeasonNum(v.seasonNum);
+    }).catch(() => { if (!cancelled && top === null) setTop([]); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";

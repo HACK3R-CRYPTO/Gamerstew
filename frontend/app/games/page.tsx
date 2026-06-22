@@ -8,6 +8,9 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { playClick } from "@/hooks/useAppAudio";
+import { fetchPreview } from "@/lib/leaderboardPreview";
+import type { GameTypeId } from "@/lib/subgraph";
+import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 
 // ─── tokens (in sync with /dashboard + /home) ────────────────────────────
 const T = {
@@ -27,7 +30,7 @@ const GAMES = [
   {
     id: "rhythm",
     title: "Rhythm Rush",
-    subtitle: "Skill · Climb the board",
+    subtitle: "Tap to the beat · combo to climb",
     art: "/games/rhythm.png",
     bg: "linear-gradient(155deg, #c026d3 0%, #7c1d9e 55%, #4c1d95 100%)",
     glow: "#c026d3",
@@ -37,7 +40,7 @@ const GAMES = [
   {
     id: "simon",
     title: "Simon Memory",
-    subtitle: "Skill · Climb the board",
+    subtitle: "Sequence memory · go deeper",
     art: "/games/simon.png",
     bg: "linear-gradient(155deg, #0e7490 0%, #075985 55%, #1e1b4b 100%)",
     glow: "#06b6d4",
@@ -70,24 +73,21 @@ const GAMES = [
   //   ),
   // },
   {
+    // Stack Tower's old palette (teal → navy) was nearly identical to
+    // Simon's, so two cards in the row read as one block on mobile. New
+    // warm amber palette claims the fourth color quadrant in the row
+    // (alongside Rhythm magenta, Simon teal, Challenge AI green) and
+    // reads as "wood blocks under stadium lights" — fits the gameplay
+    // identity. Schema also normalized from artGrad/path to bg/href so
+    // the card actually paints (the render reads game.bg, game.href).
     id: "stack",
-    title: "STACK TOWER",
-    wager: "FREE",
-    payout: "—",
-    path: "/games/stack",
-    active: true,
-    artGrad: "linear-gradient(160deg, #0e7490 0%, #075985 55%, #0c4a6e 100%)",
-    glow: "#22d3ee",
-    accent: "#67e8f9",
-    showWager: false,
-    borderColor: "#22d3ee",
-    startWall: "#075985",
-    startGrad: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 50%, #0e7490 100%)",
-    startGlow: "rgba(34,211,238,0.75)",
+    title: "Stack Tower",
+    subtitle: "Stack & survive · don't drop",
     art: (
-      // Inline SVG stacked-blocks illustration so we don't need a new
-      // /public/games/stack.png asset. Reads instantly as "stacking game"
-      // at thumbnail size, scales clean on any DPR.
+      // Inline SVG stacked-blocks illustration — no PNG asset needed.
+      // Rainbow hue spectrum (cyan → pink) kept on purpose against the
+      // warm amber bg: the cool blocks pop hard off the orange backdrop,
+      // which makes the tower the visual hero of the card.
       <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }}>
         {[
           { y: 76, x: 22, w: 56, hue: 195 },
@@ -104,11 +104,15 @@ const GAMES = [
         ))}
       </svg>
     ),
+    bg: "linear-gradient(155deg, #f97316 0%, #c2410c 55%, #7c2d12 100%)",
+    glow: "#fb923c",
+    active: true,
+    href: "/games/stack",
   },
   {
     id: "challenge-ai",
     title: "Challenge AI",
-    subtitle: "Wager · Beat MARKOV",
+    subtitle: "Wager G$ · beat MARKOV",
     art: "/games/challenge-ais.png",
     bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)",
     glow: "#22c55e",
@@ -165,14 +169,30 @@ function GameCard({ game, onClick }: { game: typeof GAMES[number]; onClick: () =
       cursor: game.active ? "pointer" : "not-allowed", textAlign: "left",
       boxShadow: game.active ? `0 8px 18px -6px ${game.glow}66` : "none",
       position: "relative",
+      // Flex column so the dark text panel can stretch with flex: 1
+      // and reach the card's bottom edge regardless of subtitle wrap.
+      // Without this, single-line subtitles (Challenge AI) left a strip
+      // of game.bg visible below the dark band on rows where another
+      // card's subtitle wrapped to 2 lines.
+      display: "flex", flexDirection: "column",
     }}>
       {!game.active && (
         <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", zIndex: 2 }}>SOON</span>
       )}
       <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
-        <img src={game.art} alt={game.title} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 12 }} />
+        {/* Cards can declare `art` as either a string path (rhythm /
+            simon use real PNGs) OR a JSX element (stack tower uses an
+            inline SVG of stacked blocks). The earlier render passed
+            the JSX through `<img src={...}>` which fell back to the
+            broken-image triangle + alt-text — looked like a missing
+            asset. Branching on type lets both schemas coexist. */}
+        {typeof game.art === "string" ? (
+          <img src={game.art} alt={game.title} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 12 }} />
+        ) : (
+          <div style={{ position: "absolute", inset: 0, padding: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{game.art}</div>
+        )}
       </div>
-      <div style={{ padding: "12px 14px 14px", background: "rgba(0,0,0,0.35)" }}>
+      <div style={{ padding: "12px 14px 14px", background: "rgba(0,0,0,0.35)", flex: 1 }}>
         <div style={{ fontFamily: T.display, fontSize: 16, color: "#fff", lineHeight: 1.1, letterSpacing: "0.01em" }}>{game.title}</div>
         <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700, marginTop: 3 }}>
           {game.subtitle}
@@ -188,6 +208,10 @@ export default function GamesPage() {
   const { authenticated } = usePrivy();
   const { address } = useAccount();
   const [isDesktop, setIsDesktop] = useState(false);
+  // Per-game loading overlay state · holds the tapped game's identity so
+  // the loader shows the right art/title/glow. Cleared when the route
+  // change unmounts the page (and re-cleared on back-nav return).
+  const [loadingGame, setLoadingGame] = useState<typeof GAMES[number] | null>(null);
 
   // Same gate as /dashboard — "connected" means full onboarding (Privy + GamePass mint).
   const { data: hasMinted } = useReadContract({
@@ -210,11 +234,38 @@ export default function GamesPage() {
   // the home page button so first-timers land in a real onboarding
   // surface, not an orphan popup over a feed.
   const onConnect = () => router.push("/home");
-  const onPlay = (id: string) => {
+  const onPlay = async (id: string) => {
+    // Spam-tap guard · ignore further taps while a load is already in
+    // flight. The overlay covers the page so the player can't see the
+    // cards anyway, but this stops queued promises from racing.
+    if (loadingGame) return;
     const g = GAMES.find(x => x.id === id);
     if (!g?.active) return;
     playClick();
+
+    // Show the per-game loading overlay with the game's own art + title
+    // + glow color. It covers the screen instantly so the player sees a
+    // branded transition instead of an empty hub-to-lobby gap.
+    setLoadingGame(g);
+
+    // Run both concurrently:
+    //   1. fetchPreview · pulls the lobby's top-3 leaderboard so the
+    //      cache is warm by the time the route lands.
+    //   2. 600ms min-duration timer · guarantees the loader gets at
+    //      least one breath even when the prefetch resolves in 100ms.
+    // Promise.all means we wait for the SLOWER of the two · loader
+    // never feels rushed on a fast connection, never feels stuck on a
+    // slow one.
+    const gameType: GameTypeId | null =
+      id === "rhythm" ? 0 : id === "simon" ? 1 : id === "stack" ? 2 : null;
+    const tasks: Promise<unknown>[] = [new Promise(r => setTimeout(r, 600))];
+    if (gameType !== null) tasks.push(fetchPreview(gameType).catch(() => null));
+    await Promise.all(tasks);
+
     router.push(g.href);
+    // Loader stays visible until the new route's first paint; clearing
+    // here would cause a brief blank flash between overlay-dismiss and
+    // lobby-mount. The page unmount on route change drops it for us.
   };
 
   return (
@@ -249,6 +300,18 @@ export default function GamesPage() {
       </div>
 
       <AppBottomNav wide={isDesktop} />
+
+      {/* Per-game loading overlay · shown while we warm the lobby's
+          leaderboard cache. Renders the tapped game's art + title +
+          glow so the transition reads as part of THAT game's identity. */}
+      {loadingGame && (
+        <GameLoadingScreen
+          title={loadingGame.title}
+          art={loadingGame.art}
+          bg={loadingGame.bg}
+          glow={loadingGame.glow}
+        />
+      )}
     </div>
   );
 }
