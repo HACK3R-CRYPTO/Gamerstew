@@ -17,7 +17,14 @@ const loadingTexts = [
 ">> READY_TO_PLAY..._"
 ]
 
-const LOADING_TEXT_CHANGE_TIME = 1800;
+// Splash pace. Was 1800ms per text + 50ms/char typing + 800ms tail =
+// ~13s cold-load to /home, which felt slow for a casual mobile game
+// (industry benchmark: 2-3s splash, Candy Crush / Coin Master tier).
+// Halving every knob lands us at ~3.5-4s · keeps the brand beat without
+// the wait that made players bail before they saw /home.
+const LOADING_TEXT_CHANGE_TIME = 700;
+const TYPING_SPEED_MS = 22;     // was 50 · "fast typewriter" feel
+const TAIL_PAUSE_MS = 300;      // was 800 · pause after last text before route
 
 const LEFT_ICONS: {
   src: string;
@@ -322,14 +329,14 @@ export default function SplashScreen() {
   useEffect(() => {
     const current = loadingTexts[textIndex];
     if (displayed < current.length) {
-      const t = setTimeout(() => setDisplayed((d) => d + 1), 50);
+      const t = setTimeout(() => setDisplayed((d) => d + 1), TYPING_SPEED_MS);
       return () => clearTimeout(t);
     }
     // All text typed — auto-advance to /home. Web Audio stays locked until
     // the user's first click on /home (browser autoplay policy); the global
     // pointerdown listener in useAppAudio catches that and unlocks everything.
     if (textIndex >= loadingTexts.length - 1) {
-      const t = setTimeout(() => router.push('/home'), 800);
+      const t = setTimeout(() => router.push('/home'), TAIL_PAUSE_MS);
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => {
