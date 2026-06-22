@@ -1,901 +1,505 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import { EnableNotificationsChip } from "@/components/EnableNotificationsChip";
+import { useEffect, useRef, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useAccount } from "wagmi";
+import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
+import { fetchAllTimeLeaderboard, type AllTimeEntry } from "@/lib/subgraph";
+import Onboarding, { type OnboardingResult } from "@/components/Onboarding";
 
-const D = "/splash_screen_icons/dice.png";
-const G = "/splash_screen_icons/gamepad.png";
-const J = "/splash_screen_icons/joystick.png";
-const M = "/splash_screen_icons/golden_music.png";
-const V = "/splash_screen_icons/vending.png";
+const ONBOARDED_KEY = "gamearena:onboarded";
 
-// Desktop decoratives — the full rich set (7 left + 6 right) that frames
-// the hero on wider screens. Hidden on mobile via `.icon-float--desktop`.
-const LEFT_ICONS = [
-  { src: D, top: "1%",  left: "-18px", size: 120, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18 },
-  { src: M, top: "8%",  left: "34px",  size: 80,  delay: 0.7, dur: 4.3, glow: "#ffaa00", rotate: 12  },
-  { src: G, top: "24%", left: "6px",   size: 110, delay: 1.4, dur: 6.0, glow: "#aa88ff", rotate: -6  },
-  { src: D, top: "36%", left: "72px",  size: 140, delay: 0.3, dur: 4.8, glow: "#cc44ff", rotate: 16  },
-  { src: J, top: "54%", left: "-10px", size: 105, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8  },
-  { src: G, top: "72%", left: "4px",   size: 108, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14 },
-  { src: D, top: "88%", left: "60px",  size: 95,  delay: 1.9, dur: 4.6, glow: "#cc44ff", rotate: 10  },
-];
+const SUBGRAPH_URL = "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn";
 
-const RIGHT_ICONS = [
-  { src: D, top: "0%",  right: "-22px", size: 115, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20  },
-  { src: J, top: "16%", right: "54px",  size: 100, delay: 1.2, dur: 4.8, glow: "#22aaff", rotate: 8   },
-  { src: V, top: "30%", right: "0px",   size: 120, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4  },
-  { src: M, top: "50%", right: "44px",  size: 82,  delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16 },
-  { src: D, top: "65%", right: "-8px",  size: 100, delay: 2.4, dur: 5.2, glow: "#cc44ff", rotate: 10  },
-  { src: G, top: "80%", right: "58px",  size: 108, delay: 1.8, dur: 5.8, glow: "#aa88ff", rotate: -10 },
-];
+async function fetchGlobalStat(): Promise<{ totalPlayers: number; totalScores: number; totalUbiDonatedG: number } | null> {
+  try {
+    const res = await fetch(SUBGRAPH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG } }` }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const g = j?.data?.globalStat;
+    if (!g) return null;
+    return {
+      totalPlayers: Number(g.totalPlayers),
+      totalScores: Number(g.totalScores),
+      totalUbiDonatedG: Number(BigInt(g.totalUbiDonatedG) / BigInt(1e15)) / 1000,
+    };
+  } catch {
+    return null;
+  }
+}
 
-// Mobile-only decoratives — 3 + 3 at the edges. Smaller, dimmer, tucked
-// past the viewport edge so they frame the hero without crowding a 390px
-// phone. Hidden on desktop via `.icon-float--mobile`.
-type MobileIcon = {
-  src: string;
-  top: string;
-  left?: string;
-  right?: string;
-  size: number;
-  delay: number;
-  dur: number;
-  glow: string;
-  rotate: number;
-  opacity: number;
+function fmtNum(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return String(n);
+}
+
+function shortAddr(a: string): string {
+  return a.slice(0, 6) + "…" + a.slice(-4);
+}
+
+// ─── tokens ──────────────────────────────────────────────────────────────
+const T = {
+  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
+  ink: "#ffffff",
+  inkDim: "rgba(220,210,255,0.7)",
+  inkSoft: "rgba(220,210,255,0.45)",
+  surface: "rgba(40,18,100,0.55)",
+  hairline: "rgba(255,255,255,0.08)",
+  hairlineHi: "rgba(255,255,255,0.16)",
+  accent: "#a78bfa",
+  display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const MOBILE_LEFT_ICONS: MobileIcon[] = [
-  { src: D, top: "6%",  left: "-24px", size: 68, delay: 0.0, dur: 5.2, glow: "#cc44ff", rotate: -18, opacity: 0.55 },
-  { src: J, top: "46%", left: "-22px", size: 58, delay: 2.1, dur: 5.5, glow: "#22aaff", rotate: -8,  opacity: 0.45 },
-  { src: G, top: "82%", left: "-18px", size: 62, delay: 2.8, dur: 5.0, glow: "#aa88ff", rotate: -14, opacity: 0.5  },
-];
-const MOBILE_RIGHT_ICONS: MobileIcon[] = [
-  { src: D, top: "10%", right: "-26px", size: 64, delay: 0.4, dur: 5.0, glow: "#cc44ff", rotate: 20,  opacity: 0.55 },
-  { src: V, top: "50%", right: "-20px", size: 66, delay: 2.0, dur: 6.2, glow: "#ff44cc", rotate: -4,  opacity: 0.45 },
-  { src: M, top: "86%", right: "-18px", size: 54, delay: 0.6, dur: 4.0, glow: "#ffaa00", rotate: -16, opacity: 0.5  },
-];
 
-const GamepadIcon = ({ size = 76 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ filter: "drop-shadow(0px 2px 0px rgba(255,255,255,0.45))" }}>
-    <mask id="gamepadMask">
-      <rect width="100" height="100" fill="white" />
-      <rect x="23" y="40" width="8" height="24" rx="2" fill="black" />
-      <rect x="15" y="48" width="24" height="8" rx="2" fill="black" />
-      <circle cx="75" cy="44" r="4" fill="black" />
-      <circle cx="75" cy="62" r="4" fill="black" />
-      <circle cx="66" cy="53" r="4" fill="black" />
-      <circle cx="84" cy="53" r="4" fill="black" />
-    </mask>
-    <path mask="url(#gamepadMask)" fill="currentColor" fillRule="evenodd" clipRule="evenodd"
-      d="M25 25C11.1929 25 2 36.1929 2 50C2 60.5902 6.58151 72.8804 15.6565 77.0673C19.7891 78.9745 25 76.7725 28.5839 73.1887L31.2582 70.5143C34.6293 67.1432 39.2608 65 44 65H56C60.7392 65 65.3707 67.1432 68.7418 70.5143L71.4161 73.1887C75 76.7725 80.2109 78.9745 84.3435 77.0673C93.4185 72.8804 98 60.5902 98 50C98 36.1929 88.8071 25 75 25H25Z" 
-    />
-  </svg>
-);
-
-const RobotIcon = ({ size = 80 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ filter: "drop-shadow(0px 2px 0px rgba(255,255,255,0.45))" }}>
-    <mask id="robotMask">
-      <rect width="100" height="100" fill="white" />
-      <circle cx="35" cy="55" r="5" fill="black" />
-      <circle cx="65" cy="55" r="5" fill="black" />
-      <rect x="42" y="65" width="16" height="4" rx="2" fill="black" />
-    </mask>
-    <g mask="url(#robotMask)" fill="currentColor">
-      <path fillRule="evenodd" clipRule="evenodd" d="M32 30C20.9543 30 12 38.9543 12 50V60C12 71.0457 20.9543 80 32 80H68C79.0457 80 88 71.0457 88 60V50C88 38.9543 79.0457 30 68 30H32ZM47 18V30H53V18H47ZM4 48C4 45.7909 5.79086 44 8 44H12V66H8C5.79086 66 4 64.2091 4 62V48ZM92 44C89.7909 44 88 45.7909 88 48V62C88 64.2091 89.7909 66 92 66H96C98.2091 66 100 64.2091 100 62V48C100 45.7909 98.2091 44 96 44H92Z" />
-      <circle cx="50" cy="14" r="6" />
-    </g>
-  </svg>
-);
-
-import { useState } from "react";
-
-function CloseBtn({ onClose }: { onClose: () => void }) {
+// ─── primitives ──────────────────────────────────────────────────────────
+function Pill({ children, color, soft = true }: { children: React.ReactNode; color: string; soft?: boolean }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClose}
-      style={{ cursor: "pointer", userSelect: "none", flexShrink: 0 }}
-      onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.88) translateY(4px)"; }}
-      onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
-    >
-      {/* Wall */}
-      <div style={{
-        width: "38px", height: "38px",
-        borderRadius: "12px",
-        background: "#6b0000",
-        paddingBottom: "5px",
-        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55), inset 0 -3px 6px rgba(0,0,0,0.4)"
-      }}>
-        {/* Face */}
-        <div style={{
-          width: "100%", height: "100%",
-          borderRadius: "12px 12px 8px 8px",
-          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-          position: "relative", overflow: "hidden",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          border: "2px solid rgba(255,255,255,0.45)",
-          boxShadow: "inset 0px 6px 12px rgba(255,255,255,0.75), inset 0px -4px 8px rgba(0,0,0,0.3)"
-        }}>
-          {/* Gloss */}
-          <div style={{
-            position: "absolute", top: "2px", left: "5%", right: "5%", height: "50%",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 100%)",
-            borderRadius: "10px 10px 50px 50px", pointerEvents: "none"
-          }} />
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" style={{ zIndex: 1, filter: "drop-shadow(0px 1px 0px rgba(0,0,0,0.4))" }}>
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </div>
-      </div>
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "3px 9px", borderRadius: 999,
+      fontFamily: "inherit", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em",
+      background: soft ? color + "1f" : color,
+      color: soft ? color : "#fff",
+      border: `1px solid ${soft ? color + "55" : "transparent"}`,
+      whiteSpace: "nowrap",
+    }}>{children}</span>
+  );
+}
+
+function Stat({ label, value, size = "md" }: { label: string; value: string; size?: "sm" | "md" | "lg" }) {
+  const fs = size === "lg" ? 28 : size === "sm" ? 16 : 19;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontFamily: T.display, fontSize: fs, color: T.ink, lineHeight: 1, letterSpacing: "0.01em" }}>{value}</span>
+      <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>{label}</span>
     </div>
   );
 }
 
-function GamePanel({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      onClick={onClick}
-      style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(4,0,20,0.75)", backdropFilter: "blur(8px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        animation: "fadeIn 0.2s ease both", padding: "20px"
-      }}
-    >
-      {/* Outer wall gives the 3D border/glow rim */}
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: "480px", maxHeight: "88vh",
-          display: "flex", flexDirection: "column",
-          borderRadius: "28px",
-          background: "#1a0550",
-          paddingBottom: "8px",
-          boxShadow: "0 0 0 3px #5b21b6, 0 0 60px rgba(109,40,217,0.6), 0 40px 80px rgba(0,0,0,0.95)",
-          animation: "scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both",
-        }}
-      >
-        {/* Inner face panel — flex column so header is fixed, body scrolls */}
-        <div style={{
-          flex: 1, minHeight: 0,
-          display: "flex", flexDirection: "column",
-          borderRadius: "26px 26px 20px 20px",
-          background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 45%, #07021a 100%)",
-          border: "2px solid rgba(255,255,255,0.12)",
-          boxShadow: "inset 0 8px 24px rgba(160,100,255,0.15), inset 0 -4px 12px rgba(0,0,0,0.5)",
-          color: "white",
-          position: "relative",
-          overflow: "hidden",
-        }}>
-          {/* Top gloss strip — purely decorative, sits behind content */}
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: "80px",
-            background: "linear-gradient(180deg, rgba(200,160,255,0.14) 0%, rgba(200,160,255,0) 100%)",
-            borderRadius: "26px 26px 0 0", pointerEvents: "none", zIndex: 0
-          }} />
-          {/* Scrollable content wrapper */}
-          <div style={{ position: "relative", zIndex: 1, overflowY: "auto", flex: 1, minHeight: 0 }}>
-            {children}
-          </div>
-        </div>
-      </div>
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "2px 2px 8px" }}>
+      <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: T.inkDim, textTransform: "uppercase" }}>{children}</span>
     </div>
   );
 }
 
-function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
+const ICON_PATHS: Record<string, string> = {
+  play: "M8 5v14l11-7z",
+  bolt: "M13 2 4 14h6l-1 8 9-12h-6z",
+};
+
+function Icon({ name, size = 20, color = "currentColor" }: { name: string; size?: number; color?: string }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d={ICON_PATHS[name] || ""} /></svg>;
+}
+
+function SoundToggle({ muted, onToggle, size = 38 }: { muted: boolean; onToggle: () => void; size?: number }) {
   return (
-    <div style={{ position: "relative", overflow: "hidden" }}>
-      {/* Header banner wall */}
-      <div style={{
-        background: "linear-gradient(90deg, #2d0b8c 0%, #6d28d9 50%, #2d0b8c 100%)",
-        borderRadius: "26px 26px 0 0",
-        paddingBottom: "4px",
-      }}>
-        {/* Header banner face */}
-        <div style={{
-          background: "linear-gradient(90deg, #4c1d95 0%, #7c3aed 40%, #9333ea 60%, #7c3aed 80%, #4c1d95 100%)",
-          borderRadius: "26px 26px 0 0",
-          padding: "20px 24px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          position: "relative", overflow: "hidden",
-          borderBottom: "2px solid rgba(255,255,255,0.18)",
-          boxShadow: "inset 0 6px 16px rgba(255,255,255,0.2), inset 0 -4px 8px rgba(0,0,0,0.3)"
-        }}>
-          {/* Gloss */}
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: "55%",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 100%)",
-            borderRadius: "26px 26px 60px 60px", pointerEvents: "none"
-          }} />
-          <h2 style={{
-            fontSize: "15px", fontWeight: 900, margin: 0,
-            letterSpacing: "0.12em", color: "white",
-            textShadow: "0px 2px 4px rgba(0,0,0,0.5), 0 0 20px rgba(200,150,255,0.6)",
-            zIndex: 1
-          }}>
-            {title}
-          </h2>
-          <CloseBtn onClose={onClose} />
-        </div>
-      </div>
-    </div>
+    <button onClick={onToggle} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
+      position: "relative", width: size, height: size, borderRadius: 12, flexShrink: 0,
+      background: muted ? "rgba(244,63,94,0.12)" : "rgba(255,255,255,0.05)",
+      border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
+      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+      color: muted ? "#fda4af" : T.inkDim, transition: "all 0.15s",
+    }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M4 9v6h3.5L13 19.5V4.5L7.5 9H4z" fill="currentColor" />
+        {muted ? (
+          <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        ) : (
+          <path d="M16.5 8.5a5 5 0 0 1 0 7M18.8 6.2a8.5 8.5 0 0 1 0 11.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+        )}
+      </svg>
+    </button>
   );
 }
 
-// Recessed HUD display panel — for information, NOT interactive.
-// Looks sunken into the UI surface like a game stat screen or item slot.
-function InfoCard({ children, accentColor }: { children: React.ReactNode; accentColor?: string }) {
+const KEYFRAMES = `
+  @keyframes home-float-gentle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+`;
+
+// ─── HomeScreen · mobile ─────────────────────────────────────────────────
+function HomeScreenMobile({
+  onPlayFree, onConnect, onAbout, onMute, muted,
+}: {
+  onPlayFree: () => void;
+  onConnect: () => void;
+  onAbout: () => void;
+  onMute: () => void;
+  muted: boolean;
+}) {
   return (
     <div style={{
-      borderRadius: "14px",
-      background: "linear-gradient(180deg, rgba(12,4,40,0.95) 0%, rgba(6,1,22,0.98) 100%)",
-      border: `1px solid ${accentColor ? accentColor + "60" : "rgba(110,60,220,0.4)"}`,
-      boxShadow: [
-        `0 0 18px ${accentColor ? accentColor + "25" : "rgba(100,50,200,0.2)"}`,
-        "inset 0 3px 10px rgba(0,0,0,0.75)",
-        "inset 0 0 30px rgba(40,0,100,0.3)",
-        "inset 0 1px 0 rgba(160,100,255,0.08)"
-      ].join(", "),
-      padding: "14px 16px",
-      position: "relative", overflow: "hidden",
+      flex: 1, position: "relative", overflow: "hidden",
+      display: "flex", flexDirection: "column",
+      padding: "20px 24px 24px",
+      minHeight: "100vh",
     }}>
-      {/* Left accent strip — like item rarity bar in an RPG */}
-      {accentColor && (
-        <div style={{
-          position: "absolute", top: 0, left: 0, bottom: 0, width: "3px",
-          background: `linear-gradient(180deg, ${accentColor} 0%, ${accentColor}55 100%)`,
-          borderRadius: "14px 0 0 14px",
-          boxShadow: `0 0 10px ${accentColor}99`
-        }} />
-      )}
-      <div style={{ paddingLeft: accentColor ? "10px" : 0 }}>
-        {children}
+      <img src="/splash_screen_icons/dice.png" alt="" style={{ position: "absolute", top: "8%", left: -24, width: 96, opacity: 0.16, transform: "rotate(-18deg)", filter: "drop-shadow(0 0 20px #c026d3)" }} />
+      <img src="/splash_screen_icons/joystick.png" alt="" style={{ position: "absolute", bottom: "26%", right: -18, width: 84, opacity: 0.16, transform: "rotate(14deg)", filter: "drop-shadow(0 0 20px #06b6d4)" }} />
+      <img src="/splash_screen_icons/gamepad.png" alt="" style={{ position: "absolute", top: "30%", right: -10, width: 64, opacity: 0.1, transform: "rotate(8deg)", filter: "drop-shadow(0 0 16px #a78bfa)" }} />
+
+      {/* Top row — mute (left) + About (right) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", zIndex: 2 }}>
+        <SoundToggle muted={muted} onToggle={onMute} size={36} />
+        <button onClick={onAbout} style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.12em", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}>ABOUT</button>
+      </div>
+
+      {/* Hero */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 2, gap: 20 }}>
+        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "clamp(240px, 62vw, 360px)", height: "auto", margin: "0 auto", display: "block", filter: "drop-shadow(0 4px 28px rgba(167,139,250,0.6))" }} />
+        <h1 style={{ fontFamily: T.display, fontSize: 34, lineHeight: 1.0, color: T.ink, margin: 0, textAlign: "center", letterSpacing: "-0.01em" }}>
+          Play. Compete. <span style={{ color: T.accent, textShadow: `0 0 18px ${T.accent}` }}>Win.</span>
+        </h1>
+        <p style={{ fontFamily: T.body, fontSize: 14, lineHeight: 1.5, color: T.inkDim, textAlign: "center", margin: "0 12px" }}>
+          Quick skill games. Climb the board, win G$.
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative", zIndex: 2 }}>
+        <button onClick={onPlayFree} style={{
+          fontFamily: T.display, fontSize: 22, color: "#fff",
+          padding: "18px 24px", borderRadius: 18,
+          background: `linear-gradient(180deg, ${T.accent} 0%, ${T.accent}cc 100%)`,
+          border: `1.5px solid ${T.accent}`,
+          boxShadow: `0 12px 30px -8px ${T.accent}88, 0 0 0 0.5px rgba(255,255,255,0.5) inset, 0 -3px 0 rgba(0,0,0,0.25) inset`,
+          cursor: "pointer", letterSpacing: "0.02em",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10,
+        }}>
+          <Icon name="play" size={18} color="#fff" /> Play free
+        </button>
+        <button onClick={onConnect} style={{
+          fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 800,
+          padding: "13px 16px", borderRadius: 14,
+          background: "rgba(255,255,255,0.05)",
+          border: `1px solid ${T.hairlineHi}`,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}>
+          <Icon name="bolt" size={14} color={T.accent} /> Sign in
+        </button>
+        <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.4, marginTop: 2 }}>
+          Free to play. Sign in anytime to win G$ &amp; save your pet.
+        </div>
       </div>
     </div>
   );
 }
 
-// Section label — horizontal rule with glowing text, like a chapter title in a game
-function SectionDivider({ label }: { label: string }) {
+// ─── HomeScreen · desktop ────────────────────────────────────────────────
+function HomeScreenDesktop({
+  onPlayFree, onConnect, onAbout, onMute, muted, live,
+}: {
+  onPlayFree: () => void;
+  onConnect: () => void;
+  onAbout: () => void;
+  onMute: () => void;
+  muted: boolean;
+  live: LiveData | null;
+}) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "2px 0" }}>
-      <div style={{
-        flex: 1, height: "1px",
-        background: "linear-gradient(90deg, transparent 0%, rgba(140,80,255,0.7) 100%)"
-      }} />
-      <span style={{
-        fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em",
-        color: "rgba(190,150,255,0.9)",
-        textShadow: "0 0 14px rgba(160,100,255,0.9), 0 0 30px rgba(130,60,255,0.5)",
-        whiteSpace: "nowrap"
-      }}>{label}</span>
-      <div style={{
-        flex: 1, height: "1px",
-        background: "linear-gradient(90deg, rgba(140,80,255,0.7) 0%, transparent 100%)"
-      }} />
-    </div>
-  );
-}
-
-function AboutModal({ onClose }: { onClose: () => void }) {
-  const games = [
-    { name: "RHYTHM RUSH", desc: "Tap the beat. Hit 350 pts to win 1.3x your wager.", accent: "#c084fc" },
-    { name: "SIMON MEMORY", desc: "Repeat color sequences. Reach round 7+ to win 1.3x.", accent: "#06b6d4" },
-    { name: "MORE COMING", desc: "This is an Arena — more games roll in as we grow.", accent: "#fbbf24" },
-  ];
-
-  const progression = [
-    { name: "LEVEL UP", desc: "Every game earns XP. Climb levels. No cap.", accent: "#fbbf24" },
-    { name: "EVOLVE YOUR PET", desc: "Egg → Baby → Teen → Crystal → King Slime across 5 stages.", accent: "#22c55e" },
-    { name: "RANK TIER", desc: "Bronze → Silver → Gold → Platinum → Diamond → Master — based on weekly leaderboard.", accent: "#a78bfa" },
-    { name: "DAILY MISSIONS", desc: "3 fresh missions every 24h. Claim XP rewards.", accent: "#f97316" },
-    { name: "ACHIEVEMENTS", desc: "13 milestones to unlock — first win, win streaks, score records.", accent: "#fbbf24" },
-  ];
-
-  const steps = [
-    { num: "1", title: "Connect", text: "Sign in with Google, email, or wallet — takes 10 seconds." },
-    { num: "2", title: "Verify", text: "Verify with GoodDollar face scan to unlock G$ claims + wagering." },
-    { num: "3", title: "Claim daily G$", text: "Claim free G$ every 24h straight from the app." },
-    { num: "4", title: "Play", text: "Rhythm Rush or Simon — free or wagered. Every game earns XP." },
-    { num: "5", title: "Climb", text: "Win weeks for badges. Rank tier updates live. Pet evolves with you." },
-  ];
-
-  return (
-    <GamePanel onClick={onClose}>
-      <ModalHeader title="ABOUT GAME ARENA" onClose={onClose} />
-      <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
-
-        {/* Intro panel */}
-        <InfoCard>
-          <p style={{ color: "rgba(255,255,255,0.88)", fontSize: "13.5px", lineHeight: 1.7, margin: 0 }}>
-            Skill-based arena on <strong style={{ color: "#d8b4fe" }}>Celo</strong>. Wager <strong style={{ color: "#fde68a" }}>G$</strong> on your reflexes, climb the weekly leaderboard, evolve your pet, earn NFT badges. Every wager funds <strong style={{ color: "#86efac" }}>GoodDollar UBI</strong> for real people.
-          </p>
-        </InfoCard>
-
-        {/* G$ explainer — surfaces up top because players kept asking
-            "is this real money?" the moment they saw "Wager G$". The goal
-            is to make two things crystal clear before anyone has to scroll
-            deeper: (1) G$ is a free token you claim, (2) it's not fiat —
-            it's in-game crypto that funds real UBI. */}
-        <SectionDivider label="WHAT IS G$" />
-
-        <InfoCard accentColor="#fbbf24">
-          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
-            G$ = GoodDollar
-          </div>
-          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
-            G$ is a <strong style={{ color: "#fde68a" }}>free digital dollar</strong> on Celo. You claim it daily after a one-time face-scan verification. No purchase, no deposit, no credit card. It&apos;s the currency you use to wager inside Game Arena.
-          </div>
-        </InfoCard>
-
-        <InfoCard accentColor="#86efac">
-          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
-            What can I do with it?
-          </div>
-          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
-            Wager G$ on Rhythm or Simon rounds — beat the target, win <strong style={{ color: "#fde68a" }}>1.3×</strong> back. G$ also counts toward leaderboard rewards. Unspent G$ stays in your wallet; you can swap or transfer it like any ERC-20.
-          </div>
-        </InfoCard>
-
-        <InfoCard accentColor="#c084fc">
-          <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "6px" }}>
-            Is it real money?
-          </div>
-          <div style={{ color: "rgba(200,170,255,0.85)", fontSize: "12.5px", lineHeight: 1.55 }}>
-            It&apos;s a real on-chain token with a market value — but it&apos;s <strong style={{ color: "#d8b4fe" }}>earned, not bought</strong>. Think of it like XP that happens to live on a blockchain. Everyone who verifies claims the same daily amount. No pay-to-play.
-          </div>
-        </InfoCard>
-
-        <SectionDivider label="THE GAMES" />
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {games.map(g => (
-            <InfoCard key={g.name} accentColor={g.accent}>
-              <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "4px" }}>{g.name}</div>
-              <div style={{ color: "rgba(200,170,255,0.8)", fontSize: "12.5px", lineHeight: 1.45 }}>{g.desc}</div>
-            </InfoCard>
-          ))}
+    <div style={{ display: "flex", overflow: "hidden", padding: "32px 40px", gap: 48, alignItems: "center", justifyContent: "center", minHeight: "100vh", maxWidth: 1180, margin: "0 auto", width: "100%" }}>
+      {/* left — copy */}
+      <div style={{ flex: 1, maxWidth: 540, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Pill color="#a78bfa">{climbPillLabel(live?.climb ?? null)}</Pill>
+          <SoundToggle muted={muted} onToggle={onMute} size={34} />
         </div>
-
-        <SectionDivider label="PROGRESSION" />
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {progression.map(p => (
-            <InfoCard key={p.name} accentColor={p.accent}>
-              <div style={{ color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.06em", marginBottom: "4px" }}>{p.name}</div>
-              <div style={{ color: "rgba(200,170,255,0.8)", fontSize: "12.5px", lineHeight: 1.45 }}>{p.desc}</div>
-            </InfoCard>
-          ))}
-        </div>
-
-        <SectionDivider label="HOW IT WORKS" />
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "8px" }}>
-          {steps.map(s => (
-            <InfoCard key={s.num}>
-              <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                <div style={{
-                  flexShrink: 0,
-                  width: "26px", height: "26px", borderRadius: "50%",
-                  background: "radial-gradient(circle at 38% 32%, #c084fc, #5b21b6 70%)",
-                  border: "1.5px solid rgba(200,150,255,0.5)",
-                  boxShadow: "0 0 12px rgba(140,70,255,0.6), inset 0 1px 4px rgba(255,255,255,0.35)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <span style={{ fontSize: "11px", fontWeight: 900, color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>{s.num}</span>
-                </div>
-                <div>
-                  <div style={{ color: "white", fontSize: "13px", fontWeight: 700, marginBottom: "3px" }}>{s.title}</div>
-                  <div style={{ color: "rgba(180,150,255,0.75)", fontSize: "12.5px", lineHeight: 1.5 }}>{s.text}</div>
-                </div>
-              </div>
-            </InfoCard>
-          ))}
-        </div>
-      </div>
-    </GamePanel>
-  );
-}
-
-function SupportModal({ onClose }: { onClose: () => void }) {
-  const faqs = [
-    // G$ explainer pinned to the top — it's the #1 question we get from
-    // new players ("is this real money I'm wagering?"). Answer it before
-    // anyone has to ask.
-    { q: "What is G$? Is it real money?", a: "G$ (GoodDollar) is a free digital dollar on Celo. You claim it daily after a one-time face-scan verification, no purchase needed. It has on-chain value but it's earned, not bought. Think of it like XP that lives on a blockchain." },
-    { q: "How do I get G$?", a: "Verify with GoodDollar (face scan, one-time), then tap CLAIM on home/profile every 24h. You can also win G$ by wagering on games (1.3× back on a win) or finishing top-3 on the weekly leaderboard." },
-    { q: "What can I do with my G$?", a: "Wager it on Rhythm or Simon rounds for a 1.3× return if you beat the target. Unspent G$ stays in your wallet as a regular ERC-20 — you can swap or transfer it outside the app too." },
-    { q: "My score is not on the leaderboard", a: "Scores post on-chain after each game. If it's missing, refresh — the leaderboard polls every 15s." },
-    { q: "I can't claim G$", a: "Verify with GoodDollar first. Tap VERIFY on home and complete the face scan. Claims reset daily." },
-    { q: "My Game Pass won't mint", a: "You need a small amount of CELO for gas. Top up via the Celo faucet or a bridge and retry." },
-    { q: "How does my XP / level work?", a: "Every game earns +10 XP. Win = +25 bonus. New personal best = +25 bonus. Mission claims give 50-120 XP. No level cap." },
-    { q: "When does my pet evolve?", a: "Egg at LV 1-4, Baby Slime at LV 5, Teen Slime at LV 15, Crystal at LV 30, King Slime at LV 50. Check your profile for progress." },
-    { q: "Why is my tier so high / low?", a: "Tier = your weekly leaderboard rank. #1 = Master, #2-3 = Diamond, #4-6 = Platinum, etc. It changes every week as others play." },
-    { q: "How do daily missions work?", a: "3 fresh missions appear every day. Finish, tap CLAIM, earn XP. They reset at midnight UTC." },
-    { q: "My wager went through but no reward", a: "Wager resolution settles on-chain — check your wallet for the tx and updated G$ balance." },
-    { q: "I connected but nothing loads", a: "Disconnect and reconnect. Social login (Google/email) is the most reliable path." },
-  ];
-
-  return (
-    <GamePanel onClick={onClose}>
-      <ModalHeader title="SUPPORT & FAQ" onClose={onClose} />
-      <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
-
-        <SectionDivider label="COMMON ISSUES" />
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {faqs.map(f => (
-            <InfoCard key={f.q} accentColor="#7c3aed">
-              <div style={{ color: "white", fontSize: "13px", fontWeight: 700, marginBottom: "5px" }}>{f.q}</div>
-              <div style={{ color: "rgba(180,150,255,0.75)", fontSize: "12.5px", lineHeight: 1.5 }}>{f.a}</div>
-            </InfoCard>
-          ))}
-        </div>
-
-        <SectionDivider label="STILL NEED HELP?" />
-
-        {/* Telegram CTA — juicy teal button */}
-        <a href="https://t.me/+oY4inbBoglViNmE0" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", paddingBottom: "8px" }}>
-          <div
-            style={{ cursor: "pointer", userSelect: "none", transition: "transform 0.2s" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1.03) translateY(-3px)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
-            onMouseDown={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.96) translateY(5px)"; }}
-            onMouseUp={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1.03) translateY(-3px)"; }}
-          >
-            {/* Wall */}
-            <div style={{
-              borderRadius: "20px",
-              background: "#004d60",
-              paddingBottom: "7px",
-              boxShadow: "0 12px 28px -6px rgba(5,160,205,0.65), inset 0 -3px 8px rgba(0,0,0,0.4)"
+        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "clamp(280px, 32vw, 440px)", height: "auto", filter: "drop-shadow(0 4px 32px rgba(167,139,250,0.55))" }} />
+        <h1 style={{ fontFamily: T.display, fontSize: 56, lineHeight: 1.02, color: T.ink, margin: 0, letterSpacing: "-0.015em" }}>
+          Play. Compete. <span style={{ color: T.accent, textShadow: `0 0 28px ${T.accent}` }}>Win.</span>
+        </h1>
+        <p style={{ fontFamily: T.body, fontSize: 16, lineHeight: 1.55, color: T.inkDim, margin: 0, maxWidth: 480 }}>
+          Fun mini-games, live leaderboards, real prizes. Your onchain spot to kick back and play.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onPlayFree} style={{
+              fontFamily: T.display, fontSize: 19, color: "#fff",
+              padding: "15px 30px", borderRadius: 16,
+              background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
+              border: `1.5px solid ${T.accent}`,
+              boxShadow: `0 14px 32px -8px ${T.accent}88, inset 0 1px 0 rgba(255,255,255,0.4)`,
+              cursor: "pointer", letterSpacing: "0.02em",
+              display: "inline-flex", alignItems: "center", gap: 9,
             }}>
-              {/* Face */}
-              <div style={{
-                borderRadius: "18px 18px 14px 14px",
-                background: "linear-gradient(160deg, #5eead4 0%, #06b6d4 45%, #0284c7 100%)",
-                padding: "18px 24px",
-                position: "relative", overflow: "hidden",
-                display: "flex", alignItems: "center", gap: "16px",
-                border: "2.5px solid rgba(255,255,255,0.45)",
-                boxShadow: "inset 0px 10px 22px rgba(255,255,255,0.8), inset 0px -5px 12px rgba(0,0,0,0.25)"
-              }}>
-                {/* Gloss */}
-                <div style={{
-                  position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 100%)",
-                  borderRadius: "16px 16px 80px 80px", pointerEvents: "none"
-                }} />
-                {/* Specular */}
-                <div style={{
-                  position: "absolute", top: "8px", left: "16px", width: "30px", height: "12px",
-                  background: "rgba(255,255,255,0.9)", borderRadius: "50%",
-                  filter: "blur(2px)", transform: "rotate(-15deg)", pointerEvents: "none"
-                }} />
-                <div style={{ color: "white", display: "flex", zIndex: 1, filter: "drop-shadow(0px 2px 3px rgba(0,0,0,0.4))" }}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.367l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.192z"/>
-                  </svg>
-                </div>
-                <div style={{ zIndex: 1 }}>
-                  <div style={{ color: "white", fontSize: "15px", fontWeight: 900, letterSpacing: "0.04em", textShadow: "0px 2px 4px rgba(0,0,0,0.35)" }}>JOIN OUR TELEGRAM</div>
-                  <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "12.5px", marginTop: "3px", textShadow: "0px 1px 2px rgba(0,0,0,0.3)" }}>Drop your issue. The team responds fast.</div>
-                </div>
-              </div>
+              <Icon name="play" size={15} color="#fff" /> Play free
+            </button>
+            <button onClick={onConnect} style={{
+              fontFamily: T.body, fontSize: 14, fontWeight: 800, color: T.ink,
+              padding: "15px 24px", borderRadius: 16,
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${T.hairlineHi}`,
+              cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 8,
+            }}>
+              <Icon name="bolt" size={14} color={T.accent} /> Sign in
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: T.body, fontSize: 12, color: T.inkSoft }}>
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+            Free to start. Sign in later to win G$ &amp; save your progress.
+            <button onClick={onAbout} style={{ background: "none", border: "none", color: T.accent, fontFamily: T.body, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, marginLeft: 2 }}>How it works ›</button>
+          </div>
+        </div>
+        <div style={{
+          display: "flex", gap: 32, marginTop: 18,
+          padding: "16px 22px", borderRadius: 18,
+          background: "rgba(255,255,255,0.04)",
+          border: `1px solid ${T.hairline}`,
+          alignSelf: "flex-start",
+        }}>
+          <Stat label="Players" value={live ? String(live.totalPlayers) : "—"} size="lg" />
+          <span style={{ width: 1, background: T.hairline }} />
+          <Stat label="Matches" value={live ? fmtNum(live.totalMatches) : "—"} size="lg" />
+          <span style={{ width: 1, background: T.hairline }} />
+          <Stat label="G$ to UBI" value={live ? fmtNum(live.totalUbiDonatedG) : "—"} size="lg" />
+        </div>
+      </div>
+      {/* right — pet + leaderboard preview */}
+      <div style={{ flex: 1, maxWidth: 460, display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
+        <div style={{
+          position: "relative", padding: "28px 24px 24px",
+          borderRadius: 28,
+          background: `radial-gradient(ellipse at 30% 20%, ${T.accent}33 0%, transparent 60%), linear-gradient(160deg, rgba(60,28,140,0.55), rgba(15,5,50,0.85))`,
+          border: `1px solid ${T.hairline}`,
+          overflow: "hidden",
+        }}>
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.08), transparent 60%)", pointerEvents: "none" }} />
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <Pill color="#fde68a">YOUR PET · WAITING</Pill>
+            <div style={{ position: "relative", width: 180, height: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <img src="/pets/stage-1-egg.png" alt="" style={{ width: 160, height: 160, objectFit: "contain", filter: "drop-shadow(0 12px 28px rgba(0,0,0,0.5))", animation: "home-float-gentle 3s ease-in-out infinite" }} />
+            </div>
+            <div style={{ fontFamily: T.display, fontSize: 22, color: T.ink, letterSpacing: "0.01em" }}>Not adopted yet</div>
+            <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, textAlign: "center", lineHeight: 1.45, maxWidth: 280 }}>
+              Connect to claim your pet. It evolves from <strong style={{ color: T.accent }}>egg → King Slime</strong> as you play.
+            </div>
+            <div style={{ display: "flex", gap: 18, marginTop: 4, padding: "8px 14px", borderRadius: 10, background: "rgba(0,0,0,0.25)", border: `1px solid ${T.hairline}` }}>
+              <Stat label="Stages" value="5" size="sm" />
+              <span style={{ width: 1, background: T.hairline }} />
+              <Stat label="Habitats" value="6" size="sm" />
+              <span style={{ width: 1, background: T.hairline }} />
+              <Stat label="Badges" value="14" size="sm" />
             </div>
           </div>
-        </a>
-        {/* X follow CTA was here. Removed because the support modal exists
-            to solve a problem, not to harvest follows. Marketing in a help
-            surface violates the modal's job. The X icon in the home top
-            nav handles social discovery for anyone curious. */}
+        </div>
+        <div style={{ padding: 16, borderRadius: 18, background: T.surface, border: `1px solid ${T.hairline}` }}>
+          <SectionLabel>Top players · all time</SectionLabel>
+          {(live?.top3 ?? []).map((r, i) => {
+            const color = i === 0 ? "#fbbf24" : i === 1 ? "#a78bfa" : "#f472b6";
+            const name = r.username || shortAddr(r.player);
+            return (
+              <div key={r.player} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px" }}>
+                <span style={{ fontFamily: T.display, fontSize: 14, color, width: 22, textShadow: `0 0 8px ${color}88` }}>#{i + 1}</span>
+                <span style={{ flex: 1, fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                <span style={{ fontFamily: T.display, fontSize: 14, color: T.ink, letterSpacing: "0.02em" }}>{r.score}</span>
+              </div>
+            );
+          })}
+          {!live && (
+            <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "8px 4px" }}>Loading live standings…</div>
+          )}
+        </div>
       </div>
-    </GamePanel>
+    </div>
   );
+}
+
+// ─── /home page ──────────────────────────────────────────────────────────
+type LiveData = {
+  totalPlayers: number;
+  totalMatches: number;
+  totalUbiDonatedG: number;
+  top3: AllTimeEntry[];
+  climb: { phase: string; endsAt: string } | null;
+};
+
+function climbPillLabel(climb: { phase: string; endsAt: string } | null): string {
+  if (!climb || climb.phase !== "live") return "BETA · LIVE ON CELO";
+  const msLeft = new Date(climb.endsAt).getTime() - Date.now();
+  const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+  if (daysLeft <= 0) return "BETA · LIVE ON CELO";
+  if (daysLeft === 1) return "MARKOV CLIMB · FINAL DAY";
+  return `MARKOV CLIMB · ${daysLeft} DAYS LEFT`;
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const isMobile = useIsMobile();
-  const [showAbout, setShowAbout] = useState(false);
-  const [showSupport, setShowSupport] = useState(false);
+  const { login, logout, authenticated, user } = usePrivy();
+  const { address: walletAddress } = useAccount();
+  const audio = useAudioSettings();
+  // Mute icon only kills the ambient pad (constant menu loop). UI SFX,
+  // game SFX, and in-game music are untouched — Settings → Audio is
+  // the place for granular per-channel mute.
+  const muted = !audio.appAudioOn;
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [live, setLive] = useState<LiveData | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Auto-open onboarding the first time a wallet signs in. The onboarded key
+  // is keyed by wallet address so a different account on the same browser
+  // still gets the flow. ?ob=1 forces it open for testing.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const forced = new URLSearchParams(window.location.search).get("ob") === "1";
+    if (forced) { setShowOnboarding(true); return; }
+    if (!authenticated) return;
+    // Require BOTH a Privy session and a live wallet connection. A
+    // stale Privy session whose underlying wallet has been disconnected
+    // (e.g. user logged out of Rabby) should NOT auto-trigger
+    // onboarding — the mint tx inside would fail without an active
+    // signer anyway, and the surprise modal reads as a bug.
+    const addr = user?.wallet?.address?.toLowerCase();
+    if (!addr || !walletAddress) return;
+    try {
+      const done = window.localStorage.getItem(ONBOARDED_KEY);
+      if (done?.toLowerCase() !== addr) setShowOnboarding(true);
+    } catch {}
+  }, [authenticated, user?.wallet?.address, walletAddress]);
+
+  const completeOnboarding = (r: OnboardingResult) => {
+    const addr = user?.wallet?.address?.toLowerCase();
+    if (addr) {
+      try { window.localStorage.setItem(ONBOARDED_KEY, addr); } catch {}
+    }
+    setShowOnboarding(false);
+    // Match main's flow: every post-mint hand-off routes through
+    // /verify, which auto-advances verified players (~200ms via the
+    // direct on-chain whitelist read) and shows the actual verify CTA
+    // to anyone who isn't. `r.verified` is just a hint about whether
+    // the player tapped the verify button in onboarding — the page
+    // itself is the source of truth either way.
+    void r;
+    router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+  };
+
+  const toggleMute = () => {
+    // Flip the ambient pad only. SFX + in-game music untouched.
+    audio.update({ appAudioOn: muted });
+    playClick();
+  };
+
+  useEffect(() => {
+    const update = () => setIsDesktop(window.innerWidth >= 900);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const climbReq = fetch("/api/markov-climb", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.event ? { phase: String(d.event.phase ?? ""), endsAt: String(d.event.endsAt ?? "") } : null)
+      .catch(() => null);
+    Promise.all([fetchGlobalStat(), fetchAllTimeLeaderboard(3), climbReq])
+      .then(([stat, top, climb]) => {
+        if (cancelled || !stat) return;
+        setLive({
+          totalPlayers: stat.totalPlayers,
+          totalMatches: stat.totalScores,
+          totalUbiDonatedG: stat.totalUbiDonatedG,
+          top3: top,
+          climb,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const onPlayFree = () => { playWhooshIn(); router.push("/dashboard"); };
+  // Three states:
+  //   1. Privy authed AND wallet connected  → into the app
+  //   2. Privy authed but wallet DISCONNECTED (Rabby logged out, etc.)
+  //      → stale session; drop it and reopen the login modal so the
+  //      player can pick a fresh wallet. Without this, tapping "Sign
+  //      in" routed them straight into /games on a session they thought
+  //      they'd already left.
+  //   3. Not authed at all → standard login flow.
+  // Tracks whether the Sign-in button on THIS page was the trigger for
+  // the current Privy modal. Set when login() fires, cleared once we've
+  // auto-routed. Without it, a returning user who lands on /home with
+  // a valid session would get auto-pushed into the app on every visit —
+  // /home is also a marketing page they may want to revisit.
+  const justSignedInRef = useRef(false);
+
+  const onConnect = async () => {
+    playClick();
+    if (authenticated && walletAddress) {
+      // Same gate as main: route Sign-in taps through /verify so the
+      // GoodDollar whitelist status is confirmed before the player
+      // lands inside the app. /verify auto-redirects verified users
+      // to `next` (here: /dashboard) and shows the verify CTA only
+      // if they genuinely aren't whitelisted.
+      router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+      return;
+    }
+    if (authenticated && !walletAddress) {
+      try { await logout(); } catch { /* best-effort */ }
+    }
+    justSignedInRef.current = true;
+    login();
+  };
+
+  // Auto-route the moment Privy + wagmi flip to authed-with-address
+  // AFTER the user tapped Sign in here. Before this, the player had to
+  // tap the button a second time once the modal closed — the modal
+  // dismissal didn't fire any navigation on its own.
+  useEffect(() => {
+    if (!justSignedInRef.current) return;
+    if (!authenticated || !walletAddress) return;
+    justSignedInRef.current = false;
+    router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+  }, [authenticated, walletAddress, router]);
+  const onAbout = () => { playClick(); router.push("/games"); };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        overflow: "hidden",
-        background:
-          "radial-gradient(ellipse 80% 60% at 50% 15%, #6a18c8 0%, #3b0a9e 30%, #1a044a 60%, #0a0120 100%)",
-      }}
-    >
-      {/* Vignette */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(5,1,20,0.55) 100%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Left icons — desktop-only; hidden under 768px via CSS. */}
-      {LEFT_ICONS.map((icon, i) => (
-        <div
-          key={`l-${i}`}
-          className="icon-float icon-float--desktop"
-          style={{
-            position: "absolute",
-            top: icon.top,
-            left: icon.left,
-            width: icon.size,
-            height: icon.size,
-            transform: `rotate(${icon.rotate}deg)`,
-            filter: `drop-shadow(0 0 8px ${icon.glow}99)`,
-            ["--dur" as string]: `${icon.dur}s`,
-            ["--delay" as string]: `${icon.delay}s`,
-            userSelect: "none",
-            pointerEvents: "none",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-
-      {/* Right icons — desktop-only; see LEFT_ICONS comment. */}
-      {RIGHT_ICONS.map((icon, i) => (
-        <div
-          key={`r-${i}`}
-          className="icon-float icon-float--desktop"
-          style={{
-            position: "absolute",
-            top: icon.top,
-            right: icon.right,
-            width: icon.size,
-            height: icon.size,
-            transform: `rotate(${icon.rotate}deg)`,
-            filter: `drop-shadow(0 0 8px ${icon.glow}99)`,
-            ["--dur" as string]: `${icon.dur}s`,
-            ["--delay" as string]: `${icon.delay}s`,
-            userSelect: "none",
-            pointerEvents: "none",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-
-      {/* Mobile-only decoratives — 3 left + 3 right, tucked to the edges
-          and dimmed so the hero still dominates on a 390px viewport.
-          Hidden on desktop via `.icon-float--mobile`. */}
-      {MOBILE_LEFT_ICONS.map((icon, i) => (
-        <div
-          key={`ml-${i}`}
-          className="icon-float icon-float--mobile"
-          style={{
-            position: "absolute",
-            top: icon.top,
-            left: icon.left,
-            width: icon.size,
-            height: icon.size,
-            transform: `rotate(${icon.rotate}deg)`,
-            filter: `drop-shadow(0 0 6px ${icon.glow}66)`,
-            opacity: icon.opacity,
-            ["--dur" as string]: `${icon.dur}s`,
-            ["--delay" as string]: `${icon.delay}s`,
-            userSelect: "none",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-      {MOBILE_RIGHT_ICONS.map((icon, i) => (
-        <div
-          key={`mr-${i}`}
-          className="icon-float icon-float--mobile"
-          style={{
-            position: "absolute",
-            top: icon.top,
-            right: icon.right,
-            width: icon.size,
-            height: icon.size,
-            transform: `rotate(${icon.rotate}deg)`,
-            filter: `drop-shadow(0 0 6px ${icon.glow}66)`,
-            opacity: icon.opacity,
-            ["--dur" as string]: `${icon.dur}s`,
-            ["--delay" as string]: `${icon.delay}s`,
-            userSelect: "none",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
-        </div>
-      ))}
-
-      {/* Top nav — on mobile, drop LEADERBOARD (it's already in the bottom
-          tab bar on inner pages, and reachable from the CTAs too). Keep
-          ABOUT + SUPPORT so the landing page is self-contained. */}
-      <nav
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          padding: isMobile ? "14px 16px" : "20px 32px",
-          gap: isMobile ? "14px" : "24px",
-          zIndex: 10,
-        }}
-      >
-        {/* Social icons — Telegram + X. Both open in a new tab so the
-            player never loses their game state. Icons sit at the same
-            opacity/size for visual parity. */}
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <a
-            href="https://t.me/+oY4inbBoglViNmE0"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Join our Telegram"
-            style={{ color: "white", opacity: 0.85, display: "flex", alignItems: "center" }}
-          >
-            <svg width={isMobile ? 20 : 24} height={isMobile ? 20 : 24} viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.367l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.192z"/>
-            </svg>
-          </a>
-          <a
-            href="https://x.com/gamearenahq"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Follow us on X"
-            style={{ color: "white", opacity: 0.85, display: "flex", alignItems: "center" }}
-          >
-            {/* Official X glyph — single path, no fallback to the old bird */}
-            <svg width={isMobile ? 18 : 22} height={isMobile ? 18 : 22} viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-          </a>
-        </div>
-
-        {/* Nav links */}
-        {(isMobile ? ["ABOUT", "SUPPORT"] : ["ABOUT", "LEADERBOARD", "SUPPORT"]).map((label) => (
-          <button
-            key={label}
-            onClick={() => {
-              if (label === "LEADERBOARD") router.push("/leaderboard");
-              if (label === "ABOUT") setShowAbout(true);
-              if (label === "SUPPORT") setShowSupport(true);
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              color: "white",
-              fontSize: isMobile ? "11px" : "13px",
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              cursor: "pointer",
-              opacity: 0.85,
-              fontFamily: "inherit",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {/* Main content */}
-      <main
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: isMobile ? "28px" : "40px",
-          padding: isMobile ? "64px 0 40px" : "0",
-        }}
-      >
-        {/* Logo */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/components/game_arena_text.png"
-          alt="Game Arena"
-          style={{
-            width: "clamp(240px, 62vw, 600px)",
-            height: "auto",
-            animation: "bounce-scale-in 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-          }}
+    <>
+      <style>{KEYFRAMES}</style>
+      <div style={{
+        minHeight: "100vh", width: "100%",
+        background: T.bg,
+        color: T.ink,
+        fontFamily: T.body,
+      }}>
+        {isDesktop ? (
+          <HomeScreenDesktop
+            onPlayFree={onPlayFree}
+            onConnect={onConnect}
+            onAbout={onAbout}
+            onMute={toggleMute}
+            muted={muted}
+            live={live}
+          />
+        ) : (
+          <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+            <HomeScreenMobile
+              onPlayFree={onPlayFree}
+              onConnect={onConnect}
+              onAbout={onAbout}
+              onMute={toggleMute}
+              muted={muted}
+            />
+          </div>
+        )}
+      </div>
+      {showOnboarding && (
+        <Onboarding
+          onComplete={completeOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          onPlayFree={() => { setShowOnboarding(false); router.push("/dashboard"); }}
         />
-
-        {/* Passive opt-in chip — only renders for connected wallets that
-            haven't subscribed yet. Auto-hides once they tap it. */}
-        <EnableNotificationsChip />
-
-        {/* Buttons — side-by-side from 360px up. On a 360px phone the
-            two CTAs + 16px gap fit in a 344px content area: 2×150 + 16 + 28
-            padding margin = 344 (just). We shrink text and icon too, since
-            "CHALLENGE" (9 chars at 28px) overflows a 150px pill. */}
-        <div style={{
-          display: "flex",
-          gap: "clamp(12px, 5vw, 50px)",
-          alignItems: "center",
-          justifyContent: "center",
-          maxWidth: "100%",
-          padding: "0 12px",
-          boxSizing: "border-box",
-        }}>
-          {[
-            {
-              label: "PLAY\nGAMES",
-              icon: <GamepadIcon size={isMobile ? 52 : 76} />,
-              iconDark: "#005572", // Deep cyan/teal inset color
-              // Straight to the hub — solo games are free-play now, so
-              // the connect wall would turn away players who just want
-              // to try a round. Saving scores gates at the action layer.
-              path: "/games",
-              gradient: "linear-gradient(160deg, #a4f480 0%, #2bd0b9 55%, #05a0cd 100%)",
-              wall: "#006282", // Extremely dark heavy bottom base
-              shadowGlow: "rgba(5, 160, 205, 0.6)",
-              disabled: false,
-              comingSoon: false,
-            },
-            {
-              label: "CHALLENGE\nAI",
-              icon: <RobotIcon size={isMobile ? 54 : 80} />,
-              iconDark: "#6b0000", // Deep red inset color
-              // Route to the game directly; its own useRequireAuth gate
-              // bounces guests to /connect (wagers need a wallet), and
-              // already-connected players skip the extra hop.
-              path: "/games/challenge-ai",
-              gradient: "linear-gradient(160deg, #ffc76b 0%, #ff5232 50%, #cc0c0c 100%)",
-              wall: "#800000",
-              shadowGlow: "rgba(216, 17, 17, 0.6)",
-              // Challenge AI shipped May 2026 — 3 AI personalities playing RPS
-              // with a simultaneous-reveal match flow. Hub at /games/challenge-ai,
-              // game at /games/challenge-ai/rps?opp=<id>.
-              disabled: false,
-              comingSoon: false,
-            },
-          ].map((btn) => (
-            <div
-              key={btn.path}
-              role="button"
-              tabIndex={btn.disabled ? -1 : 0}
-              aria-disabled={btn.disabled}
-              onClick={() => { if (!btn.disabled) router.push(btn.path); }}
-              style={{
-                cursor: btn.disabled ? "not-allowed" : "pointer",
-                userSelect: "none",
-                position: "relative",
-                transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s",
-                // Fade + desaturate the dead button so it reads as
-                // unavailable without removing it from the layout.
-                filter: btn.disabled ? "grayscale(0.55) brightness(0.7)" : "none",
-                opacity: btn.disabled ? 0.7 : 1,
-              }}
-              onMouseEnter={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"; }}
-              onMouseLeave={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1) translateY(0)"; }}
-              onMouseDown={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.92) translateY(12px)"; }}
-              onMouseUp={e => { if (!btn.disabled) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.08) translateY(-6px)"; }}
-            >
-              {/* Outer container provides the 3D base (wall/lip). Size clamps
-                  to the viewport — ~150px on 360px phones, up to 240px on
-                  tablets+ — so the two CTAs always fit side by side with
-                  the long "CHALLENGE" label legible. */}
-              <div style={{
-                width: "clamp(150px, 42vw, 240px)",
-                height: "clamp(150px, 42vw, 240px)",
-                borderRadius: isMobile ? "36px" : "50px",
-                background: btn.wall,
-                paddingBottom: isMobile ? "14px" : "22px", // Lip shrinks on mobile — keeps proportions tight
-                boxShadow: `0 24px 45px -8px ${btn.shadowGlow}, inset 0 -5px 10px rgba(0,0,0,0.4)`
-              }}>
-                {/* Surface of the button */}
-                <div style={{
-                  width: "100%", height: "100%",
-                  borderRadius: isMobile ? "36px 36px 30px 30px" : "50px 50px 42px 42px",
-                  background: btn.gradient,
-                  position: "relative", overflow: "hidden",
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center", gap: "10px",
-                  border: "3px solid rgba(255,255,255,0.45)", // Thicker white border inside
-                  boxShadow: `inset 0px 10px 22px rgba(255,255,255,0.9), inset 0px -6px 14px rgba(0,0,0,0.25)`
-                }}>
-                  {/* Gloss crescent at the top */}
-                  <div style={{
-                    position: "absolute", top: "3px", left: "5%", right: "5%", height: "48%",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 100%)",
-                    borderRadius: "45px 45px 120px 120px", zIndex: 1, pointerEvents: "none"
-                  }} />
-                  
-                  {/* Secondary extreme specular glare (the bright top-left curved dot) */}
-                  <div style={{
-                    position: "absolute", top: "8px", left: "18px", width: "35px", height: "16px",
-                    background: "rgba(255,255,255,0.95)",
-                    borderRadius: "50%", zIndex: 1, pointerEvents: "none", filter: "blur(2px)",
-                    transform: "rotate(-18deg)"
-                  }} />
-
-                  {/* Main content (Icon + Text) — gap and margin shrink
-                      proportionally on mobile so the label never clips. */}
-                  <div style={{
-                    zIndex: 2,
-                    display: "flex", flexDirection: "column", alignItems: "center",
-                    gap: isMobile ? "6px" : "12px",
-                    marginTop: isMobile ? "6px" : "14px",
-                    padding: "0 6px",
-                    width: "100%",
-                  }}>
-                    {/* The Icon container receives the specific dark inset color */}
-                    <div style={{ color: btn.iconDark, lineHeight: 0 }}>
-                      {btn.icon}
-                    </div>
-                    <span style={{
-                      color: "white",
-                      fontFamily: "'Arial Rounded MT Bold', 'Fredoka One', 'Nunito', 'Varela Round', sans-serif",
-                      fontWeight: 900,
-                      // Fluid text — "CHALLENGE" is 9 chars, must fit the
-                      // button's inner width at the smallest clamp floor.
-                      fontSize: "clamp(16px, 4.6vw, 28px)",
-                      lineHeight: "1.05",
-                      textAlign: "center",
-                      letterSpacing: "0.02em",
-                      textShadow: "0px 4px 0px rgba(0,0,0,0.2), 0px 6px 12px rgba(0,0,0,0.45)",
-                      whiteSpace: "pre-line",
-                      width: "100%",
-                    }}>
-                      {btn.label}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {btn.comingSoon && (
-                <div style={{
-                  position: "absolute",
-                  top: isMobile ? "-8px" : "-10px",
-                  right: isMobile ? "-8px" : "-12px",
-                  padding: "4px 10px",
-                  borderRadius: "999px",
-                  background: "linear-gradient(180deg, #fde68a 0%, #d97706 100%)",
-                  border: "2px solid rgba(255,255,255,0.7)",
-                  boxShadow: "0 6px 14px -2px rgba(251,191,36,0.65), 0 0 18px rgba(251,191,36,0.4)",
-                  color: "white",
-                  fontSize: isMobile ? "9px" : "10px",
-                  fontWeight: 900,
-                  letterSpacing: "0.14em",
-                  textShadow: "0 1px 2px rgba(0,0,0,0.4)",
-                  // Filter from the parent removes color — override so the
-                  // ribbon itself stays warm and readable.
-                  filter: "grayscale(0) brightness(1)",
-                  pointerEvents: "none",
-                  zIndex: 3,
-                  whiteSpace: "nowrap",
-                }}>SOON</div>
-              )}
-            </div>
-          ))}
-        </div>
-      </main>
-
-      {/* About modal */}
-      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
-      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
-    </div>
+      )}
+    </>
   );
 }

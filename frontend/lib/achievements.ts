@@ -23,9 +23,14 @@ export const ACHIEVEMENT_META: Record<string, AchievementMeta> = {
   games_5:     { id: "games_5",     icon: "🎮", name: "Getting Started",   desc: "Play 5 games total" },
   games_25:    { id: "games_25",    icon: "🎮", name: "Regular Player",    desc: "Play 25 games total" },
   games_100:   { id: "games_100",   icon: "💎", name: "Veteran",           desc: "Play 100 games total" },
-  rhythm_300:  { id: "rhythm_300",  icon: "🥁", name: "Drum Apprentice",   desc: "Score 300+ in Rhythm Rush" },
-  rhythm_500:  { id: "rhythm_500",  icon: "🥁", name: "Rhythm Master",     desc: "Score 500+ in Rhythm Rush" },
-  rhythm_700:  { id: "rhythm_700",  icon: "👑", name: "Rhythm Legend",     desc: "Score 700+ in Rhythm Rush" },
+  // Calibrated to top-tier Rhythm Rush scoring (peak runs hit 400k+).
+  // Geometric 2× progression: Apprentice 60k → Master 200k → Legend
+  // 400k. IDs unchanged so server-issued unlocks still map to the
+  // same row. Keep in sync with games-backend/server.js
+  // ACHIEVEMENT_CATALOG.
+  rhythm_300:  { id: "rhythm_300",  icon: "🥁", name: "Drum Apprentice",   desc: "Score 60,000+ in Rhythm Rush" },
+  rhythm_500:  { id: "rhythm_500",  icon: "🥁", name: "Rhythm Master",     desc: "Score 200,000+ in Rhythm Rush" },
+  rhythm_700:  { id: "rhythm_700",  icon: "👑", name: "Rhythm Legend",     desc: "Score 400,000+ in Rhythm Rush" },
   rhythm_fc:   { id: "rhythm_fc",   icon: "✨", name: "Full Combo",        desc: "Clear the rhythm chart without missing a note" },
   rhythm_ap:   { id: "rhythm_ap",   icon: "🌟", name: "All Perfect",       desc: "Every hit PERFECT — no goods, no misses" },
   simon_5:     { id: "simon_5",     icon: "🧠", name: "Memory Apprentice", desc: "Reach round 5 in Simon Memory" },

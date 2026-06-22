@@ -820,6 +820,24 @@ export default function ChallengeAi() {
         position: "absolute", top: 14, right: 14, zIndex: 30,
         display: "flex", gap: 8, alignItems: "center",
       }}>
+        {/* Leaderboard · only in the lobby phase. Hidden once a match starts
+            so the arena chrome doesn't compete with the match HUD. Routes
+            to the PVP arena leaderboard (matches / wins / winRate). */}
+        {phase === "lobby" && (
+          <button onClick={() => router.push("/games/challenge-ai/leaderboard")} aria-label="PVP leaderboard" title="PVP leaderboard" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "7px 12px 7px 10px", borderRadius: 999, cursor: "pointer",
+            background: "rgba(0,0,0,0.55)", border: "1px solid rgba(165,180,252,0.55)",
+            color: "#a5b4fc", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 6px 14px -4px rgba(99,102,241,0.4)",
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7 4h10v2h3v3a4 4 0 0 1-4 4 5 5 0 0 1-4 3v2h3v2H9v-2h3v-2a5 5 0 0 1-4-3 4 4 0 0 1-4-4V6h3zm0 4H5v1a2 2 0 0 0 2 2zm10 0v3a2 2 0 0 0 2-2V8z" />
+            </svg>
+            LEADERBOARD
+          </button>
+        )}
         {overallStreak >= 2 && <StreakChip streak={overallStreak} />}
         <BalanceChip balance={gBalance} />
       </div>

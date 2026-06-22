@@ -1,0 +1,284 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useAccount, useBalance, useReadContract } from "wagmi";
+import { celo } from "viem/chains";
+import { formatEther } from "viem";
+import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
+import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { playClick } from "@/hooks/useAppAudio";
+import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
+
+const T = {
+  ink: "#ffffff",
+  inkDim: "rgba(220,210,255,0.7)",
+  inkSoft: "rgba(220,210,255,0.45)",
+  hairline: "rgba(255,255,255,0.08)",
+  accent: "#a78bfa",
+  display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+};
+
+const BoltIcon = ({ size = 13 }: { size?: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg>;
+const BellIcon = ({ size = 17 }: { size?: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22m7-6V11a7 7 0 1 0-14 0v5l-2 2v1h18v-1z" /></svg>;
+
+// Compact 2-3 decimal formatter for native CELO display.
+function fmtCelo(wei?: bigint) {
+  if (!wei) return "0";
+  const n = Number(formatEther(wei));
+  if (n >= 1) return n.toFixed(2);
+  if (n >= 0.01) return n.toFixed(3);
+  return n.toFixed(4);
+}
+
+// Round-down G$ to whole units (token is 18 decimals).
+function fmtG(rawWei?: bigint) {
+  if (!rawWei) return "0";
+  const whole = Number(rawWei / BigInt(1e18));
+  if (whole >= 1000) return `${(whole / 1000).toFixed(1)}k`;
+  return String(whole);
+}
+
+export default function AppHeader() {
+  const router = useRouter();
+  const { authenticated } = usePrivy();
+  const { address } = useAccount();
+  const audio = useAudioSettings();
+  // Notifications sheet · slides up from the bottom when the bell is
+  // tapped. Wires to the player's recent score events + achievement
+  // unlocks; the unread count drives the red dot on the bell.
+  const [notifOpen, setNotifOpen] = useState(false);
+  const unreadCount = useUnreadNotificationsCount(address);
+  // Mute icon only kills the ambient pad (the constant loop on menu
+  // surfaces). UI feedback, SFX, and in-game music are untouched —
+  // granular per-channel control lives in Settings → Audio.
+  const muted = !audio.appAudioOn;
+  // Breakpoint mirrors /dashboard's so the centered content column lines up
+  // with the page's content. Header band itself spans the full viewport.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const update = () => setIsDesktop(window.innerWidth >= 900);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const innerMax = isDesktop ? 1180 : 480;
+  const innerPad = isDesktop ? "0 32px" : "0 16px";
+
+  // GamePass gate — "connected" means the player has finished onboarding
+  // (mint completed). Authenticated-only users haven't picked a slime name
+  // yet, so the design treats them as guests until the pass lands.
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const { data: chainUsername } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "getUsername",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && hasMinted === true },
+  });
+
+  const connected = authenticated && !!address && hasMinted === true;
+
+  // Real on-chain balances — only fetched when fully connected.
+  const { data: celoBal } = useBalance({
+    address,
+    chainId: celo.id,
+    query: { enabled: connected, refetchInterval: 15_000 },
+  });
+  const { data: gBal } = useReadContract({
+    address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: connected, refetchInterval: 30_000 },
+  });
+
+  // Display name = on-chain GamePass username (the slime name they picked).
+  // We deliberately NEVER fall back to the wallet address — the design
+  // treats anyone without a username as a guest.
+  const name = (chainUsername as string | undefined) || "";
+
+  // Real level + streak come from games-backend (`/api/user/{address}`),
+  // same source profile uses. A previous version hardcoded `LV 1` and
+  // streak `0` so the header didn't reflect any actual play.
+  const [meta, setMeta] = useState<{ level: number; streak: number } | null>(null);
+  useEffect(() => {
+    if (!connected || !address) { setMeta(null); return; }
+    let cancelled = false;
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    fetch(`${backend}/api/user/${address}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d) return;
+        setMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0) });
+      })
+      .catch(() => { });
+    return () => { cancelled = true; };
+  }, [connected, address]);
+
+  const toggleMute = () => {
+    // Flip the ambient pad only. SFX + in-game music untouched.
+    audio.update({ appAudioOn: muted });
+    playClick();
+  };
+
+  return (
+    <header style={{
+      // Full-viewport sticky band. Background fills edge-to-edge so the
+      // dark strip never breaks at the content gutter — same pattern every
+      // modern game lobby uses (Discord, Riot launcher, Apple Arcade).
+      position: "sticky", top: 0, zIndex: 50,
+      width: "100%",
+      background: "rgba(6,1,24,0.78)",
+      backdropFilter: "blur(16px) saturate(160%)",
+      WebkitBackdropFilter: "blur(16px) saturate(160%)",
+      borderBottom: `1px solid ${T.hairline}`,
+      // Soft shadow that only registers once you scroll under it — gives
+      // the band depth without weight at rest.
+      boxShadow: "0 8px 20px -16px rgba(0,0,0,0.6)",
+    }}>
+      <div style={{
+        maxWidth: innerMax, margin: "0 auto",
+        padding: innerPad,
+        display: "flex", alignItems: "center",
+        // Tighter gap on mobile so the daily-use cluster (mute · shop ·
+        // wallet) doesn't get crowded against the avatar / name block.
+        // Desktop keeps the original spacing now that it carries an
+        // extra icon (bell) and the dual-token pill.
+        gap: isDesktop ? 12 : 8,
+        height: 68,
+      }}>
+        {/* Pet avatar · taps to /profile */}
+        <button onClick={() => router.push("/profile")} style={{
+          width: 42, height: 42, borderRadius: 14,
+          background: connected
+            ? `radial-gradient(circle at 35% 30%, ${T.accent}dd, ${T.accent}33)`
+            : "radial-gradient(circle at 35% 30%, rgba(148,163,184,0.6), rgba(148,163,184,0.12))",
+          border: `1.5px solid ${connected ? T.accent + "66" : "rgba(148,163,184,0.4)"}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 0, cursor: "pointer", flexShrink: 0,
+          boxShadow: connected ? `0 0 14px ${T.accent}33, inset 0 1px 0 rgba(255,255,255,0.2)` : "inset 0 1px 0 rgba(255,255,255,0.15)",
+        }}>
+          <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: connected ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {connected ? name : "Guest"}
+          </div>
+          {connected ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
+              <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, letterSpacing: "0.06em", fontWeight: 700 }}>LV {meta?.level ?? 1}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
+                <span style={{ fontFamily: T.body, fontSize: 10, color: "#bae6fd", fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>Playing free · no sign-up</span>
+            </div>
+          )}
+        </div>
+
+        {/* Mute · always visible */}
+        <button onClick={toggleMute} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
+          position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+          background: muted ? "rgba(244,63,94,0.12)" : "rgba(255,255,255,0.05)",
+          border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          color: muted ? "#fda4af" : T.inkDim,
+        }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+            <path d="M4 9v6h3.5L13 19.5V4.5L7.5 9H4z" fill="currentColor" />
+            {muted ? (
+              <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            ) : (
+              <path d="M16.5 8.5a5 5 0 0 1 0 7M18.8 6.2a8.5 8.5 0 0 1 0 11.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+            )}
+          </svg>
+        </button>
+
+        {/* Bell · opens the notifications sheet (slide-up from the bottom).
+            Unread count drives the small accent dot in the top-right
+            corner — capped at 9+ so the badge never gets wide enough to
+            push the button. */}
+        <button onClick={() => { playClick(); setNotifOpen(true); }} aria-label="Notifications" title="Notifications" style={{
+          position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+          background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", color: T.inkDim,
+        }}>
+          <BellIcon />
+          {unreadCount > 0 && (
+            <span style={{
+              position: "absolute", top: 4, right: 4,
+              minWidth: 14, height: 14, padding: "0 4px",
+              borderRadius: 999,
+              background: T.accent,
+              border: "1.5px solid rgba(6,1,24,1)",
+              boxShadow: `0 0 8px ${T.accent}99`,
+              fontFamily: T.body, fontSize: 8.5, fontWeight: 900,
+              color: "#fff", letterSpacing: "0.02em",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              lineHeight: 1,
+            }}>
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+
+        {/* Right cluster · dual-token wallet pill (connected) OR Sign in
+          (guest). CELO (gas) on the left, G$ (engagement currency) on
+          the right with a subtle gold wash. Players need both visible —
+          CELO so they can spot empty-gas before a tx, G$ so they always
+          know what they can spend in the shop. */}
+        {connected ? (
+          <button onClick={() => router.push("/profile")} style={{
+            display: "flex", alignItems: "stretch",
+            padding: 0, borderRadius: 12, cursor: "pointer", flexShrink: 0,
+            background: "rgba(255,255,255,0.04)",
+            border: `1px solid ${T.hairline}`,
+            height: 38,
+          }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 9px" }} title="CELO · network gas">
+              <img src="/tokens/celo.png" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
+              <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.ink, lineHeight: 1 }}>{fmtCelo(celoBal?.value)}</span>
+            </span>
+            <span style={{ width: 1, background: T.hairline }} />
+            <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 11px 0 9px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))" }} title="G$ · game token">
+              <img src="/tokens/g-dollar.svg" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
+              <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#fde68a", lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
+            </span>
+          </button>
+        ) : (
+          <button onClick={() => router.push("/home")} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "9px 16px", borderRadius: 999, cursor: "pointer", flexShrink: 0,
+            background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
+            border: `1px solid ${T.accent}`,
+            boxShadow: `0 6px 16px -4px ${T.accent}88, inset 0 1px 0 rgba(255,255,255,0.35)`,
+            color: "#fff", fontFamily: T.body, fontSize: 12.5, fontWeight: 800, letterSpacing: "0.03em",
+          }}>
+            <BoltIcon /> Sign in
+          </button>
+        )}
+
+      </div>
+
+      {/* Notifications · mounted at header root so the sheet overlays
+          the whole viewport regardless of which page the header is
+          rendered inside. */}
+      <NotificationsSheet address={address} open={notifOpen} onClose={() => setNotifOpen(false)} />
+    </header>
+  );
+}
