@@ -167,6 +167,11 @@ export default function DashboardPage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [dash, setDash] = useState<DashData | null>(null);
   const [me, setMe] = useState<{ rank: number; peak: number; bestRhythm: number; bestSimon: number } | null>(null);
+  // Live level + streak from games-backend (same source the AppHeader uses).
+  // Was hardcoded `LV 1` + `0-day streak` in the WELCOME pills · which made
+  // them look fake even for players with real progression. Refetches when
+  // the wallet flips so a wallet swap shows that wallet's numbers.
+  const [userMeta, setUserMeta] = useState<{ level: number; streak: number } | null>(null);
   // Per-game loading overlay state · same pattern as /games/page.tsx ·
   // holds the tapped game's identity so the loader paints its art/title
   // /glow during the hub → lobby transition.
@@ -240,6 +245,29 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [connected, address]);
 
+  // Live level + play_streak from games-backend (same source the AppHeader
+  // uses · /api/user/{addr}). Feeds the WELCOME pills below the greeting
+  // so they reflect the player's actual progression, not a hardcoded "LV 1
+  // · 0-day streak". Refetches every 30s so the chip stays current after a
+  // game submit on another route updates the row.
+  useEffect(() => {
+    if (!connected || !address) { setUserMeta(null); return; }
+    let cancelled = false;
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    const load = () => {
+      fetch(`${backend}/api/user/${address}`, { cache: "no-store" })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (cancelled || !d) return;
+          setUserMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0) });
+        })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [connected, address]);
+
   const onPlayGame = async (id: string) => {
     // Spam-tap guard · ignore while a load is in flight (the overlay
     // covers the cards anyway, but this stops queued promises racing).
@@ -300,8 +328,13 @@ export default function DashboardPage() {
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.ink, margin: "3px 0 0", letterSpacing: "-0.01em" }}>{connected ? (username || "Player") : "Player"}</h2>
           {connected && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              <Pill color="#bae6fd">🔥 0-day streak</Pill>
-              <Pill color="#a78bfa">LV 1</Pill>
+              {/* Live streak from /api/user · "🔥 New" reads warmer than
+                  "🔥 0-day streak" for a fresh player; once they hit day 1
+                  the real number shows. */}
+              <Pill color="#bae6fd">
+                🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}-day streak` : "New"}
+              </Pill>
+              <Pill color="#a78bfa">LV {userMeta?.level ?? 1}</Pill>
               {me && me.peak > 0 && <Pill color="#fbbf24">PEAK {me.peak}</Pill>}
             </div>
           )}
