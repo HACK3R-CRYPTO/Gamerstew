@@ -18,11 +18,13 @@ import {
 } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
+import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -578,6 +580,11 @@ export default function RhythmGamePage() {
   // reconcile.
   const [bursts, setBursts] = useState<Burst[]>([]);
   const [comboToast, setComboToast] = useState<string | null>(null);
+
+  // Shared game-feel layer (popups + shake + big combo callouts + danger
+  // vignette). Replaces the existing comboToast at higher milestones and
+  // adds floating "+X" feedback per hit / "MISS" feedback per miss.
+  const juice = useGameJuice();
   const [flashLane, setFlashLane] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number } | null>(null);
 
@@ -714,10 +721,11 @@ export default function RhythmGamePage() {
     setComboToast(null);
     setFlashLane(null);
     setFeedback(null);
+    juice.reset();
     // Anti-cheat: clear session + tap log so a new run gets a fresh ticket
     sessionTokenRef.current = null;
     tapLogRef.current = [];
-  }, []);
+  }, [juice]);
 
   // Countdown → playing
   const startGame = async () => {
@@ -1087,12 +1095,22 @@ export default function RhythmGamePage() {
     setCombo(c => {
       const next = c + 1;
       if (next > maxCombo) setMaxCombo(next);
-      // Combo milestone toast
+      // Combo milestone toast (kept for the first few; the bigger
+      // milestones at 50/100 are handled by the shared callout layer
+      // so they punch in dramatically instead of as a thin top toast).
       if (next === 5) setComboToast("WARMED UP!");
       if (next === 10) setComboToast("ON FIRE 🔥");
       if (next === 15) setComboToast("UNSTOPPABLE!");
       if (next === 25) setComboToast("GOD MODE!");
       if ([5, 10, 15, 25].includes(next)) setTimeout(() => setComboToast(null), 1200);
+      // Big center callouts at 50 and 100 (and the milestone in 50/100/250).
+      if (next === 50 || next === 100 || next === 250) {
+        juice.fireCallout({
+          text: next === 250 ? "MYTHIC" : next === 100 ? "LEGENDARY" : "GOD MODE",
+          sub:  `${Math.floor(next / 5) + 1}× multiplier`,
+          color: "#fbbf24",
+        }, next);
+      }
       return next;
     });
     setHits(h => ({ ...h, [type]: h[type] + 1 }));
@@ -1103,6 +1121,10 @@ export default function RhythmGamePage() {
     const xPct = laneWidth * lane + laneWidth / 2;
     const color = LANES[lane].accent;
     setBursts(bs => [...bs, { id: burstIdRef.current++, x: xPct, y: 90, color: type === "perfect" ? "#fbbf24" : color, born: performance.now() }]);
+
+    // Floating "+X" reward popup at the tap zone. Y is 88% (right above
+    // the hit line) so the number rises into the play area, not the HUD.
+    juice.scorePopup(xPct, 86, gained, type);
 
     // Flash lane briefly
     setFlashLane(lane);
@@ -1286,6 +1308,11 @@ export default function RhythmGamePage() {
           setCombo(0);
           setHits(h => ({ ...h, miss: h.miss + 1 }));
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
+          // Floating "MISS" popup at the lane + light screen shake.
+          // Encore misses shake harder because each one costs a life.
+          const laneWidth = 100 / LANES.length;
+          juice.lossPopup(laneWidth * n.lane + laneWidth / 2, 86, "MISS");
+          juice.bump(phase === "encore" ? 10 : 5);
           // No sound on miss — silence IS the feedback. The player should feel
           // the absence of a note they should have played. Visual cues (MISS
           // text + combo break + red lives in encore) carry the signal instead.
@@ -1447,6 +1474,13 @@ export default function RhythmGamePage() {
           encoreLives={encoreLives}
         />
       )}
+      {/* Shared juice overlay — floating popups + screen shake + big combo
+          callouts + danger vignette in the last 5 seconds of the main track.
+          Sits over the PlayingView (fixed/absolute container at the page
+          root), pointerEvents:none so input still falls through to lanes. */}
+      {(phase === "playing" || phase === "encore") && (
+        <JuiceOverlay {...juice} timeLeft={timeLeft} dangerSeconds={5} />
+      )}
 
       {/* ═══ FINISHED ═══ */}
       {phase === "finished" && (
@@ -1455,7 +1489,13 @@ export default function RhythmGamePage() {
           score={score} maxCombo={maxCombo} hits={hits}
           total={totalNotes}
           onPlayAgain={startGame}
-          onExit={() => router.push("/games")}
+          // Exit returns to THIS game's lobby (idle phase) instead of
+          // bouncing out to the /games hub. The hub is a separate tap
+          // from the bottom nav; players who finish a run almost always
+          // want one of: play again, see their score linger on the
+          // lobby, or check the leaderboard — all of which live on
+          // this page's idle view.
+          onExit={() => { reset(); setPhase("idle"); }}
           submitting={submitting}
           signingOnChain={signingOnChain}
           submitResult={submitResult}
@@ -2789,35 +2829,24 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
 const RHYTHM_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function RhythmTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
-  const [top, setTop] = useState<LeaderboardEntry[] | null>(null);
-  const [seasonNum, setSeasonNum] = useState<number | null>(null);
+  // Seed from the shared cache so a warm cache renders the real data on
+  // the first paint · no "Loading…" flash. The cache is populated by
+  // prefetchPreview() on game-card tap from /games and /dashboard.
+  const seed = getCachedPreview(0);
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(seed?.top ?? null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(seed?.seasonNum ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // Step 1 · season boundary from backend (when did the current season start?)
-      let seasonStart = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      try {
-        const r = await fetch(`${RHYTHM_BACKEND_URL}/api/seasons`, { cache: "no-store" });
-        if (r.ok) {
-          const d = await r.json();
-          if (d) {
-            setSeasonNum(d.currentSeason ?? null);
-            if (typeof d.currentStartsAt === "number") seasonStart = d.currentStartsAt;
-            else if (typeof d.currentEndsAt === "number") seasonStart = d.currentEndsAt - 7 * 24 * 60 * 60;
-          }
-        }
-      } catch { /* fall through to default 7d window */ }
-
-      // Step 2 · top 3 Rhythm scores within that window from the subgraph
-      try {
-        const rows = await fetchLeaderboard(0, seasonStart, 3);
-        if (!cancelled) setTop(rows.slice(0, 3));
-      } catch {
-        if (!cancelled) setTop([]);
-      }
-    })();
+    // Stale-while-revalidate · always refetch on mount to keep the lobby
+    // current, but the user already sees the cached data while this runs.
+    fetchPreview(0).then(v => {
+      if (cancelled) return;
+      setTop(v.top);
+      setSeasonNum(v.seasonNum);
+    }).catch(() => { if (!cancelled && top === null) setTop([]); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";

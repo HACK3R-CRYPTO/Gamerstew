@@ -12,6 +12,7 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
+import { UnblockNotificationsModal } from "@/components/UnblockNotificationsModal";
 
 // Token system matches /profile + /shop so the three surfaces read as
 // one design system. Claude-design row pattern (icon tile + label + sub
@@ -163,6 +164,15 @@ export default function SettingsPage() {
 
   const [isDesktop, setIsDesktop] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Drives the per-browser unblock walkthrough modal. Opens when the
+  // player taps the BLOCKED chip (Chrome / Edge / Firefox / Samsung path)
+  // or the iOS PWA chip (Safari-on-iPhone without Home Screen install).
+  const [showUnblock, setShowUnblock] = useState(false);
+  // One-shot inline error when subscribe() fails silently (VAPID missing,
+  // SW register fails, backend /api/push/subscribe rejected). Without
+  // this, the toggle just snaps back to off with no explanation and the
+  // player thinks they did something wrong.
+  const [pushError, setPushError] = useState<string | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -386,26 +396,83 @@ export default function SettingsPage() {
                 icon="🔔"
                 label="Push notifications"
                 sub={
-                  pushState === "denied"
-                    ? "Blocked by browser. Unblock in site settings to enable."
-                    : pushState === "unsupported"
-                      ? "Not supported in this browser."
-                      : "Streak nudges, event results, MARKOV rematch alerts."
+                  pushError
+                    ? pushError
+                    : pushState === "denied"
+                      ? "Blocked by your browser. Tap BLOCKED to see how to unblock."
+                      : pushState === "unsupported"
+                        ? "Not supported here. Tap HOW for iOS Home-Screen steps."
+                        : "Streak nudges, event results, MARKOV rematch alerts."
                 }
               >
                 {pushState === "denied" ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", padding: "5px 10px", borderRadius: 999, background: "rgba(252,165,165,0.12)", border: "1px solid rgba(252,165,165,0.4)", color: "rgba(252,165,165,0.95)", fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.08em" }}>
-                    BLOCKED
-                  </span>
+                  // Tapping BLOCKED opens the per-browser walkthrough so the
+                  // player isn't stuck. Browsers won't let us re-prompt once
+                  // denied, so site-settings is the only way back.
+                  <button
+                    onClick={() => setShowUnblock(true)}
+                    style={{
+                      display: "inline-flex", alignItems: "center",
+                      padding: "5px 10px", borderRadius: 999, cursor: "pointer",
+                      background: "rgba(252,165,165,0.12)",
+                      border: "1px solid rgba(252,165,165,0.4)",
+                      color: "rgba(252,165,165,0.95)",
+                      fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
+                    }}
+                  >BLOCKED · FIX</button>
                 ) : pushState === "unsupported" ? (
-                  <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em" }}>UNAVAILABLE</span>
+                  // iOS Safari (and any iOS browser) needs Add-to-Home-Screen
+                  // first; the walkthrough modal has that flow. Same chip
+                  // also helps in-app browsers (Facebook/Instagram WebViews)
+                  // where the only fix is to open in a real browser.
+                  <button
+                    onClick={() => setShowUnblock(true)}
+                    style={{
+                      display: "inline-flex", alignItems: "center",
+                      padding: "5px 10px", borderRadius: 999, cursor: "pointer",
+                      background: "rgba(167,139,250,0.12)",
+                      border: "1px solid rgba(167,139,250,0.4)",
+                      color: "rgba(220,210,255,0.9)",
+                      fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
+                    }}
+                  >HOW TO ENABLE</button>
                 ) : (
-                  <Toggle on={pushOn} onChange={async (v) => { if (v) { await subscribe(); } else { await unsubscribe(); } audio.update({ notifOn: v }); }} />
+                  <Toggle
+                    on={pushOn}
+                    onChange={async (v) => {
+                      setPushError(null);
+                      if (v) {
+                        // Only flip notifOn after the subscribe round-trip
+                        // ACTUALLY succeeded. The old code flipped it on
+                        // every toggle attempt · making the row look "on"
+                        // while the backend never got the subscription, so
+                        // notifications never arrived. That's the "I allowed
+                        // it but it won't turn on" report.
+                        const ok = await subscribe();
+                        if (ok) {
+                          audio.update({ notifOn: true });
+                        } else {
+                          // subscribe() returned false. State will already
+                          // reflect why (denied / default / granted), but
+                          // surface a one-line explanation so the player
+                          // knows it wasn't their fault and what to do.
+                          setPushError("Couldn't turn on. Tap again, or check your browser site settings.");
+                        }
+                      } else {
+                        await unsubscribe();
+                        audio.update({ notifOn: false });
+                      }
+                    }}
+                  />
                 )}
               </Row>
             </div>
           </section>
         )}
+
+        {/* Per-browser unblock / iOS Home-Screen walkthrough · auto-detects
+            the player's browser and shows the right 4-step recipe. */}
+        {showUnblock && <UnblockNotificationsModal onClose={() => setShowUnblock(false)} />}
 
         {/* GAMEPLAY — only Language for now, faded read-only until i18n
             ships. Reduce-motion was dropped because the app's keyframes

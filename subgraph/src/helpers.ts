@@ -18,8 +18,10 @@ export function getOrCreatePlayer(addr: Address): Player {
     p.totalGames = ZERO_BI;
     p.rhythmPlays = ZERO_BI;
     p.simonPlays = ZERO_BI;
+    p.stackPlays = ZERO_BI;
     p.bestRhythmScore = ZERO_BI;
     p.bestSimonScore = ZERO_BI;
+    p.bestStackScore = ZERO_BI;
     p.highestHabitatTier = 0;
     p.totalUbiDonated = ZERO_BI;
     p.totalWagers = ZERO_BI;
@@ -45,6 +47,7 @@ export function getOrCreateDailyStat(timestamp: BigInt): DailyStat {
     d.scoresRecorded = ZERO_BI;
     d.rhythmPlays = ZERO_BI;
     d.simonPlays = ZERO_BI;
+    d.stackPlays = ZERO_BI;
     d.habitatUnlocks = ZERO_BI;
     d.ubiDonatedG = ZERO_BI;
     d.wagersCreated = ZERO_BI;
@@ -63,6 +66,7 @@ export function getOrCreateGlobalStat(timestamp: BigInt): GlobalStat {
     g.totalScores = ZERO_BI;
     g.totalRhythmPlays = ZERO_BI;
     g.totalSimonPlays = ZERO_BI;
+    g.totalStackPlays = ZERO_BI;
     g.totalHabitatUnlocks = ZERO_BI;
     g.totalUbiDonatedG = ZERO_BI;
     g.totalTreasuryG = ZERO_BI;

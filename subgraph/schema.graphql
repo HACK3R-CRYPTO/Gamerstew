@@ -12,8 +12,10 @@ type Player @entity {
   totalGames: BigInt!
   rhythmPlays: BigInt!
   simonPlays: BigInt!
+  stackPlays: BigInt!
   bestRhythmScore: BigInt!
   bestSimonScore: BigInt!
+  bestStackScore: BigInt!
   lastPlayedAt: BigInt
 
   # Habitat ownership (paid tiers only; free tiers are level-derived off-chain)
@@ -43,7 +45,7 @@ type PlayerHabitat @entity {
 type Score @entity(immutable: true) {
   id: ID!                         # txHash + log index
   player: Player!
-  gameType: Int!                  # 0 = rhythm, 1 = simon
+  gameType: Int!                  # 0 = rhythm, 1 = simon, 2 = stack
   score: BigInt!
   season: BigInt!
   totalGamesAtTime: BigInt!
@@ -71,6 +73,7 @@ type DailyStat @entity {
   scoresRecorded: BigInt!
   rhythmPlays: BigInt!
   simonPlays: BigInt!
+  stackPlays: BigInt!
   habitatUnlocks: BigInt!
   ubiDonatedG: BigInt!            # G$ to UBI from habitat unlocks that day
   wagersCreated: BigInt!
@@ -82,6 +85,7 @@ type GlobalStat @entity {
   totalScores: BigInt!
   totalRhythmPlays: BigInt!
   totalSimonPlays: BigInt!
+  totalStackPlays: BigInt!
   totalHabitatUnlocks: BigInt!
   totalUbiDonatedG: BigInt!
   totalTreasuryG: BigInt!

@@ -6,7 +6,9 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
-import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
+import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry, type GameTypeId } from "@/lib/subgraph";
+import { fetchPreview } from "@/lib/leaderboardPreview";
+import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -62,21 +64,64 @@ function Icon({ name, size = 16, color = "currentColor" }: { name: string; size?
 }
 
 // ─── games (mirrors the actual games shipped) ───────────────────────────
-const GAMES = [
+// Order matters · the first entry becomes the home hero banner. Stack Tower
+// is listed first while it's the new-launch feature; rotate as new games drop.
+// `art` is either a PNG path or an inline SVG element · HeroCard and
+// GamesGrid branch on typeof to render both.
+type Game = {
+  id: string;
+  title: string;
+  subtitle: string;
+  art: string | React.ReactNode;
+  bg: string;
+  glow: string;
+  desc: string;
+  active: boolean;
+  href: string;
+  isNew?: boolean;
+};
+
+const STACK_ART = (
+  // Inline SVG rainbow tower · matches the games-hub card identity so the
+  // home hero banner and the /games card show the same artwork.
+  <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }}>
+    {[
+      { y: 76, x: 22, w: 56, hue: 195 },
+      { y: 60, x: 26, w: 50, hue: 215 },
+      { y: 44, x: 30, w: 42, hue: 245 },
+      { y: 28, x: 32, w: 38, hue: 275 },
+      { y: 12, x: 36, w: 30, hue: 300 },
+    ].map((b, i) => (
+      <g key={i}>
+        <rect x={b.x} y={b.y + 2} width={b.w} height={12} rx={2} fill={`hsl(${b.hue} 78% 32%)`} />
+        <rect x={b.x} y={b.y} width={b.w} height={10} rx={2} fill={`hsl(${b.hue} 78% 56%)`} />
+        <rect x={b.x} y={b.y} width={b.w} height={2.5} fill="rgba(255,255,255,0.4)" rx={1} />
+      </g>
+    ))}
+  </svg>
+);
+
+const GAMES: Game[] = [
   {
-    id: "rhythm", title: "Rhythm Rush", subtitle: "Skill · Climb the board",
+    id: "stack", title: "Stack Tower", subtitle: "Stack & survive · don't drop",
+    art: STACK_ART, bg: "linear-gradient(155deg, #f97316 0%, #c2410c 55%, #7c2d12 100%)", glow: "#fb923c",
+    desc: "Drop the falling block. Chain perfect stacks. Miss once, the tower falls.",
+    active: true, href: "/games/stack", isNew: true,
+  },
+  {
+    id: "rhythm", title: "Rhythm Rush", subtitle: "Tap to the beat · combo to climb",
     art: "/games/rhythm.png", bg: "linear-gradient(155deg, #c026d3 0%, #7c1d9e 55%, #4c1d95 100%)", glow: "#c026d3",
     desc: "Tap to the beat, chain combos, top the weekly leaderboard.", active: true, href: "/games/rhythm",
   },
   {
-    id: "simon", title: "Simon Memory", subtitle: "Skill · Climb the board",
+    id: "simon", title: "Simon Memory", subtitle: "Sequence memory · go deeper",
     art: "/games/simon.png", bg: "linear-gradient(155deg, #0e7490 0%, #075985 55%, #1e1b4b 100%)", glow: "#06b6d4",
     desc: "Repeat the color run. Go deeper than everyone else for a top rank.", active: true, href: "/games/simon",
   },
   {
-    id: "arena", title: "Challenge AI", subtitle: "Wager · Beat MARKOV",
+    id: "arena", title: "Challenge AI", subtitle: "Wager G$ · beat MARKOV",
     art: "/games/challenge-ais.png", bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)", glow: "#22c55e",
-    desc: "Duel MARKOV, the on-chain AI agent. Best of 3 — and ties go to you.", active: true, href: "/games/challenge-ai",
+    desc: "Duel MARKOV, the on-chain AI agent. Best of 3, ties go to you.", active: true, href: "/games/challenge-ai",
   },
 ];
 
@@ -122,6 +167,10 @@ export default function DashboardPage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [dash, setDash] = useState<DashData | null>(null);
   const [me, setMe] = useState<{ rank: number; peak: number; bestRhythm: number; bestSimon: number } | null>(null);
+  // Per-game loading overlay state · same pattern as /games/page.tsx ·
+  // holds the tapped game's identity so the loader paints its art/title
+  // /glow during the hub → lobby transition.
+  const [loadingGame, setLoadingGame] = useState<typeof GAMES[number] | null>(null);
 
   // Has the wallet minted a GamePass? Used to surface "Sign in to claim"
   // vs the real claim card. Players without a pass aren't fully onboarded.
@@ -191,9 +240,28 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [connected, address]);
 
-  const onPlayGame = (id: string) => {
+  const onPlayGame = async (id: string) => {
+    // Spam-tap guard · ignore while a load is in flight (the overlay
+    // covers the cards anyway, but this stops queued promises racing).
+    if (loadingGame) return;
     const g = GAMES.find(x => x.id === id);
-    if (g?.active) router.push(g.href);
+    if (!g?.active) return;
+
+    // Show per-game loading overlay with this game's art/title/glow.
+    setLoadingGame(g);
+
+    // Concurrent wait: leaderboard prefetch OR min 600ms (whichever
+    // longer). Loader never feels rushed on a fast connection, never
+    // feels stuck on a slow one. Same pattern as /games/page.tsx.
+    const gameType: GameTypeId | null =
+      id === "rhythm" ? 0 : id === "simon" ? 1 : id === "stack" ? 2 : null;
+    const tasks: Promise<unknown>[] = [new Promise(r => setTimeout(r, 600))];
+    if (gameType !== null) tasks.push(fetchPreview(gameType).catch(() => null));
+    await Promise.all(tasks);
+
+    router.push(g.href);
+    // Overlay stays mounted until the route change unmounts the page ·
+    // clearing here would cause a brief blank flash.
   };
   // Always route Sign-in / Connect taps to /home — that's the canonical
   // entry point where the Privy modal lives + the onboarding overlay
@@ -249,7 +317,7 @@ export default function DashboardPage() {
             <ClaimCard connected={connected} onConnect={onConnect} router={router} />
             <HeroCard game={recommended} onPlayGame={onPlayGame} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-            <GamesGrid onPlayGame={onPlayGame} />
+            <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
             <SectionLabel>Daily missions</SectionLabel>
             <MissionCard connected={connected} onConnect={onConnect} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
@@ -272,6 +340,18 @@ export default function DashboardPage() {
       {/* Bottom nav — Home / Play / Events / Pet per CLAUDE.md IA. Renders
           as a floating pill on desktop and a full-width bar on mobile. */}
       <AppBottomNav wide={isDesktop} />
+
+      {/* Per-game loading overlay · branded transition while the lobby's
+          top-3 leaderboard cache warms up. Each game shows its own
+          art/title/glow so the loader reads as part of that game. */}
+      {loadingGame && (
+        <GameLoadingScreen
+          title={loadingGame.title}
+          art={loadingGame.art}
+          bg={loadingGame.bg}
+          glow={loadingGame.glow}
+        />
+      )}
     </div>
   );
 }
@@ -286,7 +366,7 @@ function DashLeft({ connected, recommended, onPlayGame, router }: {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <HeroCard game={recommended} onPlayGame={onPlayGame} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-      <GamesGrid onPlayGame={onPlayGame} />
+      <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
       <SectionLabel>Daily missions</SectionLabel>
       <MissionCard connected={connected} onConnect={() => router.push("/home")} />
     </div>
@@ -517,8 +597,14 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.22), transparent 60%)", pointerEvents: "none" }} />
-      <img src={game.art} alt="" style={{ position: "absolute", right: -16, bottom: -10, width: 150, height: 150, objectFit: "contain", filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.5))", pointerEvents: "none" }} />
-      <div style={{ padding: "14px 14px 0" }}><Pill color="#fde68a">▶ JUMP BACK IN</Pill></div>
+      {typeof game.art === "string" ? (
+        <img src={game.art} alt="" style={{ position: "absolute", right: -16, bottom: -10, width: 150, height: 150, objectFit: "contain", filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.5))", pointerEvents: "none" }} />
+      ) : (
+        <div style={{ position: "absolute", right: -8, bottom: -4, width: 150, height: 150, pointerEvents: "none" }}>{game.art}</div>
+      )}
+      <div style={{ padding: "14px 14px 0" }}>
+        <Pill color="#fde68a">{game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
+      </div>
       <div style={{ padding: "12px 14px 14px", maxWidth: "64%", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: T.display, fontSize: 23, color: "#fff", lineHeight: 1, textShadow: "0 2px 6px rgba(0,0,0,0.45)" }}>{game.title}</div>
         <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.78)", marginTop: 5, lineHeight: 1.35 }}>{game.desc}</div>
@@ -527,21 +613,35 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
   );
 }
 
-function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
+function GamesGrid({ onPlayGame, excludeId }: { onPlayGame: (id: string) => void; excludeId?: string }) {
+  // The hero banner already features `excludeId` so the grid skips it · keeps
+  // the row at 3 cards and avoids showing the same game twice.
+  const cards = GAMES.filter(g => g.id !== excludeId);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-      {GAMES.map(g => (
+      {cards.map(g => (
         <button key={g.id} onClick={() => onPlayGame(g.id)} style={{
           position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
           background: g.bg, cursor: "pointer",
           boxShadow: `0 8px 18px -8px ${g.glow}88`,
         }}>
           <div style={{ height: 70, position: "relative" }}>
-            <img src={g.art} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+            {typeof g.art === "string" ? (
+              <img src={g.art} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+            ) : (
+              <div style={{ position: "absolute", inset: 0, padding: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>{g.art}</div>
+            )}
           </div>
-          <div style={{ padding: "8px 10px 10px", background: "rgba(0,0,0,0.35)" }}>
+          {/* Text panel · subtitle wraps to 2 lines on narrow screens so
+              full copy stays readable on every device. minHeight keeps the
+              row even when one card's subtitle wraps and another's doesn't. */}
+          <div style={{ padding: "8px 10px 10px", background: "rgba(0,0,0,0.35)", minHeight: 56, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
             <div style={{ fontFamily: T.display, fontSize: 12, color: "#fff", lineHeight: 1.1 }}>{g.title}</div>
-            <div style={{ fontFamily: T.body, fontSize: 8.5, color: "rgba(255,255,255,0.6)", fontWeight: 700, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.subtitle}</div>
+            <div style={{
+              fontFamily: T.body, fontSize: 8.5, color: "rgba(255,255,255,0.6)", fontWeight: 700,
+              marginTop: 3, lineHeight: 1.3,
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+            }}>{g.subtitle}</div>
           </div>
         </button>
       ))}

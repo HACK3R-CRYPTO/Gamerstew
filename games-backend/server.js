@@ -350,7 +350,14 @@ const XP_PLAYED  = 10;  // base XP for finishing a game
 const XP_WIN     = 25;  // bonus when you beat the win threshold
 const XP_NEW_PB  = 25;  // bonus when you set a new personal best
 
-const WIN_THRESHOLD = { rhythm: 350, simon: 7 };
+const WIN_THRESHOLD = { rhythm: 350, simon: 7, stack: 50 };
+
+// Single source of truth for game enum mapping. GamePass.sol treats
+// gameType as a free uint8 — these IDs are off-chain conventions that
+// also drive the subgraph mapping. Add a new game by appending here.
+const GAME_TYPE = { rhythm: 0, simon: 1, stack: 2 };
+const VALID_GAMES = Object.keys(GAME_TYPE);
+const GAME_LABEL = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower' };
 
 // Cumulative XP required to reach a given level (LV 1 = 0).
 //   LV 1: 0     LV 2: 100    LV 3: 300    LV 4: 600    LV 5: 1,000
@@ -393,6 +400,10 @@ const MISSION_TEMPLATES = [
   { id: 'rhythm_500',       label: 'Score 80,000+ in Rhythm Rush',         target: 1,   reward: 60,  match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
   { id: 'simon_5',          label: 'Reach round 5 in Simon Memory',        target: 1,   reward: 60,  match: ({ game, score }) => game === 'simon'  && score >= 5   ? 1 : 0 },
   { id: 'simon_10',         label: 'Reach round 10 in Simon Memory',       target: 1,   reward: 100, match: ({ game, score }) => game === 'simon'  && score >= 10  ? 1 : 0 },
+  // Stack Tower · score = blocks landed + perfect-stack combo bonus.
+  // 30 blocks is a steady-hand run; 60 is a focused session.
+  { id: 'stack_30',         label: 'Stack 30+ blocks in Stack Tower',      target: 1,   reward: 40,  match: ({ game, score }) => game === 'stack'  && score >= 30  ? 1 : 0 },
+  { id: 'stack_60',         label: 'Stack 60+ blocks in Stack Tower',      target: 1,   reward: 80,  match: ({ game, score }) => game === 'stack'  && score >= 60  ? 1 : 0 },
   { id: 'beat_personal_best', label: 'Beat your personal best',            target: 1,   reward: 80,  match: ({ isNewPb }) => isNewPb ? 1 : 0 },
   { id: 'play_both_games',  label: 'Play both games today (1 of each)',    target: 2,   reward: 70,  match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
 ];
@@ -510,6 +521,14 @@ const ACHIEVEMENT_CATALOG = [
     check: async ({ game, score }) => game === 'simon' && score >= 10 },
   { id: 'simon_15',     icon: '👑', name: 'Memory Legend',      desc: 'Reach round 15 in Simon Memory',
     check: async ({ game, score }) => game === 'simon' && score >= 15 },
+  // Stack Tower milestones · scoring = blocks + perfect-stack combo
+  // bonus. 50 blocks is a tidy run, 150 is precise, 300 is hall-of-fame.
+  { id: 'stack_50',     icon: '🧱', name: 'Block Builder',      desc: 'Score 50+ in Stack Tower',
+    check: async ({ game, score }) => game === 'stack' && score >= 50 },
+  { id: 'stack_150',    icon: '🏗️', name: 'Tower Master',       desc: 'Score 150+ in Stack Tower',
+    check: async ({ game, score }) => game === 'stack' && score >= 150 },
+  { id: 'stack_300',    icon: '🏙️', name: 'Sky Architect',     desc: 'Score 300+ in Stack Tower',
+    check: async ({ game, score }) => game === 'stack' && score >= 300 },
 ];
 
 async function checkAndUnlockAchievements(wallet, ctx) {
@@ -753,24 +772,6 @@ async function sealCompletedSeasons() {
     const startDate = new Date(start * 1000).toISOString();
     const endDate = new Date(end * 1000).toISOString();
 
-    const { data: rhythmRaw } = await supabase
-      .from('activity')
-      .select('*')
-      .eq('game', 'rhythm')
-      .gte('created_at', startDate)
-      .lt('created_at', endDate)
-      .order('score', { ascending: false })
-      .limit(500);
-
-    const { data: simonRaw } = await supabase
-      .from('activity')
-      .select('*')
-      .eq('game', 'simon')
-      .gte('created_at', startDate)
-      .lt('created_at', endDate)
-      .order('score', { ascending: false })
-      .limit(500);
-
     // Deduplicate: best score per wallet per season
     const dedup = (rows) => {
       const seen = new Map();
@@ -782,11 +783,20 @@ async function sealCompletedSeasons() {
       return Array.from(seen.values()).sort((a, b) => b.score - a.score).slice(0, 10);
     };
 
-    const rhythmScores = dedup(rhythmRaw);
-    const simonScores  = dedup(simonRaw);
-
-    const rEntries = rhythmScores;
-    const sEntries = simonScores;
+    // Fan-out one query per registered game. New games (e.g. Stack
+    // Tower) join the season seal automatically once they're in
+    // VALID_GAMES — no per-game block to keep in sync.
+    const perGame = await Promise.all(VALID_GAMES.map(async (game) => {
+      const { data } = await supabase
+        .from('activity')
+        .select('*')
+        .eq('game', game)
+        .gte('created_at', startDate)
+        .lt('created_at', endDate)
+        .order('score', { ascending: false })
+        .limit(500);
+      return { game, entries: dedup(data) };
+    }));
 
     // Upsert season record
     await supabase.from('seasons').upsert({
@@ -797,12 +807,9 @@ async function sealCompletedSeasons() {
       sealed: true,
     }, { onConflict: 'season_number' });
 
-    // Award badges to top 3
+    // Award badges to top 3 per game
     const badgeTypes = ['gold', 'silver', 'bronze'];
-    for (const { entries, game } of [
-      { entries: rEntries, game: 'rhythm' },
-      { entries: sEntries, game: 'simon' },
-    ]) {
+    for (const { entries, game } of perGame) {
       for (let i = 0; i < Math.min(3, entries.length); i++) {
         await supabase.from('badges').upsert({
           wallet_address: entries[i].wallet_address,
@@ -813,7 +820,7 @@ async function sealCompletedSeasons() {
       }
     }
 
-    console.log(`🏆 Season ${n} sealed — ${rEntries.length} rhythm, ${sEntries.length} simon`);
+    console.log(`🏆 Season ${n} sealed — ${perGame.map(p => `${p.entries.length} ${p.game}`).join(', ')}`);
   }
 
   // Ensure current season exists
@@ -837,7 +844,7 @@ async function sealCompletedSeasons() {
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 function validateScore({ score, gameTime, game }) {
-  if (!['rhythm', 'simon'].includes(game)) return { valid: false, reason: 'Unknown game' };
+  if (!VALID_GAMES.includes(game)) return { valid: false, reason: 'Unknown game' };
   if (typeof score !== 'number' || score < 0 || score > 1_000_000) return { valid: false, reason: 'Score out of range' };
   if (typeof gameTime !== 'number' || gameTime < 5000) return { valid: false, reason: 'Game time too short' };
   return { valid: true };
@@ -883,7 +890,7 @@ app.post('/api/start-game', requireSecret, async (req, res) => {
   if (!wallet || !game) {
     return res.status(400).json({ error: 'Missing wallet or game' });
   }
-  if (!['rhythm', 'simon'].includes(game)) {
+  if (!VALID_GAMES.includes(game)) {
     return res.status(400).json({ error: 'Unknown game' });
   }
 
@@ -925,7 +932,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
   if (!playerAddress || !game) {
     return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
-  if (!['rhythm', 'simon'].includes(game)) {
+  if (!VALID_GAMES.includes(game)) {
     return res.status(400).json({ error: 'Unknown game' });
   }
   if (!sessionToken) {
@@ -1001,7 +1008,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     serverScore = score;
   }
 
-  const gameType = game === 'rhythm' ? 0 : 1;
+  const gameType = GAME_TYPE[game];
 
   try {
     const nonce = await passContract.scoreNonces(playerAddress);
@@ -1045,7 +1052,14 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     // Plus an 8s duration gate on top of the 5s sign-score floor. Same
     // idempotency: one ledger row per session token. Best-effort write.
     const MAX_SEASON_PTS_PER_GAME = 15;
-    const SCORE_DIVISOR = game === 'rhythm' ? 100 : 20;
+    // Score normalization · keeps the combined season ladder balanced
+    // across games with very different score scales:
+    //   rhythm — raw scores 30k–400k+ → /100 → 300–4000+
+    //   simon  — raw rounds 5–20      → /20  →  0–1   (per game)
+    //   stack  — raw 30–300+ blocks   → /5   →  6–60+
+    // Each divisor was tuned so a strong run in any game lands in a
+    // comparable normalized band.
+    const SCORE_DIVISOR = game === 'rhythm' ? 100 : game === 'stack' ? 5 : 20;
     const MIN_DURATION_MS = 8_000;
     const passesDuration = sessionElapsedMs >= MIN_DURATION_MS;
     const seasonPts = passesDuration
@@ -1230,7 +1244,7 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
   // lost path is gentle. Per-wager category bypasses same-day dedup so a
   // player who runs multiple wagers gets pinged for each.
   if (wagerId && wagerTxHash) {
-    const gameLabel = game === 'rhythm' ? 'Rhythm Rush' : 'Simon Memory';
+    const gameLabel = GAME_LABEL[game];
     const payload = isWin
       ? push.wagerWonNotification(wagered, gameLabel)
       : push.wagerLostNotification(gameLabel);
@@ -1260,7 +1274,7 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
   let rank = 0;
   try {
     const seasonStart = SEASON_EPOCH + (season - 1) * SEASON_DAYS * 86400;
-    const gameTypeInt = game === 'rhythm' ? 0 : 1;
+    const gameTypeInt = GAME_TYPE[game];
     rank = await subgraph.seasonRank(lower, score, gameTypeInt, seasonStart);
 
     // Rank change notification — only fires if submitter just landed in
@@ -1317,7 +1331,7 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
 // indexed score events.
 app.get('/api/leaderboard', async (req, res) => {
   const game = req.query.game;
-  if (!['rhythm', 'simon'].includes(game)) {
+  if (!VALID_GAMES.includes(game)) {
     return res.status(400).json({ error: 'game must be rhythm or simon' });
   }
   const limit = Math.min(50, parseInt(req.query.limit) || 20);
@@ -1327,7 +1341,7 @@ app.get('/api/leaderboard', async (req, res) => {
 
   // Pull current-season leaderboard from the subgraph
   const seasonStart = SEASON_EPOCH + (currentSeasonNumber() - 1) * SEASON_DAYS * 86400;
-  const gameTypeInt = game === 'rhythm' ? 0 : 1;
+  const gameTypeInt = GAME_TYPE[game];
   let all = [];
   try {
     all = await subgraph.leaderboard(gameTypeInt, seasonStart, 100);
@@ -1489,23 +1503,6 @@ app.get('/api/seasons', async (_, res) => {
   const { start, end } = seasonBounds(current);
   const startDate = new Date(start * 1000).toISOString();
 
-  // Live current season standings — use activity so any play this week is counted
-  const { data: liveRhythm } = await supabase
-    .from('activity')
-    .select('*')
-    .eq('game', 'rhythm')
-    .gte('created_at', startDate)
-    .order('score', { ascending: false })
-    .limit(500);
-
-  const { data: liveSimon } = await supabase
-    .from('activity')
-    .select('*')
-    .eq('game', 'simon')
-    .gte('created_at', startDate)
-    .order('score', { ascending: false })
-    .limit(500);
-
   // Dedup by wallet — keep best score per user this week
   const dedupScores = (rows, limit = 10) => {
     const seen = new Map();
@@ -1517,6 +1514,21 @@ app.get('/api/seasons', async (_, res) => {
     return Array.from(seen.values()).sort((a, b) => b.score - a.score).slice(0, limit);
   };
 
+  // Live current-season standings · one query per registered game so
+  // Stack Tower (and any future game) gets picked up automatically.
+  const liveByGame = Object.fromEntries(
+    await Promise.all(VALID_GAMES.map(async (game) => {
+      const { data } = await supabase
+        .from('activity')
+        .select('*')
+        .eq('game', game)
+        .gte('created_at', startDate)
+        .order('score', { ascending: false })
+        .limit(500);
+      return [game, data || []];
+    }))
+  );
+
   // Past sealed seasons
   const { data: pastSeasons } = await supabase
     .from('seasons')
@@ -1524,25 +1536,31 @@ app.get('/api/seasons', async (_, res) => {
     .eq('sealed', true)
     .order('season_number', { ascending: false });
 
-  // Fetch actual scores for each past season from the activity table
+  // Fetch actual scores for each past season from the activity table.
+  // Fan out one query per registered game per past season so stack
+  // (and any future game) flows through without per-game code.
   const pastWithScores = await Promise.all((pastSeasons || []).map(async (s) => {
     const startIso = new Date(s.start_ts * 1000).toISOString();
     const endIso   = new Date(s.end_ts   * 1000).toISOString();
 
-    const [{ data: rRaw }, { data: siRaw }] = await Promise.all([
-      supabase.from('activity').select('*').eq('game', 'rhythm')
-        .gte('created_at', startIso).lt('created_at', endIso)
-        .order('score', { ascending: false }).limit(500),
-      supabase.from('activity').select('*').eq('game', 'simon')
-        .gte('created_at', startIso).lt('created_at', endIso)
-        .order('score', { ascending: false }).limit(500),
-    ]);
+    const rawByGame = Object.fromEntries(
+      await Promise.all(VALID_GAMES.map(async (game) => {
+        const { data } = await supabase
+          .from('activity')
+          .select('*')
+          .eq('game', game)
+          .gte('created_at', startIso)
+          .lt('created_at', endIso)
+          .order('score', { ascending: false })
+          .limit(500);
+        return [game, data || []];
+      }))
+    );
 
-    // Count distinct players across both games this week
-    const allPlayers = new Set([
-      ...(rRaw  || []).map(e => e.wallet_address),
-      ...(siRaw || []).map(e => e.wallet_address),
-    ]);
+    // Count distinct players across every game played that week
+    const allPlayers = new Set(
+      VALID_GAMES.flatMap(g => rawByGame[g].map(e => e.wallet_address))
+    );
 
     const fmt = async (e) => ({
       player: e.wallet_address,
@@ -1553,6 +1571,14 @@ app.get('/api/seasons', async (_, res) => {
       tx_hash: e.tx_hash,
     });
 
+    // Build per-game top-10 lists for the response
+    const perGame = Object.fromEntries(
+      await Promise.all(VALID_GAMES.map(async (game) => [
+        game,
+        await Promise.all(dedupScores(rawByGame[game], 10).map(fmt)),
+      ]))
+    );
+
     return {
       season:       s.season_number,
       startTs:      s.start_ts,
@@ -1560,8 +1586,7 @@ app.get('/api/seasons', async (_, res) => {
       prizePot:     s.prize_pot,
       sealedAt:     Math.floor(new Date(s.created_at).getTime() / 1000),
       totalPlayers: allPlayers.size,
-      rhythm:       await Promise.all(dedupScores(rRaw,  10).map(fmt)),
-      simon:        await Promise.all(dedupScores(siRaw, 10).map(fmt)),
+      ...perGame,
     };
   }));
 
@@ -1579,10 +1604,12 @@ app.get('/api/seasons', async (_, res) => {
   const payload = {
     currentSeason: current,
     currentEndsAt: end,
-    live: {
-      rhythm: await Promise.all(dedupScores(liveRhythm).map(formatEntry)),
-      simon: await Promise.all(dedupScores(liveSimon).map(formatEntry)),
-    },
+    live: Object.fromEntries(
+      await Promise.all(VALID_GAMES.map(async (game) => [
+        game,
+        await Promise.all(dedupScores(liveByGame[game]).map(formatEntry)),
+      ]))
+    ),
     past: pastWithScores,
   };
   cacheSet('seasons:global', payload, MEM_TTL.global);
@@ -1600,7 +1627,7 @@ app.get('/api/badges/:address', async (req, res) => {
 
   // Compute streaks
   const streaks = {};
-  ['rhythm', 'simon'].forEach(game => {
+  VALID_GAMES.forEach(game => {
     const goldSeasons = badges
       .filter(b => b.badge === 'gold' && b.game === game)
       .map(b => b.season_number)
@@ -2452,7 +2479,7 @@ app.get('/api/competition', async (_, res) => {
     const startIso = new Date(start * 1000).toISOString();
     const endIso   = new Date(end   * 1000).toISOString();
 
-    for (const game of ['rhythm', 'simon']) {
+    for (const game of VALID_GAMES) {
       const { data: rows } = await supabase
         .from('activity')
         .select('wallet_address, score')
@@ -2607,7 +2634,7 @@ app.post('/api/competition/freeze', requireSecret, async (_, res) => {
       const { start, end } = seasonBounds(week);
       const startIso = new Date(start * 1000).toISOString();
       const endIso   = new Date(end   * 1000).toISOString();
-      for (const game of ['rhythm', 'simon']) {
+      for (const game of VALID_GAMES) {
         const { data: rows } = await supabase
           .from('activity')
           .select('wallet_address, score')
@@ -2783,19 +2810,21 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
 
 // ─── GET /health ────────────────────────────────────────────────────────────
 app.get('/health', async (_, res) => {
-  const { count: rhythmCount } = await supabase
-    .from('scores')
-    .select('*', { count: 'exact', head: true })
-    .eq('game', 'rhythm');
-  const { count: simonCount } = await supabase
-    .from('scores')
-    .select('*', { count: 'exact', head: true })
-    .eq('game', 'simon');
+  // Per-game score counts. New games pick up automatically via VALID_GAMES.
+  const scoreCounts = Object.fromEntries(
+    await Promise.all(VALID_GAMES.map(async (game) => {
+      const { count } = await supabase
+        .from('scores')
+        .select('*', { count: 'exact', head: true })
+        .eq('game', game);
+      return [game, count || 0];
+    }))
+  );
 
   res.json({
     status: 'ok',
     season: currentSeasonNumber(),
-    scores: { rhythm: rhythmCount || 0, simon: simonCount || 0 },
+    scores: scoreCounts,
     onChainReady: !!wagerContract,
     database: 'supabase',
   });
@@ -3095,8 +3124,8 @@ setInterval(sendCupDeadlineWarnings, 15 * 60 * 1000);
 async function sendCloseRankPings() {
   try {
     const seasonStart = SEASON_EPOCH + (currentSeasonNumber() - 1) * SEASON_DAYS * 86400;
-    for (const game of ['rhythm', 'simon']) {
-      const gameTypeInt = game === 'rhythm' ? 0 : 1;
+    for (const game of VALID_GAMES) {
+      const gameTypeInt = GAME_TYPE[game];
       let board = [];
       try {
         board = await subgraph.leaderboard(gameTypeInt, seasonStart, 5);
@@ -3205,8 +3234,8 @@ async function sendSeasonEndingPings() {
 
     // Build wallet → best-rank map across both games (top 50 each)
     const rankMap = new Map();
-    for (const game of ['rhythm', 'simon']) {
-      const gameTypeInt = game === 'rhythm' ? 0 : 1;
+    for (const game of VALID_GAMES) {
+      const gameTypeInt = GAME_TYPE[game];
       let board = [];
       try {
         board = await subgraph.leaderboard(gameTypeInt, seasonStart, 50);

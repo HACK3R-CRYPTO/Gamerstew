@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useEffect, useState } from "react";
+import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
@@ -139,11 +139,19 @@ function HomeScreenMobile({
   muted: boolean;
 }) {
   return (
+    // height: 100dvh uses the dynamic viewport on mobile so iOS Safari's
+    // address bar can't push the Sign-in button off-screen. overflow:
+    // hidden locks the surface so it never scrolls. Padding uses the
+    // device safe-area insets · without them, the top sits flush against
+    // the status bar and the bottom hugs the home indicator, which is
+    // also what made the hero feel sit-above-center: top was 16px while
+    // the bottom buttons block was implicitly ~140px of content, so
+    // visually the logo was always above the screen midpoint.
     <div style={{
       flex: 1, position: "relative", overflow: "hidden",
       display: "flex", flexDirection: "column",
-      padding: "20px 24px 24px",
-      minHeight: "100vh",
+      padding: "calc(env(safe-area-inset-top, 0px) + 12px) 24px calc(env(safe-area-inset-bottom, 0px) + 40px)",
+      height: "100dvh", minHeight: "100svh",
     }}>
       <img src="/splash_screen_icons/dice.png" alt="" style={{ position: "absolute", top: "8%", left: -24, width: 96, opacity: 0.16, transform: "rotate(-18deg)", filter: "drop-shadow(0 0 20px #c026d3)" }} />
       <img src="/splash_screen_icons/joystick.png" alt="" style={{ position: "absolute", bottom: "26%", right: -18, width: 84, opacity: 0.16, transform: "rotate(14deg)", filter: "drop-shadow(0 0 20px #06b6d4)" }} />
@@ -155,9 +163,14 @@ function HomeScreenMobile({
         <button onClick={onAbout} style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.12em", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}>ABOUT</button>
       </div>
 
-      {/* Hero */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 2, gap: 20 }}>
-        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "clamp(240px, 62vw, 360px)", height: "auto", margin: "0 auto", display: "block", filter: "drop-shadow(0 4px 28px rgba(167,139,250,0.6))" }} />
+      {/* Hero — logo + one headline + one line. Auto-sized (no flex: 1)
+          so it doesn't absorb middle whitespace · the bottom block sits
+          right under it with a controlled clamped gap, and any remaining
+          viewport height falls as empty space BELOW the buttons. This is
+          what compresses the layout: the old flex: 1 hero was eating all
+          leftover height, opening a ~40% dead gap between hero and CTAs. */}
+      <div style={{ display: "flex", flexDirection: "column", paddingTop: "clamp(72px, 15vh, 136px)", position: "relative", zIndex: 2, gap: 20 }}>
+        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "82%", maxWidth: 360, alignSelf: "center", filter: "drop-shadow(0 4px 28px rgba(167,139,250,0.6))" }} />
         <h1 style={{ fontFamily: T.display, fontSize: 34, lineHeight: 1.0, color: T.ink, margin: 0, textAlign: "center", letterSpacing: "-0.01em" }}>
           Play. Compete. <span style={{ color: T.accent, textShadow: `0 0 18px ${T.accent}` }}>Win.</span>
         </h1>
@@ -166,26 +179,33 @@ function HomeScreenMobile({
         </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative", zIndex: 2 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: "clamp(56px, 12vh, 124px)", position: "relative", zIndex: 2 }}>
+        {/* Stacked CTAs share the same min-height so they read as
+            intentional alignment. Hierarchy lives in fill + label weight,
+            not size: Play free carries the accent gradient + display font
+            + 22px label so the eye lands there; Sign in is outline + body
+            font + 14px label so it reads secondary without dropping the
+            tap target. iOS HIG / Material both call this out for stacked
+            actions and most polished mobile games follow it. */}
         <button onClick={onPlayFree} style={{
           fontFamily: T.display, fontSize: 22, color: "#fff",
-          padding: "18px 24px", borderRadius: 18,
+          minHeight: 60, padding: "0 24px", borderRadius: 18,
           background: `linear-gradient(180deg, ${T.accent} 0%, ${T.accent}cc 100%)`,
           border: `1.5px solid ${T.accent}`,
           boxShadow: `0 12px 30px -8px ${T.accent}88, 0 0 0 0.5px rgba(255,255,255,0.5) inset, 0 -3px 0 rgba(0,0,0,0.25) inset`,
           cursor: "pointer", letterSpacing: "0.02em",
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
         }}>
           <Icon name="play" size={18} color="#fff" /> Play free
         </button>
         <button onClick={onConnect} style={{
-          fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 800,
-          padding: "13px 16px", borderRadius: 14,
+          fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 800,
+          minHeight: 60, padding: "0 16px", borderRadius: 14,
           background: "rgba(255,255,255,0.05)",
           border: `1px solid ${T.hairlineHi}`,
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}>
-          <Icon name="bolt" size={14} color={T.accent} /> Sign in
+          <Icon name="bolt" size={15} color={T.accent} /> Sign in
         </button>
         <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.4, marginTop: 2 }}>
           Free to play. Sign in anytime to win G$ &amp; save your pet.
@@ -335,7 +355,19 @@ function climbPillLabel(climb: { phase: string; endsAt: string } | null): string
 
 export default function HomePage() {
   const router = useRouter();
-  const { login, logout, authenticated, user } = usePrivy();
+  const { logout, authenticated, user } = usePrivy();
+  // Privy's useLogin gives us a guaranteed onComplete callback that fires
+  // after auth (and embedded-wallet creation) finishes. This is the source
+  // of truth for "the user is now signed in" · using it instead of watching
+  // [authenticated, walletAddress] removes the race where the modal closes
+  // before wagmi has resolved the wallet and the navigation never fires.
+  const { login } = useLogin({
+    onComplete: () => {
+      // Route the moment Privy confirms login is done. /verify handles its
+      // own wallet-readiness wait, so we don't need walletAddress here.
+      router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+    },
+  });
   const { address: walletAddress } = useAccount();
   const audio = useAudioSettings();
   // Mute icon only kills the ambient pad (constant menu loop). UI SFX,
@@ -419,58 +451,44 @@ export default function HomePage() {
 
   const onPlayFree = () => { playWhooshIn(); router.push("/dashboard"); };
   // Three states:
-  //   1. Privy authed AND wallet connected  → into the app
+  //   1. Privy authed AND wallet connected  → /verify (whitelist gate)
   //   2. Privy authed but wallet DISCONNECTED (Rabby logged out, etc.)
   //      → stale session; drop it and reopen the login modal so the
   //      player can pick a fresh wallet. Without this, tapping "Sign
   //      in" routed them straight into /games on a session they thought
   //      they'd already left.
-  //   3. Not authed at all → standard login flow.
-  // Tracks whether the Sign-in button on THIS page was the trigger for
-  // the current Privy modal. Set when login() fires, cleared once we've
-  // auto-routed. Without it, a returning user who lands on /home with
-  // a valid session would get auto-pushed into the app on every visit —
-  // /home is also a marketing page they may want to revisit.
-  const justSignedInRef = useRef(false);
-
+  //   3. Not authed at all → call login() · useLogin's onComplete
+  //      handles the route once Privy confirms auth + wallet are ready.
+  //      The old justSignedInRef + watching-effect pattern is gone:
+  //      that race was the reason players had to tap Sign in twice.
   const onConnect = async () => {
     playClick();
     if (authenticated && walletAddress) {
-      // Same gate as main: route Sign-in taps through /verify so the
-      // GoodDollar whitelist status is confirmed before the player
-      // lands inside the app. /verify auto-redirects verified users
-      // to `next` (here: /dashboard) and shows the verify CTA only
-      // if they genuinely aren't whitelisted.
       router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
       return;
     }
     if (authenticated && !walletAddress) {
       try { await logout(); } catch { /* best-effort */ }
     }
-    justSignedInRef.current = true;
     login();
   };
 
-  // Auto-route the moment Privy + wagmi flip to authed-with-address
-  // AFTER the user tapped Sign in here. Before this, the player had to
-  // tap the button a second time once the modal closed — the modal
-  // dismissal didn't fire any navigation on its own.
-  useEffect(() => {
-    if (!justSignedInRef.current) return;
-    if (!authenticated || !walletAddress) return;
-    justSignedInRef.current = false;
-    router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
-  }, [authenticated, walletAddress, router]);
   const onAbout = () => { playClick(); router.push("/games"); };
 
   return (
     <>
       <style>{KEYFRAMES}</style>
       <div style={{
-        minHeight: "100vh", width: "100%",
+        // Mobile: lock to the dynamic viewport so iOS Safari's address bar
+        // can't push content off-screen. Desktop keeps min-height so longer
+        // marketing content can grow if needed.
+        minHeight: isDesktop ? "100vh" : "100dvh",
+        height: isDesktop ? undefined : "100dvh",
+        width: "100%",
         background: T.bg,
         color: T.ink,
         fontFamily: T.body,
+        overflow: isDesktop ? undefined : "hidden",
       }}>
         {isDesktop ? (
           <HomeScreenDesktop
@@ -482,7 +500,7 @@ export default function HomePage() {
             live={live}
           />
         ) : (
-          <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          <div style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column" }}>
             <HomeScreenMobile
               onPlayFree={onPlayFree}
               onConnect={onConnect}

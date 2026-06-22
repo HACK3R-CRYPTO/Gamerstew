@@ -7,6 +7,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
+import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
@@ -18,6 +19,7 @@ import {
 } from "@/app/actions/game";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -219,6 +221,11 @@ export default function SimonGamePage() {
   const [tappedCount, setTappedCount] = useState(0);     // taps this round (for progress dots)
   const [isShowingSequence, setIsShowingSequence] = useState(false);
   const [roundFlash, setRoundFlash] = useState<string | null>(null);
+
+  // Shared game-feel layer: floating "+X" popups on correct taps, screen
+  // shake + "WRONG" popup on misses, big round-clear callouts at 5/10/25/50,
+  // danger vignette when the 10-min timer is running low.
+  const juice = useGameJuice();
 
   // Pet reaction events — drives the companion's bounce/wilt/celebrate states.
   // Timestamps let the component re-fire animations when the same event type
@@ -530,8 +537,12 @@ export default function SimonGamePage() {
     userPatternRef.current = newUserPat;
     const idx = newUserPat.length - 1;
 
-    // Wrong tap → game over (pet wilts in handleGameOver)
+    // Wrong tap → game over (pet wilts in handleGameOver). Big shake +
+    // a floating "WRONG" popup at the failed button so the player sees
+    // exactly which one they hit (and which one they should have).
     if (patternRef.current[idx] !== colorId) {
+      juice.bump(22);
+      juice.lossPopup(50, 60, "WRONG");
       handleGameOver(scoreRef.current, Date.now() - startTimeRef.current);
       return;
     }
@@ -539,6 +550,11 @@ export default function SimonGamePage() {
     // Correct tap — update progress dots + pet cheers
     setTappedCount(newUserPat.length);
     firePetEvent("correct");
+
+    // Per-tap "+10" feedback popup, sized up by how many taps you've
+    // built without missing. Positioned center-low so it rises into the
+    // play area rather than overlapping the buttons.
+    juice.scorePopup(50, 58, 10, "good");
 
     // Completed the round → award points, unlock bonus at round 5, advance
     if (newUserPat.length === patternRef.current.length) {
@@ -556,6 +572,18 @@ export default function SimonGamePage() {
       setTimeout(() => setRoundFlash(null), 800);
       firePetEvent("clear");  // pet celebrates the round
 
+      // Big center callouts at milestone rounds — the existing roundFlash
+      // is small/inline; this is the "wow" moment.
+      const milestones: Record<number, { text: string; sub: string; color: string }> = {
+        5:  { text: "ROUND 5",  sub: "5th color unlocked",   color: "#a78bfa" },
+        10: { text: "DOUBLE DIGITS", sub: "Memory of steel", color: "#f0abfc" },
+        15: { text: "ELITE",    sub: "Most players quit by now", color: "#fbbf24" },
+        25: { text: "MASTER",   sub: "You're built different",   color: "#fbbf24" },
+        50: { text: "LEGENDARY", sub: "How are you still going", color: "#fbbf24" },
+      };
+      const big = milestones[newSeqs];
+      if (big) juice.fireCallout(big, newSeqs);
+
       // Unlock the purple bonus button at round 5
       if (newSeqs === BONUS_UNLOCK_ROUND && !bonusUnlocked) {
         setBonusUnlocked(true);
@@ -568,7 +596,7 @@ export default function SimonGamePage() {
       const t = setTimeout(() => addNext(patternRef.current), 700);
       timeoutsRef.current.push(t);
     }
-  }, [phase, isShowingSequence, playBell, haptic, handleGameOver, addNext, bonusUnlocked, firePetEvent]);
+  }, [phase, isShowingSequence, playBell, haptic, handleGameOver, addNext, bonusUnlocked, firePetEvent, juice]);
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
   const startGame = useCallback(async () => {
@@ -588,6 +616,7 @@ export default function SimonGamePage() {
     colorsRef.current = BASE_COLORS;
     submittedRef.current = false;
     sessionTokenRef.current = null;
+    juice.reset();
     setScore(0);
     setSequences(0);
     setTappedCount(0);
@@ -763,6 +792,12 @@ export default function SimonGamePage() {
           onQuit={() => handleGameOver(scoreRef.current, Date.now() - startTimeRef.current)}
         />
       )}
+      {/* Shared juice overlay — same component Rhythm + Survivor use. The
+          last 30s of the 10-min timer pulse the danger vignette so the
+          player feels the clock running out. */}
+      {(phase === "playing" || phase === "showing") && (
+        <JuiceOverlay {...juice} timeLeft={Math.floor(timeLeftMs / 1000)} dangerSeconds={30} />
+      )}
 
       {/* FINISHED */}
       {phase === "finished" && (
@@ -772,7 +807,11 @@ export default function SimonGamePage() {
           rounds={sequences}
           gameTimeMs={gameTimeMs}
           onPlayAgain={startGame}
-          onExit={() => router.push("/games")}
+          // Exit returns to THIS game's lobby (idle phase) instead of
+          // bouncing to /games. The hub is one bottom-nav tap away;
+          // players who finish almost always want to play again or
+          // check the leaderboard from the same screen.
+          onExit={() => { setPhase("idle"); setScore(0); setSequences(0); setSubmitResult(null); setSubmitError(null); submittedRef.current = false; }}
           submitting={submitting}
           signingOnChain={signingOnChain}
           submitResult={submitResult}
@@ -2117,32 +2156,21 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
 const SIMON_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function SimonTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
-  const [top, setTop] = useState<LeaderboardEntry[] | null>(null);
-  const [seasonNum, setSeasonNum] = useState<number | null>(null);
+  // Cache-seeded initial state · prefetch from /games or /dashboard
+  // tap warms the cache, so on mount we already have data to paint.
+  const seed = getCachedPreview(1);
+  const [top, setTop] = useState<LeaderboardEntry[] | null>(seed?.top ?? null);
+  const [seasonNum, setSeasonNum] = useState<number | null>(seed?.seasonNum ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      let seasonStart = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-      try {
-        const r = await fetch(`${SIMON_BACKEND_URL}/api/seasons`, { cache: "no-store" });
-        if (r.ok) {
-          const d = await r.json();
-          if (d) {
-            setSeasonNum(d.currentSeason ?? null);
-            if (typeof d.currentStartsAt === "number") seasonStart = d.currentStartsAt;
-            else if (typeof d.currentEndsAt === "number") seasonStart = d.currentEndsAt - 7 * 24 * 60 * 60;
-          }
-        }
-      } catch { /* fall through */ }
-      try {
-        const rows = await fetchLeaderboard(1, seasonStart, 3);
-        if (!cancelled) setTop(rows.slice(0, 3));
-      } catch {
-        if (!cancelled) setTop([]);
-      }
-    })();
+    fetchPreview(1).then(v => {
+      if (cancelled) return;
+      setTop(v.top);
+      setSeasonNum(v.seasonNum);
+    }).catch(() => { if (!cancelled && top === null) setTop([]); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tierColor = (i: number) => i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : "#f97316";
