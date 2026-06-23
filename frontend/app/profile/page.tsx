@@ -8,6 +8,7 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import { fetchPlayerAllTimeCombinedStats } from "@/lib/subgraph";
 import { HABITATS as HABITAT_TIERS, type HabitatTier } from "@/lib/habitats";
 import { useHabitats } from "@/hooks/useHabitats";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { HabitatBackground } from "@/components/HabitatBackground";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -260,7 +261,9 @@ export default function ProfilePage() {
     ] : [],
     query: { enabled: !!address && hasMinted === true, refetchInterval: 30_000 },
   });
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay path · injected wallet identity, no Privy login required.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Level / XP / streak / games-this-week all live in games-backend
   // (off-chain). The contract only counts cumulative gamesPlayed.

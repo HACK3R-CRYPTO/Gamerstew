@@ -8,6 +8,7 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { playClick } from "@/hooks/useAppAudio";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { fetchPreview } from "@/lib/leaderboardPreview";
 import type { GameTypeId } from "@/lib/subgraph";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
@@ -221,7 +222,9 @@ export default function GamesPage() {
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   });
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay users skip Privy · their injected wallet is the identity.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);

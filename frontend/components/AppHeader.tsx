@@ -8,6 +8,7 @@ import { celo } from "viem/chains";
 import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
 
@@ -85,7 +86,12 @@ export default function AppHeader() {
     query: { enabled: !!address && hasMinted === true },
   });
 
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay users never sign in to Privy (the canonical MiniPay flow
+  // skips Privy entirely · injected wallet is the identity). Treat them
+  // as authenticated once they've minted GamePass · same gate as Privy
+  // users from there.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Real on-chain balances — only fetched when fully connected.
   const { data: celoBal } = useBalance({

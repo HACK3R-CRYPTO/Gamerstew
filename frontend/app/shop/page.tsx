@@ -7,6 +7,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import { HABITATS as HABITAT_TIERS, type HabitatTier } from "@/lib/habitats";
 import { useHabitats } from "@/hooks/useHabitats";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { HabitatBackground } from "@/components/HabitatBackground";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -56,7 +57,9 @@ export default function ShopPage() {
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   });
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay path · injected wallet identity, no Privy login required.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Player level — drives free-tier unlocks and useHabitats's equipped
   // resolution. Same fetch the profile uses (single source of truth).

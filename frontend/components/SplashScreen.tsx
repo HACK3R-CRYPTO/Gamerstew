@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -318,6 +319,11 @@ export default function SplashScreen() {
   const [textIndex, setTextIndex] = useState(0);
   const [displayed, setDisplayed] = useState(0);
   const router = useRouter();
+  // MiniPay users skip the /home landing entirely · their injected wallet
+  // is the identity, no Privy sign-in needed. After the splash they go
+  // straight to /dashboard like a signed-in player. Non-MiniPay traffic
+  // still hits /home for the Play Free / Sign In choice.
+  const isMiniPay = useIsMiniPay();
 
   // Referral capture happens BEFORE the typing animation finishes so
   // the ?ref query param on a share link survives the router.push to
@@ -332,11 +338,12 @@ export default function SplashScreen() {
       const t = setTimeout(() => setDisplayed((d) => d + 1), TYPING_SPEED_MS);
       return () => clearTimeout(t);
     }
-    // All text typed — auto-advance to /home. Web Audio stays locked until
-    // the user's first click on /home (browser autoplay policy); the global
-    // pointerdown listener in useAppAudio catches that and unlocks everything.
+    // All text typed — auto-advance. MiniPay users land on /dashboard
+    // directly (no sign-in needed · injected wallet is the identity).
+    // Everyone else lands on /home for the Play Free / Sign In choice.
     if (textIndex >= loadingTexts.length - 1) {
-      const t = setTimeout(() => router.push('/home'), TAIL_PAUSE_MS);
+      const dest = isMiniPay ? '/dashboard' : '/home';
+      const t = setTimeout(() => router.push(dest), TAIL_PAUSE_MS);
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => {
@@ -344,7 +351,7 @@ export default function SplashScreen() {
       setDisplayed(0);
     }, LOADING_TEXT_CHANGE_TIME);
     return () => clearTimeout(t);
-  }, [textIndex, displayed, router]);
+  }, [textIndex, displayed, router, isMiniPay]);
 
   return (
     <div

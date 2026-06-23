@@ -10,6 +10,7 @@ import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeE
 import { fetchPreview } from "@/lib/leaderboardPreview";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 
@@ -194,7 +195,10 @@ export default function DashboardPage() {
     query: { enabled: !!address && hasMinted === true },
   });
 
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay path · no Privy auth, identity is the injected wallet itself.
+  // Once they've minted GamePass they're a fully connected player.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
   // Display name = on-chain slime name. Never the email or address.
   const username = (chainUsername as string | undefined) || "";
 
