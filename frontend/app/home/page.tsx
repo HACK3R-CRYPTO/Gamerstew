@@ -361,10 +361,13 @@ export default function HomePage() {
   // of truth for "the user is now signed in" · using it instead of watching
   // [authenticated, walletAddress] removes the race where the modal closes
   // before wagmi has resolved the wallet and the navigation never fires.
+  //
+  // Gas faucet does NOT fire here. It fires inside the Onboarding modal
+  // right before the GamePass mint · so only players who actually proceed
+  // to mint get the drip. Saves a drip per "signed in then bounced"
+  // visitor, which is most of the sybil-risk traffic.
   const { login } = useLogin({
     onComplete: () => {
-      // Route the moment Privy confirms login is done. /verify handles its
-      // own wallet-readiness wait, so we don't need walletAddress here.
       router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
     },
   });

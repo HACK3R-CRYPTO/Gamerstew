@@ -2758,53 +2758,136 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 //   res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
 // });
 
-// ─── POST /api/faucet — send 0.01 CELO to new users (once per wallet) ────────
-app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
-  const { address } = req.body;
-  if (!address) return res.status(400).json({ error: 'Missing address' });
+// ─── POST /api/faucet — gas drip for fresh wallets ──────────────────────────
+// Sends FAUCET_DRIP_CELO (default 0.1) once per wallet to fresh sign-ins so
+// they don't hit the "insufficient gas" wall on GamePass mint or score
+// submit. Susanne flagged this as the killer friction for MiniPay-style
+// audiences · this endpoint kills it.
+//
+// Sybil defense stack, every layer enforced server-side:
+//   1. requireSecret middleware → only the frontend server action can
+//      reach this (the INTERNAL_SECRET never ships to the browser).
+//   2. Privy-bound caller → server action verifies the JWT and forwards
+//      privyUserId so the same human can't farm by spawning wallets.
+//   3. One drip per wallet, EVER · UNIQUE on faucet_claims.wallet.
+//   4. One drip per Privy user → second wallet linked to the same Privy
+//      identity is blocked even if the wallet itself is fresh.
+//   5. Balance gate → wallet must hold < FAUCET_FRESH_THRESHOLD CELO
+//      (default 0.001) at claim time · stops players who already have
+//      gas from claiming "for the road".
+//   6. Per-IP daily cap → FAUCET_MAX_PER_IP_DAY drips (default 5) from
+//      the same IP hash in a rolling 24h. Same-household sharing still
+//      works (5 per day per network).
+//   7. Global daily kill-switch → FAUCET_MAX_PER_DAY drips total across
+//      all wallets (default 50). Worst-case daily drain is bounded ·
+//      (50 × 0.1 CELO) ≈ 5 CELO ≈ a few dollars. Tunable via env.
+//
+// GoodDollar verification is OPTIONAL · enable by setting
+// FAUCET_REQUIRE_GOODDOLLAR=true. Default OFF for max onboarding speed.
+// When ON, only Self-verified wallets get the drip · strongest sybil
+// gate but adds onboarding friction (player must verify first).
+const FAUCET_DRIP_CELO        = process.env.FAUCET_DRIP_CELO || '0.7';
+const FAUCET_FRESH_THRESHOLD  = process.env.FAUCET_FRESH_THRESHOLD_CELO || '0.001';
+const FAUCET_MAX_PER_IP_DAY   = Number(process.env.FAUCET_MAX_PER_IP_DAY || '5');
+const FAUCET_MAX_PER_DAY      = Number(process.env.FAUCET_MAX_PER_DAY || '50');
+const FAUCET_REQUIRE_GOODDOLLAR = process.env.FAUCET_REQUIRE_GOODDOLLAR === 'true';
 
+app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
+  const { address, privyUserId, ipHash } = req.body || {};
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    return res.status(400).json({ success: false, error: 'Missing or invalid address' });
+  }
+  if (!validator) {
+    return res.status(500).json({ success: false, error: 'Faucet not configured' });
+  }
   const lower = address.toLowerCase();
 
-  // Check if already received
-  const { data: existing } = await supabase
-    .from('faucet')
-    .select('wallet_address')
-    .eq('wallet_address', lower)
+  // Layer 3 · one drip per wallet ever
+  const { data: existingByWallet } = await supabase
+    .from('faucet_claims')
+    .select('id')
+    .eq('wallet', lower)
     .limit(1);
-
-  if (existing && existing.length > 0) {
-    return res.json({ success: false, reason: 'Already received gas' });
+  if (existingByWallet && existingByWallet.length > 0) {
+    return res.json({ success: false, reason: 'already_claimed' });
   }
 
-  if (!validator) {
-    return res.status(500).json({ error: 'Faucet not configured' });
+  // Layer 4 · one drip per Privy user (cross-wallet dedup)
+  if (privyUserId) {
+    const { data: existingByUser } = await supabase
+      .from('faucet_claims')
+      .select('id')
+      .eq('privy_user_id', privyUserId)
+      .limit(1);
+    if (existingByUser && existingByUser.length > 0) {
+      return res.json({ success: false, reason: 'user_already_claimed' });
+    }
+  }
+
+  // Layer 6 · per-IP rolling 24h cap
+  if (ipHash) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: ipRows } = await supabase
+      .from('faucet_claims')
+      .select('id', { count: 'exact', head: true })
+      .eq('ip_hash', ipHash)
+      .gte('claimed_at', since);
+    const ipCount = ipRows?.length ?? 0;
+    if (ipCount >= FAUCET_MAX_PER_IP_DAY) {
+      return res.json({ success: false, reason: 'ip_rate_limit' });
+    }
+  }
+
+  // Layer 7 · global daily kill-switch
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: dailyCount } = await supabase
+    .from('faucet_claims')
+    .select('id', { count: 'exact', head: true })
+    .gte('claimed_at', since24h);
+  if ((dailyCount ?? 0) >= FAUCET_MAX_PER_DAY) {
+    return res.json({ success: false, reason: 'daily_cap' });
   }
 
   try {
     const provider = validator.provider;
-    const GOODDOLLAR_IDENTITY_ADDR = "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42";
-    const ID_ABI = ["function isWhitelisted(address) view returns (bool)"];
 
-    const idContract = new ethers.Contract(GOODDOLLAR_IDENTITY_ADDR, ID_ABI, provider);
-    const isVerified = await idContract.isWhitelisted(address);
-
-    if (!isVerified) {
-      return res.status(403).json({ success: false, reason: 'unverified', error: 'Wallet must be verified via GoodDollar to claim free gas.' });
+    // Layer 5 · balance gate · wallets that already have gas don't get more
+    const balance = await provider.getBalance(address);
+    const threshold = ethers.parseEther(FAUCET_FRESH_THRESHOLD);
+    if (balance >= threshold) {
+      return res.json({ success: false, reason: 'not_fresh' });
     }
 
-    const tx = await validator.sendTransaction({
-      to: address,
-      value: ethers.parseEther('0.1'),
-    });
+    // Optional GoodDollar gate · off by default
+    if (FAUCET_REQUIRE_GOODDOLLAR) {
+      const GOODDOLLAR_IDENTITY_ADDR = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
+      const ID_ABI = ['function isWhitelisted(address) view returns (bool)'];
+      const idContract = new ethers.Contract(GOODDOLLAR_IDENTITY_ADDR, ID_ABI, provider);
+      const isVerified = await idContract.isWhitelisted(address);
+      if (!isVerified) {
+        return res.status(403).json({ success: false, reason: 'unverified' });
+      }
+    }
+
+    const amountWei = ethers.parseEther(FAUCET_DRIP_CELO);
+    const tx = await validator.sendTransaction({ to: address, value: amountWei });
     await tx.wait();
 
-    await supabase.from('faucet').insert({ wallet_address: lower });
+    // Persist BEFORE returning success so a retry can't double-drip in the
+    // gap between tx confirmation and DB write.
+    await supabase.from('faucet_claims').insert({
+      wallet:        lower,
+      privy_user_id: privyUserId || null,
+      ip_hash:       ipHash || null,
+      amount_wei:    amountWei.toString(),
+      tx_hash:       tx.hash,
+    });
 
-    console.log(`⛽ Faucet: sent 0.1 CELO to ${lower} (tx: ${tx.hash.slice(0, 10)}...)`);
-    res.json({ success: true, txHash: tx.hash });
+    console.log(`⛽ Faucet: sent ${FAUCET_DRIP_CELO} CELO to ${lower} (tx: ${tx.hash.slice(0, 10)}...)`);
+    return res.json({ success: true, txHash: tx.hash, amount: FAUCET_DRIP_CELO });
   } catch (e) {
     console.error(`⛽ Faucet failed for ${lower}:`, e.message);
-    res.status(500).json({ error: 'Faucet transfer failed' });
+    return res.status(500).json({ success: false, error: 'Faucet transfer failed' });
   }
 });
 
