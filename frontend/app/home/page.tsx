@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
+import { claimGas } from "@/app/actions/gas";
 import { useAccount } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
@@ -355,16 +356,28 @@ function climbPillLabel(climb: { phase: string; endsAt: string } | null): string
 
 export default function HomePage() {
   const router = useRouter();
-  const { logout, authenticated, user } = usePrivy();
+  const { logout, authenticated, user, getAccessToken } = usePrivy();
   // Privy's useLogin gives us a guaranteed onComplete callback that fires
   // after auth (and embedded-wallet creation) finishes. This is the source
   // of truth for "the user is now signed in" · using it instead of watching
   // [authenticated, walletAddress] removes the race where the modal closes
   // before wagmi has resolved the wallet and the navigation never fires.
+  //
+  // We also fire-and-forget the gas faucet here so fresh embedded wallets
+  // get a 0.1 CELO drip before they hit the GamePass mint. Player never
+  // sees a "needs gas" wall on the very first transaction.
   const { login } = useLogin({
-    onComplete: () => {
-      // Route the moment Privy confirms login is done. /verify handles its
-      // own wallet-readiness wait, so we don't need walletAddress here.
+    onComplete: async ({ user: loggedInUser }) => {
+      const addr = (loggedInUser?.wallet?.address as `0x${string}` | undefined);
+      // Faucet eligibility is gated server-side · this call is a no-op for
+      // wallets that already received gas, aren't fresh, or hit the daily
+      // caps. Fire-and-forget so a faucet failure never blocks the route.
+      if (addr) {
+        try {
+          const token = await getAccessToken();
+          if (token) claimGas(token, addr).catch(() => {});
+        } catch { /* token fetch failed · proceed without drip */ }
+      }
       router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
     },
   });
