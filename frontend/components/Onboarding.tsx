@@ -204,19 +204,26 @@ export default function Onboarding({
     }
   }
 
-  // Smart "Let's play" button. Gas check, then enter setup (mint runs from there).
+  // "Let's play" → straight into setup. runMint handles its own faucet+
+  // mint flow; the old behavior gated entry on hasGas which blocked
+  // fresh wallets from ever reaching the faucet call inside runMint
+  // (they got the "needs top-up" panel before mint had a chance to run).
+  //
+  // Now: setup phase fires runMint → claimGas drips 0.7 CELO if eligible
+  // → mint tx fires. The "needs top-up" panel (showSwitch) becomes a
+  // FALLBACK · only shown if runMint actually fails with a gas error
+  // (validator empty, daily cap hit, wallet not eligible, etc.).
   const start = async () => {
     if (!valid) return;
     setMintError(null);
-    if (hasGas) { setPhase("setup"); return; }
     if (showSwitch) {
+      // Returning from the manual top-up panel · player may have
+      // funded the wallet themselves while it was visible. Refetch
+      // before letting runMint try again so a real balance is seen.
       triedOnceRef.current = true;
-      const fresh = await refetchBalance();
-      const ok = isMiniPay || (fresh.data && fresh.data.value >= GAS_MIN_CELO_WEI);
-      if (ok) { setPhase("setup"); return; }
-      return;
+      await refetchBalance();
     }
-    setShowSwitch(true);
+    setPhase("setup");
   };
 
   // Fire the actual mint when we enter setup.
