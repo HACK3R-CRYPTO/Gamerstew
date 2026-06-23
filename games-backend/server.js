@@ -2786,7 +2786,7 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 // FAUCET_REQUIRE_GOODDOLLAR=true. Default OFF for max onboarding speed.
 // When ON, only Self-verified wallets get the drip · strongest sybil
 // gate but adds onboarding friction (player must verify first).
-const FAUCET_DRIP_CELO        = process.env.FAUCET_DRIP_CELO || '0.1';
+const FAUCET_DRIP_CELO        = process.env.FAUCET_DRIP_CELO || '0.7';
 const FAUCET_FRESH_THRESHOLD  = process.env.FAUCET_FRESH_THRESHOLD_CELO || '0.001';
 const FAUCET_MAX_PER_IP_DAY   = Number(process.env.FAUCET_MAX_PER_IP_DAY || '5');
 const FAUCET_MAX_PER_DAY      = Number(process.env.FAUCET_MAX_PER_DAY || '50');

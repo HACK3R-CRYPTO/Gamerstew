@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
 import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { claimGas } from "@/app/actions/gas";
 
 // ─── design tokens ──────────────────────────────────────────────────────
 const T = {
@@ -76,6 +78,7 @@ export default function Onboarding({
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
   const { writeContractAsync } = useWriteContract();
+  const { getAccessToken } = usePrivy();
 
   // Balance · refetches every 6s while the user is on the switch-on panel, every 15s otherwise.
   const { data: balance, refetch: refetchBalance } = useBalance({
@@ -144,6 +147,18 @@ export default function Onboarding({
     if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
     slowTimerRef.current = setTimeout(() => setSlowMint(true), 20_000);
     try {
+      // Top up fresh Privy-embedded wallets BEFORE the mint tx fires.
+      // Server-side gating: only sends if wallet has < 0.001 CELO AND
+      // hasn't been topped up before. MiniPay path skips this (pays gas
+      // in USDC via the fee-currency adapter, no native CELO needed).
+      // Await is intentional · the mint depends on the drip landing first.
+      if (!isMiniPay && address) {
+        try {
+          const token = await getAccessToken();
+          if (token) await claimGas(token, address);
+        } catch { /* drip failed · let mint proceed and surface the error */ }
+      }
+
       await writeContractAsync({
         address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
         abi: GAME_PASS_ABI,
