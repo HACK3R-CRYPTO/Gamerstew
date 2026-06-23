@@ -100,10 +100,21 @@ export function useAudioSettings() {
 // Helper for games + app-wide audio: returns the effective gain multipliers
 // (0–1) accounting for both the master toggle and the slider. Use these when
 // scheduling audio. Games use .music / .sfx, the menu system uses .appAudio.
+//
+// appAudioOn is the MASTER MUTE · when off, kill every channel regardless
+// of the individual sfxOn/musicOn switches. The mute icon on /home and the
+// AppHeader flips this one flag; players expect a single click to silence
+// everything. Previously sfx (which clicks route through) ignored that flag
+// and kept playing · made the mute button feel half-broken. Per-channel
+// volume sliders (sfxVol, musicVol) are preserved untouched so unmuting
+// restores the player's actual preferences.
 export function effectiveGains(s: AudioSettings) {
+  if (!s.appAudioOn) {
+    return { music: 0, sfx: 0, appAudio: 0 };
+  }
   return {
-    music:    s.musicOn    ? s.musicVol    / 100 : 0,
-    sfx:      s.sfxOn      ? s.sfxVol      / 100 : 0,
-    appAudio: s.appAudioOn ? s.appAudioVol / 100 : 0,
+    music:    s.musicOn ? s.musicVol    / 100 : 0,
+    sfx:      s.sfxOn   ? s.sfxVol      / 100 : 0,
+    appAudio: s.appAudioVol / 100,
   };
 }
