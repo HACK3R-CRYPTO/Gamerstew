@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
 import { fetchAllTimeLeaderboard, type AllTimeEntry } from "@/lib/subgraph";
 import Onboarding, { type OnboardingResult } from "@/components/Onboarding";
@@ -373,6 +374,16 @@ export default function HomePage() {
   });
   const { address: walletAddress } = useAccount();
   const audio = useAudioSettings();
+  // Safety redirect for MiniPay users · the splash already routes them to
+  // /dashboard, but a back-nav or direct deep link to /home would land them
+  // on the Play Free / Sign In page they don't need. This catches that
+  // case and bounces them through /verify like a signed-in player.
+  const isMiniPay = useIsMiniPay();
+  useEffect(() => {
+    if (isMiniPay) {
+      router.replace(`/verify?next=${encodeURIComponent("/dashboard")}`);
+    }
+  }, [isMiniPay, router]);
   // Mute icon only kills the ambient pad (constant menu loop). UI SFX,
   // game SFX, and in-game music are untouched — Settings → Audio is
   // the place for granular per-channel mute.

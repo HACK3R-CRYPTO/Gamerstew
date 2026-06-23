@@ -9,6 +9,7 @@ import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -197,7 +198,9 @@ export default function SettingsPage() {
     args: address ? [address] : undefined,
     query: { enabled: !!address && hasMinted === true },
   });
-  const connected = authenticated && !!address && hasMinted === true;
+  // MiniPay path · injected wallet identity, no Privy login required.
+  const isMiniPay = useIsMiniPay();
+  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Balances for the wallet card. Hidden when not connected so we never
   // show fake zeros to guests.
