@@ -429,10 +429,10 @@ export default function EventsPage() {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d) setComp(d as CompetitionData); })
       .catch(() => {});
-    fetch(`${BACKEND_URL}/api/weekly-challenge`, { cache: "no-store" })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled && d) setCommunity(d as WeeklyChallengeData); })
-      .catch(() => {});
+    // Weekly challenge fetches in its own effect below so it can pass the
+    // connected wallet as a query param · without it the backend returns
+    // myContribution: null, which the UI displays as "0 / cap" even when
+    // the player IS in the contributors list with a real game count.
     fetch("/api/markov-climb", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d) setClimb(d as MarkovClimbData); })
@@ -452,6 +452,22 @@ export default function EventsPage() {
       .catch(() => { if (!cancelled) setPastChallenges([]); });
     return () => { cancelled = true; };
   }, []);
+
+  // Weekly challenge data · refetches when the wallet flips so myContribution
+  // is populated. Backend keys per-player contribution off the ?wallet=
+  // query param · without it, the UI shows "0 / cap" even when the player
+  // already appears in the contributors list with a real game count.
+  useEffect(() => {
+    let cancelled = false;
+    const url = address
+      ? `${BACKEND_URL}/api/weekly-challenge?wallet=${address.toLowerCase()}`
+      : `${BACKEND_URL}/api/weekly-challenge`;
+    fetch(url, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setCommunity(d as WeeklyChallengeData); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [address]);
 
   // ALL-TIME data — fetched lazily on tab activation (subgraph query).
   useEffect(() => {

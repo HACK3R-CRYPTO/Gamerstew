@@ -9,6 +9,8 @@ import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useSelfVerification } from "@/contexts/SelfVerificationContext";
+import { AccountSheet } from "@/components/AccountSheet";
 import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
 
@@ -51,6 +53,11 @@ export default function AppHeader() {
   // tapped. Wires to the player's recent score events + achievement
   // unlocks; the unread count drives the red dot on the bell.
   const [notifOpen, setNotifOpen] = useState(false);
+  // Dual-token chip opens the AccountSheet · the slide-up hub for wallet
+  // (G$ send/receive, CELO address copy) + quick nav (profile, settings).
+  // Replaces the previous "tap chip → /profile" routing, which made the
+  // chip a dead-end for the daily action (send G$) that actually matters.
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const unreadCount = useUnreadNotificationsCount(address);
   // Mute icon only kills the ambient pad (the constant loop on menu
   // surfaces). UI feedback, SFX, and in-game music are untouched —
@@ -92,6 +99,11 @@ export default function AppHeader() {
   // users from there.
   const isMiniPay = useIsMiniPay();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
+  // GoodDollar / Self verification status · drives the ✓ overlay on the
+  // avatar. Only shows when the player is fully connected AND verified ·
+  // unverified state shows no badge at all (per design: never mark people
+  // with a negative badge, just reward the positive).
+  const { isVerified } = useSelfVerification();
 
   // Real on-chain balances — only fetched when fully connected.
   const { data: celoBal } = useBalance({
@@ -162,7 +174,11 @@ export default function AppHeader() {
         gap: isDesktop ? 12 : 8,
         height: 68,
       }}>
-        {/* Pet avatar · taps to /profile */}
+        {/* Pet avatar · taps to /profile · verified players get a ✓ overlay
+            (green = GoodDollar's G$ green, universally readable). The
+            overlay anchors to a relative wrapper around the button so it
+            never breaks layout flex alignment. */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
         <button onClick={() => router.push("/profile")} style={{
           width: 42, height: 42, borderRadius: 14,
           background: connected
@@ -170,11 +186,31 @@ export default function AppHeader() {
             : "radial-gradient(circle at 35% 30%, rgba(148,163,184,0.6), rgba(148,163,184,0.12))",
           border: `1.5px solid ${connected ? T.accent + "66" : "rgba(148,163,184,0.4)"}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 0, cursor: "pointer", flexShrink: 0,
+          padding: 0, cursor: "pointer",
           boxShadow: connected ? `0 0 14px ${T.accent}33, inset 0 1px 0 rgba(255,255,255,0.2)` : "inset 0 1px 0 rgba(255,255,255,0.15)",
         }}>
           <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: connected ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
         </button>
+        {connected && isVerified && (
+          <span
+            aria-label="Verified human"
+            title="Verified human"
+            style={{
+              position: "absolute", right: -3, bottom: -3,
+              width: 16, height: 16, borderRadius: 999,
+              background: "#22c55e",
+              border: "1.5px solid #050010",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 1px 4px rgba(34,197,94,0.55)",
+              pointerEvents: "none",
+            }}
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12l5 5L20 7" />
+            </svg>
+          </span>
+        )}
+        </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -249,7 +285,7 @@ export default function AppHeader() {
           CELO so they can spot empty-gas before a tx, G$ so they always
           know what they can spend in the shop. */}
         {connected ? (
-          <button onClick={() => router.push("/profile")} style={{
+          <button onClick={() => { playClick(); setAccountSheetOpen(true); }} aria-label="Open account" title="Account · wallet, profile, settings" style={{
             display: "flex", alignItems: "stretch",
             padding: 0, borderRadius: 12, cursor: "pointer", flexShrink: 0,
             background: "rgba(255,255,255,0.04)",
@@ -285,6 +321,12 @@ export default function AppHeader() {
           the whole viewport regardless of which page the header is
           rendered inside. */}
       <NotificationsSheet address={address} open={notifOpen} onClose={() => setNotifOpen(false)} />
+
+      {/* Account hub · opens from the dual-token chip. Includes the player
+          identity strip + wallet (G$ tappable for Send/Receive, CELO for
+          copy-address) + quick nav to profile / settings. Address-gated
+          internally so guest taps no-op. */}
+      <AccountSheet open={accountSheetOpen} onClose={() => setAccountSheetOpen(false)} />
     </header>
   );
 }

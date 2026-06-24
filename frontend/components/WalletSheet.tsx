@@ -12,6 +12,7 @@
 // it reads as a natural extension of profile, not a bolted-on wallet UI.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useReadContract, useWriteContract } from "wagmi";
 import { formatUnits, isAddress, parseUnits } from "viem";
 import QRCode from "qrcode";
@@ -74,7 +75,7 @@ export function WalletSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open || !address) return null;
+  if (!open || !address || typeof document === "undefined") return null;
 
   const balanceNum = gBalanceRaw != null
     ? Number(formatUnits(gBalanceRaw as bigint, 18))
@@ -123,21 +124,26 @@ export function WalletSheet({
     } catch { /* clipboard unavailable */ }
   };
 
-  return (
+  // Portal into document.body · WalletSheet opens from inside other
+  // backdrop-filter sheets (AccountSheet, Settings), which create their
+  // own containing blocks and would trap position: fixed children inside
+  // them. Portaling escapes that trap so the sheet always renders at the
+  // viewport level regardless of what mounted it.
+  return createPortal(
     <>
       {/* Backdrop — tapping closes the sheet */}
       <div
         onClick={onClose}
         style={{
-          position: "fixed", inset: 0, zIndex: 90,
-          background: "rgba(2,1,10,0.72)", backdropFilter: "blur(6px)",
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(2,1,10,0.92)", backdropFilter: "blur(6px)",
           animation: "wsFade 180ms ease-out",
         }}
       />
 
       {/* Sheet — slides up from bottom on mobile, centered on desktop */}
       <div style={{
-        position: "fixed", zIndex: 91,
+        position: "fixed", zIndex: 10000,
         left: "50%", bottom: 0, transform: "translateX(-50%)",
         width: "100%", maxWidth: "440px",
         padding: "0 12px 12px",
@@ -407,7 +413,8 @@ export function WalletSheet({
           to   { transform: translate(-50%, 0);    opacity: 1; }
         }
       `}</style>
-    </>
+    </>,
+    document.body,
   );
 }
 

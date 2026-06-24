@@ -9,6 +9,7 @@ import { fetchPlayerAllTimeCombinedStats } from "@/lib/subgraph";
 import { HABITATS as HABITAT_TIERS, type HabitatTier } from "@/lib/habitats";
 import { useHabitats } from "@/hooks/useHabitats";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { HabitatBackground } from "@/components/HabitatBackground";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -263,6 +264,11 @@ export default function ProfilePage() {
   });
   // MiniPay path · injected wallet identity, no Privy login required.
   const isMiniPay = useIsMiniPay();
+  // Verification drives the upsell card below the hero · shown only to
+  // connected-but-unverified players. Verified players see the green ✓
+  // on their avatar (top-left header) plus the verified pill on their
+  // hero · no card here.
+  const { isVerified } = useSelfVerification();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Level / XP / streak / games-this-week all live in games-backend
@@ -493,6 +499,51 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* VERIFY CARD · only for connected players who haven't verified
+            yet. Hides itself the moment isVerified flips true, so verified
+            players never see lingering "go verify" CTAs · the badge on
+            their avatar + the pills on their hero are the reward. Routes
+            to /verify which already owns the actual flow. */}
+        {connected && !isVerified && (
+          <button
+            onClick={() => router.push("/verify?next=/profile")}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 14,
+              padding: "14px 16px", borderRadius: 16, cursor: "pointer",
+              background: "linear-gradient(135deg, rgba(34,197,94,0.16), rgba(6,182,212,0.10))",
+              border: "1px solid rgba(134,239,172,0.45)",
+              boxShadow: "0 0 18px rgba(34,197,94,0.15)",
+              textAlign: "left",
+            }}
+          >
+            {/* Green check tile · matches the badge color so the player
+                visually associates this card with the reward they're about
+                to earn. */}
+            <div style={{
+              width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+              background: "rgba(34,197,94,0.22)",
+              border: "1px solid rgba(134,239,172,0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#86efac",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12l5 5L20 7" />
+              </svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: T.display, fontSize: 15, color: T.ink, lineHeight: 1.15 }}>
+                Verify your humanity
+              </div>
+              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, marginTop: 3, lineHeight: 1.4 }}>
+                Unlock the green check next to your name. Takes 60 seconds. Free.
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(134,239,172,0.85)" style={{ flexShrink: 0 }}>
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
         )}
 
         {/* STAT TILES · 2-col mobile, 4-col desktop */}
