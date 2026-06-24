@@ -14,6 +14,7 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { UnblockNotificationsModal } from "@/components/UnblockNotificationsModal";
+import { WalletSheet } from "@/components/WalletSheet";
 
 // Token system matches /profile + /shop so the three surfaces read as
 // one design system. Claude-design row pattern (icon tile + label + sub
@@ -169,6 +170,10 @@ export default function SettingsPage() {
   // player taps the BLOCKED chip (Chrome / Edge / Firefox / Samsung path)
   // or the iOS PWA chip (Safari-on-iPhone without Home Screen install).
   const [showUnblock, setShowUnblock] = useState(false);
+  // WalletSheet drives the Send / Receive / address-QR flow for G$. The
+  // sheet already existed in the codebase as an orphan component · just
+  // not wired up. Opens when the player taps the G$ row below.
+  const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   // One-shot inline error when subscribe() fails silently (VAPID missing,
   // SW register fails, backend /api/push/subscribe rejected). Without
   // this, the toggle just snaps back to off with no explanation and the
@@ -355,7 +360,16 @@ export default function SettingsPage() {
               <Row icon={<img src="/tokens/celo.png" alt="" width={22} height={22} style={{ width: 22, height: 22, objectFit: "contain" }} />} label="CELO" sub="Network gas. Top up to send transactions.">
                 <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, lineHeight: 1 }}>{fmtCelo(celoBal?.value)}</span>
               </Row>
-              <Row icon={<img src="/tokens/g-dollar.svg" alt="" width={24} height={24} style={{ width: 24, height: 24, objectFit: "contain" }} />} label="G$" sub="Game currency. Earn from claims and play, spend on habitats.">
+              {/* G$ row · tap opens WalletSheet (send / receive / address QR).
+                  Copy reflects the truth: G$ is GoodDollar's on-chain token,
+                  not an in-game currency · earnable AND transferrable AND
+                  swappable. Previous "Game currency" line was misleading. */}
+              <Row
+                icon={<img src="/tokens/g-dollar.svg" alt="" width={24} height={24} style={{ width: 24, height: 24, objectFit: "contain" }} />}
+                label="G$"
+                sub="Real GoodDollar money · earn from claims and play, spend on habitats or send out for real-world use. Tap to manage."
+                onClick={address ? () => setWalletSheetOpen(true) : undefined}
+              >
                 <span style={{ fontFamily: T.display, fontSize: 15, color: "#fde68a", lineHeight: 1, textShadow: "0 0 8px rgba(251,191,36,0.4)" }}>{fmtG(gBal as bigint | undefined)}</span>
               </Row>
             </div>
@@ -476,6 +490,16 @@ export default function SettingsPage() {
         {/* Per-browser unblock / iOS Home-Screen walkthrough · auto-detects
             the player's browser and shows the right 4-step recipe. */}
         {showUnblock && <UnblockNotificationsModal onClose={() => setShowUnblock(false)} />}
+
+        {/* G$ wallet sheet · Send / Receive / Copy-address. Opens when
+            the player taps the G$ row above. Address-gated so it never
+            renders for guests (sheet itself also short-circuits on
+            undefined address). */}
+        <WalletSheet
+          open={walletSheetOpen}
+          onClose={() => setWalletSheetOpen(false)}
+          address={address as `0x${string}` | undefined}
+        />
 
         {/* GAMEPLAY — only Language for now, faded read-only until i18n
             ships. Reduce-motion was dropped because the app's keyframes

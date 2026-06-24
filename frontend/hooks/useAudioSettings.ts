@@ -86,10 +86,19 @@ export function useAudioSettings() {
     setSettings(prev => {
       const next = { ...prev, ...patch };
       try { window.localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
-      // Broadcast to sibling hook instances in the same tab
-      try {
-        window.dispatchEvent(new CustomEvent<AudioSettings>(SAME_TAB_EVENT, { detail: next }));
-      } catch {}
+      // Broadcast to sibling hook instances in the same tab. Deferred via
+      // queueMicrotask so the dispatch happens AFTER React's commit phase.
+      // The previous synchronous dispatch fired other instances' onChange
+      // listeners (which call setSettings) WHILE React was committing this
+      // update · the resulting cross-component setState triggered React's
+      // "Cannot update a component while rendering another" error. The
+      // microtask still fires before the next paint, so cross-tab sync
+      // latency is unchanged in practice.
+      queueMicrotask(() => {
+        try {
+          window.dispatchEvent(new CustomEvent<AudioSettings>(SAME_TAB_EVENT, { detail: next }));
+        } catch {}
+      });
       return next;
     });
   }, []);
