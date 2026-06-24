@@ -26,6 +26,8 @@ import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { WalletSheet } from "@/components/WalletSheet";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 const T = {
   ink: "#ffffff",
@@ -58,7 +60,13 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
   const router = useRouter();
   const { address } = useAccount();
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // useGasStatus reads CELO balance + MiniPay flag and buckets it.
+  // We surface the bucket on the CELO row (status dot + label) so the
+  // player knows their saving capacity at a glance · same data the
+  // lobby gate uses, so the two surfaces never contradict each other.
+  const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
   // Player identity · same gates AppHeader uses, fetched here so the sheet
   // doesn't depend on a wired-through prop bundle. Wagmi caches the read so
@@ -315,24 +323,55 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                 onClick={() => setWalletSheetOpen(true)}
               />
               {/* CELO row · receive-only for now (no native send built yet).
-                  Tap copies the address so a friend on MiniPay can top it up. */}
-              <TokenRow
-                icon={<img src="/tokens/celo.png" alt="" width={22} height={22} style={{ width: 22, height: 22, objectFit: "contain" }} />}
-                label="CELO"
-                sub="Network gas · tap to copy address for top-up"
-                amount={fmtCelo(celoBal?.value)}
-                amountColor={T.ink}
-                onClick={copyAddress}
-              />
+                  Tap copies the address by default. When gas is low or empty,
+                  the row swaps its sub-copy to flag the state and tapping
+                  opens the GasHelpSheet instead of just copying · same data
+                  the lobby gate uses. MiniPay players never see a warn/block
+                  state (USDC fee adapter pays gas), so they stay on the
+                  copy-address path. */}
+              {(() => {
+                const showLow = gasStatus === "warn" || gasStatus === "block";
+                const isBlock = gasStatus === "block";
+                const dot = isBlock ? "#fb7185" : showLow ? "#fbbf24" : null;
+                const subCopy = isBlock
+                  ? "Out of gas · tap to top up in Telegram"
+                  : showLow
+                    ? approxSavesLeft != null && approxSavesLeft > 0
+                      ? `About ${approxSavesLeft} saves left · tap to top up`
+                      : "Running low · tap to top up"
+                    : "Network gas · tap to copy address for top-up";
+                return (
+                  <TokenRow
+                    icon={<img src="/tokens/celo.png" alt="" width={22} height={22} style={{ width: 22, height: 22, objectFit: "contain" }} />}
+                    label="CELO"
+                    sub={subCopy}
+                    amount={fmtCelo(celoBal?.value)}
+                    amountColor={isBlock ? "#fda4af" : showLow ? "#fbbf24" : T.ink}
+                    statusDot={dot}
+                    onClick={showLow ? () => setGasHelpOpen(true) : copyAddress}
+                  />
+                );
+              })()}
             </div>
           </div>
 
-          {/* ─── Quick nav · profile + settings ─────────────────────────── */}
+          {/* ─── Quick nav · profile + settings + community ─────────────── */}
           <div>
             <SectionLabel>Account</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <NavRow icon="🐣" label="My pet · profile" sub="Stats, achievements, equipped habitat" onClick={() => goTo("/profile")} />
               <NavRow icon="⚙️" label="Settings" sub="Audio, notifications, verification, sign out" onClick={() => goTo("/settings")} />
+              {/* Community row · the always-on door to the player chat.
+                  Doubles as the help path · gas top-ups, prize claims, weekly
+                  events all funnel here. Opens GasHelpSheet in "general"
+                  intent so the message preview is a friendly hi instead of
+                  a specific ask · player can edit before pasting. */}
+              <NavRow
+                icon="💬"
+                label="Community"
+                sub="Get help · claim prizes · weekly events"
+                onClick={() => setGasHelpOpen(true)}
+              />
             </div>
           </div>
         </div>
@@ -344,6 +383,16 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
         open={walletSheetOpen}
         onClose={() => setWalletSheetOpen(false)}
         address={address as `0x${string}` | undefined}
+      />
+      {/* GasHelpSheet shares the same portal stack · intent flips based on
+          which row opened it. Block / warn states + Community row all
+          converge here. Player can dismiss without taking action; we don't
+          close AccountSheet behind it because the player may want to come
+          back to wallet rows after. */}
+      <GasHelpSheet
+        open={gasHelpOpen}
+        onClose={() => setGasHelpOpen(false)}
+        intent={gasStatus === "block" || gasStatus === "warn" ? "gas-help" : "general"}
       />
     </>,
     document.body,
@@ -361,7 +410,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function TokenRow({
-  icon, label, sub, amount, amountColor, onClick,
+  icon, label, sub, amount, amountColor, onClick, statusDot,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -369,6 +418,10 @@ function TokenRow({
   amount: string;
   amountColor: string;
   onClick: () => void;
+  // Optional colored dot rendered on the icon tile · used by the CELO row
+  // when gas slips into warn/block state. Keeps the visual signal local
+  // to the row that's actually affected.
+  statusDot?: string | null;
 }) {
   return (
     <button
@@ -382,12 +435,22 @@ function TokenRow({
       }}
     >
       <div style={{
+        position: "relative",
         width: 36, height: 36, borderRadius: 10, flexShrink: 0,
         background: "rgba(255,255,255,0.04)",
         border: `1px solid ${T.hairline}`,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         {icon}
+        {statusDot && (
+          <span aria-hidden style={{
+            position: "absolute", top: -3, right: -3,
+            width: 10, height: 10, borderRadius: 999,
+            background: statusDot,
+            border: "1.5px solid #0a0228",
+            boxShadow: `0 0 8px ${statusDot}`,
+          }} />
+        )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: T.display, fontSize: 14, color: T.ink, lineHeight: 1.15 }}>{label}</div>

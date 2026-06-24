@@ -37,6 +37,9 @@ import {
   type ArenaMatch, type GameType, type WagerTier,
 } from "@/lib/challengeAi";
 import { FEEDBACK_REGISTRY, FEEDBACK_ABI, buildFeedbackArgs } from "@/lib/markovFeedback";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { LowGasBanner } from "@/components/LowGasBanner";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 // Image mask — softens any visible rectangular background behind a character
 // image. Transparent PNGs ignore it; JPEG fallbacks fade cleanly at the edges.
@@ -210,6 +213,35 @@ export default function ChallengeAi() {
   const isDesktop = useIsDesktop();
   const pet = usePlayerPet(address as `0x${string}` | undefined);
   const agentLiveness = useAgentLiveness();
+
+  // ─── Gas gate (MARKOV-tuned, full-match coverage) ───────────────────────
+  // MARKOV / Arena txs are 5-10× heavier than score submits. Real telemetry
+  // from past wagers + projected current-price math:
+  //   propose / transferAndCall · 476k-552k gas → ~0.10-0.11 CELO at 202.5 gwei
+  //   submitMove                 · similar magnitude → ~0.10 CELO
+  //   claim                      · ~250k gas → ~0.05 CELO
+  //   ───────────────────────────────────────────────────────
+  //   one full match end-to-end  · ~0.25-0.30 CELO worst case
+  //
+  // Earlier we set block=0.15 which only covered the propose tx · a player
+  // would pass the gate, deposit the wager, then fail at submitMove and
+  // forfeit the round. The right contract is "passing the gate means you
+  // can complete a full match," so block jumps to one full-match cost.
+  //   block:  0.3 CELO → one full match's worth of gas (incl. safety margin)
+  //   warn:   0.6 CELO → has at most ~2 matches left
+  //   safe:   ≥ 0.6 CELO
+  //   perTx:  0.3 CELO → so approxSavesLeft reads as "match attempts left"
+  // Note: faucet drop is 0.7 CELO · fresh wallet starts at the SAFE/WARN
+  // boundary. After one match they're in WARN; after two they're in BLOCK.
+  // That's accurate · matches what the chain actually allows.
+  // MiniPay players use the USDC fee adapter and skip this · same as
+  // the score games.
+  const { status: gasStatus, approxSavesLeft } = useGasStatus({
+    warnFloorCelo:  0.6,
+    blockFloorCelo: 0.3,
+    perTxCelo:      0.3,
+  });
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
 
   // ─── Selection ───────────────────────────────────────────────────────────
   const [tier, setTier] = useState<WagerTier>(WAGER_TIERS[1]);
@@ -571,6 +603,16 @@ export default function ChallengeAi() {
   async function onChallenge() {
     if (submittingChallenge) return;
     if (!isConnected || !address) { setError("Connect your wallet first."); return; }
+    // ═══ Gas gate · MARKOV needs ~3× more gas per match than a score save ═══
+    // useGasStatus is configured above with the wager-tuned thresholds. When
+    // it says "block" we open the help sheet instead of starting the wager
+    // chain · otherwise the player would pay one approve tx (or watch
+    // transferAndCall revert) before learning they couldn't afford the
+    // round. MiniPay users always come back safe-equivalent (USDC adapter).
+    if (gasStatus === "block") {
+      setGasHelpOpen(true);
+      return;
+    }
     setSubmittingChallenge(true); setError(null);
     try {
       let hash: `0x${string}`;
@@ -854,6 +896,25 @@ export default function ChallengeAi() {
             error={error}
             isDesktop={isDesktop}
             agentLiveness={agentLiveness}
+            /* Banner self-hides for safe / guest / minipay. Warn/block
+               surface a tappable strip routing the player into GasHelpSheet
+               before they commit a wager they can't gas. context="wager"
+               swaps the copy so block reads "can't start a match" instead
+               of "scores won't save" · accurate for this surface. */
+            gasBanner={
+              <LowGasBanner
+                status={gasStatus}
+                approxSavesLeft={approxSavesLeft}
+                onOpenHelp={() => setGasHelpOpen(true)}
+                context="wager"
+              />
+            }
+            /* Post-fail rescue · if a wager tx threw with a gas / funds
+               keyword, the error block renders as a tappable launcher into
+               the help sheet. Lets us catch the edge case where balance
+               was just above block at gate-check time but the actual gas
+               estimate landed higher. */
+            onTopUp={() => setGasHelpOpen(true)}
           />
         )}
         {phase === "vs" && <ArenaVS tier={tier} game={game} pet={pet} />}
@@ -897,12 +958,23 @@ export default function ChallengeAi() {
           />
         )}
       </div>
+
+      {/* GasHelpSheet · same single destination as the score-game gates.
+          The MARKOV intent string is still "gas-help" because the player's
+          need is identical (CELO for gas) · the community pre-fill is
+          generic so the recipient can route help regardless of which
+          surface the player came from. */}
+      <GasHelpSheet
+        open={gasHelpOpen}
+        onClose={() => setGasHelpOpen(false)}
+        intent="gas-help"
+      />
     </div>
   );
 }
 
 // ─── ArenaLobby ──────────────────────────────────────────────────────────────
-function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error, isDesktop, agentLiveness }: {
+function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, busy, error, isDesktop, agentLiveness, gasBanner, onTopUp }: {
   tier: WagerTier; setTier: (t: WagerTier) => void;
   game: GameType; setGame: (g: GameType) => void;
   records: Record<string, { wins: number; losses: number; streak: number }>;
@@ -912,6 +984,14 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
   error: string | null;
   isDesktop: boolean;
   agentLiveness: { online: boolean; reason: "offline" | "out-of-funds" | "online" | "unknown" };
+  // Optional gas-status slot. Parent owns the gas state + the help sheet,
+  // so ArenaLobby just renders whatever node it gets. Null in the happy
+  // path · self-hides via the LowGasBanner's own status guard.
+  gasBanner?: React.ReactNode;
+  // Tappable hook on the post-fail error block · only routes the player
+  // when the error message contains a gas/funds keyword. Other errors
+  // (agent offline, allowance, network) stay non-tappable.
+  onTopUp?: () => void;
 }) {
   const record = records[tier.id] ?? { wins: 0, losses: 0, streak: 0 };
   const total = record.wins + record.losses;
@@ -1016,6 +1096,14 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
           <AgentLivenessBanner reason={agentLiveness.reason} />
         )}
 
+        {/* Gas posture · warn/block only · sits right above the action so
+            the player sees it before committing a wager they can't gas. */}
+        {gasBanner && (
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            {gasBanner}
+          </div>
+        )}
+
         {/* ENTER ARENA button — gated on agent being online */}
         <button
           onClick={busy || !agentLiveness.online ? undefined : onStart}
@@ -1056,13 +1144,53 @@ function ArenaLobby({ tier, setTier, game, setGame, records, matches, onStart, b
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          padding: "10px 14px", borderRadius: 12,
-          background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)",
-          color: "#fca5a5", fontSize: 12, fontWeight: 700, textAlign: "center",
-        }}>{error}</div>
-      )}
+      {error && (() => {
+        // Detect gas / insufficient-funds errors so we can swap the static
+        // red banner for a tappable rescue. Keyword list mirrors what viem
+        // bubbles up for Celo's revert flavors. Non-gas errors fall through
+        // to the standard red banner.
+        const low = error.toLowerCase();
+        const isGas = onTopUp && (
+          low.includes("insufficient funds") ||
+          low.includes("insufficient balance") ||
+          low.includes("intrinsic gas") ||
+          low.includes("cannot estimate") ||
+          low.includes("estimate gas") ||
+          low.includes("exceeds gas") ||
+          low.includes("gas required") ||
+          low.includes("top up")
+        );
+        if (isGas) {
+          return (
+            <button
+              onClick={onTopUp}
+              style={{
+                width: "100%", padding: "12px 14px", borderRadius: 12,
+                background: "rgba(251,146,60,0.14)",
+                border: "1px solid rgba(251,146,60,0.5)",
+                color: "#fdba74", cursor: "pointer", fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
+              <span style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.04em" }}>Wager failed · needs a top up</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", marginTop: 3 }}>Tap to ask for gas in Telegram</div>
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+          );
+        }
+        return (
+          <div style={{
+            padding: "10px 14px", borderRadius: 12,
+            background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)",
+            color: "#fca5a5", fontSize: 12, fontWeight: 700, textAlign: "center",
+          }}>{error}</div>
+        );
+      })()}
 
       {/* RECENT FIGHTS */}
       <RecentFights matches={matches.filter(m => m.status === MATCH_STATUS.COMPLETED).slice(0, 6)} setTier={setTier} />

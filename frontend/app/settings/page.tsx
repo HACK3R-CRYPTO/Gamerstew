@@ -15,6 +15,8 @@ import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { UnblockNotificationsModal } from "@/components/UnblockNotificationsModal";
 import { WalletSheet } from "@/components/WalletSheet";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 // Token system matches /profile + /shop so the three surfaces read as
 // one design system. Claude-design row pattern (icon tile + label + sub
@@ -174,6 +176,12 @@ export default function SettingsPage() {
   // sheet already existed in the codebase as an orphan component · just
   // not wired up. Opens when the player taps the G$ row below.
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
+  // GasHelpSheet is the single destination for community-door taps from
+  // Settings · used both for the "Get gas in Telegram" path (when the CELO
+  // row reads warn/block) and for the always-on Community row below the
+  // Gameplay section. Same sheet, intent flips based on gas status.
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
+  const { status: gasStatus } = useGasStatus();
   // One-shot inline error when subscribe() fails silently (VAPID missing,
   // SW register fails, backend /api/push/subscribe rejected). Without
   // this, the toggle just snaps back to off with no explanation and the
@@ -372,6 +380,23 @@ export default function SettingsPage() {
               >
                 <span style={{ fontFamily: T.display, fontSize: 15, color: "#fde68a", lineHeight: 1, textShadow: "0 0 8px rgba(251,191,36,0.4)" }}>{fmtG(gBal as bigint | undefined)}</span>
               </Row>
+              {/* Gas hint row · only surfaces when the player is in warn or
+                  block state. Stays invisible to MiniPay users (fee-currency
+                  adapter handles gas) and to anyone safely funded. Tapping
+                  opens GasHelpSheet with the gas-help intent · single path
+                  to the community top-up flow from this page. */}
+              {(gasStatus === "warn" || gasStatus === "block") && (
+                <Row
+                  icon={gasStatus === "block" ? "⛔" : "⚠️"}
+                  label={gasStatus === "block" ? "Out of gas" : "Gas getting low"}
+                  sub="Top up via the community to keep saving scores onchain."
+                  onClick={() => setGasHelpOpen(true)}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: gasStatus === "block" ? "rgba(239,68,68,0.14)" : "rgba(251,191,36,0.14)", border: `1px solid ${gasStatus === "block" ? "rgba(239,68,68,0.5)" : "rgba(251,191,36,0.45)"}`, color: gasStatus === "block" ? "#fda4af" : "#fbbf24", fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
+                    TOP UP
+                  </span>
+                </Row>
+              )}
             </div>
           </section>
         )}
@@ -501,6 +526,16 @@ export default function SettingsPage() {
           address={address as `0x${string}` | undefined}
         />
 
+        {/* GasHelpSheet · single destination for Community row + gas-warn
+            row taps. Intent flips to "gas-help" when the player is in
+            warn/block state so the pre-filled message includes the
+            top-up ask · falls back to "general" otherwise. */}
+        <GasHelpSheet
+          open={gasHelpOpen}
+          onClose={() => setGasHelpOpen(false)}
+          intent={gasStatus === "block" || gasStatus === "warn" ? "gas-help" : "general"}
+        />
+
         {/* GAMEPLAY — only Language for now, faded read-only until i18n
             ships. Reduce-motion was dropped because the app's keyframes
             aren't gated on it; surfacing a toggle that doesn't change
@@ -519,6 +554,25 @@ export default function SettingsPage() {
                 </span>
               </Row>
             </div>
+          </div>
+        </section>
+
+        {/* COMMUNITY — always-on door to the player chat. Doubles as the
+            help surface (gas top-ups, prize claims, weekly events all
+            funnel here). Same row visible to guests and signed-in players
+            alike · the community is the front door, not a perk gated
+            behind a wallet. */}
+        <section>
+          <SectionLabel>Community</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Row
+              icon="💬"
+              label="Player chat · Telegram"
+              sub="Get help · claim prizes · weekly events · ask anything."
+              onClick={() => setGasHelpOpen(true)}
+            >
+              <Icon name="chevR" size={14} color={T.inkSoft} />
+            </Row>
           </div>
         </section>
 

@@ -38,6 +38,9 @@ import {
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { LowGasBanner } from "@/components/LowGasBanner";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -75,6 +78,13 @@ export default function StackTowerPage() {
   const [combo, setCombo] = useState(0);
   const [localBest, setLocalBest] = useState(0);
   const [timeLeftMs, setTimeLeftMs] = useState(GAME_DURATION_MS);
+  // GasHelpSheet covers both the pre-game gate (player taps START while
+  // blocked) and the post-fail rescue (existing txError "needs a top up"
+  // becomes tappable). Same sheet, intent set to "gas-help" with the
+  // last attempted score baked into the pre-fill so the community can
+  // see what got lost.
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
+  const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
   // Player level drives the pet-evolution celebration after a successful
   // submit (petForLevel diff at submit-result time).
@@ -307,6 +317,20 @@ export default function StackTowerPage() {
     // Without this a double-click during the ~500ms /api/start-game round
     // trip inserts two game_sessions rows for one actual run.
     if (startingRef.current) return;
+
+    // ═══ Pre-game gas gate ═══════════════════════════════════════════════
+    // Onchain finality is binary · either the score got recorded or it
+    // doesn't exist. We can't predict per-tx gas perfectly, so when the
+    // bucket says "block" we block the run instead of letting the player
+    // grind a 10-minute tower into a guaranteed insufficient-funds throw.
+    // useGasStatus returns "minipay" for MiniPay (USDC fee adapter pays
+    // gas) and "guest" for free-play (no submit happens anyway), so this
+    // only triggers for funded-CELO players whose balance dipped under
+    // the block threshold.
+    if (gasStatus === "block") {
+      setGasHelpOpen(true);
+      return;
+    }
     startingRef.current = true;
 
     const { w } = sizeRef.current;
@@ -368,7 +392,7 @@ export default function StackTowerPage() {
     setCountdown(3);
     setPhase("countdown");
     startingRef.current = false;
-  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice]);
+  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
@@ -810,6 +834,16 @@ export default function StackTowerPage() {
 
           {!authed && <GuestPlayChip />}
 
+          {/* Gas posture pill · only renders for warn/block buckets.
+              Tappable in both states · routes to GasHelpSheet so the player
+              has a single path to the top-up flow. Safe/MiniPay/guest all
+              render null so the lobby stays clean for the happy path. */}
+          <LowGasBanner
+            status={gasStatus}
+            approxSavesLeft={approxSavesLeft}
+            onOpenHelp={() => setGasHelpOpen(true)}
+          />
+
           <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
 
           <div role="button" tabIndex={0} onClick={startGame}
@@ -906,6 +940,7 @@ export default function StackTowerPage() {
                   error={submitError}
                   txError={txError}
                   score={score}
+                  onTopUp={() => setGasHelpOpen(true)}
                 />
               )}
 
@@ -979,6 +1014,19 @@ export default function StackTowerPage() {
         walletAddress={address}
         trigger={!!submitResult}
       />
+
+      {/* GasHelpSheet · the single destination for the lobby gate (player
+          tapped START while blocked), the LowGasBanner on idle, and the
+          post-fail rescue banner. Score is passed so the gas-help message
+          includes "Last run: Stack Tower · 47" when the rescue fired
+          after a real attempt, making the community ask actionable. */}
+      <GasHelpSheet
+        open={gasHelpOpen}
+        onClose={() => setGasHelpOpen(false)}
+        intent="gas-help"
+        game="stack"
+        score={score > 0 ? score : undefined}
+      />
     </div>
   );
 }
@@ -990,7 +1038,7 @@ export default function StackTowerPage() {
 //   txError/error  → small banner with retry copy
 //   result         → rank + xp grid · achievements unlocked
 function StackRewardPanel({
-  submitting, signingOnChain, result, error, txError, score,
+  submitting, signingOnChain, result, error, txError, score, onTopUp,
 }: {
   submitting: boolean;
   signingOnChain: boolean;
@@ -1006,6 +1054,10 @@ function StackRewardPanel({
   error: string | null;
   txError: string | null;
   score: number;
+  // Tappable hook on the "needs a top up" txError banner · opens
+  // GasHelpSheet so the rescue isn't just an error message, it's a
+  // single tap to the community top-up path.
+  onTopUp?: () => void;
 }) {
   if (signingOnChain) {
     return (
@@ -1038,6 +1090,34 @@ function StackRewardPanel({
   if (txError) {
     const low = txError.toLowerCase();
     const isGasError = low.includes("top up");
+    // Gas errors get the tappable rescue path · the run is already lost
+    // but the player learns where to fix it for next time without having
+    // to hunt for the community door themselves.
+    if (isGasError && onTopUp) {
+      return (
+        <button
+          onClick={onTopUp}
+          style={{
+            width: "100%",
+            marginTop: 14, padding: "12px 14px", borderRadius: 10,
+            background: "rgba(251,146,60,0.12)",
+            border: "1px solid rgba(251,146,60,0.45)",
+            color: "#fdba74",
+            cursor: "pointer", fontFamily: "inherit",
+            display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
+          <span style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>Score not saved · needs a top up</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
+          </span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      );
+    }
     return (
       <div style={{
         marginTop: 14, padding: "10px 12px", borderRadius: 10,

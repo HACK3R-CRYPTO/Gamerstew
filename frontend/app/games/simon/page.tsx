@@ -24,6 +24,9 @@ import { hydrateAchievement } from "@/lib/achievements";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { LowGasBanner } from "@/components/LowGasBanner";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -150,6 +153,12 @@ export default function SimonGamePage() {
       .catch(() => {});
   }, [address]);
   const pet = petForLevel(playerLevel);
+
+  // GasHelpSheet covers the pre-game lobby gate · same shape rhythm uses.
+  // Simon's existing post-fail card already routes the player to Telegram,
+  // so the sheet here is gate-only.
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
+  const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
   // ═══ Audio — Web Audio synth for tones + hit feedback ═══
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -606,6 +615,17 @@ export default function SimonGamePage() {
     // inserts, leaving a stale game_sessions row that inflates the
     // counted-games total.
     if (startingRef.current) return;
+
+    // ═══ Pre-game gas gate ═══════════════════════════════════════════════
+    // Onchain finality is binary · we can't predict per-tx gas exactly, so
+    // when the bucket reads "block" we stop the player here rather than
+    // letting them play a full sequence and lose the score to a guaranteed
+    // insufficient-funds throw. MiniPay (USDC fee adapter) and guests both
+    // bypass this check via the bucket itself.
+    if (gasStatus === "block") {
+      setGasHelpOpen(true);
+      return;
+    }
     startingRef.current = true;
 
     // Reset everything for a fresh run
@@ -671,7 +691,7 @@ export default function SimonGamePage() {
     startingRef.current = false;
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
-  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken]);
+  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus]);
 
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
@@ -768,7 +788,25 @@ export default function SimonGamePage() {
       }} />
 
       {/* IDLE */}
-      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} onLeaderboard={() => router.push("/games/simon/leaderboard")} guest={!authed} />}
+      {phase === "idle" && (
+        <IdleView
+          onStart={startGame}
+          onExit={() => router.push("/games")}
+          onLeaderboard={() => router.push("/games/simon/leaderboard")}
+          guest={!authed}
+          /* Banner self-hides for safe / guest / minipay buckets · only
+             renders for warn (amber strip) or block (red-amber pulse,
+             nudging the player to top up before starting). Single tap
+             routes to the GasHelpSheet mounted below. */
+          gasBanner={
+            <LowGasBanner
+              status={gasStatus}
+              approxSavesLeft={approxSavesLeft}
+              onOpenHelp={() => setGasHelpOpen(true)}
+            />
+          }
+        />
+      )}
 
       {/* COUNTDOWN */}
       {phase === "countdown" && <CountdownView n={countdown} />}
@@ -841,12 +879,32 @@ export default function SimonGamePage() {
         walletAddress={address}
         trigger={!!submitResult}
       />
+
+      {/* GasHelpSheet · pre-game gate destination. Opens when the player
+          taps START while blocked, or when they tap the LowGasBanner on
+          the lobby. Simon's existing post-fail Telegram card stays as the
+          rescue path. */}
+      <GasHelpSheet
+        open={gasHelpOpen}
+        onClose={() => setGasHelpOpen(false)}
+        intent="gas-help"
+        game="simon"
+      />
     </div>
   );
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest }: { onStart: () => void; onExit: () => void; onLeaderboard: () => void; guest?: boolean }) {
+function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
+  onStart: () => void;
+  onExit: () => void;
+  onLeaderboard: () => void;
+  guest?: boolean;
+  // Slot for the LowGasBanner · parent owns the gas state and the sheet,
+  // IdleView just renders the node it gets. Null in the happy-path case
+  // so the lobby reads clean.
+  gasBanner?: React.ReactNode;
+}) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
@@ -903,6 +961,9 @@ function IdleView({ onStart, onExit, onLeaderboard, guest }: { onStart: () => vo
       </div>
 
       {guest && <GuestPlayChip />}
+
+      {/* Gas posture pill · warn/block only · null for the happy path. */}
+      {gasBanner}
 
       {/* Top players preview · leaderboard becomes content on the play
           surface, not chrome in the corner. Reads live Season N data so it
