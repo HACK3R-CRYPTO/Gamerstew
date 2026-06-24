@@ -14,6 +14,12 @@ const SUBGRAPH_URL =
 
 const TIMEOUT_MS = 8_000;
 
+// Maps the on-chain uint8 gameType to the player-facing game key. Mirrors
+// GAME_TYPE in server.js · adding a new game means one row here. Previously
+// this was a ternary that defaulted everything non-rhythm to 'simon',
+// which silently mislabeled Stack Tower (gameType 2) scores as simon.
+const GAME_BY_TYPE = { 0: 'rhythm', 1: 'simon', 2: 'stack' };
+
 async function gql(query, variables = {}) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
@@ -84,7 +90,7 @@ async function recentActivity(limit = 20, player = null) {
   return (data.scores || []).map(s => ({
     wallet_address: s.player.id,
     username: s.player.username || null,
-    game: s.gameType === 0 ? 'rhythm' : 'simon',
+    game: GAME_BY_TYPE[s.gameType] || 'rhythm',
     score: Number(s.score),
     tx_hash: s.txHash,
     created_at: new Date(Number(s.blockTimestamp) * 1000).toISOString(),

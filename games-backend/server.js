@@ -2499,8 +2499,13 @@ app.get('/api/competition', async (_, res) => {
         }
       }
 
-      // Add to cumulative totals
+      // Add to cumulative totals. Historical competition (weeks 10-13)
+      // only tracked rhythm + simon · Stack Tower didn't exist yet, so
+      // stack scores are intentionally skipped here instead of being
+      // mislabeled into totalSimon (which the previous else-fallthrough
+      // was silently doing).
       for (const [wallet, score] of weekBest.entries()) {
+        if (game !== 'rhythm' && game !== 'simon') continue;
         if (!totals.has(wallet)) totals.set(wallet, { wallet, totalRhythm: 0, totalSimon: 0, weeklyScores: {} });
         const entry = totals.get(wallet);
         if (game === 'rhythm') entry.totalRhythm += score;
@@ -2651,7 +2656,11 @@ app.post('/api/competition/freeze', requireSecret, async (_, res) => {
             weekBest.set(key, row.score);
           }
         }
+        // Historical competition only counted rhythm + simon · skip stack
+        // here (it didn't exist when these weeks ran) rather than letting
+        // the else-fallthrough mislabel stack scores as simon.
         for (const [wallet, score] of weekBest.entries()) {
+          if (game !== 'rhythm' && game !== 'simon') continue;
           if (!totals.has(wallet)) totals.set(wallet, { wallet, totalRhythm: 0, totalSimon: 0 });
           const entry = totals.get(wallet);
           if (game === 'rhythm') entry.totalRhythm += score;
@@ -2935,7 +2944,14 @@ async function indexOnChainScores() {
       const player = parsed.args[0].toLowerCase();
       const gameType = Number(parsed.args[1]);
       const score = Number(parsed.args[2]);
-      const game = gameType === 0 ? 'rhythm' : 'simon';
+      // Reverse of GAME_TYPE · uint8 from on-chain back to the player-key
+      // string we use in the activity table. Adding a new game means
+      // appending one row here, not a wider ternary chain.
+      const game = ({ 0: 'rhythm', 1: 'simon', 2: 'stack' })[gameType];
+      if (!game) {
+        console.warn(`⛓️  Unknown gameType ${gameType} in ScoreRecorded event · skipping`);
+        continue;
+      }
 
       let timestamp = new Date().toISOString();
       try {

@@ -10,6 +10,20 @@
 
 const webpush = require('web-push');
 
+// Single source of truth for player-facing game names. Mirrors the
+// GAME_LABEL map in server.js · adding a new game means one line here,
+// every notification template picks it up automatically. Previously each
+// template had its own `game === 'rhythm' ? 'Rhythm Rush' : 'Simon Memory'`
+// ternary which silently mislabeled Stack Tower scores as Simon Memory.
+const GAME_LABEL = {
+  rhythm: 'Rhythm Rush',
+  simon:  'Simon Memory',
+  stack:  'Stack Tower',
+};
+function gameLabelOf(game) {
+  return GAME_LABEL[game] || game;
+}
+
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_CONTACT = process.env.VAPID_CONTACT_EMAIL || 'mailto:notify@gamearenahq.xyz';
@@ -92,7 +106,7 @@ function cupDeadlineNotification(rank, qualifyAt, totalPrizePool) {
 // Rank change — someone just bumped you off a podium spot. Only fires for
 // top-3 displacement because that's the emotionally significant moment.
 function rankChangeNotification(opponent, newRank, game) {
-  const gameLabel = game === 'rhythm' ? 'Rhythm Rush' : 'Simon Memory';
+  const gameLabel = gameLabelOf(game);
   const placeMedal = newRank === 4 ? '🥉→4️⃣' : newRank === 3 ? '🥈→🥉' : '🥇→🥈';
   return {
     title: `📉 You dropped to #${newRank}`,
@@ -106,7 +120,7 @@ function rankChangeNotification(opponent, newRank, game) {
 // is close behind. Defensive loss aversion. Fires when the gap shrinks
 // inside a threshold but BEFORE displacement actually happens.
 function rankChasingNotification(opponentName, gap, yourRank, game) {
-  const gameLabel = game === 'rhythm' ? 'Rhythm Rush' : 'Simon Memory';
+  const gameLabel = gameLabelOf(game);
   return {
     title: `⚠️ Someone's coming for #${yourRank}`,
     body: `${opponentName} is just ${gap.toLocaleString()} pts behind you on ${gameLabel}. Defend it.`,
@@ -119,7 +133,7 @@ function rankChasingNotification(opponentName, gap, yourRank, game) {
 // "You're 1 point away from #N" — sent to the lower-ranked player when
 // they're close to climbing. Offensive call-to-action.
 function rankClimbingNotification(targetName, gap, targetRank, game) {
-  const gameLabel = game === 'rhythm' ? 'Rhythm Rush' : 'Simon Memory';
+  const gameLabel = gameLabelOf(game);
   return {
     title: `🎯 ${gap.toLocaleString()} pts from #${targetRank}`,
     body: `Take ${targetName}'s spot on ${gameLabel}. One round could do it.`,
