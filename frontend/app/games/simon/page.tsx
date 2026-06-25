@@ -2102,21 +2102,24 @@ function RewardContent({
 }
 
 // ─── GasAwareTxError ──────────────────────────────────────────────────────────
-// Finish-screen error banner. Two variants:
-//   • Plain (default): single-line "Transaction failed" message with a
-//     retry hint. Same as before.
-//   • Gas-aware: triggered when the upstream detected insufficient-funds.
-//     Follows the finish-screen's visual rhythm (rounded card, soft tint,
-//     one iconic title, one short sentence) and offers ONE primary CTA
-//     (Telegram) plus a tiny secondary inline link (Copy wallet ID). No
-//     jargon (no CELO, no gas), no em dashes, and laid out so it never
-//     pushes the PLAY AGAIN / EXIT pair below the fold on a 360px phone.
+// Finish-screen error banner. Three variants:
+//   • Rejection · user said no in the wallet popup. Plain red message,
+//     no help nudge (they made a choice).
+//   • Confirmed gas · upstream tagged it "needs a top up". Rich orange
+//     card with confident copy + Telegram help.
+//   • Generic failure · everything else. Rich orange card with TENTATIVE
+//     copy ("often this is low gas") + same help path. Catches the
+//     Forno phantom-revert case where Celo's RPC returns a generic
+//     revert that's actually insufficient funds, and the Privy embedded-
+//     wallet case where the wallet doesn't surface a useful hint.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
   const { address } = useAccount();
   const [copied, setCopied] = useState(false);
+  const isRejection = txError.toLowerCase().includes("rejected");
 
-  if (!isGasError) {
+  // Branch 1 · user rejected the tx · no help nudge fits.
+  if (isRejection) {
     return (
       <div style={{
         marginTop: "16px", padding: "10px 12px",
@@ -2143,6 +2146,13 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       .catch(() => {});
   };
 
+  // Branches 2 + 3 share the visual treatment · only the title + sub
+  // copy differ based on how confident we are it's gas.
+  const title = isGasError ? "NEEDS A TOP UP TO SAVE" : "SCORE DIDN'T SAVE";
+  const subline = isGasError
+    ? "Your CELO ran out · ask a teammate to top you up"
+    : "Often this is low CELO · top up if you suspect it";
+
   return (
     <div style={{
       marginTop: "16px",
@@ -2155,10 +2165,6 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       gap: "8px",
       textAlign: "center",
     }}>
-      {/* Title — pure signal, no sentence. Same pattern as Clash Royale's
-          "NOT ENOUGH GEMS" or Candy Crush's "OUT OF LIVES": one phrase,
-          title-case, centered, tight. The primary button says "GET HELP"
-          so the sentence explaining what to do is redundant. */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         gap: "8px",
@@ -2168,7 +2174,19 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         textShadow: "0 0 10px rgba(249,115,22,0.5)",
       }}>
         <span style={{ fontSize: "14px" }}>⛽</span>
-        NEEDS A TOP UP TO SAVE
+        {title}
+      </div>
+
+      {/* Honest subline · confident copy for confirmed gas, tentative
+          copy for generic failures so we don't gaslight a player whose
+          tx died for some other reason into thinking it must be gas. */}
+      <div style={{
+        color: "rgba(254,215,170,0.78)",
+        fontSize: "clamp(10px, 2.6vw, 11px)",
+        fontWeight: 700, letterSpacing: "0.02em",
+        lineHeight: 1.4,
+      }}>
+        {subline}
       </div>
 
       {/* Primary CTA — one button does the work a paragraph used to do */}
@@ -2187,8 +2205,6 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         💬 GET HELP IN TELEGRAM
       </a>
 
-      {/* Secondary inline link — dashed underline, small, so the eye lands
-          on the button first and only finds this if they look for more. */}
       <button
         onClick={copyWallet}
         style={{

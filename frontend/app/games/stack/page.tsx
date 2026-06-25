@@ -1090,10 +1090,17 @@ function StackRewardPanel({
   if (txError) {
     const low = txError.toLowerCase();
     const isGasError = low.includes("top up");
-    // Gas errors get the tappable rescue path · the run is already lost
-    // but the player learns where to fix it for next time without having
-    // to hunt for the community door themselves.
-    if (isGasError && onTopUp) {
+    const isRejection = low.includes("rejected");
+    // Rejections stay as a plain red message · the player explicitly said
+    // no, suggesting a top-up would be nonsense. EVERY other failure
+    // (confirmed gas OR Forno phantom revert OR Privy embedded-wallet
+    // silent reject) gets the tappable rescue. The run is already lost;
+    // give the player a clear next step instead of a dead-end.
+    if (!isRejection && onTopUp) {
+      const title = isGasError ? "Score not saved · needs a top up" : "Score not saved";
+      const sub = isGasError
+        ? "Tap to ask for gas in Telegram"
+        : "Often this is low CELO · tap to get help in Telegram";
       return (
         <button
           onClick={onTopUp}
@@ -1109,8 +1116,8 @@ function StackRewardPanel({
         >
           <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
           <span style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>Score not saved · needs a top up</div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
+            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>{title}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", lineHeight: 1.35, marginTop: 3 }}>{sub}</div>
           </span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 6l6 6-6 6" />
@@ -1121,9 +1128,9 @@ function StackRewardPanel({
     return (
       <div style={{
         marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: isGasError ? "rgba(251,146,60,0.1)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${isGasError ? "rgba(251,146,60,0.32)" : "rgba(239,68,68,0.2)"}`,
-        color: isGasError ? "#fdba74" : "rgba(252,165,165,0.85)",
+        background: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(239,68,68,0.2)",
+        color: "rgba(252,165,165,0.85)",
         fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
         textAlign: "center", lineHeight: 1.45,
       }}>{txError}</div>

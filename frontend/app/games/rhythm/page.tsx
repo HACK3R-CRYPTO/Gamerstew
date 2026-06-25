@@ -2790,11 +2790,24 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
 //     inline link (Copy wallet ID). No jargon, no em dashes. Mirrors the
 //     Simon finish screen — both games share the recovery path.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
+// Three branches:
+//   1. Wallet rejection · user said no · plain red, no help nudge.
+//   2. Confirmed insufficient-funds · rich orange card with confident
+//      "needs a top up" framing.
+//   3. Generic failure · rich orange card with TENTATIVE framing
+//      ("often this is low gas") plus the same help path. Catches the
+//      Forno phantom-revert case where Celo's RPC returns a generic
+//      revert that's actually insufficient funds · those used to fall
+//      through to a dead-end "Score didn't save" with no help affordance,
+//      especially hurting Privy users whose embedded wallet doesn't
+//      surface a clearer wallet-side hint.
 function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
   const { address } = useAccount();
   const [copied, setCopied] = useState(false);
+  const isRejection = txError.toLowerCase().includes("rejected");
 
-  if (!isGasError) {
+  // Branch 1 · user rejected the tx · no help nudge would make sense.
+  if (isRejection) {
     return (
       <div style={{
         marginTop: "16px", padding: "10px 12px",
@@ -2821,6 +2834,13 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       .catch(() => {});
   };
 
+  // Branches 2 + 3 share visual treatment · only the title + sub copy
+  // differ based on confidence.
+  const title = isGasError ? "NEEDS A TOP UP TO SAVE" : "SCORE DIDN'T SAVE";
+  const subline = isGasError
+    ? "Your CELO ran out · ask a teammate to top you up"
+    : "Often this is low CELO · top up if you suspect it";
+
   return (
     <div style={{
       marginTop: "16px",
@@ -2842,7 +2862,20 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         textShadow: "0 0 10px rgba(249,115,22,0.5)",
       }}>
         <span style={{ fontSize: "14px" }}>⛽</span>
-        NEEDS A TOP UP TO SAVE
+        {title}
+      </div>
+
+      {/* Honest subline · confident for confirmed gas, tentative for
+          generic failures. Reads as "we know" vs "we think" so the
+          player isn't gaslit into believing it's definitely gas when
+          we can't tell. */}
+      <div style={{
+        color: "rgba(254,215,170,0.78)",
+        fontSize: "clamp(10px, 2.6vw, 11px)",
+        fontWeight: 700, letterSpacing: "0.02em",
+        lineHeight: 1.4,
+      }}>
+        {subline}
       </div>
 
       <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"
