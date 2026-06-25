@@ -25,6 +25,9 @@ import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
+import { GasHelpSheet } from "@/components/GasHelpSheet";
+import { LowGasBanner } from "@/components/LowGasBanner";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -690,6 +693,12 @@ export default function RhythmGamePage() {
   // for "waiting for wallet", "tx rejected", "insufficient gas", etc.
   const [signingOnChain, setSigningOnChain] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+  // GasHelpSheet covers the pre-game lobby gate (player taps START while
+  // CELO is below the block threshold). Rhythm's existing GasAwareTxError
+  // card already covers the post-fail rescue path with its own Telegram
+  // link · sheet here is gate-only.
+  const [gasHelpOpen, setGasHelpOpen] = useState(false);
+  const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
   // Reset game state
   const reset = useCallback(() => {
@@ -733,6 +742,17 @@ export default function RhythmGamePage() {
     // requested. Without it, two quick clicks during the ~500ms ticket
     // round trip insert two game_sessions rows for one actual play.
     if (startingRef.current) return;
+
+    // ═══ Pre-game gas gate ═══════════════════════════════════════════════
+    // Onchain finality is binary · we can't predict per-tx gas exactly, so
+    // when the bucket reads "block" we stop the player here rather than
+    // letting them play a full track and lose the score to a guaranteed
+    // insufficient-funds throw. MiniPay (USDC fee adapter) and guests
+    // (no submit at all) both come back "safe-equivalent" from useGasStatus.
+    if (gasStatus === "block") {
+      setGasHelpOpen(true);
+      return;
+    }
     startingRef.current = true;
 
     reset();
@@ -1444,7 +1464,25 @@ export default function RhythmGamePage() {
       }} />
 
       {/* ═══ IDLE ═══ */}
-      {phase === "idle" && <IdleView onStart={startGame} onExit={() => router.push("/games")} onLeaderboard={() => router.push("/games/rhythm/leaderboard")} guest={!authed} />}
+      {phase === "idle" && (
+        <IdleView
+          onStart={startGame}
+          onExit={() => router.push("/games")}
+          onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
+          guest={!authed}
+          /* Banner sits between the leaderboard preview and the START
+             button on warn/block · null otherwise · keeping the lobby
+             clean for the happy path. LowGasBanner self-hides for safe /
+             guest / minipay buckets so this prop just passes through. */
+          gasBanner={
+            <LowGasBanner
+              status={gasStatus}
+              approxSavesLeft={approxSavesLeft}
+              onOpenHelp={() => setGasHelpOpen(true)}
+            />
+          }
+        />
+      )}
 
       {/* ═══ COUNTDOWN ═══ */}
       {phase === "countdown" && <CountdownView n={countdown} />}
@@ -1526,12 +1564,33 @@ export default function RhythmGamePage() {
         walletAddress={address}
         trigger={!!submitResult}
       />
+
+      {/* GasHelpSheet · pre-game gate destination. Opens when the player
+          taps START while blocked or when they tap the LowGasBanner on
+          the lobby. Score is omitted at the gate (no run has happened
+          yet) so the message pre-fill stays a clean ask. */}
+      <GasHelpSheet
+        open={gasHelpOpen}
+        onClose={() => setGasHelpOpen(false)}
+        intent="gas-help"
+        game="rhythm"
+      />
     </div>
   );
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest }: { onStart: () => void; onExit: () => void; onLeaderboard: () => void; guest?: boolean }) {
+function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
+  onStart: () => void;
+  onExit: () => void;
+  onLeaderboard: () => void;
+  guest?: boolean;
+  // Optional slot for the LowGasBanner. The parent owns the gas state +
+  // the GasHelpSheet, so IdleView just renders whatever node it gets.
+  // Null is the common case (player is safely funded) · the layout
+  // collapses gracefully.
+  gasBanner?: React.ReactNode;
+}) {
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
@@ -1587,6 +1646,10 @@ function IdleView({ onStart, onExit, onLeaderboard, guest }: { onStart: () => vo
       </div>
 
       {guest && <GuestPlayChip />}
+
+      {/* Gas posture pill · only renders for warn/block. Empty otherwise
+          so the lobby reads clean for the happy-path player. */}
+      {gasBanner}
 
       {/* Top players preview · the leaderboard lives ON the play surface
           where the eye actually goes, not in a corner icon nobody scans.

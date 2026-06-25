@@ -13,6 +13,7 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { AccountSheet } from "@/components/AccountSheet";
 import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
+import { useGasStatus } from "@/hooks/useGasStatus";
 
 const T = {
   ink: "#ffffff",
@@ -59,6 +60,14 @@ export default function AppHeader() {
   // chip a dead-end for the daily action (send G$) that actually matters.
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
   const unreadCount = useUnreadNotificationsCount(address);
+  // Gas-low signal on the dual-token chip. Same source of truth as the
+  // lobby gate + AccountSheet status pill · pulses on the CELO icon so a
+  // player tapping into ANY surface sees the warning without having to
+  // open the sheet first. Tap behavior is unchanged (still opens
+  // AccountSheet) so the rich top-up flow stays in one place.
+  const { status: gasStatus } = useGasStatus();
+  const showGasDot = gasStatus === "warn" || gasStatus === "block";
+  const gasDotColor = gasStatus === "block" ? "#fb7185" : "#fbbf24";
   // Mute icon only kills the ambient pad (the constant loop on menu
   // surfaces). UI feedback, SFX, and in-game music are untouched —
   // granular per-channel control lives in Settings → Audio.
@@ -292,9 +301,31 @@ export default function AppHeader() {
             border: `1px solid ${T.hairline}`,
             height: 38,
           }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 9px" }} title="CELO · network gas">
-              <img src="/tokens/celo.png" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
-              <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.ink, lineHeight: 1 }}>{fmtCelo(celoBal?.value)}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 9px" }} title={showGasDot ? (gasStatus === "block" ? "CELO · out of gas, scores can't save" : "CELO · running low, top up soon") : "CELO · network gas"}>
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <img src="/tokens/celo.png" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
+                {/* Status dot · pulses on block (urgent), steady on warn
+                    (informational). 8×8 with a dark ring so it reads on
+                    any header background. Tap inherits from the chip ·
+                    opens AccountSheet which has the full top-up row. */}
+                {showGasDot && (
+                  <span aria-hidden style={{
+                    position: "absolute", top: -3, right: -4,
+                    width: 8, height: 8, borderRadius: 999,
+                    background: gasDotColor,
+                    border: "1.5px solid #0a0228",
+                    boxShadow: `0 0 6px ${gasDotColor}, 0 0 12px ${gasDotColor}66`,
+                    animation: gasStatus === "block" ? "hdr-gas-pulse 1.4s ease-in-out infinite" : undefined,
+                  }} />
+                )}
+              </span>
+              <span style={{ fontFamily: T.display, fontSize: 12.5, color: showGasDot ? gasDotColor : T.ink, lineHeight: 1 }}>{fmtCelo(celoBal?.value)}</span>
+              <style>{`
+                @keyframes hdr-gas-pulse {
+                  0%, 100% { transform: scale(1); opacity: 1; }
+                  50%      { transform: scale(1.25); opacity: 0.7; }
+                }
+              `}</style>
             </span>
             <span style={{ width: 1, background: T.hairline }} />
             <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 11px 0 9px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))" }} title="G$ · game token">
