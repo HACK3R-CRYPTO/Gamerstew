@@ -3,6 +3,7 @@
 // Per-game leaderboard tabs · uses the project's previous leaderboard style.
 // LIVE: 3-character StagePodium + neon-bordered pill rows for ranks 4+ with pagination.
 // PAST: champion-card grid (one card per sealed season) matching the legacy /leaderboard.
+//       Cards open into a detail sheet showing full standings for that season.
 //
 // Data sources (matches the legacy /leaderboard exactly):
 //   LIVE rows         → SUBGRAPH (Goldsky)  · fetchLeaderboard(gameType, seasonStart)
@@ -13,6 +14,7 @@
 // backend only provides season boundaries + sealed past records.
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 
@@ -37,6 +39,20 @@ const GAME_HREF: Record<GameKind, string> = {
   rhythm: "/games/rhythm",
   simon: "/games/simon",
   stack: "/games/stack",
+};
+// Friendly title used in the past-season detail sheet header. One row per
+// game · add a new game and the sheet picks it up.
+const GAME_LABEL: Record<GameKind, string> = {
+  rhythm: "Rhythm Rush",
+  simon: "Simon Memory",
+  stack: "Stack Tower",
+};
+// Per-game accent for the detail sheet · matches each lobby's signature
+// color so the sheet visually belongs to the game the player came from.
+const GAME_ACCENT: Record<GameKind, string> = {
+  rhythm: "#e879f9",
+  simon: "#06b6d4",
+  stack: "#fb923c",
 };
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the
@@ -184,7 +200,10 @@ function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; 
 }
 
 // ─── past-season champion card · matches previous /leaderboard card 1:1 ──
-function SeasonChampionCard({ season, gameKind, address }: { season: PastSeason; gameKind: GameKind; address?: string }) {
+// Tap target · the card was previously a static read-only block which
+// trained players to expect details on tap. onClick opens
+// PastSeasonDetailSheet with the full standings + the player's finish.
+function SeasonChampionCard({ season, gameKind, address, onClick }: { season: PastSeason; gameKind: GameKind; address?: string; onClick: () => void }) {
   const entries = season[gameKind] ?? [];
   const winner = entries[0];
   const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
@@ -192,15 +211,22 @@ function SeasonChampionCard({ season, gameKind, address }: { season: PastSeason;
   const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
   const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
   return (
-    <div style={{
-      borderRadius: 14,
-      background: "rgba(20,10,50,0.6)",
-      border: placedTop3 ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(167,139,250,0.18)",
-      boxShadow: placedTop3
-        ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
-        : "0 6px 14px rgba(0,0,0,0.5)",
-      padding: "12px 14px",
-    }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        borderRadius: 14,
+        background: "rgba(20,10,50,0.6)",
+        border: placedTop3 ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(167,139,250,0.18)",
+        boxShadow: placedTop3
+          ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
+          : "0 6px 14px rgba(0,0,0,0.5)",
+        padding: "12px 14px",
+      }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div style={{ color: "#fff", fontSize: 13, fontWeight: 900, letterSpacing: "0.06em" }}>SEASON {season.season}</div>
         {myMedal && (
@@ -237,7 +263,199 @@ function SeasonChampionCard({ season, gameKind, address }: { season: PastSeason;
           {dateRange(season.startTs, season.endTs)}
         </span>
       </div>
-    </div>
+      {/* "View details" affordance · subtle but tells the player the card
+          is interactive. Sits below the date row so it doesn't compete
+          with the winner block visually. */}
+      <div style={{
+        marginTop: 8, paddingTop: 8,
+        borderTop: "1px dashed rgba(167,139,250,0.18)",
+        color: "rgba(167,139,250,0.85)",
+        fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+      }}>
+        VIEW STANDINGS
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </div>
+    </button>
+  );
+}
+
+// ─── past-season detail sheet · full standings + your finish ─────────────
+// Mounted from SkillLeaderboardTabs when the player taps any past-season
+// card. Portal-mounted so it escapes any backdrop-filter containers and
+// renders above the AppHeader stack.
+function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
+  season: PastSeason;
+  gameKind: GameKind;
+  address?: string;
+  onClose: () => void;
+}) {
+  const entries = season[gameKind] ?? [];
+  const accent = GAME_ACCENT[gameKind];
+  const label = GAME_LABEL[gameKind];
+
+  // ESC closes · same pattern AccountSheet uses.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Lock the page scroll while the sheet is open · prevents the
+  // leaderboard behind from drag-scrolling under the modal on mobile.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, []);
+
+  if (typeof document === "undefined") return null;
+
+  // Show the full standings list · sheet has overflowY:auto so a long
+  // tail just scrolls. Past seasons typically have ≤20 entries anyway,
+  // and clipping the list hides the player's finish without telling
+  // them their score was tracked.
+  const medalFor = (rank: number) => rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
+  const medalColor = (rank: number) => rank === 1 ? "#fbbf24" : rank === 2 ? "#e2e8f0" : rank === 3 ? "#f97316" : null;
+
+  return createPortal(
+    <>
+      <style>{`
+        @keyframes psd-fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes psd-up   { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      `}</style>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(2,0,12,0.86)",
+          backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          animation: "psd-fade 0.22s ease both",
+        }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Season ${season.season} ${label} standings`}
+          style={{
+            width: "100%", maxWidth: 540, maxHeight: "88vh",
+            borderRadius: "24px 24px 0 0",
+            background: "linear-gradient(180deg, rgba(30,12,80,0.98) 0%, rgba(12,4,40,0.99) 60%, rgba(7,2,26,1) 100%)",
+            border: `1px solid ${accent}33`, borderBottom: "none",
+            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
+            display: "flex", flexDirection: "column", overflow: "hidden",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            animation: "psd-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both",
+          }}
+        >
+          {/* Drag handle · the gestural close affordance */}
+          <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px", flexShrink: 0 }}>
+            <span style={{ width: 38, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.22)" }} />
+          </div>
+
+          {/* Header · season + game + sealed date + close */}
+          <div style={{
+            padding: "10px 18px 14px",
+            borderBottom: `1px solid ${accent}1a`,
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            flexShrink: 0,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: accent, fontSize: 16, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.body }}>
+                SEASON {season.season} · {label.toUpperCase()}
+              </div>
+              <div style={{ color: T.inkSoft, fontSize: 10.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>
+                ENDED {new Date(season.endTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {season.totalPlayers || entries.length} PLAYER{(season.totalPlayers || entries.length) !== 1 ? "S" : ""}
+              </div>
+            </div>
+            <button onClick={onClose} aria-label="Close" style={{
+              width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.7)", fontSize: 15, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>✕</button>
+          </div>
+
+          {/* Body · standings list, scrolls when long */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 20px", WebkitOverflowScrolling: "touch" }}>
+            {entries.length === 0 && (
+              <div style={{ color: T.inkSoft, fontSize: 12, fontWeight: 700, textAlign: "center", padding: "32px 0" }}>
+                No scores recorded for this season.
+              </div>
+            )}
+
+            {entries.length > 0 && (
+              <>
+                {/* Standings list · full season ranking · scrolls when long */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {entries.map((e, i) => {
+                    const rank = i + 1;
+                    const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
+                    const medal = medalFor(rank);
+                    const mColor = medalColor(rank);
+                    return (
+                      <div key={`${e.player}-${rank}`} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "9px 12px", borderRadius: 10,
+                        background: isMe
+                          ? `${accent}1a`
+                          : mColor
+                            ? `${mColor}10`
+                            : "rgba(255,255,255,0.03)",
+                        border: isMe
+                          ? `1.5px solid ${accent}88`
+                          : mColor
+                            ? `1px solid ${mColor}44`
+                            : "1px solid rgba(255,255,255,0.06)",
+                      }}>
+                        <span style={{
+                          width: 26, textAlign: "center",
+                          fontFamily: T.body, fontSize: 11, fontWeight: 900,
+                          color: mColor || T.inkDim,
+                        }}>
+                          {medal || `#${rank}`}
+                        </span>
+                        <span style={{
+                          flex: 1, minWidth: 0,
+                          color: "#fff", fontFamily: T.body, fontSize: 12, fontWeight: 700,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {fmtName(e.player, e.username)}
+                          {isMe && <span style={{ marginLeft: 6, color: accent, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>· YOU</span>}
+                        </span>
+                        <span style={{
+                          color: mColor || "#fff",
+                          fontFamily: T.body, fontSize: 13, fontWeight: 900,
+                          textShadow: mColor ? `0 0 8px ${mColor}55` : "none",
+                        }}>
+                          {e.score.toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Empty footer · the row above already highlights the
+                    player's finish via the "· YOU" tag and accent border.
+                    No extra summary needed when the full list is visible. */}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body,
   );
 }
 
@@ -250,6 +468,9 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
   const [liveEntries, setLiveEntries] = useState<Entry[] | null>(null);
   const [loadErr, setLoadErr] = useState(false);
   const [page, setPage] = useState(0);
+  // The past-season card the player tapped (null when no sheet is open).
+  // Drives the PastSeasonDetailSheet mount below.
+  const [selectedPastSeason, setSelectedPastSeason] = useState<PastSeason | null>(null);
 
   // 1) Backend gives us currentSeason + boundaries + sealed past[].
   useEffect(() => {
@@ -414,12 +635,29 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
               }}>── COMPLETED SEASONS ──</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
                 {meta.past.map(s => (
-                  <SeasonChampionCard key={s.season} season={s} gameKind={gameKind} address={address} />
+                  <SeasonChampionCard
+                    key={s.season}
+                    season={s}
+                    gameKind={gameKind}
+                    address={address}
+                    onClick={() => setSelectedPastSeason(s)}
+                  />
                 ))}
               </div>
             </>
           )}
         </>
+      )}
+
+      {/* Past-season detail · portal-mounted, scrolls internally when the
+          standings list is long. Closes on backdrop tap, ESC, or the X. */}
+      {selectedPastSeason && (
+        <PastSeasonDetailSheet
+          season={selectedPastSeason}
+          gameKind={gameKind}
+          address={address}
+          onClose={() => setSelectedPastSeason(null)}
+        />
       )}
     </div>
   );
