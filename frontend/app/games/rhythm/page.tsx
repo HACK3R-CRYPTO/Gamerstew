@@ -979,7 +979,7 @@ export default function RhythmGamePage() {
           // Anything that's neither a rejection nor a clear gas case still
           // gets the gas-help card downstream (>90% accurate for new
           // accounts, harmless false positive for the rest).
-          const isGasOrFunds =
+          const matchedGasPattern =
             name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
             code === -32000 || code === -32010 || code === -32603 ||
             causeCode === "insufficient_funds" ||
@@ -987,6 +987,17 @@ export default function RhythmGamePage() {
             msg.includes("gas limit") || msg.includes("exceeds gas") ||
             msg.includes("gas required") || msg.includes("intrinsic gas") ||
             msg.includes("cannot estimate") || msg.includes("estimate gas");
+          // Forno mask · Celo's RPC returns a generic revert when the real
+          // cause is insufficient funds (per the celo-insufficient-funds-
+          // trap reference). Privy embedded wallets surface generic errors
+          // for the same shape. If the keyword match missed BUT the player's
+          // gas bucket says they're below the warn floor, reclassify as gas
+          // so the post-fail surface shows the help card instead of a
+          // dead-end "try again."
+          const lowBalanceLikelyGas =
+            !isRejected && !matchedGasPattern &&
+            (gasStatus === "warn" || gasStatus === "block");
+          const isGasOrFunds = matchedGasPattern || lowBalanceLikelyGas;
           // Three buckets, three messages. The render layer keys off the
           // text to choose the correct UI variant — rejection (red banner),
           // gas (orange help card), other (red with retry hint).
@@ -2790,24 +2801,19 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
 //     inline link (Copy wallet ID). No jargon, no em dashes. Mirrors the
 //     Simon finish screen — both games share the recovery path.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
-// Three branches:
-//   1. Wallet rejection · user said no · plain red, no help nudge.
-//   2. Confirmed insufficient-funds · rich orange card with confident
-//      "needs a top up" framing.
-//   3. Generic failure · rich orange card with TENTATIVE framing
-//      ("often this is low gas") plus the same help path. Catches the
-//      Forno phantom-revert case where Celo's RPC returns a generic
-//      revert that's actually insufficient funds · those used to fall
-//      through to a dead-end "Score didn't save" with no help affordance,
-//      especially hurting Privy users whose embedded wallet doesn't
-//      surface a clearer wallet-side hint.
+// Two visual variants:
+//   • Plain (default): generic failure or wallet rejection. Single-line
+//     red message with a retry hint. Player decides what to do next.
+//   • Gas-aware: triggered when the upstream classified the error as
+//     insufficient funds. Rich orange card with one primary CTA
+//     (Telegram help) plus a tiny secondary inline link (Copy wallet ID).
+// The classification is done at the catch site, not here · so we don't
+// overclaim "this was gas" when it was actually a different failure.
 function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
   const { address } = useAccount();
   const [copied, setCopied] = useState(false);
-  const isRejection = txError.toLowerCase().includes("rejected");
 
-  // Branch 1 · user rejected the tx · no help nudge would make sense.
-  if (isRejection) {
+  if (!isGasError) {
     return (
       <div style={{
         marginTop: "16px", padding: "10px 12px",
@@ -2834,13 +2840,6 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       .catch(() => {});
   };
 
-  // Branches 2 + 3 share visual treatment · only the title + sub copy
-  // differ based on confidence.
-  const title = isGasError ? "NEEDS A TOP UP TO SAVE" : "SCORE DIDN'T SAVE";
-  const subline = isGasError
-    ? "Your CELO ran out · ask a teammate to top you up"
-    : "Often this is low CELO · top up if you suspect it";
-
   return (
     <div style={{
       marginTop: "16px",
@@ -2862,20 +2861,7 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         textShadow: "0 0 10px rgba(249,115,22,0.5)",
       }}>
         <span style={{ fontSize: "14px" }}>⛽</span>
-        {title}
-      </div>
-
-      {/* Honest subline · confident for confirmed gas, tentative for
-          generic failures. Reads as "we know" vs "we think" so the
-          player isn't gaslit into believing it's definitely gas when
-          we can't tell. */}
-      <div style={{
-        color: "rgba(254,215,170,0.78)",
-        fontSize: "clamp(10px, 2.6vw, 11px)",
-        fontWeight: 700, letterSpacing: "0.02em",
-        lineHeight: 1.4,
-      }}>
-        {subline}
+        NEEDS A TOP UP TO SAVE
       </div>
 
       <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"

@@ -467,7 +467,7 @@ export default function SimonGamePage() {
         // when a no-CELO wallet tries to write. Anything that's neither a
         // user rejection nor a clear gas case still gets the gas-help card
         // downstream, since for new accounts that's the dominant failure.
-        const isGasOrFunds =
+        const matchedGasPattern =
           name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
           code === -32000 || code === -32010 || code === -32603 ||
           causeCode === "insufficient_funds" ||
@@ -475,6 +475,16 @@ export default function SimonGamePage() {
           msg.includes("gas limit") || msg.includes("exceeds gas") ||
           msg.includes("gas required") || msg.includes("intrinsic gas") ||
           msg.includes("cannot estimate") || msg.includes("estimate gas");
+        // Forno mask · Celo's RPC returns a generic revert when the real
+        // cause is insufficient funds (per celo-insufficient-funds-trap).
+        // Privy embedded wallets surface generic errors for the same shape.
+        // If the keyword match missed BUT the player's gas bucket says
+        // they're below the warn floor, reclassify as gas so the help
+        // card fires instead of a dead-end "try again."
+        const lowBalanceLikelyGas =
+          !isRejected && !matchedGasPattern &&
+          (gasStatus === "warn" || gasStatus === "block");
+        const isGasOrFunds = matchedGasPattern || lowBalanceLikelyGas;
         // Three buckets, three messages. The render layer keys off the
         // text to choose the correct UI variant — rejection (red banner),
         // gas (orange help card), other (red with retry hint).
@@ -2102,24 +2112,20 @@ function RewardContent({
 }
 
 // ─── GasAwareTxError ──────────────────────────────────────────────────────────
-// Finish-screen error banner. Three variants:
-//   • Rejection · user said no in the wallet popup. Plain red message,
-//     no help nudge (they made a choice).
-//   • Confirmed gas · upstream tagged it "needs a top up". Rich orange
-//     card with confident copy + Telegram help.
-//   • Generic failure · everything else. Rich orange card with TENTATIVE
-//     copy ("often this is low gas") + same help path. Catches the
-//     Forno phantom-revert case where Celo's RPC returns a generic
-//     revert that's actually insufficient funds, and the Privy embedded-
-//     wallet case where the wallet doesn't surface a useful hint.
+// Finish-screen error banner. Two variants:
+//   • Plain (default): generic failure or wallet rejection. Single-line
+//     red message with a retry hint. Player decides what to do next.
+//   • Gas-aware: triggered when the upstream classified the error as
+//     insufficient funds. Rich orange card with one primary CTA
+//     (Telegram help) plus a tiny secondary inline link (Copy wallet ID).
+// Classification happens at the catch site, not here · so we don't
+// overclaim "this was gas" when it was actually a different failure.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
   const { address } = useAccount();
   const [copied, setCopied] = useState(false);
-  const isRejection = txError.toLowerCase().includes("rejected");
 
-  // Branch 1 · user rejected the tx · no help nudge fits.
-  if (isRejection) {
+  if (!isGasError) {
     return (
       <div style={{
         marginTop: "16px", padding: "10px 12px",
@@ -2146,13 +2152,6 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       .catch(() => {});
   };
 
-  // Branches 2 + 3 share the visual treatment · only the title + sub
-  // copy differ based on how confident we are it's gas.
-  const title = isGasError ? "NEEDS A TOP UP TO SAVE" : "SCORE DIDN'T SAVE";
-  const subline = isGasError
-    ? "Your CELO ran out · ask a teammate to top you up"
-    : "Often this is low CELO · top up if you suspect it";
-
   return (
     <div style={{
       marginTop: "16px",
@@ -2165,6 +2164,10 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       gap: "8px",
       textAlign: "center",
     }}>
+      {/* Title — pure signal, no sentence. Same pattern as Clash Royale's
+          "NOT ENOUGH GEMS" or Candy Crush's "OUT OF LIVES": one phrase,
+          title-case, centered, tight. The primary button says "GET HELP"
+          so the sentence explaining what to do is redundant. */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         gap: "8px",
@@ -2174,19 +2177,7 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         textShadow: "0 0 10px rgba(249,115,22,0.5)",
       }}>
         <span style={{ fontSize: "14px" }}>⛽</span>
-        {title}
-      </div>
-
-      {/* Honest subline · confident copy for confirmed gas, tentative
-          copy for generic failures so we don't gaslight a player whose
-          tx died for some other reason into thinking it must be gas. */}
-      <div style={{
-        color: "rgba(254,215,170,0.78)",
-        fontSize: "clamp(10px, 2.6vw, 11px)",
-        fontWeight: 700, letterSpacing: "0.02em",
-        lineHeight: 1.4,
-      }}>
-        {subline}
+        NEEDS A TOP UP TO SAVE
       </div>
 
       {/* Primary CTA — one button does the work a paragraph used to do */}
@@ -2205,6 +2196,8 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         💬 GET HELP IN TELEGRAM
       </a>
 
+      {/* Secondary inline link — dashed underline, small, so the eye lands
+          on the button first and only finds this if they look for more. */}
       <button
         onClick={copyWallet}
         style={{
