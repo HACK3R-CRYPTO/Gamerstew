@@ -525,7 +525,7 @@ export default function StackTowerPage() {
             msg.includes("user rejected") ||
             msg.includes("rejected the request") ||
             msg.includes("user denied");
-          const isGasOrFunds =
+          const matchedGasPattern =
             name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
             code === -32000 || code === -32010 || code === -32603 ||
             causeCode === "insufficient_funds" ||
@@ -533,6 +533,16 @@ export default function StackTowerPage() {
             msg.includes("gas limit") || msg.includes("exceeds gas") ||
             msg.includes("gas required") || msg.includes("intrinsic gas") ||
             msg.includes("cannot estimate") || msg.includes("estimate gas");
+          // Forno mask · Celo's RPC returns a generic revert when the real
+          // cause is insufficient funds (per celo-insufficient-funds-trap).
+          // Privy embedded wallets surface generic errors for the same shape.
+          // If the keyword match missed BUT the player's gas bucket says
+          // they're below the warn floor, reclassify as gas so the help
+          // card fires instead of a dead-end "try again."
+          const lowBalanceLikelyGas =
+            !isRejected && !matchedGasPattern &&
+            (gasStatus === "warn" || gasStatus === "block");
+          const isGasOrFunds = matchedGasPattern || lowBalanceLikelyGas;
           if (isRejected)        setTxError("Transaction rejected. Tap BUILD AGAIN to try again.");
           else if (isGasOrFunds) setTxError("Score didn't save · needs a top up.");
           else                   setTxError("Score didn't save. Tap BUILD AGAIN to try again.");
@@ -1092,7 +1102,9 @@ function StackRewardPanel({
     const isGasError = low.includes("top up");
     // Gas errors get the tappable rescue path · the run is already lost
     // but the player learns where to fix it for next time without having
-    // to hunt for the community door themselves.
+    // to hunt for the community door themselves. Classification is done
+    // upstream at the catch site, not here · so we don't overclaim "this
+    // was gas" when it was actually a different failure.
     if (isGasError && onTopUp) {
       return (
         <button

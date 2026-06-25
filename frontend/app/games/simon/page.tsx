@@ -467,7 +467,7 @@ export default function SimonGamePage() {
         // when a no-CELO wallet tries to write. Anything that's neither a
         // user rejection nor a clear gas case still gets the gas-help card
         // downstream, since for new accounts that's the dominant failure.
-        const isGasOrFunds =
+        const matchedGasPattern =
           name === "InsufficientFundsError" || name === "EstimateGasExecutionError" ||
           code === -32000 || code === -32010 || code === -32603 ||
           causeCode === "insufficient_funds" ||
@@ -475,6 +475,16 @@ export default function SimonGamePage() {
           msg.includes("gas limit") || msg.includes("exceeds gas") ||
           msg.includes("gas required") || msg.includes("intrinsic gas") ||
           msg.includes("cannot estimate") || msg.includes("estimate gas");
+        // Forno mask · Celo's RPC returns a generic revert when the real
+        // cause is insufficient funds (per celo-insufficient-funds-trap).
+        // Privy embedded wallets surface generic errors for the same shape.
+        // If the keyword match missed BUT the player's gas bucket says
+        // they're below the warn floor, reclassify as gas so the help
+        // card fires instead of a dead-end "try again."
+        const lowBalanceLikelyGas =
+          !isRejected && !matchedGasPattern &&
+          (gasStatus === "warn" || gasStatus === "block");
+        const isGasOrFunds = matchedGasPattern || lowBalanceLikelyGas;
         // Three buckets, three messages. The render layer keys off the
         // text to choose the correct UI variant — rejection (red banner),
         // gas (orange help card), other (red with retry hint).
@@ -2103,14 +2113,13 @@ function RewardContent({
 
 // ─── GasAwareTxError ──────────────────────────────────────────────────────────
 // Finish-screen error banner. Two variants:
-//   • Plain (default): single-line "Transaction failed" message with a
-//     retry hint. Same as before.
-//   • Gas-aware: triggered when the upstream detected insufficient-funds.
-//     Follows the finish-screen's visual rhythm (rounded card, soft tint,
-//     one iconic title, one short sentence) and offers ONE primary CTA
-//     (Telegram) plus a tiny secondary inline link (Copy wallet ID). No
-//     jargon (no CELO, no gas), no em dashes, and laid out so it never
-//     pushes the PLAY AGAIN / EXIT pair below the fold on a 360px phone.
+//   • Plain (default): generic failure or wallet rejection. Single-line
+//     red message with a retry hint. Player decides what to do next.
+//   • Gas-aware: triggered when the upstream classified the error as
+//     insufficient funds. Rich orange card with one primary CTA
+//     (Telegram help) plus a tiny secondary inline link (Copy wallet ID).
+// Classification happens at the catch site, not here · so we don't
+// overclaim "this was gas" when it was actually a different failure.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
   const { address } = useAccount();
