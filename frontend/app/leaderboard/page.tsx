@@ -95,8 +95,17 @@ type PastChallenge = {
   winners: Array<{ rank: number; wallet: string; username: string | null; plays: number }>;
 };
 type MarkovClimbData = {
-  event?: { phase: string; endsAt: string; minMatchesToQualify?: number; prizes?: { first?: { usdc?: number; g_dollar?: number } } };
-  leaderboard?: Array<{ rank: number; wallet: string; username: string; matches: number }>;
+  event?: {
+    id?: string;
+    name?: string;
+    tagline?: string;
+    phase: string;
+    startsAt?: string;
+    endsAt: string;
+    minMatchesToQualify?: number;
+    prizes?: { first?: { usdc?: number; g_dollar?: number } };
+  };
+  leaderboard?: Array<{ rank: number; wallet: string; username: string; matches: number; qualified?: boolean }>;
 };
 
 type Tab = "live" | "past" | "all-time";
@@ -128,11 +137,16 @@ function fmtDateRange(start: Date | null, end: Date | null): string {
   return `${s} → ${e}`;
 }
 
-// ─── unified past-event card (works for season, cup, or challenge) ──────
+// ─── unified past-event card (works for season, cup, challenge, or climb) ─
 type SelectedEvent =
   | { type: "season"; data: PastSeasonV1 }
   | { type: "cup"; data: PastCompetition }
   | { type: "challenge"; data: PastChallenge }
+  // Closed MARKOV Climb · same MarkovClimbData shape as the live variant,
+  // just routed through past-event rendering. The /api/markov-climb endpoint
+  // keeps returning standings after the window closes (phase=ended), we
+  // just have to surface them on this page.
+  | { type: "climb"; data: MarkovClimbData }
   // LIVE variants — clicking a live card opens its current data in the same
   // modal infrastructure so the page reads as interactive end-to-end.
   | { type: "live-cup"; data: CompetitionData }
@@ -146,7 +160,7 @@ type SelectedEvent =
 type DetailRow = { label: string; name: string; value: string; tint: string; icon?: string };
 type UnifiedPastEvent = {
   key: string;
-  kind: "season" | "cup" | "challenge";
+  kind: "season" | "cup" | "challenge" | "climb";
   sortTs: number;
   title: string;
   dateRange: string;
@@ -553,9 +567,39 @@ export default function EventsPage() {
         raw: { type: "challenge", data: ch },
       });
     });
+    // ─── Closed MARKOV Climb ────────────────────────────────────────────────
+    // The /api/markov-climb endpoint keeps returning standings after the
+    // window closes (phase flips to "ended"). Without this push, the climb
+    // was hidden from BOTH the live tab (gated on phase==="live") and the
+    // past tab (which only ingested seasons + cups + challenges before).
+    // Net effect: the ended climb disappeared. This puts it in the past
+    // grid alongside other completed events.
+    if (climb && climb.event?.phase === "ended") {
+      const lb = climb.leaderboard ?? [];
+      const winner = lb[0];
+      const second = lb[1];
+      const third = lb[2];
+      const endsAt = safeDate(climb.event.endsAt);
+      const startsAt = safeDate(climb.event.startsAt);
+      const myFinish = address ? (lb.findIndex(e => e.wallet.toLowerCase() === address.toLowerCase()) + 1) : 0;
+      const myMedalClimb = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      out.push({
+        key: `climb-${climb.event.id ?? "1"}`,
+        kind: "climb",
+        sortTs: endsAt ? endsAt.getTime() : 0,
+        title: `${(climb.event.name || "MARKOV CLIMB").toUpperCase()} · SEALED`,
+        dateRange: fmtDateRange(startsAt, endsAt),
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.matches} matches`, tint: "#fbbf24", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.matches} matches`, tint: "#e2e8f0", icon: "🥈" } : undefined,
+        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.matches} matches`, tint: "#f97316", icon: "🥉" } : undefined,
+        myMedal: myMedalClimb,
+        accent: "#a78bfa",
+        raw: { type: "climb", data: climb },
+      });
+    }
     out.sort((a, b) => b.sortTs - a.sortTs);
     return out;
-  }, [pastSeasons, pastCups, pastChallenges, address]);
+  }, [pastSeasons, pastCups, pastChallenges, climb, address]);
 
   // ALL-TIME pagination
   const podium = (allEntries ?? []).slice(0, 3);
@@ -761,6 +805,13 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
     name = sel.data.name?.toUpperCase() || (sel.type === "cup" ? "3-WEEK CUP" : "WEEKLY CHALLENGE");
     subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
     accent = sel.type === "cup" ? "#fbbf24" : "#86efac";
+  } else if (sel.type === "climb") {
+    // Closed MARKOV Climb · same body component as the live variant, just
+    // dressed as a past event in the header (SEALED label + end date).
+    const ev = sel.data.event;
+    name = `${(ev?.name || "MARKOV CLIMB").toUpperCase()} · SEALED`;
+    subline = ev?.endsAt ? `ENDED ${new Date(ev.endsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "ENDED";
+    accent = "#a78bfa";
   } else if (sel.type === "live-cup") {
     name = `3-WEEK CUP · WEEK ${sel.data.currentWeek}${sel.data.weeksLeft === 1 ? " · FINAL" : ""}`;
     subline = `LIVE · ${fmtCountdown(sel.data.compEnd)}`;
@@ -841,6 +892,10 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
             {sel.type === "live-cup" && <LiveCupBody data={sel.data} address={address} />}
             {sel.type === "live-community" && <LiveCommunityBody data={sel.data} address={address} />}
             {sel.type === "live-climb" && <LiveClimbBody data={sel.data} address={address} />}
+            {/* Closed climb · reuse the same body component as live · the
+                only differences are the header label (SEALED) and the
+                event phase, both already reflected in the data shape. */}
+            {sel.type === "climb" && <LiveClimbBody data={sel.data} address={address} />}
           </div>
         </div>
       </div>
