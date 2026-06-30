@@ -41,6 +41,10 @@ const { ethers } = require('ethers');
 // also works on CI / Railway shell.
 try {
   // Script lives in games-backend/scripts/ · walk up to find env files.
+  // Load ALL candidates (not just the first) so VALIDATOR_PRIVATE_KEY in
+  // games-backend/.env merges with INTERNAL_SECRET in frontend/.env.local.
+  // dotenv leaves already-set keys alone by default, so file order doesn't
+  // matter for keys that exist in only one file.
   const candidates = [
     path.resolve(__dirname, '..', '..', 'frontend', '.env.local'),
     path.resolve(__dirname, '..', '.env'),
@@ -48,7 +52,6 @@ try {
   for (const p of candidates) {
     if (fs.existsSync(p)) {
       require('dotenv').config({ path: p });
-      break;
     }
   }
 } catch {
