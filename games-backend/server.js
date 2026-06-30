@@ -266,6 +266,98 @@ async function resolveOnChain(wagerId, score) {
   }
 }
 
+// ─── On-chain proof verification for /api/submit-score ──────────────────────
+// Before this guard, the backend trusted whatever txHash the frontend sent.
+// If the player's recordScoreWithBackendSig reverted on chain (e.g. Forno's
+// "phantom revert" when CELO runs out · see reference_celo_insufficient_funds_trap)
+// the frontend would STILL pass the txHash and the backend would credit XP +
+// activity + score off-chain. Result: ghost ranks — dashboards say "#75"
+// but the subgraph shows zero ScoreRecorded events. The on-chain leaderboard
+// disagrees with the off-chain one.
+//
+// Fix: before crediting, fetch the receipt and require status===1 AND a
+// ScoreRecorded log keyed to THIS player + game. If the tx didn't land or
+// reverted, reject the submit · no off-chain credits land either. Off-chain
+// state becomes a strict subset of on-chain state, as intended.
+//
+// Polling: frontend doesn't await receipt before calling submit-score, so
+// the tx may not be mined yet when we look. Poll up to RECEIPT_TIMEOUT_MS,
+// with RECEIPT_POLL_MS gaps. Celo blocks are ~5s so 12s covers 2-3 blocks
+// of mining latency. If still no receipt after that, reject as "not mined."
+const RECEIPT_TIMEOUT_MS = 12_000;
+const RECEIPT_POLL_MS = 1_500;
+
+async function verifyScoreTx(txHash, playerAddress, gameType) {
+  if (!provider) {
+    // No RPC configured — fail open with a warning rather than blocking all
+    // submits. This branch should never hit in prod (CELO_RPC always set).
+    console.warn('⚠️  verifyScoreTx: no RPC provider, skipping verification');
+    return { ok: true, skipped: true };
+  }
+  const expectedPlayer = playerAddress.toLowerCase();
+  const expectedGameType = Number(gameType);
+  const expectedContract = GAME_PASS_ADDR.toLowerCase();
+
+  // Poll for receipt. ethers v6 returns null while pending.
+  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+  let receipt = null;
+  let lastErr = null;
+  while (Date.now() < deadline) {
+    try {
+      receipt = await provider.getTransactionReceipt(txHash);
+      if (receipt) break;
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise(r => setTimeout(r, RECEIPT_POLL_MS));
+  }
+  if (!receipt) {
+    return {
+      ok: false,
+      reason: lastErr
+        ? `Receipt fetch failed: ${lastErr.message?.slice(0, 80) || lastErr}`
+        : `Receipt not mined within ${RECEIPT_TIMEOUT_MS}ms · tx may have failed broadcast`,
+    };
+  }
+  if (Number(receipt.status) !== 1) {
+    return { ok: false, reason: `Tx reverted on chain (status ${receipt.status})` };
+  }
+  // Receipt's `to` MUST be the GamePass contract · otherwise the player
+  // could submit any unrelated successful tx hash to satisfy the check.
+  if ((receipt.to || '').toLowerCase() !== expectedContract) {
+    return { ok: false, reason: `Tx target mismatch · expected GamePass at ${expectedContract}, got ${receipt.to}` };
+  }
+  // Parse logs looking for the ScoreRecorded event keyed to THIS player and
+  // game. The contract may emit other events alongside; we only care that
+  // the one we're crediting exists.
+  let matched = null;
+  for (const log of receipt.logs || []) {
+    try {
+      const parsed = SCORE_EVENT_IFACE.parseLog({ topics: log.topics, data: log.data });
+      if (!parsed) continue;
+      if (parsed.name !== 'ScoreRecorded') continue;
+      const evPlayer = String(parsed.args.player).toLowerCase();
+      const evGameType = Number(parsed.args.gameType);
+      if (evPlayer === expectedPlayer && evGameType === expectedGameType) {
+        matched = {
+          player: evPlayer,
+          gameType: evGameType,
+          score: Number(parsed.args.score),
+          season: Number(parsed.args.season),
+        };
+        break;
+      }
+    } catch (_) { /* not a ScoreRecorded log */ }
+  }
+  if (!matched) {
+    return {
+      ok: false,
+      reason: `Tx succeeded but no ScoreRecorded(${expectedPlayer}, gameType=${expectedGameType}) emitted`,
+    };
+  }
+  return { ok: true, onChainScore: matched.score, onChainSeason: matched.season };
+}
+
 async function getTreasuryBalance() {
   if (!wagerContract) return '0';
   try {
@@ -1181,6 +1273,28 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
       error: 'Missing on-chain proof',
       reason: 'txHash required — every score must reference a GamePass contract tx',
     });
+  }
+
+  // ═══ Verify the on-chain proof actually landed ═══
+  // Format-only checks let "ghost ranks" through · a tx hash with the right
+  // shape but no successful receipt would still credit XP and activity. Now
+  // we fetch the receipt, require status===1, and confirm a ScoreRecorded
+  // log for THIS player + game exists. Only applied to player-submitted
+  // score txs (scoreTxHash); wager-resolution txs (wagerTxHash) come from
+  // resolveOnChain which already awaits the receipt before returning.
+  if (scoreTxHash) {
+    const gameTypeNum = GAME_TYPE[game];
+    if (gameTypeNum === undefined) {
+      return res.status(400).json({ error: 'Unknown game · cannot verify on-chain proof' });
+    }
+    const verified = await verifyScoreTx(scoreTxHash, playerAddress, gameTypeNum);
+    if (!verified.ok) {
+      console.warn(`🚨 submit-score rejected: ${playerAddress.slice(0, 10)}.. game=${game} tx=${scoreTxHash.slice(0, 10)}.. · ${verified.reason}`);
+      return res.status(400).json({
+        error: 'On-chain proof verification failed',
+        reason: verified.reason,
+      });
+    }
   }
 
   // Read previous best for this game IN THE CURRENT SEASON. PBs are a
