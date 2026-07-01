@@ -519,7 +519,7 @@ export default function SplashScreen() {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/components/game_arena_text.png"
+          src="/logo-full.png"
           alt="Game Arena"
           style={{
             // Min lowered from 364px → 240px so the logo fits a 360px

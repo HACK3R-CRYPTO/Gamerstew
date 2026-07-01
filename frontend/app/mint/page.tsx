@@ -250,7 +250,7 @@ function MintInner() {
         {/* Logo */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/components/game_arena_text.png"
+          src="/logo-full.png"
           alt="Game Arena"
           style={{
             width: "clamp(140px, 28vw, 380px)",

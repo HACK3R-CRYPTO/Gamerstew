@@ -196,7 +196,7 @@ function ConnectInner() {
         {/* Logo */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/components/game_arena_text.png"
+          src="/logo-full.png"
           alt="Game Arena"
           style={{ width: "clamp(200px, 32vw, 420px)", height: "auto", animation: "bounce-scale-in 0.7s cubic-bezier(0.34,1.56,0.64,1) both" }}
         />

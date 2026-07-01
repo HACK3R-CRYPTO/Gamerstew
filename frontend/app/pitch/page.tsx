@@ -358,7 +358,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
       }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/components/game_arena_text.png"
+          src="/logo-full.png"
           alt="Game Arena"
           style={{
             width: "clamp(260px, 55vw, 640px)",
