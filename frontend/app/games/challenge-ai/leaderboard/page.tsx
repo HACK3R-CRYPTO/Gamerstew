@@ -183,7 +183,10 @@ export default function ArenaLadderPage() {
   const me = ladder?.me ?? null;
   const podium = ladder?.top?.slice(0, 3) ?? [];
   const rest = ladder?.top?.slice(3) ?? [];
-  const showPool = (ladder?.poolGs ?? 0) > 0 && isCurrentWeek;
+  // Advertise the pool ONLY when a base amount was deliberately funded
+  // (env). Player refill spending accumulates silently until then — a
+  // '4 G$ pool' built from two refills is noise, not a prize.
+  const showPool = (ladder?.poolBaseGs ?? 0) > 0 && isCurrentWeek;
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
