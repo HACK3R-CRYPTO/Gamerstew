@@ -152,8 +152,18 @@ export default function ArenaLadderPage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [ladder, setLadder] = useState<LadderData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"week" | "past">("week");
   const [selWeek, setSelWeek] = useState<string | undefined>(undefined); // undefined = current
   const resetIn = useMemo(untilSundayUtc, []);
+
+  // Switching tabs drives which week loads: THIS WEEK always the current
+  // board; PAST defaults to the most recent finished week.
+  const pastWeeks = (ladder?.weeks ?? []).filter((w) => w !== ladder?.currentWeek);
+  const pickTab = (t: "week" | "past") => {
+    setTab(t);
+    if (t === "week") setSelWeek(undefined);
+    else if (pastWeeks.length > 0) setSelWeek(pastWeeks[0]);
+  };
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -174,7 +184,6 @@ export default function ArenaLadderPage() {
   const podium = ladder?.top?.slice(0, 3) ?? [];
   const rest = ladder?.top?.slice(3) ?? [];
   const showPool = (ladder?.poolGs ?? 0) > 0 && isCurrentWeek;
-  const weeks = ladder?.weeks ?? [];
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
@@ -187,6 +196,25 @@ export default function ArenaLadderPage() {
         >
           ‹ Back to arena
         </button>
+
+        {/* THIS WEEK / PAST switcher · same segmented control as /leaderboard */}
+        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+          {([
+            { id: "week" as const, label: "THIS WEEK" },
+            { id: "past" as const, label: "PAST" },
+          ]).map((opt) => {
+            const active = tab === opt.id;
+            return (
+              <button key={opt.id} onClick={() => pickTab(opt.id)} style={{
+                padding: "8px 18px", borderRadius: 10, cursor: "pointer",
+                background: active ? "#22c55e" : "transparent", border: "none",
+                color: active ? "#fff" : T.inkSoft,
+                fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
+                boxShadow: active ? "0 6px 14px -4px #22c55eaa, inset 0 1px 0 rgba(255,255,255,0.3)" : "none",
+              }}>{opt.label}</button>
+            );
+          })}
+        </div>
 
         {/* Header strip · arena identity + week status */}
         <div style={{
@@ -211,16 +239,15 @@ export default function ArenaLadderPage() {
             </div>
           </div>
 
-          {/* week selector · finished boards stay viewable forever */}
-          {weeks.length > 1 && (
+          {/* past-week chips · only on the PAST tab, newest first */}
+          {tab === "past" && pastWeeks.length > 1 && (
             <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingTop: 4 }}>
-              {weeks.map((w) => {
+              {pastWeeks.map((w) => {
                 const active = w === ladder?.week;
-                const isCur = w === ladder?.currentWeek;
                 return (
                   <button
                     key={w}
-                    onClick={() => setSelWeek(isCur ? undefined : w)}
+                    onClick={() => setSelWeek(w)}
                     style={{
                       flexShrink: 0, padding: "5px 12px", borderRadius: 999, cursor: "pointer",
                       background: active ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.04)",
@@ -229,7 +256,7 @@ export default function ArenaLadderPage() {
                       fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
                     }}
                   >
-                    {isCur ? "THIS WEEK" : `W${w.split("-W")[1]}`}
+                    W{w.split("-W")[1]}
                   </button>
                 );
               })}
@@ -238,7 +265,7 @@ export default function ArenaLadderPage() {
         </div>
 
         {/* Personal-status chip */}
-        {address && me && (
+        {address && me && !(tab === "past" && pastWeeks.length === 0) && (
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${ACCENT}1f, rgba(0,0,0,0.25))`, border: `1px solid ${ACCENT}55` }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink }}>
@@ -261,7 +288,18 @@ export default function ArenaLadderPage() {
 
         {loading && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading standings…</div>}
 
-        {!loading && ladder && ladder.top.length === 0 && (
+        {/* PAST tab before any week has finished */}
+        {!loading && tab === "past" && pastWeeks.length === 0 && (
+          <div style={{ textAlign: "center", padding: "32px 24px", borderRadius: 20, background: "rgba(255,255,255,0.03)", border: `1px dashed ${ACCENT}44` }}>
+            <div style={{ fontSize: 38, marginBottom: 8 }}>📖</div>
+            <div style={{ color: "#fff", fontSize: 15, fontWeight: 900 }}>No finished weeks yet</div>
+            <div style={{ color: T.inkDim, fontSize: 12, marginTop: 6 }}>
+              The first ladder week is still running — final standings land here every Sunday.
+            </div>
+          </div>
+        )}
+
+        {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length === 0 && (
           <div style={{
             width: "100%", maxWidth: 440, margin: "20px auto",
             padding: "32px 24px", borderRadius: 20,
@@ -290,7 +328,7 @@ export default function ArenaLadderPage() {
           </div>
         )}
 
-        {!loading && ladder && ladder.top.length > 0 && (
+        {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length > 0 && (
           <>
             {/* Podium · the crown moment */}
             <StagePodium podium={[podium[0], podium[1], podium[2]]} />
