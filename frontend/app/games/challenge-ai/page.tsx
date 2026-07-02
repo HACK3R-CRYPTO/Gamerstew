@@ -22,7 +22,7 @@ import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
-import { startArenaMatch, throwArenaMove, type RoundResult } from "@/app/actions/arena";
+import { startArenaMatch, throwArenaMove, getArenaLadder, type RoundResult, type LadderData } from "@/app/actions/arena";
 
 // ─── Player pet (mirrors simon/rhythm pages) ─────────────────────────────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
@@ -156,6 +156,13 @@ export default function ChallengeAiPage() {
       .then((d) => setPet(petForLevel(Number(d?.level) || 1)))
       .catch(() => {});
   }, [address]);
+
+  // Weekly ladder — refreshed on lobby entry and after each match result.
+  const [ladder, setLadder] = useState<LadderData | null>(null);
+  useEffect(() => {
+    if (phase !== "lobby" && phase !== "result") return;
+    getArenaLadder(address).then((l) => { if (!l.error) setLadder(l); }).catch(() => {});
+  }, [phase, address]);
 
   // ─── Start a match ─────────────────────────────────────────────────────────
   const startMatch = useCallback(async () => {
@@ -310,7 +317,7 @@ export default function ChallengeAiPage() {
         }}
       >
         {phase === "lobby" && (
-          <Lobby record={record} busy={busy} error={error} onStart={startMatch} />
+          <Lobby record={record} busy={busy} error={error} onStart={startMatch} ladder={ladder} myAddress={address} />
         )}
         {phase === "vs" && <VsSting pet={pet} />}
         {phase === "match" && (
@@ -343,12 +350,14 @@ export default function ChallengeAiPage() {
 
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
-  record, busy, error, onStart,
+  record, busy, error, onStart, ladder, myAddress,
 }: {
   record: { w: number; l: number; t: number; streak: number };
   busy: boolean;
   error: string | null;
   onStart: () => void;
+  ladder: LadderData | null;
+  myAddress?: string;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, animation: "riseIn 0.35s ease both" }}>
@@ -425,6 +434,73 @@ function Lobby({
           </div>
         ))}
       </div>
+
+      {/* weekly ladder — where matches turn into G$ */}
+      {ladder && (
+        <div
+          style={{
+            borderRadius: 18,
+            border: "1px solid rgba(134,239,172,0.25)",
+            background: "rgba(8,2,32,0.75)",
+            padding: "14px 16px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
+              🏆 WEEKLY LADDER · {ladder.week.split("-")[1]}
+            </span>
+            <span style={{ fontSize: 11.5, fontWeight: 900, color: "#86efac", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 999, padding: "3px 10px" }}>
+              {ladder.poolGs} G$ POOL
+            </span>
+          </div>
+          {ladder.top.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "rgba(220,210,255,0.6)", textAlign: "center", padding: "6px 0" }}>
+              Fresh week — first win tops the board. Pool pays Sunday.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {ladder.top.slice(0, 5).map((e) => {
+                const mine = myAddress && e.wallet === myAddress.toLowerCase();
+                return (
+                  <div
+                    key={e.wallet}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      fontSize: 12.5,
+                      padding: "5px 10px",
+                      borderRadius: 10,
+                      background: mine ? "rgba(251,191,36,0.12)" : "transparent",
+                      border: mine ? "1px solid rgba(251,191,36,0.4)" : "1px solid transparent",
+                    }}
+                  >
+                    <span style={{ width: 22, fontWeight: 900, color: e.rank === 1 ? RIM : "rgba(220,210,255,0.6)" }}>
+                      {e.rank === 1 ? "👑" : `#${e.rank}`}
+                    </span>
+                    <span style={{ flex: 1, fontFamily: "monospace", color: mine ? RIM : "rgba(230,222,255,0.85)" }}>
+                      {mine ? "YOU" : `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`}
+                    </span>
+                    <span style={{ color: "rgba(220,210,255,0.55)", fontSize: 11.5 }}>{e.wins}W</span>
+                    <span style={{ fontWeight: 900, color: "#86efac" }}>{e.points} pts</span>
+                  </div>
+                );
+              })}
+              {ladder.me && ladder.me.rank > 5 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "5px 10px", borderRadius: 10, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.4)", marginTop: 2 }}>
+                  <span style={{ width: 22, fontWeight: 900, color: "rgba(220,210,255,0.6)" }}>#{ladder.me.rank}</span>
+                  <span style={{ flex: 1, fontFamily: "monospace", color: RIM }}>YOU</span>
+                  <span style={{ color: "rgba(220,210,255,0.55)", fontSize: 11.5 }}>{ladder.me.wins}W</span>
+                  <span style={{ fontWeight: 900, color: "#86efac" }}>{ladder.me.points} pts</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.45)", marginTop: 8, textAlign: "center" }}>
+            Win matches → earn points → top climbers split the pool every Sunday
+          </div>
+        </div>
+      )}
 
       {error && (
         <div

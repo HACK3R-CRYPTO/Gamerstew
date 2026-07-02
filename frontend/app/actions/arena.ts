@@ -66,6 +66,29 @@ export async function startArenaMatch(playerAddress: string): Promise<StartRespo
   }
 }
 
+export type LadderEntry = { wallet: string; points: number; matches: number; wins: number; rank: number };
+export type LadderData = {
+  week: string;
+  poolGs: number;
+  players: number;
+  top: LadderEntry[];
+  me: LadderEntry | null;
+  error?: string;
+};
+
+export async function getArenaLadder(wallet?: string): Promise<LadderData> {
+  try {
+    const q = wallet ? `?wallet=${encodeURIComponent(wallet)}` : '';
+    const res = await fetch(`${BACKEND_URL}/api/arena/ladder${q}`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { week: '', poolGs: 0, players: 0, top: [], me: null, error: 'backend_unreachable' };
+  }
+}
+
 export async function throwArenaMove(matchId: string, move: number): Promise<RoundResult> {
   try {
     return await backend('/api/arena/throw', { matchId, move });

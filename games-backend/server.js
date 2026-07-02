@@ -2885,6 +2885,31 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 // MARKOV served over HTTP: instant best-of-5 RPS, commit-reveal fairness,
 // no wagers, no chain in the loop. See lib/arenaMatch.js for the engine.
 const { ArenaMatchEngine } = require('./lib/arenaMatch');
+
+// ISO week bucket ('2026-W27') — the ladder resets on this key. Weeks run
+// Mon-Sun; the Sunday payout script pays the closing week's standings.
+function arenaWeekKey(d = new Date()) {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// Ladder points per match. Wins pay, participation trickles, sweeps bonus.
+// Points are infinite; G$ is budgeted — the weekly pool pays ranks, so the
+// per-match formula can be generous without any treasury risk.
+function arenaPoints(session) {
+  const won = session.playerWins > session.aiWins;
+  const tied = session.playerWins === session.aiWins;
+  let pts = won ? 10 : tied ? 4 : 2;
+  if (won && session.aiWins === 0) pts += 3; // flawless sweep vs the model
+  return pts;
+}
+
+const ARENA_WEEKLY_POOL_GS = Number(process.env.ARENA_WEEKLY_POOL_GS || 500);
+
 const arenaEngine = new ArenaMatchEngine({
   onMatchComplete: async (session) => {
     // Receipt layer: persist completed matches for history, ladder, and the
@@ -2902,6 +2927,8 @@ const arenaEngine = new ArenaMatchEngine({
         rounds: session.rounds,
         commit_hash: session.commitHash,
         seed: session.seed,
+        points: arenaPoints(session),
+        week_key: arenaWeekKey(),
         created_at: new Date(session.createdAt).toISOString(),
       });
     } catch (e) {
@@ -2928,6 +2955,46 @@ app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
   const out = arenaEngine.throw(matchId, Number(move));
   if (out.error) return res.status(400).json(out);
   return res.json(out);
+});
+
+// GET /api/arena/ladder?wallet=0x… — the weekly MARKOV ladder. Aggregates
+// this ISO week's match receipts: points desc, then wins desc. Returns top
+// 20 + the asking wallet's own standing + the pool the week pays out.
+app.get('/api/arena/ladder', requireSecret, async (req, res) => {
+  try {
+    const week = arenaWeekKey();
+    const wallet = (req.query.wallet || '').toString().toLowerCase();
+    const { data, error } = await supabase
+      .from('arena_free_matches')
+      .select('wallet, points, outcome')
+      .eq('week_key', week);
+    if (error) throw error;
+
+    const agg = new Map();
+    for (const row of data || []) {
+      const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
+      a.points += row.points || 0;
+      a.matches += 1;
+      if (row.outcome === 'player_won') a.wins += 1;
+      agg.set(row.wallet, a);
+    }
+    const standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+    standings.forEach((s, i) => { s.rank = i + 1; });
+
+    const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
+    return res.json({
+      week,
+      poolGs: ARENA_WEEKLY_POOL_GS,
+      players: standings.length,
+      top: standings.slice(0, 20),
+      me,
+    });
+  } catch (e) {
+    console.error('arena ladder failed:', e?.message);
+    // Fail soft: an empty ladder renders as "fresh week" instead of an
+    // error. Covers local setups where the migration hasn't run yet.
+    return res.json({ week: arenaWeekKey(), poolGs: ARENA_WEEKLY_POOL_GS, players: 0, top: [], me: null });
+  }
 });
 
 // ─── POST /api/faucet — gas drip for fresh wallets ──────────────────────────
