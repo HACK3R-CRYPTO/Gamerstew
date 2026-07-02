@@ -3079,18 +3079,34 @@ app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
   return res.json(out);
 });
 
-// GET /api/arena/ladder?wallet=0x… — the weekly MARKOV ladder. Aggregates
-// this ISO week's match receipts: points desc, then wins desc. Returns top
-// 20 + the asking wallet's own standing + the pool the week pays out.
+// GET /api/arena/ladder?wallet=0x…&week=2026-W27 — the weekly MARKOV ladder.
+// Aggregates the requested ISO week (default: current): points desc, then
+// wins desc. Returns top 20 + own standing + pool + the list of past weeks
+// so finished boards stay viewable forever (bragging rights don't expire).
 app.get('/api/arena/ladder', requireSecret, async (req, res) => {
   try {
-    const week = arenaWeekKey();
+    const currentWeek = arenaWeekKey();
+    const reqWeek = (req.query.week || '').toString();
+    const week = /^\d{4}-W\d{2}$/.test(reqWeek) ? reqWeek : currentWeek;
     const wallet = (req.query.wallet || '').toString().toLowerCase();
     const { data, error } = await supabase
       .from('arena_free_matches')
       .select('wallet, points, outcome')
       .eq('week_key', week);
     if (error) throw error;
+
+    // Distinct weeks with any matches (cheap at this scale) — newest first.
+    let weeks = [currentWeek];
+    try {
+      const { data: wk } = await supabase
+        .from('arena_free_matches')
+        .select('week_key')
+        .order('week_key', { ascending: false })
+        .limit(2000);
+      const seen = new Set([currentWeek]);
+      for (const r of wk || []) seen.add(r.week_key);
+      weeks = [...seen].sort().reverse().slice(0, 12);
+    } catch { /* keep current-only */ }
 
     const agg = new Map();
     for (const row of data || []) {
@@ -3103,7 +3119,13 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     const standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
     standings.forEach((s, i) => { s.rank = i + 1; });
 
+    // Usernames for the visible slice (GamePass on-chain names, LRU-cached).
+    await Promise.all(standings.slice(0, 20).map(async (s) => {
+      s.username = await resolveUsername(s.wallet);
+    }));
+
     const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
+    if (me && me.username === undefined) me.username = await resolveUsername(me.wallet);
 
     // Live pool = seeded base + this week's player purchases. Keeps the
     // "your G$ goes into the pool" promise visibly true: every refill
@@ -3123,6 +3145,8 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
 
     return res.json({
       week,
+      currentWeek,
+      weeks,
       poolGs: Math.round(ARENA_WEEKLY_POOL_GS + purchasedGs),
       poolBaseGs: ARENA_WEEKLY_POOL_GS,
       poolFromPlayersGs: Math.round(purchasedGs * 100) / 100,
@@ -3134,7 +3158,8 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     console.error('arena ladder failed:', e?.message);
     // Fail soft: an empty ladder renders as "fresh week" instead of an
     // error. Covers local setups where the migration hasn't run yet.
-    return res.json({ week: arenaWeekKey(), poolGs: ARENA_WEEKLY_POOL_GS, players: 0, top: [], me: null });
+    const wk = arenaWeekKey();
+    return res.json({ week: wk, currentWeek: wk, weeks: [wk], poolGs: ARENA_WEEKLY_POOL_GS, players: 0, top: [], me: null });
   }
 });
 
