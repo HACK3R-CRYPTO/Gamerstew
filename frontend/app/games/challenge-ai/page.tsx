@@ -193,7 +193,12 @@ export default function ChallengeAiPage() {
   const [ladder, setLadder] = useState<LadderData | null>(null);
   useEffect(() => {
     if (phase !== "lobby" && phase !== "result") return;
-    getArenaLadder(address).then((l) => { if (!l.error) setLadder(l); }).catch(() => {});
+    getArenaLadder(address).then((l) => {
+      if (l.error) return;
+      setLadder(l);
+      // Counter on lobby entry — don't wait for the first match to start.
+      if (typeof l.remainingToday === "number") setRemaining(l.remainingToday);
+    }).catch(() => {});
   }, [phase, address]);
 
   // Desktop breakpoint · same 900px rule as /games and the leaderboards,

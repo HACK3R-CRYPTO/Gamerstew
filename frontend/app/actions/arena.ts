@@ -81,6 +81,7 @@ export type LadderData = {
   week: string;
   currentWeek?: string;
   weeks?: string[];
+  remainingToday?: number | null;
   poolGs: number;
   players: number;
   top: LadderEntry[];

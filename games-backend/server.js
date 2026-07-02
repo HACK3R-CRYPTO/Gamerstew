@@ -3127,6 +3127,21 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
     if (me && me.username === undefined) me.username = await resolveUsername(me.wallet);
 
+    // Remaining matches today for the asking wallet — lets the lobby show
+    // the counter on entry instead of only after the first match starts.
+    let remainingToday = null;
+    if (wallet) {
+      try {
+        const { data: daily } = await supabase
+          .from('arena_daily')
+          .select('used, extra')
+          .eq('wallet', wallet)
+          .eq('day', arenaDayKey())
+          .maybeSingle();
+        remainingToday = Math.max(0, ARENA_FREE_MATCHES_PER_DAY + (daily?.extra ?? 0) - (daily?.used ?? 0));
+      } catch { /* table absent → unlimited, leave null */ }
+    }
+
     // Live pool = seeded base + this week's player purchases. Keeps the
     // "your G$ goes into the pool" promise visibly true: every refill
     // bought this week grows the number players are competing for.
@@ -3147,6 +3162,7 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
       week,
       currentWeek,
       weeks,
+      remainingToday,
       poolGs: Math.round(ARENA_WEEKLY_POOL_GS + purchasedGs),
       poolBaseGs: ARENA_WEEKLY_POOL_GS,
       poolFromPlayersGs: Math.round(purchasedGs * 100) / 100,
