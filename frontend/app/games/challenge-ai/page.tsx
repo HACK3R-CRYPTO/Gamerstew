@@ -502,7 +502,7 @@ function Lobby({
               <span style={{ color: T.inkSoft, letterSpacing: "0.06em" }}>WEEK</span>
               <span style={{ color: "#86efac" }}>{mine?.wins ?? 0}W</span>
               <span style={{ color: T.inkDim }}>{mine?.matches ?? 0} played</span>
-              {record.streak > 1 && <span style={{ color: RIM }}>🔥{record.streak}</span>}
+              {record.streak > 1 && <span style={{ color: RIM }}>⚡{record.streak}</span>}
             </span>
           );
         })()}
@@ -870,7 +870,7 @@ function MatchStage({
                 )}
                 {matchStreak >= 2 && (
                   <div style={{ fontSize: 13, fontWeight: 900, color: "#fb923c", animation: "streakFlame 0.9s ease-in-out infinite" }}>
-                    🔥 {matchStreak} ROUND STREAK
+                    ⚡ {matchStreak} ROUND STREAK
                   </div>
                 )}
               </>
@@ -1283,7 +1283,7 @@ function ResultStage({
 
       <div style={{ fontSize: 11, color: "rgba(220,210,255,0.4)", textAlign: "center" }}>
         Record vs MARKOV: {record.w}W · {record.l}L · {record.t}T
-        {record.streak > 1 ? ` · 🔥 ${record.streak} streak` : ""}
+        {record.streak > 1 ? ` · ⚡ ${record.streak} win streak` : ""}
       </div>
     </div>
   );
