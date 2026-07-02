@@ -106,6 +106,13 @@ const KEYFRAMES = `
 @keyframes slamR { from { transform: translateX(90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes vsPop { 0% { transform: scale(0.2); opacity: 0 } 70% { transform: scale(1.3) } 100% { transform: scale(1); opacity: 1 } }
 @keyframes stampSlam { 0% { transform: scale(3) rotate(-18deg); opacity: 0 } 60% { transform: scale(0.9) rotate(-12deg); opacity: 1 } 100% { transform: scale(1) rotate(-12deg); opacity: 1 } }
+@keyframes handEnterL { 0% { transform: translateX(-140px) scale(0.6); opacity: 0 } 100% { transform: translateX(0) scale(1); opacity: 1 } }
+@keyframes handEnterR { 0% { transform: translateX(140px) scale(0.6) scaleX(-1); opacity: 0 } 100% { transform: translateX(0) scale(1) scaleX(-1); opacity: 1 } }
+@keyframes handPumpL { 0%,100% { transform: translateY(0) rotate(0deg) } 45% { transform: translateY(-30px) rotate(-8deg) } 62% { transform: translateY(6px) rotate(2deg) } }
+@keyframes handPumpR { 0%,100% { transform: scaleX(-1) translateY(0) rotate(0deg) } 45% { transform: scaleX(-1) translateY(-30px) rotate(8deg) } 62% { transform: scaleX(-1) translateY(6px) rotate(-2deg) } }
+@keyframes clashL { 0% { transform: translateX(-90px) scale(1.5); opacity: 0 } 45% { transform: translateX(26px) scale(1.05); opacity: 1 } 65% { transform: translateX(-8px) scale(1) } 100% { transform: translateX(0) scale(1) } }
+@keyframes clashR { 0% { transform: translateX(90px) scale(1.5) scaleX(-1); opacity: 0 } 45% { transform: translateX(-26px) scale(1.05) scaleX(-1); opacity: 1 } 65% { transform: translateX(8px) scaleX(-1) } 100% { transform: translateX(0) scaleX(-1) } }
+@keyframes clashBurst { 0% { transform: scale(0.2); opacity: 1 } 100% { transform: scale(2.6); opacity: 0 } }
 @keyframes readPulse { 0%,100% { opacity: 1 } 50% { opacity: 0.55 } }
 @keyframes dangerPulse { 0%,100% { box-shadow: inset 0 0 40px rgba(239,68,68,0.12) } 50% { box-shadow: inset 0 0 80px rgba(239,68,68,0.3) } }
 `;
@@ -139,10 +146,12 @@ export default function ChallengeAiPage() {
   }, []);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
 
-  // Pet level from backend (best-effort)
+  // Pet level from the games-backend (same source as simon/rhythm pages —
+  // the Next app has no /api/user route, so this must hit BACKEND_URL).
   useEffect(() => {
     if (!address) return;
-    fetch(`/api/user/${address}`)
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    fetch(`${base}/api/user/${address}`)
       .then((r) => r.json())
       .then((d) => setPet(petForLevel(Number(d?.level) || 1)))
       .catch(() => {});
@@ -632,16 +641,15 @@ function MatchStage({
           </div>
         )}
 
-        {/* combatants row */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "18px 26px 30px", position: "relative", zIndex: 2 }}>
-          {/* player side */}
-          <div style={{ textAlign: "center", width: 120 }}>
+        {/* combatants — corners, watching the fight */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "14px 20px 22px", position: "relative", zIndex: 2 }}>
+          <div style={{ textAlign: "center", width: 104 }}>
             <img
               src={pet.src}
               alt="you"
               style={{
-                width: 96,
-                height: 96,
+                width: 88,
+                height: 88,
                 objectFit: "contain",
                 filter: `drop-shadow(0 0 18px ${pet.color}66)`,
                 animation: playerWonRound
@@ -651,85 +659,11 @@ function MatchStage({
                     : "idleBob 2.6s ease-in-out infinite",
               }}
             />
-            {/* fist / thrown move */}
-            <div style={{ height: 68, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {beat === "shaking" ? (
-                <img src={FIST_ART} alt="" style={{ height: 56, animation: "fistPump 0.35s ease-in-out 3", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.5))" }} />
-              ) : impact ? (
-                <img src={MOVES[lastRound!.playerMove]!.art} alt={MOVES[lastRound!.playerMove]!.name} style={{ height: 64, animation: "moveSlam 0.45s cubic-bezier(0.22,1.3,0.36,1) both", filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.55))" }} />
-              ) : (
-                <img src={FIST_ART} alt="" style={{ height: 48, opacity: 0.4 }} />
-              )}
-            </div>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.6)" }}>YOU</div>
           </div>
 
-          {/* center column: chant / verdict */}
+          {/* center: armed-state prompts only — the clash overlay owns shake/impact */}
           <div style={{ flex: 1, textAlign: "center", alignSelf: "center", minHeight: 90, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            {beat === "shaking" && (
-              <div
-                key={chantIdx}
-                style={{
-                  fontSize: 24,
-                  fontWeight: 900,
-                  letterSpacing: "0.14em",
-                  color: chantIdx === 2 ? RIM : "rgba(237,233,254,0.9)",
-                  textShadow: chantIdx === 2 ? `0 0 22px ${RIM}` : "none",
-                  animation: "chantPop 0.3s cubic-bezier(0.22,1.5,0.36,1) both",
-                }}
-              >
-                {CHANT[chantIdx]}
-              </div>
-            )}
-            {impact && (
-              <>
-                {lastRound!.called && (
-                  <div
-                    style={{
-                      border: "3px solid #ef4444",
-                      color: "#fca5a5",
-                      borderRadius: 8,
-                      padding: "3px 12px",
-                      fontSize: 13,
-                      fontWeight: 900,
-                      letterSpacing: "0.14em",
-                      background: "rgba(239,68,68,0.12)",
-                      textShadow: "0 0 12px #ef4444",
-                      animation: "stampSlam 0.45s 0.15s cubic-bezier(0.22,1.3,0.36,1) both",
-                    }}
-                  >
-                    CALLED IT
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 900,
-                    letterSpacing: "0.06em",
-                    color: lastRound!.result === "win" ? "#86efac" : lastRound!.result === "loss" ? "#fca5a5" : "#c4b5fd",
-                    textShadow: "0 0 22px currentColor",
-                    animation: "resultPunch 0.5s cubic-bezier(0.22,1.4,0.36,1) both",
-                  }}
-                >
-                  {lastRound!.result === "win" ? "YOU TAKE IT!" : lastRound!.result === "loss" ? "MARKOV TAKES IT" : "TIE"}
-                </div>
-                <div
-                  style={{
-                    background: "rgba(0,0,0,0.55)",
-                    border: "1px solid rgba(251,191,36,0.35)",
-                    borderRadius: 12,
-                    padding: "7px 13px",
-                    fontSize: 12,
-                    fontStyle: "italic",
-                    color: "rgba(240,230,255,0.92)",
-                    maxWidth: 230,
-                    animation: "linePop 0.35s 0.3s ease both",
-                  }}
-                >
-                  “{lastRound!.markovLine}”
-                </div>
-              </>
-            )}
             {armed && (
               <>
                 <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", color: sudden ? "#fca5a5" : "rgba(220,210,255,0.75)", animation: "chantPop 0.3s ease both" }}>
@@ -752,23 +686,22 @@ function MatchStage({
                     MARKOV: “{hint}” <span style={{ color: "rgba(220,210,255,0.45)", fontStyle: "normal" }}>· truth or bluff?</span>
                   </div>
                 )}
+                {matchStreak >= 2 && (
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#fb923c", animation: "streakFlame 0.9s ease-in-out infinite" }}>
+                    🔥 {matchStreak} ROUND STREAK
+                  </div>
+                )}
               </>
-            )}
-            {matchStreak >= 2 && !impact && (
-              <div style={{ fontSize: 13, fontWeight: 900, color: "#fb923c", animation: "streakFlame 0.9s ease-in-out infinite" }}>
-                🔥 {matchStreak} ROUND STREAK
-              </div>
             )}
           </div>
 
-          {/* MARKOV side */}
-          <div style={{ textAlign: "center", width: 120 }}>
+          <div style={{ textAlign: "center", width: 104 }}>
             <img
               src={MARKOV_ART}
               alt="MARKOV"
               style={{
-                width: 96,
-                height: 96,
+                width: 88,
+                height: 88,
                 objectFit: "contain",
                 filter: `drop-shadow(0 0 18px ${RIM}66)`,
                 animation: aiWonRound
@@ -778,18 +711,126 @@ function MatchStage({
                     : "idleBobAlt 2.6s ease-in-out infinite",
               }}
             />
-            <div style={{ height: 68, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {beat === "shaking" ? (
-                <img src={FIST_ART} alt="" style={{ height: 56, transform: "scaleX(-1)", animation: "fistPump 0.35s ease-in-out 3", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.5))" }} />
-              ) : impact ? (
-                <img src={MOVES[lastRound!.aiMove]!.art} alt={MOVES[lastRound!.aiMove]!.name} style={{ height: 64, transform: "scaleX(-1)", animation: "moveSlam 0.45s 0.08s cubic-bezier(0.22,1.3,0.36,1) both", filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.55))" }} />
-              ) : (
-                <img src={FIST_ART} alt="" style={{ height: 48, opacity: 0.4, transform: "scaleX(-1)" }} />
-              )}
-            </div>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.6)" }}>MARKOV</div>
           </div>
         </div>
+
+        {/* THE CLASH — Mortal Kombat center stage. Two big hands face off,
+            pump in sync, then the thrown moves smash together mid-screen. */}
+        {(beat === "shaking" || impact) && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              pointerEvents: "none",
+            }}
+          >
+            {/* chant above the hands */}
+            {beat === "shaking" && (
+              <div
+                key={chantIdx}
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  letterSpacing: "0.16em",
+                  color: chantIdx === 2 ? RIM : "rgba(237,233,254,0.95)",
+                  textShadow: chantIdx === 2 ? `0 0 24px ${RIM}` : "0 2px 8px rgba(0,0,0,0.6)",
+                  animation: "chantPop 0.3s cubic-bezier(0.22,1.5,0.36,1) both",
+                }}
+              >
+                {CHANT[chantIdx]}
+              </div>
+            )}
+            {impact && lastRound!.called && (
+              <div
+                style={{
+                  border: "3px solid #ef4444",
+                  color: "#fca5a5",
+                  borderRadius: 8,
+                  padding: "3px 12px",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  letterSpacing: "0.14em",
+                  background: "rgba(239,68,68,0.2)",
+                  textShadow: "0 0 12px #ef4444",
+                  animation: "stampSlam 0.45s 0.2s cubic-bezier(0.22,1.3,0.36,1) both",
+                }}
+              >
+                CALLED IT
+              </div>
+            )}
+
+            {/* the hands / the clash */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: impact ? 4 : 26, position: "relative" }}>
+              {impact && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    width: 90,
+                    height: 90,
+                    marginLeft: -45,
+                    marginTop: -45,
+                    borderRadius: "50%",
+                    background: `radial-gradient(circle, rgba(255,255,255,0.9) 0%, ${RIM}66 40%, transparent 70%)`,
+                    animation: "clashBurst 0.5s 0.28s ease-out both",
+                  }}
+                />
+              )}
+              {beat === "shaking" ? (
+                <>
+                  <img src={FIST_ART} alt="" style={{ height: 110, filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handEnterL 0.25s ease-out both, handPumpL 0.35s 0.25s ease-in-out 3" }} />
+                  <img src={FIST_ART} alt="" style={{ height: 110, filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handEnterR 0.25s ease-out both, handPumpR 0.35s 0.25s ease-in-out 3" }} />
+                </>
+              ) : (
+                <>
+                  <img src={MOVES[lastRound!.playerMove]!.art} alt={MOVES[lastRound!.playerMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashL 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
+                  <img src={MOVES[lastRound!.aiMove]!.art} alt={MOVES[lastRound!.aiMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashR 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
+                </>
+              )}
+            </div>
+
+            {impact && (
+              <>
+                <div
+                  style={{
+                    fontSize: 25,
+                    fontWeight: 900,
+                    letterSpacing: "0.06em",
+                    color: lastRound!.result === "win" ? "#86efac" : lastRound!.result === "loss" ? "#fca5a5" : "#c4b5fd",
+                    textShadow: "0 0 22px currentColor, 0 2px 8px rgba(0,0,0,0.7)",
+                    animation: "resultPunch 0.5s 0.25s cubic-bezier(0.22,1.4,0.36,1) both",
+                  }}
+                >
+                  {lastRound!.result === "win" ? "YOU TAKE IT!" : lastRound!.result === "loss" ? "MARKOV TAKES IT" : "TIE"}
+                </div>
+                <div
+                  style={{
+                    background: "rgba(0,0,0,0.65)",
+                    border: "1px solid rgba(251,191,36,0.35)",
+                    borderRadius: 12,
+                    padding: "7px 13px",
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    color: "rgba(240,230,255,0.92)",
+                    maxWidth: 250,
+                    animation: "linePop 0.35s 0.45s ease both",
+                  }}
+                >
+                  “{lastRound!.markovLine}”
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* move buttons */}
