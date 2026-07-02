@@ -2881,6 +2881,55 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 //   res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
 // });
 
+// ─── Arena Instant Match (Challenge AI v3) ──────────────────────────────────
+// MARKOV served over HTTP: instant best-of-5 RPS, commit-reveal fairness,
+// no wagers, no chain in the loop. See lib/arenaMatch.js for the engine.
+const { ArenaMatchEngine } = require('./lib/arenaMatch');
+const arenaEngine = new ArenaMatchEngine({
+  onMatchComplete: async (session) => {
+    // Receipt layer: persist completed matches for history, ladder, and the
+    // async Oracle attestation. Table may not exist yet in local setups —
+    // persistence is best-effort, gameplay never depends on it.
+    try {
+      await supabase.from('arena_free_matches').insert({
+        match_id: session.matchId,
+        wallet: session.wallet,
+        player_wins: session.playerWins,
+        ai_wins: session.aiWins,
+        ties: session.ties,
+        outcome: session.playerWins > session.aiWins ? 'player_won'
+               : session.aiWins > session.playerWins ? 'ai_won' : 'tie',
+        rounds: session.rounds,
+        commit_hash: session.commitHash,
+        seed: session.seed,
+        created_at: new Date(session.createdAt).toISOString(),
+      });
+    } catch (e) {
+      console.error('arena match persist failed:', e?.message);
+    }
+  },
+});
+
+// POST /api/arena/start — open an instant match. Returns the commit hash
+// BEFORE any round: MARKOV's moves are provably pre-seeded.
+app.post('/api/arena/start', requireSecret, gameSubmitLimiter, (req, res) => {
+  const { playerAddress } = req.body || {};
+  if (!playerAddress || !/^0x[0-9a-fA-F]{40}$/.test(playerAddress)) {
+    return res.status(400).json({ error: 'playerAddress required' });
+  }
+  return res.json(arenaEngine.start(playerAddress));
+});
+
+// POST /api/arena/throw — one round. Instant response with MARKOV's move,
+// round result, persona line, and (on match end) the seed reveal + model stats.
+app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
+  const { matchId, move } = req.body || {};
+  if (typeof matchId !== 'string') return res.status(400).json({ error: 'matchId required' });
+  const out = arenaEngine.throw(matchId, Number(move));
+  if (out.error) return res.status(400).json(out);
+  return res.json(out);
+});
+
 // ─── POST /api/faucet — gas drip for fresh wallets ──────────────────────────
 // Sends FAUCET_DRIP_CELO (default 0.1) once per wallet to fresh sign-ins so
 // they don't hit the "insufficient gas" wall on GamePass mint or score
