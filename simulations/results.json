@@ -1,0 +1,319 @@
+{
+  "generatedBy": "simulations/run.js",
+  "arena": {
+    "uniform_random": {
+      "matches": 20000,
+      "playerWinPct": 48.1,
+      "aiWinPct": 47.7,
+      "tiePct": 4.2,
+      "roundWinPct": 33.6,
+      "calledPerMatch": 1.42,
+      "avgLadderPts": 6.32,
+      "first500WinPct": 48.8,
+      "last500WinPct": 49.6
+    },
+    "rock_leaner": {
+      "matches": 20000,
+      "playerWinPct": 43.8,
+      "aiWinPct": 52.8,
+      "tiePct": 3.4,
+      "roundWinPct": 32.7,
+      "calledPerMatch": 1.69,
+      "avgLadderPts": 5.9,
+      "first500WinPct": 41.8,
+      "last500WinPct": 43.6
+    },
+    "cycler": {
+      "matches": 20000,
+      "playerWinPct": 15.1,
+      "aiWinPct": 84.9,
+      "tiePct": 0.1,
+      "roundWinPct": 25.3,
+      "calledPerMatch": 2.82,
+      "avgLadderPts": 3.29,
+      "first500WinPct": 17.2,
+      "last500WinPct": 15.2
+    },
+    "win_stay_lose_shift": {
+      "matches": 20000,
+      "playerWinPct": 41,
+      "aiWinPct": 58.6,
+      "tiePct": 0.3,
+      "roundWinPct": 34.2,
+      "calledPerMatch": 2,
+      "avgLadderPts": 5.79,
+      "first500WinPct": 39,
+      "last500WinPct": 41.8
+    },
+    "copycat": {
+      "matches": 20000,
+      "playerWinPct": 42,
+      "aiWinPct": 55.6,
+      "tiePct": 2.4,
+      "roundWinPct": 31.5,
+      "calledPerMatch": 1.73,
+      "avgLadderPts": 5.83,
+      "first500WinPct": 43.8,
+      "last500WinPct": 42.8
+    },
+    "counter_chaser": {
+      "matches": 20000,
+      "playerWinPct": 41.5,
+      "aiWinPct": 56,
+      "tiePct": 2.5,
+      "roundWinPct": 31.4,
+      "calledPerMatch": 1.74,
+      "avgLadderPts": 5.79,
+      "first500WinPct": 43.6,
+      "last500WinPct": 42
+    }
+  },
+  "skill": {
+    "rhythm": [
+      {
+        "tier": "expert (σ=35ms)",
+        "n": 10000,
+        "mean": 2037.43,
+        "p10": 1999,
+        "median": 2042,
+        "p90": 2069,
+        "min": 1875,
+        "max": 2104
+      },
+      {
+        "tier": "skilled (σ=70ms)",
+        "n": 10000,
+        "mean": 1800.97,
+        "p10": 1699,
+        "median": 1804,
+        "p90": 1900,
+        "min": 970,
+        "max": 2051
+      },
+      {
+        "tier": "casual (σ=120ms)",
+        "n": 10000,
+        "mean": 1273.4,
+        "p10": 800,
+        "median": 1411,
+        "p90": 1626,
+        "min": 425,
+        "max": 1872
+      },
+      {
+        "tier": "novice (σ=200ms)",
+        "n": 10000,
+        "mean": 464.01,
+        "p10": 304,
+        "median": 423,
+        "p90": 676,
+        "min": 187,
+        "max": 1677
+      },
+      {
+        "tier": "masher (σ=350ms)",
+        "n": 10000,
+        "mean": 209.48,
+        "p10": 155,
+        "median": 204,
+        "p90": 270,
+        "min": 77,
+        "max": 674
+      }
+    ],
+    "simon": [
+      {
+        "tier": "expert (p=0.99)",
+        "n": 10000,
+        "mean": 147.75,
+        "p10": 83,
+        "median": 132,
+        "p90": 252,
+        "min": 58,
+        "max": 372,
+        "medianDepth": 11
+      },
+      {
+        "tier": "skilled (p=0.97)",
+        "n": 10000,
+        "mean": 95.28,
+        "p10": 73,
+        "median": 87,
+        "p90": 132,
+        "min": 58,
+        "max": 276,
+        "medianDepth": 6
+      },
+      {
+        "tier": "casual (p=0.93)",
+        "n": 10000,
+        "mean": 79.55,
+        "p10": 66,
+        "median": 79,
+        "p90": 87,
+        "min": 58,
+        "max": 168,
+        "medianDepth": 3
+      },
+      {
+        "tier": "novice (p=0.85)",
+        "n": 10000,
+        "mean": 72.48,
+        "p10": 58,
+        "median": 73,
+        "p90": 83,
+        "min": 58,
+        "max": 108,
+        "medianDepth": 2
+      }
+    ],
+    "stack": [
+      {
+        "tier": "expert (σ=6px)",
+        "n": 10000,
+        "mean": 66.11,
+        "p10": 45,
+        "median": 64,
+        "p90": 90,
+        "min": 21,
+        "max": 179
+      },
+      {
+        "tier": "skilled (σ=12px)",
+        "n": 10000,
+        "mean": 26.91,
+        "p10": 17,
+        "median": 26,
+        "p90": 38,
+        "min": 7,
+        "max": 81
+      },
+      {
+        "tier": "casual (σ=22px)",
+        "n": 10000,
+        "mean": 13.1,
+        "p10": 7,
+        "median": 12,
+        "p90": 20,
+        "min": 3,
+        "max": 49
+      },
+      {
+        "tier": "novice (σ=40px)",
+        "n": 10000,
+        "mean": 6.62,
+        "p10": 3,
+        "median": 6,
+        "p90": 11,
+        "min": 1,
+        "max": 33
+      }
+    ]
+  },
+  "payout": {
+    "10_players": {
+      "shark": {
+        "players": 2,
+        "avgWeeklyGsPerPlayer": 125,
+        "avgWeeklyPointsPerPlayer": 381,
+        "podiumRatePct": 66.7
+      },
+      "grinder": {
+        "players": 1,
+        "avgWeeklyGsPerPlayer": 49.12,
+        "avgWeeklyPointsPerPlayer": 242,
+        "podiumRatePct": 24.3
+      },
+      "regular": {
+        "players": 5,
+        "avgWeeklyGsPerPlayer": 22.18,
+        "avgWeeklyPointsPerPlayer": 185,
+        "podiumRatePct": 9.1
+      },
+      "casual": {
+        "players": 3,
+        "avgWeeklyGsPerPlayer": 15,
+        "avgWeeklyPointsPerPlayer": 68,
+        "podiumRatePct": 0
+      }
+    },
+    "25_players": {
+      "shark": {
+        "players": 4,
+        "avgWeeklyGsPerPlayer": 82.5,
+        "avgWeeklyPointsPerPlayer": 383,
+        "podiumRatePct": 100
+      },
+      "grinder": {
+        "players": 3,
+        "avgWeeklyGsPerPlayer": 19.08,
+        "avgWeeklyPointsPerPlayer": 243,
+        "podiumRatePct": 0
+      },
+      "regular": {
+        "players": 11,
+        "avgWeeklyGsPerPlayer": 9.34,
+        "avgWeeklyPointsPerPlayer": 185,
+        "podiumRatePct": 0
+      },
+      "casual": {
+        "players": 8,
+        "avgWeeklyGsPerPlayer": 1.25,
+        "avgWeeklyPointsPerPlayer": 68,
+        "podiumRatePct": 0
+      }
+    },
+    "50_players": {
+      "shark": {
+        "players": 8,
+        "avgWeeklyGsPerPlayer": 51.25,
+        "avgWeeklyPointsPerPlayer": 382,
+        "podiumRatePct": 100
+      },
+      "regular": {
+        "players": 23,
+        "avgWeeklyGsPerPlayer": 1.84,
+        "avgWeeklyPointsPerPlayer": 184,
+        "podiumRatePct": 0
+      },
+      "grinder": {
+        "players": 5,
+        "avgWeeklyGsPerPlayer": 9.56,
+        "avgWeeklyPointsPerPlayer": 243,
+        "podiumRatePct": 0
+      },
+      "casual": {
+        "players": 15,
+        "avgWeeklyGsPerPlayer": 0,
+        "avgWeeklyPointsPerPlayer": 67,
+        "podiumRatePct": 0
+      }
+    },
+    "200_players": {
+      "shark": {
+        "players": 30,
+        "avgWeeklyGsPerPlayer": 16.67,
+        "avgWeeklyPointsPerPlayer": 382,
+        "podiumRatePct": 100
+      },
+      "grinder": {
+        "players": 20,
+        "avgWeeklyGsPerPlayer": 0,
+        "avgWeeklyPointsPerPlayer": 243,
+        "podiumRatePct": 0
+      },
+      "regular": {
+        "players": 90,
+        "avgWeeklyGsPerPlayer": 0,
+        "avgWeeklyPointsPerPlayer": 184,
+        "podiumRatePct": 0
+      },
+      "casual": {
+        "players": 60,
+        "avgWeeklyGsPerPlayer": 0,
+        "avgWeeklyPointsPerPlayer": 68,
+        "podiumRatePct": 0
+      }
+    }
+  }
+}
