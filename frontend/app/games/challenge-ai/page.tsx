@@ -195,6 +195,16 @@ export default function ChallengeAiPage() {
     getArenaLadder(address).then((l) => { if (!l.error) setLadder(l); }).catch(() => {});
   }, [phase, address]);
 
+  // Desktop breakpoint · same 900px rule as /games and the leaderboards,
+  // so AppBottomNav renders its wide (docked-rail) variant on web.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const update = () => setIsDesktop(window.innerWidth >= 900);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   // Daily limit + refill purchase state
   const [remaining, setRemaining] = useState<number | null>(null);
   const [refillOffer, setRefillOffer] = useState<RefillOffer | null>(null);
@@ -399,7 +409,7 @@ export default function ChallengeAiPage() {
         )}
       </div>
 
-      {!inMatch && <AppBottomNav />}
+      {!inMatch && <AppBottomNav wide={isDesktop} />}
     </div>
   );
 }
