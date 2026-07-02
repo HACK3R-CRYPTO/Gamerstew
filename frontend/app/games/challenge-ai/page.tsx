@@ -22,7 +22,22 @@ import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
-import { startArenaMatch, throwArenaMove, getArenaLadder, type RoundResult, type LadderData } from "@/app/actions/arena";
+import { useWriteContract } from "wagmi";
+import { parseEther } from "viem";
+import { startArenaMatch, throwArenaMove, getArenaLadder, purchaseArenaRefill, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
+
+const ERC20_TRANSFER_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
 
 // ─── Player pet (mirrors simon/rhythm pages) ─────────────────────────────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
@@ -164,6 +179,39 @@ export default function ChallengeAiPage() {
     getArenaLadder(address).then((l) => { if (!l.error) setLadder(l); }).catch(() => {});
   }, [phase, address]);
 
+  // Daily limit + refill purchase state
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [refillOffer, setRefillOffer] = useState<RefillOffer | null>(null);
+  const [buying, setBuying] = useState(false);
+  const { writeContractAsync } = useWriteContract();
+
+  const buyRefill = useCallback(async () => {
+    if (!address || !refillOffer || buying) return;
+    setBuying(true);
+    setError(null);
+    try {
+      // 1. Player sends the G$ transfer to the pool wallet from their own
+      //    wallet — the spend IS the pool contribution, visible on-chain.
+      const txHash = await writeContractAsync({
+        address: refillOffer.gToken as `0x${string}`,
+        abi: ERC20_TRANSFER_ABI,
+        functionName: "transfer",
+        args: [refillOffer.poolWallet as `0x${string}`, parseEther(String(refillOffer.priceGs))],
+      });
+      // 2. Backend verifies the receipt on-chain and grants the matches.
+      const granted = await purchaseArenaRefill(address, txHash);
+      if (granted.ok) {
+        setRefillOffer(null);
+        setRemaining(granted.remaining ?? null);
+      } else {
+        setError("Payment sent but not verified yet · try Start again in a few seconds");
+      }
+    } catch {
+      setError("Purchase cancelled");
+    }
+    setBuying(false);
+  }, [address, refillOffer, buying, writeContractAsync]);
+
   // ─── Start a match ─────────────────────────────────────────────────────────
   const startMatch = useCallback(async () => {
     if (!address || busy) return;
@@ -171,11 +219,18 @@ export default function ChallengeAiPage() {
     setError(null);
     const res = await startArenaMatch(address);
     setBusy(false);
+    if (res.error === "daily_limit" && res.refill) {
+      setRefillOffer(res.refill);
+      setRemaining(0);
+      setPhase("lobby");
+      return;
+    }
     if (res.error || !res.matchId) {
       setError("MARKOV is unreachable · try again in a moment");
       setPhase("lobby");
       return;
     }
+    if (typeof res.remainingToday === "number") setRemaining(res.remainingToday);
     setMatchId(res.matchId);
     setLastRound(null);
     setFinalData(null);
@@ -317,7 +372,18 @@ export default function ChallengeAiPage() {
         }}
       >
         {phase === "lobby" && (
-          <Lobby record={record} busy={busy} error={error} onStart={startMatch} ladder={ladder} myAddress={address} />
+          <Lobby
+            record={record}
+            busy={busy}
+            error={error}
+            onStart={startMatch}
+            ladder={ladder}
+            myAddress={address}
+            remaining={remaining}
+            refillOffer={refillOffer}
+            buying={buying}
+            onBuyRefill={buyRefill}
+          />
         )}
         {phase === "vs" && <VsSting pet={pet} />}
         {phase === "match" && (
@@ -350,7 +416,7 @@ export default function ChallengeAiPage() {
 
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
-  record, busy, error, onStart, ladder, myAddress,
+  record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
 }: {
   record: { w: number; l: number; t: number; streak: number };
   busy: boolean;
@@ -358,6 +424,10 @@ function Lobby({
   onStart: () => void;
   ladder: LadderData | null;
   myAddress?: string;
+  remaining: number | null;
+  refillOffer: RefillOffer | null;
+  buying: boolean;
+  onBuyRefill: () => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, animation: "riseIn 0.35s ease both" }}>
@@ -518,24 +588,73 @@ function Lobby({
         </div>
       )}
 
-      <button
-        onClick={onStart}
-        disabled={busy}
-        style={{
-          background: busy ? "rgba(251,191,36,0.4)" : `linear-gradient(180deg, ${RIM}, #f59e0b)`,
-          color: "#04001a",
-          border: "none",
-          borderRadius: 18,
-          padding: "18px 0",
-          fontSize: 18,
-          fontWeight: 900,
-          letterSpacing: "0.06em",
-          cursor: busy ? "wait" : "pointer",
-          animation: busy ? "none" : "glowPulse 2.2s ease-in-out infinite",
-        }}
-      >
-        {busy ? "SUMMONING MARKOV…" : "⚔️ ENTER ARENA"}
-      </button>
+      {refillOffer ? (
+        // Out of free matches — the refill offer. The buy is a plain G$
+        // transfer to the transparent pool wallet; spent G$ feeds the same
+        // pool the ladder pays out on Sunday.
+        <div
+          style={{
+            borderRadius: 18,
+            border: "1px solid rgba(251,191,36,0.45)",
+            background: "rgba(251,191,36,0.08)",
+            padding: "16px 18px",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 900, color: RIM }}>OUT OF FREE MATCHES TODAY</div>
+          <div style={{ fontSize: 12.5, color: "rgba(230,222,255,0.8)", marginTop: 6, lineHeight: 1.6 }}>
+            Fresh {`${refillOffer.grants}`} matches for <b style={{ color: "#86efac" }}>{refillOffer.priceGs} G$</b> —
+            your G$ goes straight into this week's prize pool, not to us.
+          </div>
+          <button
+            onClick={onBuyRefill}
+            disabled={buying}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              background: buying ? "rgba(34,197,94,0.4)" : "linear-gradient(180deg, #4ade80, #16a34a)",
+              color: "#04160a",
+              border: "none",
+              borderRadius: 14,
+              padding: "14px 0",
+              fontSize: 15,
+              fontWeight: 900,
+              letterSpacing: "0.05em",
+              cursor: buying ? "wait" : "pointer",
+            }}
+          >
+            {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
+          </button>
+          <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.5)", marginTop: 8 }}>
+            Or come back tomorrow — {`${10}`} free matches reset daily
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={onStart}
+          disabled={busy}
+          style={{
+            background: busy ? "rgba(251,191,36,0.4)" : `linear-gradient(180deg, ${RIM}, #f59e0b)`,
+            color: "#04001a",
+            border: "none",
+            borderRadius: 18,
+            padding: "18px 0",
+            fontSize: 18,
+            fontWeight: 900,
+            letterSpacing: "0.06em",
+            cursor: busy ? "wait" : "pointer",
+            animation: busy ? "none" : "glowPulse 2.2s ease-in-out infinite",
+          }}
+        >
+          {busy ? "SUMMONING MARKOV…" : "⚔️ ENTER ARENA"}
+        </button>
+      )}
+
+      {remaining !== null && !refillOffer && (
+        <div style={{ fontSize: 11.5, color: remaining <= 2 ? "#fca5a5" : "rgba(220,210,255,0.55)", textAlign: "center", fontWeight: 700 }}>
+          {remaining} free {remaining === 1 ? "match" : "matches"} left today
+        </div>
+      )}
 
       <div
         style={{

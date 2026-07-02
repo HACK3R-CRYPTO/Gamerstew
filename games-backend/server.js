@@ -2910,6 +2910,102 @@ function arenaPoints(session) {
 
 const ARENA_WEEKLY_POOL_GS = Number(process.env.ARENA_WEEKLY_POOL_GS || 500);
 
+// ─── Arena G$ perks: daily limit + purchase rail ────────────────────────────
+// FREE matches/day per wallet. Casual play never hits the wall; ladder
+// grinders refill with G$ that routes to the weekly pool wallet.
+const ARENA_FREE_MATCHES_PER_DAY = Number(process.env.ARENA_FREE_MATCHES_PER_DAY || 10);
+const ARENA_POOL_WALLET = (process.env.ARENA_POOL_WALLET || '').toLowerCase();
+const ARENA_G_TOKEN = (process.env.G_TOKEN_ADDR || '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A').toLowerCase();
+const ARENA_SKUS = {
+  refill_5: { priceWei: ethers.parseEther('2'), grantExtra: 5, label: '+5 matches' },
+};
+const ERC20_TRANSFER_IFACE = new ethers.Interface([
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+]);
+
+function arenaDayKey() { return new Date().toISOString().slice(0, 10); }
+
+// Consume one match slot. Fail-soft: if the table is missing (local setup
+// pre-migration) play is unlimited. Read-then-update has a benign race at
+// this scale; the limit is an economy dial, not a security boundary.
+async function arenaConsumeSlot(wallet) {
+  const day = arenaDayKey();
+  try {
+    const { data, error } = await supabase
+      .from('arena_daily')
+      .select('used, extra')
+      .eq('wallet', wallet)
+      .eq('day', day)
+      .maybeSingle();
+    if (error) throw error;
+    const used = data?.used ?? 0;
+    const extra = data?.extra ?? 0;
+    const allowance = ARENA_FREE_MATCHES_PER_DAY + extra;
+    if (used >= allowance) return { ok: false, remaining: 0 };
+    await supabase.from('arena_daily').upsert({
+      wallet, day, used: used + 1, extra, updated_at: new Date().toISOString(),
+    });
+    return { ok: true, remaining: allowance - used - 1 };
+  } catch (e) {
+    return { ok: true, remaining: null }; // table absent → unlimited local play
+  }
+}
+
+// Verify a G$ transfer to the pool wallet and grant the SKU. Mirrors the
+// verifyScoreTx pattern: receipt polled, status checked, target checked,
+// Transfer(player → pool, ≥price) parsed from logs. tx_hash PK = replay-proof.
+async function arenaVerifyPurchase(txHash, wallet, sku) {
+  const item = ARENA_SKUS[sku];
+  if (!item) return { ok: false, reason: 'unknown_sku' };
+  if (!ARENA_POOL_WALLET) return { ok: false, reason: 'pool_wallet_unconfigured' };
+  if (!provider) return { ok: false, reason: 'rpc_unavailable' };
+
+  const { data: existing } = await supabase
+    .from('arena_purchases').select('tx_hash').eq('tx_hash', txHash).maybeSingle();
+  if (existing) return { ok: false, reason: 'tx_already_used' };
+
+  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+  let receipt = null;
+  while (Date.now() < deadline) {
+    try { receipt = await provider.getTransactionReceipt(txHash); if (receipt) break; } catch {}
+    await new Promise(r => setTimeout(r, RECEIPT_POLL_MS));
+  }
+  if (!receipt) return { ok: false, reason: 'receipt_not_found' };
+  if (Number(receipt.status) !== 1) return { ok: false, reason: 'tx_reverted' };
+  if ((receipt.to || '').toLowerCase() !== ARENA_G_TOKEN) {
+    return { ok: false, reason: 'tx_not_gdollar' };
+  }
+  let paid = null;
+  for (const log of receipt.logs || []) {
+    try {
+      const parsed = ERC20_TRANSFER_IFACE.parseLog({ topics: log.topics, data: log.data });
+      if (!parsed || parsed.name !== 'Transfer') continue;
+      if (String(parsed.args.from).toLowerCase() !== wallet) continue;
+      if (String(parsed.args.to).toLowerCase() !== ARENA_POOL_WALLET) continue;
+      if (BigInt(parsed.args.value) >= item.priceWei) { paid = parsed.args.value; break; }
+    } catch {}
+  }
+  if (!paid) return { ok: false, reason: 'transfer_to_pool_not_found' };
+
+  const { error: insErr } = await supabase.from('arena_purchases').insert({
+    tx_hash: txHash, wallet, sku, amount_wei: paid.toString(),
+  });
+  if (insErr) return { ok: false, reason: 'grant_failed' }; // unique violation = replay race
+
+  // Grant: bump today's extra allowance.
+  const day = arenaDayKey();
+  const { data: row } = await supabase
+    .from('arena_daily').select('used, extra').eq('wallet', wallet).eq('day', day).maybeSingle();
+  await supabase.from('arena_daily').upsert({
+    wallet, day,
+    used: row?.used ?? 0,
+    extra: (row?.extra ?? 0) + item.grantExtra,
+    updated_at: new Date().toISOString(),
+  });
+  const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + item.grantExtra - (row?.used ?? 0);
+  return { ok: true, remaining };
+}
+
 const arenaEngine = new ArenaMatchEngine({
   onMatchComplete: async (session) => {
     // Receipt layer: persist completed matches for history, ladder, and the
@@ -2938,13 +3034,39 @@ const arenaEngine = new ArenaMatchEngine({
 });
 
 // POST /api/arena/start — open an instant match. Returns the commit hash
-// BEFORE any round: MARKOV's moves are provably pre-seeded.
-app.post('/api/arena/start', requireSecret, gameSubmitLimiter, (req, res) => {
+// BEFORE any round: MARKOV's moves are provably pre-seeded. Enforces the
+// daily free-match limit; when exhausted, returns the refill offer.
+app.post('/api/arena/start', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { playerAddress } = req.body || {};
   if (!playerAddress || !/^0x[0-9a-fA-F]{40}$/.test(playerAddress)) {
     return res.status(400).json({ error: 'playerAddress required' });
   }
-  return res.json(arenaEngine.start(playerAddress));
+  const slot = await arenaConsumeSlot(playerAddress.toLowerCase());
+  if (!slot.ok) {
+    return res.status(402).json({
+      error: 'daily_limit',
+      remaining: 0,
+      refill: {
+        sku: 'refill_5',
+        priceGs: 2,
+        grants: 5,
+        poolWallet: ARENA_POOL_WALLET,
+        gToken: ARENA_G_TOKEN,
+      },
+    });
+  }
+  return res.json({ ...arenaEngine.start(playerAddress), remainingToday: slot.remaining });
+});
+
+// POST /api/arena/purchase — verify an on-chain G$ transfer to the pool
+// wallet and grant the SKU. Body: { wallet, sku, txHash }.
+app.post('/api/arena/purchase', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, sku, txHash } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return res.status(400).json({ error: 'txHash required' });
+  const out = await arenaVerifyPurchase(txHash, wallet.toLowerCase(), String(sku));
+  if (!out.ok) return res.status(400).json({ error: out.reason });
+  return res.json({ ok: true, remaining: out.remaining });
 });
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,

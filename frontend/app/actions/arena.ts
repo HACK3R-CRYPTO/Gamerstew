@@ -8,11 +8,21 @@
 const BACKEND_URL     = process.env.BACKEND_URL || 'http://localhost:3005';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 
+export type RefillOffer = {
+  sku: string;
+  priceGs: number;
+  grants: number;
+  poolWallet: string;
+  gToken: string;
+};
+
 type StartResponse = {
   matchId: string;
   commitHash: string;
   bestOf: number;
   winsNeeded: number;
+  remainingToday?: number | null;
+  refill?: RefillOffer;    // present when error === 'daily_limit'
   error?: string;
 };
 
@@ -86,6 +96,19 @@ export async function getArenaLadder(wallet?: string): Promise<LadderData> {
     return await res.json();
   } catch {
     return { week: '', poolGs: 0, players: 0, top: [], me: null, error: 'backend_unreachable' };
+  }
+}
+
+// Verify a G$ refill purchase (player already sent the transfer tx from
+// their own wallet) and grant the extra matches.
+export async function purchaseArenaRefill(
+  wallet: string,
+  txHash: string,
+): Promise<{ ok?: boolean; remaining?: number; error?: string }> {
+  try {
+    return await backend('/api/arena/purchase', { wallet, sku: 'refill_5', txHash });
+  } catch {
+    return { error: 'backend_unreachable' };
   }
 }
 
