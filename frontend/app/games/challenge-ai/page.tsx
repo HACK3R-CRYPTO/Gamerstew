@@ -105,6 +105,9 @@ const KEYFRAMES = `
 @keyframes slamL { from { transform: translateX(-90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes slamR { from { transform: translateX(90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes vsPop { 0% { transform: scale(0.2); opacity: 0 } 70% { transform: scale(1.3) } 100% { transform: scale(1); opacity: 1 } }
+@keyframes stampSlam { 0% { transform: scale(3) rotate(-18deg); opacity: 0 } 60% { transform: scale(0.9) rotate(-12deg); opacity: 1 } 100% { transform: scale(1) rotate(-12deg); opacity: 1 } }
+@keyframes readPulse { 0%,100% { opacity: 1 } 50% { opacity: 0.55 } }
+@keyframes dangerPulse { 0%,100% { box-shadow: inset 0 0 40px rgba(239,68,68,0.12) } 50% { box-shadow: inset 0 0 80px rgba(239,68,68,0.3) } }
 `;
 
 export default function ChallengeAiPage() {
@@ -518,6 +521,10 @@ function MatchStage({
   const impact = beat === "impact" && lastRound;
   const playerWonRound = impact && lastRound!.result === "win";
   const aiWonRound = impact && lastRound!.result === "loss";
+  // Read meter + sudden death derive from the latest server response.
+  const readLevel = lastRound?.readLevel ?? 8;
+  const sudden = !!lastRound?.suddenDeath && !lastRound?.final && beat !== "impact";
+  const hint = !impact ? lastRound?.mindGame?.text : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: impact ? "screenShake 0.35s ease" : undefined }}>
@@ -544,10 +551,35 @@ function MatchStage({
       {/* score pips */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <ScorePips label="YOU" color={pet.color} count={score.player} align="left" />
-        <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(220,210,255,0.6)", letterSpacing: "0.1em" }}>
-          ROUND {Math.min(roundNum, 9)}
+        <div style={{ fontSize: 12, fontWeight: 800, color: sudden ? "#fca5a5" : "rgba(220,210,255,0.6)", letterSpacing: "0.1em", textShadow: sudden ? "0 0 14px #ef4444" : undefined }}>
+          {sudden ? "FINAL ROUND" : `ROUND ${Math.min(roundNum, 9)}`}
         </div>
         <ScorePips label="MARKOV" color={RIM} count={score.ai} align="right" />
+      </div>
+
+      {/* MARKOV's read meter — the model's grip on you, visible */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: readLevel >= 60 ? "#fca5a5" : "rgba(220,210,255,0.5)", whiteSpace: "nowrap" }}>
+          🧠 MARKOV'S READ
+        </span>
+        <div style={{ flex: 1, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${readLevel}%`,
+              borderRadius: 999,
+              background: readLevel >= 60
+                ? "linear-gradient(90deg, #f59e0b, #ef4444)"
+                : `linear-gradient(90deg, ${RIM}, #f59e0b)`,
+              boxShadow: readLevel >= 60 ? "0 0 12px rgba(239,68,68,0.7)" : `0 0 8px ${RIM}66`,
+              transition: "width 0.8s cubic-bezier(0.22,1,0.36,1)",
+              animation: readLevel >= 75 ? "readPulse 1.1s ease-in-out infinite" : undefined,
+            }}
+          />
+        </div>
+        <span style={{ fontSize: 10.5, fontWeight: 900, color: readLevel >= 60 ? "#fca5a5" : "rgba(220,210,255,0.6)", width: 34, textAlign: "right" }}>
+          {readLevel}%
+        </span>
       </div>
 
       {/* THE STAGE — combatants always present */}
@@ -557,11 +589,12 @@ function MatchStage({
           minHeight: 300,
           borderRadius: 22,
           background: "linear-gradient(180deg, rgba(8,2,32,0.55) 0%, rgba(15,8,44,0.85) 100%)",
-          border: "1px solid rgba(255,255,255,0.1)",
+          border: `1px solid ${sudden ? "rgba(239,68,68,0.45)" : "rgba(255,255,255,0.1)"}`,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-end",
+          animation: sudden ? "dangerPulse 1.4s ease-in-out infinite" : undefined,
         }}
       >
         {/* arena floor glow */}
@@ -583,16 +616,18 @@ function MatchStage({
             <span
               style={{
                 display: "inline-block",
-                background: `linear-gradient(90deg, transparent, ${RIM}33 20%, ${RIM}55 50%, ${RIM}33 80%, transparent)`,
+                background: sudden
+                  ? "linear-gradient(90deg, transparent, rgba(239,68,68,0.25) 20%, rgba(239,68,68,0.45) 50%, rgba(239,68,68,0.25) 80%, transparent)"
+                  : `linear-gradient(90deg, transparent, ${RIM}33 20%, ${RIM}55 50%, ${RIM}33 80%, transparent)`,
                 padding: "10px 46px",
                 fontSize: 26,
                 fontWeight: 900,
                 letterSpacing: "0.18em",
                 color: "#fff",
-                textShadow: `0 0 24px ${RIM}`,
+                textShadow: sudden ? "0 0 26px #ef4444" : `0 0 24px ${RIM}`,
               }}
             >
-              ROUND {roundNum}
+              {sudden ? "⚔️ FINAL ROUND ⚔️" : `ROUND ${roundNum}`}
             </span>
           </div>
         )}
@@ -648,6 +683,24 @@ function MatchStage({
             )}
             {impact && (
               <>
+                {lastRound!.called && (
+                  <div
+                    style={{
+                      border: "3px solid #ef4444",
+                      color: "#fca5a5",
+                      borderRadius: 8,
+                      padding: "3px 12px",
+                      fontSize: 13,
+                      fontWeight: 900,
+                      letterSpacing: "0.14em",
+                      background: "rgba(239,68,68,0.12)",
+                      textShadow: "0 0 12px #ef4444",
+                      animation: "stampSlam 0.45s 0.15s cubic-bezier(0.22,1.3,0.36,1) both",
+                    }}
+                  >
+                    CALLED IT
+                  </div>
+                )}
                 <div
                   style={{
                     fontSize: 24,
@@ -678,9 +731,28 @@ function MatchStage({
               </>
             )}
             {armed && (
-              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.75)", animation: "chantPop 0.3s ease both" }}>
-                PICK YOUR THROW ⚡
-              </div>
+              <>
+                <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", color: sudden ? "#fca5a5" : "rgba(220,210,255,0.75)", animation: "chantPop 0.3s ease both" }}>
+                  {sudden ? "WINNER TAKES ALL 💀" : "PICK YOUR THROW ⚡"}
+                </div>
+                {hint && (
+                  <div
+                    style={{
+                      background: "rgba(0,0,0,0.55)",
+                      border: "1px dashed rgba(251,191,36,0.5)",
+                      borderRadius: 12,
+                      padding: "6px 12px",
+                      fontSize: 11.5,
+                      fontStyle: "italic",
+                      color: RIM,
+                      maxWidth: 230,
+                      animation: "linePop 0.35s 0.15s ease both",
+                    }}
+                  >
+                    MARKOV: “{hint}” <span style={{ color: "rgba(220,210,255,0.45)", fontStyle: "normal" }}>· truth or bluff?</span>
+                  </div>
+                )}
+              </>
             )}
             {matchStreak >= 2 && !impact && (
               <div style={{ fontSize: 13, fontWeight: 900, color: "#fb923c", animation: "streakFlame 0.9s ease-in-out infinite" }}>
@@ -902,6 +974,12 @@ function ResultStage({
             🧠 HOW MARKOV READ YOU
           </div>
           <div style={{ fontSize: 13.5, lineHeight: 1.65, color: "rgba(230,222,255,0.9)" }}>
+            {typeof final.calledCount === "number" && (final.calledCount ?? 0) > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                MARKOV <b style={{ color: "#fca5a5" }}>called your exact throw {final.calledCount}×</b> in{" "}
+                {final.totalRounds} rounds this match.
+              </div>
+            )}
             Across <b>{reveal.totalObserved}</b> observed throws your favorite is{" "}
             <b style={{ color: RIM }}>{reveal.favoriteMove}</b> ({reveal.favoritePct}%).
             {reveal.pattern && (

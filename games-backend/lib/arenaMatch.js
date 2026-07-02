@@ -193,6 +193,12 @@ const LINES = {
     'unpredictability is a skill. you have it today',
     'this loss goes in my training data. see you in the rematch',
   ],
+  calledIt: [
+    'CALLED IT. you are a open book',
+    'predicted that exact throw. change something',
+    'my model saw that coming two rounds ago',
+    'that was in the forecast. literally',
+  ],
 };
 
 function pickLine(rand, arr) {
@@ -238,6 +244,29 @@ class ArenaMatchEngine {
     return { matchId, commitHash, bestOf: BEST_OF, winsNeeded: WINS_NEEDED };
   }
 
+  // Read level 0-100: how deeply MARKOV has modeled this player right now.
+  // Confidence of the current best prediction, weighted by sample size.
+  _readLevel(wallet) {
+    const p = this.model.predictNext(wallet);
+    if (!p) return 8; // cold start — barely a scent
+    const depth = p.source === 'markov2' ? 1 : p.source === 'markov1' ? 0.8 : 0.55;
+    return Math.min(97, Math.round(p.confidence * depth * 100));
+  }
+
+  // Mind-game hint for the NEXT round. MARKOV announces what it expects the
+  // player to throw — honest ~55% of the time, a bluff otherwise. Drawn from
+  // the committed seed, so even the bluffing is verifiable post-match.
+  _mindGame(s) {
+    const p = this.model.predictNext(s.wallet);
+    if (!p) return null;
+    const honest = s.rand() < 0.55;
+    const shown = honest ? p.move : Math.floor(s.rand() * 3);
+    return {
+      text: `i'm expecting ${MOVES[shown]} from you next`,
+      // truth stored server-side only in the seed replay — never sent live
+    };
+  }
+
   throw(matchId, playerMove) {
     const s = this.sessions.get(matchId);
     if (!s) return { error: 'match_not_found' };
@@ -252,6 +281,11 @@ class ArenaMatchEngine {
     const decision = this.model.decide(s.wallet, s.rand, s.rounds.length, s.rounds.map(r => r.playerMove));
     const aiMove = decision.move;
 
+    // Did the model call the player's exact throw? (Only meaningful in
+    // markov mode — random/cold-start hits are luck, not a read.)
+    const called = decision.mode === 'markov' && decision.predicted === playerMove;
+    if (called) s.calledCount = (s.calledCount || 0) + 1;
+
     // Now observe the player's throw so the model learns for the next round.
     this.model.observe(s.wallet, playerMove);
 
@@ -260,18 +294,25 @@ class ArenaMatchEngine {
     else if (COUNTER[aiMove] === playerMove) { result = 'win'; s.playerWins++; }
     else { result = 'loss'; s.aiWins++; }
 
-    s.rounds.push({ playerMove, aiMove, result, mode: decision.mode });
+    s.rounds.push({ playerMove, aiMove, result, mode: decision.mode, called });
 
     const line =
-      result === 'win' ? pickLine(s.rand, LINES.roundLoss)
+      called && result === 'loss' ? pickLine(s.rand, LINES.calledIt)
+      : result === 'win' ? pickLine(s.rand, LINES.roundLoss)
       : result === 'loss' ? pickLine(s.rand, LINES.roundWin)
       : pickLine(s.rand, LINES.roundTie);
+
+    const suddenDeath = s.playerWins === WINS_NEEDED - 1 && s.aiWins === WINS_NEEDED - 1;
 
     const response = {
       round: s.rounds.length,
       playerMove,
       aiMove,
       result,
+      called,
+      readLevel: this._readLevel(s.wallet),
+      suddenDeath,
+      mindGame: this._mindGame(s),
       score: { player: s.playerWins, ai: s.aiWins, ties: s.ties },
       markovLine: line,
     };
@@ -289,6 +330,8 @@ class ArenaMatchEngine {
         seed: s.seed,                    // the reveal — verify against commitHash
         commitHash: s.commitHash,
         rounds: s.rounds,
+        calledCount: s.calledCount || 0,
+        totalRounds: s.rounds.length,
         matchLine: outcome === 'player_won'
           ? pickLine(s.rand, LINES.matchLoss)
           : pickLine(s.rand, LINES.matchWin),

@@ -21,13 +21,19 @@ export type RoundResult = {
   playerMove: number;
   aiMove: number;
   result: 'win' | 'loss' | 'tie';
+  called?: boolean;          // MARKOV's model predicted this exact throw
+  readLevel?: number;        // 0-100 · how deeply MARKOV has modeled the player
+  suddenDeath?: boolean;     // next round decides the match (2-2)
+  mindGame?: { text: string } | null; // MARKOV's pre-round psych-out for the next round
   score: { player: number; ai: number; ties: number };
   markovLine: string;
   final?: {
     outcome: 'player_won' | 'ai_won' | 'tie';
     seed: string;
     commitHash: string;
-    rounds: { playerMove: number; aiMove: number; result: string; mode: string }[];
+    rounds: { playerMove: number; aiMove: number; result: string; mode: string; called?: boolean }[];
+    calledCount?: number;
+    totalRounds?: number;
     matchLine: string;
     modelReveal: {
       totalObserved: number;
