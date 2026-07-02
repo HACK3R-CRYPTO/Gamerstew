@@ -36,7 +36,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         appearance: {
           theme: 'dark',
           accentColor: '#7b2ff7',
-          logo: '/components/game_arena_text.png',
+          logo: '/logo-full.png',
           showWalletLoginFirst: false,
         },
         loginMethods: ['google', 'email', 'wallet'],

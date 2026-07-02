@@ -171,7 +171,7 @@ function HomeScreenMobile({
           what compresses the layout: the old flex: 1 hero was eating all
           leftover height, opening a ~40% dead gap between hero and CTAs. */}
       <div style={{ display: "flex", flexDirection: "column", paddingTop: "clamp(72px, 15vh, 136px)", position: "relative", zIndex: 2, gap: 20 }}>
-        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "82%", maxWidth: 360, alignSelf: "center", filter: "drop-shadow(0 4px 28px rgba(167,139,250,0.6))" }} />
+        <img src="/logo-full.png" alt="Game Arena" style={{ width: "82%", maxWidth: 360, alignSelf: "center", filter: "drop-shadow(0 4px 28px rgba(167,139,250,0.6))" }} />
         <h1 style={{ fontFamily: T.display, fontSize: 34, lineHeight: 1.0, color: T.ink, margin: 0, textAlign: "center", letterSpacing: "-0.01em" }}>
           Play. Compete. <span style={{ color: T.accent, textShadow: `0 0 18px ${T.accent}` }}>Win.</span>
         </h1>
@@ -235,7 +235,7 @@ function HomeScreenDesktop({
           <Pill color="#a78bfa">{climbPillLabel(live?.climb ?? null)}</Pill>
           <SoundToggle muted={muted} onToggle={onMute} size={34} />
         </div>
-        <img src="/components/game_arena_text.png" alt="Game Arena" style={{ width: "clamp(280px, 32vw, 440px)", height: "auto", filter: "drop-shadow(0 4px 32px rgba(167,139,250,0.55))" }} />
+        <img src="/logo-full.png" alt="Game Arena" style={{ width: "clamp(280px, 32vw, 440px)", height: "auto", filter: "drop-shadow(0 4px 32px rgba(167,139,250,0.55))" }} />
         <h1 style={{ fontFamily: T.display, fontSize: 56, lineHeight: 1.02, color: T.ink, margin: 0, letterSpacing: "-0.015em" }}>
           Play. Compete. <span style={{ color: T.accent, textShadow: `0 0 28px ${T.accent}` }}>Win.</span>
         </h1>
