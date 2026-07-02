@@ -71,7 +71,6 @@ const T = {
 };
 // Challenge AI's identity from the games hub card: deep green + #22c55e glow
 const AI_GREEN = "#22c55e";
-const AI_CARD_BG = "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)";
 
 const MOVES = [
   { id: 0, name: "ROCK",     art: "/games/challenge-ai-v2/moves/rock.png" },
@@ -132,6 +131,9 @@ const KEYFRAMES = `
 @keyframes streakFlame { 0%,100% { transform: scale(1) rotate(-4deg) } 50% { transform: scale(1.25) rotate(4deg) } }
 @keyframes confettiFall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1 } 100% { transform: translateY(105vh) rotate(720deg); opacity: 0.6 } }
 @keyframes glowPulse { 0%,100% { box-shadow: 0 8px 30px rgba(251,191,36,0.27) } 50% { box-shadow: 0 8px 44px rgba(251,191,36,0.55) } }
+@keyframes bubblePop { 0% { transform: scale(0.6) translateY(6px); opacity: 0 } 70% { transform: scale(1.05) translateY(0); opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
+@keyframes floorPulse { 0%,100% { opacity: 0.55; transform: scaleX(1) } 50% { opacity: 0.85; transform: scaleX(1.06) } }
+@keyframes iconDrift { 0%,100% { transform: translateY(0) rotate(var(--rot, 0deg)) } 50% { transform: translateY(-14px) rotate(var(--rot, 0deg)) } }
 @keyframes slamL { from { transform: translateX(-90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes slamR { from { transform: translateX(90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes vsPop { 0% { transform: scale(0.2); opacity: 0 } 70% { transform: scale(1.3) } 100% { transform: scale(1); opacity: 1 } }
@@ -358,6 +360,7 @@ export default function ChallengeAiPage() {
       >
         {phase === "lobby" && (
           <Lobby
+            pet={pet}
             record={record}
             busy={busy}
             error={error}
@@ -403,8 +406,9 @@ export default function ChallengeAiPage() {
 
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
-  record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
+  pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
 }: {
+  pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
   busy: boolean;
   error: string | null;
@@ -416,189 +420,199 @@ function Lobby({
   buying: boolean;
   onBuyRefill: () => void;
 }) {
+  // Rotating taunt · MARKOV talks at the gate like a boss NPC.
+  const TAUNTS = [
+    "bring your best pattern. i've already modeled it.",
+    "humans open with rock 41% of the time. just saying.",
+    "i remember every throw you've ever made.",
+    "the ladder resets. my memory doesn't.",
+    "you're not random. nobody is.",
+  ];
+  const [tauntIdx, setTauntIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTauntIdx((i) => (i + 1) % TAUNTS.length), 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const myRank = ladder?.me?.rank ?? (ladder && myAddress ? ladder.top.find((e) => e.wallet === myAddress.toLowerCase())?.rank : undefined);
+  const myPts = ladder?.me?.points ?? (ladder && myAddress ? ladder.top.find((e) => e.wallet === myAddress.toLowerCase())?.points : undefined);
+  const leader = ladder?.top?.[0];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "riseIn 0.35s ease both" }}>
-      {/* back pill · same as leaderboard pages */}
-      <Link href="/games" style={{ textDecoration: "none", alignSelf: "flex-start" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}>
-          ‹ Games
+    <div
+      style={{
+        // Full scene: fills the viewport between AppHeader and bottom nav.
+        minHeight: "calc(100dvh - 230px)",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        animation: "riseIn 0.35s ease both",
+      }}
+    >
+      {/* ambient floating game icons · same texture as /home */}
+      {[
+        { src: "/splash_screen_icons/dice.png", top: "4%", left: -18, size: 84, rot: -18, glow: "#c026d3", delay: 0 },
+        { src: "/splash_screen_icons/joystick.png", top: "30%", right: -14, size: 74, rot: 14, glow: "#06b6d4", delay: 1.2 },
+        { src: "/splash_screen_icons/gamepad.png", top: "58%", left: -10, size: 64, rot: -8, glow: "#a78bfa", delay: 2.0 },
+      ].map((ic, i) => (
+        <img
+          key={i}
+          src={ic.src}
+          alt=""
+          aria-hidden
+          style={{
+            position: "absolute", top: ic.top, left: ic.left as number | undefined, right: (ic as { right?: number }).right,
+            width: ic.size, opacity: 0.13, pointerEvents: "none",
+            filter: `drop-shadow(0 0 18px ${ic.glow})`,
+            ["--rot" as string]: `${ic.rot}deg`,
+            animation: `iconDrift ${4.5 + i}s ease-in-out ${ic.delay}s infinite`,
+            zIndex: 0,
+          }}
+        />
+      ))}
+
+      {/* top chips row: record + ladder rank · info ON the scene, not cards */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, position: "relative", zIndex: 2 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800 }}>
+          <span style={{ color: "#86efac" }}>{record.w}W</span>
+          <span style={{ color: "#fca5a5" }}>{record.l}L</span>
+          {record.streak > 1 && <span style={{ color: RIM }}>🔥{record.streak}</span>}
         </span>
-      </Link>
-
-      {/* MARKOV hero · same card language as the games hub, AI-green identity */}
-      <div
-        style={{
-          position: "relative",
-          borderRadius: 18,
-          overflow: "hidden",
-          background: AI_CARD_BG,
-          boxShadow: `0 8px 18px -6px ${AI_GREEN}66`,
-        }}
-      >
-        <div style={{ padding: "22px 18px 14px", textAlign: "center" }}>
-          <img
-            src={MARKOV_ART}
-            alt="MARKOV"
-            style={{
-              width: 150,
-              height: 150,
-              objectFit: "contain",
-              filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))",
-              animation: "idleBob 3.2s ease-in-out infinite",
-            }}
-          />
-        </div>
-        <div style={{ padding: "12px 16px 14px", background: "rgba(0,0,0,0.35)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.01em" }}>Challenge MARKOV</div>
-              <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700, marginTop: 3 }}>
-                Free · instant · it learns your patterns
-              </div>
-            </div>
-            <span style={{ background: "rgba(34,197,94,0.15)", border: `1px solid ${AI_GREEN}55`, color: "#86efac", borderRadius: 999, padding: "5px 11px", fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.1em", whiteSpace: "nowrap" }}>
-              BEST OF 5
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* record strip · hairline stat cards */}
-      <div style={{ display: "flex", gap: 8 }}>
-        {[
-          { label: "WINS", value: record.w, color: "#86efac" },
-          { label: "LOSSES", value: record.l, color: "#fca5a5" },
-          { label: "TIES", value: record.t, color: "#c4b5fd" },
-          { label: "STREAK", value: record.streak, color: RIM },
-        ].map((s) => (
-          <div
-            key={s.label}
-            style={{
-              flex: 1,
-              background: "rgba(255,255,255,0.04)",
-              border: `1px solid ${T.hairline}`,
-              borderRadius: 13,
-              padding: "9px 0",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontFamily: T.display, fontSize: 18, color: s.color }}>{s.value}</div>
-            <div style={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.12em", color: T.inkSoft, marginTop: 1 }}>
-              {s.label}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* weekly ladder teaser — top 3 + you · tap for the full board */}
-      {ladder && ladder.top.length > 0 && (
         <Link href="/games/challenge-ai/leaderboard" style={{ textDecoration: "none" }}>
-          <div
-            style={{
-              borderRadius: 14,
-              border: `1px solid ${T.hairline}`,
-              background: "rgba(255,255,255,0.04)",
-              padding: "11px 14px",
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-              <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
-                🏆 WEEKLY LADDER
-              </span>
-              <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700 }}>
-                View all ›
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {ladder.top.slice(0, 3).map((e) => {
-                const mine = myAddress && e.wallet === myAddress.toLowerCase();
-                return (
-                  <div key={e.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 6px", borderRadius: 8, background: mine ? "rgba(251,191,36,0.1)" : "transparent" }}>
-                    <span style={{ width: 24, fontFamily: T.display, fontSize: 12, color: e.rank === 1 ? RIM : T.inkDim }}>
-                      {e.rank === 1 ? "👑" : `#${e.rank}`}
-                    </span>
-                    <span style={{ flex: 1, fontFamily: T.body, fontSize: 12, fontWeight: 700, color: mine ? RIM : T.ink }}>
-                      {mine ? "You" : `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`}
-                    </span>
-                    <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#86efac" }}>{e.points} pts</span>
-                  </div>
-                );
-              })}
-              {ladder.me && ladder.me.rank > 3 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 6px", borderRadius: 8, background: "rgba(251,191,36,0.1)" }}>
-                  <span style={{ width: 24, fontFamily: T.display, fontSize: 12, color: T.inkDim }}>#{ladder.me.rank}</span>
-                  <span style={{ flex: 1, fontFamily: T.body, fontSize: 12, fontWeight: 700, color: RIM }}>You</span>
-                  <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#86efac" }}>{ladder.me.points} pts</span>
-                </div>
-              )}
-            </div>
-          </div>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${myRank === 1 ? "rgba(251,191,36,0.5)" : T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.inkDim, cursor: "pointer" }}>
+            🏆 {myRank ? (myRank === 1 ? <span style={{ color: RIM }}>#1 · {myPts} pts</span> : `#${myRank} · ${myPts} pts`) : leader ? `${leader.wallet.slice(0, 4)}… leads` : "Weekly ladder"}
+            <span style={{ color: T.inkSoft }}>›</span>
+          </span>
         </Link>
-      )}
+      </div>
+
+      {/* THE STAGE · MARKOV owns the center */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, padding: "10px 0 0" }}>
+        {/* speech bubble */}
+        <div
+          key={tauntIdx}
+          style={{
+            maxWidth: 270,
+            background: "rgba(0,0,0,0.6)",
+            border: "1px solid rgba(251,191,36,0.4)",
+            borderRadius: 14,
+            padding: "9px 14px",
+            fontFamily: T.body,
+            fontSize: 12.5,
+            fontStyle: "italic",
+            color: "rgba(240,230,255,0.92)",
+            textAlign: "center",
+            animation: "bubblePop 0.4s cubic-bezier(0.22,1.4,0.36,1) both",
+            position: "relative",
+            marginBottom: 6,
+          }}
+        >
+          “{TAUNTS[tauntIdx]}”
+          <span style={{ position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%) rotate(45deg)", width: 12, height: 12, background: "rgba(0,0,0,0.6)", borderRight: "1px solid rgba(251,191,36,0.4)", borderBottom: "1px solid rgba(251,191,36,0.4)" }} />
+        </div>
+
+        {/* MARKOV · the boss */}
+        <img
+          src={MARKOV_ART}
+          alt="MARKOV"
+          style={{
+            width: "min(62vw, 250px)",
+            height: "auto",
+            objectFit: "contain",
+            filter: `drop-shadow(0 0 40px ${RIM}55) drop-shadow(0 10px 20px rgba(0,0,0,0.6))`,
+            animation: "idleBob 3.2s ease-in-out infinite",
+            position: "relative",
+            zIndex: 1,
+          }}
+        />
+        {/* stage floor glow */}
+        <div aria-hidden style={{ width: "min(58vw, 240px)", height: 30, borderRadius: "50%", background: `radial-gradient(ellipse, ${AI_GREEN}44 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -14, animation: "floorPulse 3.2s ease-in-out infinite" }} />
+
+        {/* name plate */}
+        <div style={{ textAlign: "center", marginTop: 4 }}>
+          <div style={{ fontFamily: T.display, fontSize: 26, color: "#fff", letterSpacing: "0.05em", textShadow: `0 0 24px ${RIM}66` }}>
+            MARKOV
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, fontWeight: 700, marginTop: 2 }}>
+            Free · Best of 5 · it learns your patterns
+          </div>
+        </div>
+
+        {/* your pet · you're in the scene too, facing the boss */}
+        <img
+          src={pet.src}
+          alt={pet.name}
+          style={{
+            position: "absolute",
+            bottom: -4,
+            left: "6%",
+            width: 74,
+            height: 74,
+            objectFit: "contain",
+            transform: "scaleX(-1)",
+            filter: `drop-shadow(0 0 14px ${pet.color}66)`,
+            animation: "idleBobAlt 2.8s ease-in-out infinite",
+            zIndex: 2,
+          }}
+        />
+      </div>
 
       {error && (
-        <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "10px 14px", fontFamily: T.body, fontSize: 12.5, color: "#fca5a5", textAlign: "center" }}>
+        <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "9px 14px", fontFamily: T.body, fontSize: 12, color: "#fca5a5", textAlign: "center", position: "relative", zIndex: 2, marginBottom: 8 }}>
           {error}
         </div>
       )}
 
-      {refillOffer ? (
-        <div
-          style={{
-            borderRadius: 16,
-            border: "1px solid rgba(251,191,36,0.45)",
-            background: "rgba(251,191,36,0.08)",
-            padding: "14px 16px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontFamily: T.display, fontSize: 15, color: RIM, letterSpacing: "0.02em" }}>OUT OF FREE MATCHES</div>
-          {/* juicy candy buy button · same wall+face+gloss as home/connect */}
-          <div
-            role="button"
-            onClick={buying ? undefined : onBuyRefill}
-            style={{ cursor: buying ? "wait" : "pointer", userSelect: "none", marginTop: 12, borderRadius: 16, background: "#052e16", paddingBottom: 5, boxShadow: "0 10px 22px -6px rgba(34,197,94,0.55), inset 0 -3px 8px rgba(0,0,0,0.4)" }}
-          >
-            <div style={{ borderRadius: "14px 14px 11px 11px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "13px 16px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.35)", boxShadow: "inset 0 8px 16px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)" }}>
-              <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "46%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "12px 12px 50px 50px", pointerEvents: "none" }} />
-              <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 15, color: "#fff", letterSpacing: "0.04em", textShadow: "0 2px 4px rgba(0,0,0,0.4)" }}>
-                {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
-              </span>
+      {/* thumb zone · one giant action */}
+      <div style={{ position: "relative", zIndex: 2, paddingTop: 8 }}>
+        {refillOffer ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontFamily: T.display, fontSize: 14, color: RIM, letterSpacing: "0.03em", marginBottom: 8 }}>OUT OF FREE MATCHES</div>
+            <div
+              role="button"
+              onClick={buying ? undefined : onBuyRefill}
+              style={{ cursor: buying ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}
+            >
+              <div style={{ borderRadius: "16px 16px 12px 12px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+                <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 16, color: "#fff", letterSpacing: "0.04em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
+                  {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
+                </span>
+              </div>
+            </div>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 7 }}>
+              Resets daily · G$ feeds the prize pool
             </div>
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 8 }}>
-            Resets daily · G$ feeds the prize pool
-          </div>
-        </div>
-      ) : (
-        // juicy candy ENTER ARENA · green identity, wall+face+gloss pattern
-        <div
-          role="button"
-          onClick={busy ? undefined : onStart}
-          style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
-          onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
-          onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-        >
-          <div style={{ borderRadius: "16px 16px 12px 12px", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "17px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
-            <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
-            <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 18, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
-              {busy ? "SUMMONING MARKOV…" : "⚔️ ENTER ARENA"}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {remaining !== null && !refillOffer && (
-        <div style={{ fontFamily: T.body, fontSize: 11, color: remaining <= 2 ? "#fca5a5" : T.inkSoft, textAlign: "center", fontWeight: 700 }}>
-          {remaining} free {remaining === 1 ? "match" : "matches"} left today
-        </div>
-      )}
-
-      <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.6 }}>
-        Provably fair · moves hash-committed before round 1, seed revealed after
+        ) : (
+          <>
+            <div
+              role="button"
+              onClick={busy ? undefined : onStart}
+              style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+              onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+              onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+            >
+              <div style={{ borderRadius: "16px 16px 12px 12px", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+                <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
+                <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
+                  {busy ? "SUMMONING MARKOV…" : "⚔️ FIGHT"}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+              {remaining !== null && (
+                <span style={{ color: remaining <= 2 ? "#fca5a5" : T.inkSoft }}>
+                  {remaining} free left today
+                </span>
+              )}
+              <span>🔒 provably fair</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
