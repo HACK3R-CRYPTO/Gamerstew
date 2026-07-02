@@ -19,7 +19,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import AppHeader from "@/components/AppHeader";
+import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
@@ -57,7 +58,20 @@ function petForLevel(level: number): PetStage {
 
 const MARKOV_ART = "/games/challenge-ai-v2/ai-bot-medium.png";
 const RIM = "#fbbf24";
-const BG = "#04001a";
+
+// ─── app design tokens (in sync with /games, /dashboard, leaderboards) ──────
+const T = {
+  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
+  ink: "#ffffff",
+  inkDim: "rgba(220,210,255,0.7)",
+  inkSoft: "rgba(220,210,255,0.45)",
+  hairline: "rgba(255,255,255,0.08)",
+  display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
+  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+};
+// Challenge AI's identity from the games hub card: deep green + #22c55e glow
+const AI_GREEN = "#22c55e";
+const AI_CARD_BG = "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)";
 
 const MOVES = [
   { id: 0, name: "ROCK",     art: "/games/challenge-ai-v2/moves/rock.png" },
@@ -135,7 +149,6 @@ const KEYFRAMES = `
 
 export default function ChallengeAiPage() {
   useRequireAuth();
-  const router = useRouter();
   const { address } = useAccount();
 
   const [phase, setPhase] = useState<Phase>("lobby");
@@ -297,77 +310,48 @@ export default function ChallengeAiPage() {
     [matchId, beat, later, updateRecord],
   );
 
+  const inMatch = phase === "vs" || phase === "match";
+
   return (
     <div
       style={{
         minHeight: "100dvh",
-        background: BG,
-        color: "#ede9fe",
-        fontFamily: "inherit",
+        background: T.bg,
+        color: T.ink,
+        fontFamily: T.body,
         position: "relative",
         overflow: "hidden",
       }}
     >
       <style>{KEYFRAMES}</style>
-      {/* ambient glow */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(60% 40% at 50% 0%, rgba(167,139,250,0.16) 0%, transparent 70%), radial-gradient(50% 35% at 50% 100%, rgba(251,191,36,0.08) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
 
-      {/* header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "14px 16px",
-          position: "relative",
-          zIndex: 2,
-        }}
-      >
-        <button
-          onClick={() => (phase === "lobby" ? router.push("/games") : setPhase("lobby"))}
-          style={{
-            background: "rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            color: "#ede9fe",
-            borderRadius: 12,
-            padding: "8px 14px",
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          ← {phase === "lobby" ? "Games" : "Quit match"}
-        </button>
-        <div
-          style={{
-            background: "rgba(251,191,36,0.14)",
-            border: "1px solid rgba(251,191,36,0.4)",
-            color: RIM,
-            borderRadius: 999,
-            padding: "6px 14px",
-            fontSize: 11,
-            fontWeight: 800,
-            letterSpacing: "0.08em",
-          }}
-        >
-          FREE · INSTANT · BEST OF 5
+      {/* App shell on browse screens · fullscreen immersion during the fight */}
+      {!inMatch && <AppHeader />}
+
+      {/* match-phase header: quit + format badge */}
+      {inMatch && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", position: "relative", zIndex: 2 }}>
+          <button
+            onClick={() => setPhase("lobby")}
+            style={{
+              background: "rgba(0,0,0,0.45)", border: `1px solid ${T.hairline}`,
+              color: T.inkDim, borderRadius: 999, padding: "7px 14px",
+              fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: T.body,
+            }}
+          >
+            ← Quit match
+          </button>
+          <div style={{ background: "rgba(34,197,94,0.12)", border: `1px solid ${AI_GREEN}55`, color: "#86efac", borderRadius: 999, padding: "6px 14px", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.08em", fontFamily: T.body }}>
+            BEST OF 5
+          </div>
         </div>
-      </div>
+      )}
 
       <div
         style={{
           maxWidth: 560,
           margin: "0 auto",
-          padding: "8px 16px 40px",
+          padding: inMatch ? "8px 16px 40px" : "12px 16px 110px",
           position: "relative",
           zIndex: 2,
         }}
@@ -411,6 +395,8 @@ export default function ChallengeAiPage() {
           />
         )}
       </div>
+
+      {!inMatch && <AppBottomNav />}
     </div>
   );
 }
@@ -431,56 +417,54 @@ function Lobby({
   onBuyRefill: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, animation: "riseIn 0.35s ease both" }}>
-      {/* MARKOV hero */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "riseIn 0.35s ease both" }}>
+      {/* back pill · same as leaderboard pages */}
+      <Link href="/games" style={{ textDecoration: "none", alignSelf: "flex-start" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}>
+          ‹ Games
+        </span>
+      </Link>
+
+      {/* MARKOV hero · same card language as the games hub, AI-green identity */}
       <div
         style={{
           position: "relative",
-          borderRadius: 24,
+          borderRadius: 18,
           overflow: "hidden",
-          border: "1px solid rgba(251,191,36,0.35)",
-          background:
-            "radial-gradient(circle at 50% 30%, rgba(251,191,36,0.18) 0%, rgba(8,2,32,0.9) 65%)",
-          padding: "28px 20px 20px",
-          textAlign: "center",
+          background: AI_CARD_BG,
+          boxShadow: `0 8px 18px -6px ${AI_GREEN}66`,
         }}
       >
-        <img
-          src={MARKOV_ART}
-          alt="MARKOV"
-          style={{
-            width: 180,
-            height: 180,
-            objectFit: "contain",
-            filter: `drop-shadow(0 0 34px ${RIM}66)`,
-            animation: "idleBob 3.2s ease-in-out infinite",
-          }}
-        />
-        <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.04em", marginTop: 6 }}>
-          MARKOV
+        <div style={{ padding: "22px 18px 14px", textAlign: "center" }}>
+          <img
+            src={MARKOV_ART}
+            alt="MARKOV"
+            style={{
+              width: 150,
+              height: 150,
+              objectFit: "contain",
+              filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))",
+              animation: "idleBob 3.2s ease-in-out infinite",
+            }}
+          />
         </div>
-        <div style={{ fontSize: 13, color: "rgba(220,210,255,0.75)", marginTop: 4 }}>
-          The AI that learns your patterns · every throw trains it
-        </div>
-        <div
-          style={{
-            display: "inline-block",
-            marginTop: 12,
-            background: "rgba(0,0,0,0.5)",
-            border: "1px solid rgba(255,255,255,0.14)",
-            borderRadius: 12,
-            padding: "8px 14px",
-            fontSize: 12.5,
-            color: "rgba(220,210,255,0.85)",
-            fontStyle: "italic",
-          }}
-        >
-          “bring your best pattern. i've already modeled it.”
+        <div style={{ padding: "12px 16px 14px", background: "rgba(0,0,0,0.35)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.01em" }}>Challenge MARKOV</div>
+              <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700, marginTop: 3 }}>
+                Free · instant · it learns your patterns
+              </div>
+            </div>
+            <span style={{ background: "rgba(34,197,94,0.15)", border: `1px solid ${AI_GREEN}55`, color: "#86efac", borderRadius: 999, padding: "5px 11px", fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.1em", whiteSpace: "nowrap" }}>
+              BEST OF 5
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* record strip */}
-      <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+      {/* record strip · hairline stat cards */}
+      <div style={{ display: "flex", gap: 8 }}>
         {[
           { label: "WINS", value: record.w, color: "#86efac" },
           { label: "LOSSES", value: record.l, color: "#fca5a5" },
@@ -491,15 +475,15 @@ function Lobby({
             key={s.label}
             style={{
               flex: 1,
-              background: "rgba(8,2,32,0.7)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 14,
-              padding: "10px 0",
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${T.hairline}`,
+              borderRadius: 13,
+              padding: "9px 0",
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 20, fontWeight: 900, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "rgba(220,210,255,0.55)" }}>
+            <div style={{ fontFamily: T.display, fontSize: 18, color: s.color }}>{s.value}</div>
+            <div style={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.12em", color: T.inkSoft, marginTop: 1 }}>
               {s.label}
             </div>
           </div>
@@ -511,41 +495,41 @@ function Lobby({
         <Link href="/games/challenge-ai/leaderboard" style={{ textDecoration: "none" }}>
           <div
             style={{
-              borderRadius: 18,
-              border: "1px solid rgba(134,239,172,0.25)",
-              background: "rgba(8,2,32,0.75)",
-              padding: "12px 16px",
+              borderRadius: 14,
+              border: `1px solid ${T.hairline}`,
+              background: "rgba(255,255,255,0.04)",
+              padding: "11px 14px",
               cursor: "pointer",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+              <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
                 🏆 WEEKLY LADDER
               </span>
-              <span style={{ fontSize: 11, color: "rgba(220,210,255,0.5)", fontWeight: 700 }}>
+              <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700 }}>
                 View all ›
               </span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               {ladder.top.slice(0, 3).map((e) => {
                 const mine = myAddress && e.wallet === myAddress.toLowerCase();
                 return (
-                  <div key={e.wallet} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "3px 6px", borderRadius: 8, background: mine ? "rgba(251,191,36,0.1)" : "transparent" }}>
-                    <span style={{ width: 22, fontWeight: 900, color: e.rank === 1 ? RIM : "rgba(220,210,255,0.6)" }}>
+                  <div key={e.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 6px", borderRadius: 8, background: mine ? "rgba(251,191,36,0.1)" : "transparent" }}>
+                    <span style={{ width: 24, fontFamily: T.display, fontSize: 12, color: e.rank === 1 ? RIM : T.inkDim }}>
                       {e.rank === 1 ? "👑" : `#${e.rank}`}
                     </span>
-                    <span style={{ flex: 1, fontFamily: "monospace", color: mine ? RIM : "rgba(230,222,255,0.85)" }}>
-                      {mine ? "YOU" : `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`}
+                    <span style={{ flex: 1, fontFamily: T.body, fontSize: 12, fontWeight: 700, color: mine ? RIM : T.ink }}>
+                      {mine ? "You" : `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`}
                     </span>
-                    <span style={{ fontWeight: 900, color: "#86efac" }}>{e.points} pts</span>
+                    <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#86efac" }}>{e.points} pts</span>
                   </div>
                 );
               })}
               {ladder.me && ladder.me.rank > 3 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "3px 6px", borderRadius: 8, background: "rgba(251,191,36,0.1)" }}>
-                  <span style={{ width: 22, fontWeight: 900, color: "rgba(220,210,255,0.6)" }}>#{ladder.me.rank}</span>
-                  <span style={{ flex: 1, fontFamily: "monospace", color: RIM }}>YOU</span>
-                  <span style={{ fontWeight: 900, color: "#86efac" }}>{ladder.me.points} pts</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 6px", borderRadius: 8, background: "rgba(251,191,36,0.1)" }}>
+                  <span style={{ width: 24, fontFamily: T.display, fontSize: 12, color: T.inkDim }}>#{ladder.me.rank}</span>
+                  <span style={{ flex: 1, fontFamily: T.body, fontSize: 12, fontWeight: 700, color: RIM }}>You</span>
+                  <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#86efac" }}>{ladder.me.points} pts</span>
                 </div>
               )}
             </div>
@@ -554,96 +538,67 @@ function Lobby({
       )}
 
       {error && (
-        <div
-          style={{
-            background: "rgba(239,68,68,0.12)",
-            border: "1px solid rgba(239,68,68,0.4)",
-            borderRadius: 12,
-            padding: "10px 14px",
-            fontSize: 13,
-            color: "#fca5a5",
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "10px 14px", fontFamily: T.body, fontSize: 12.5, color: "#fca5a5", textAlign: "center" }}>
           {error}
         </div>
       )}
 
       {refillOffer ? (
-        // Out of free matches — the refill offer. The buy is a plain G$
-        // transfer to the transparent pool wallet; spent G$ feeds the same
-        // pool the ladder pays out on Sunday.
         <div
           style={{
-            borderRadius: 18,
+            borderRadius: 16,
             border: "1px solid rgba(251,191,36,0.45)",
             background: "rgba(251,191,36,0.08)",
-            padding: "16px 18px",
+            padding: "14px 16px",
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 900, color: RIM }}>OUT OF FREE MATCHES</div>
-          <button
-            onClick={onBuyRefill}
-            disabled={buying}
-            style={{
-              marginTop: 12,
-              width: "100%",
-              background: buying ? "rgba(34,197,94,0.4)" : "linear-gradient(180deg, #4ade80, #16a34a)",
-              color: "#04160a",
-              border: "none",
-              borderRadius: 14,
-              padding: "14px 0",
-              fontSize: 15,
-              fontWeight: 900,
-              letterSpacing: "0.05em",
-              cursor: buying ? "wait" : "pointer",
-            }}
+          <div style={{ fontFamily: T.display, fontSize: 15, color: RIM, letterSpacing: "0.02em" }}>OUT OF FREE MATCHES</div>
+          {/* juicy candy buy button · same wall+face+gloss as home/connect */}
+          <div
+            role="button"
+            onClick={buying ? undefined : onBuyRefill}
+            style={{ cursor: buying ? "wait" : "pointer", userSelect: "none", marginTop: 12, borderRadius: 16, background: "#052e16", paddingBottom: 5, boxShadow: "0 10px 22px -6px rgba(34,197,94,0.55), inset 0 -3px 8px rgba(0,0,0,0.4)" }}
           >
-            {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
-          </button>
-          <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.5)", marginTop: 8 }}>
+            <div style={{ borderRadius: "14px 14px 11px 11px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "13px 16px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.35)", boxShadow: "inset 0 8px 16px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)" }}>
+              <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "46%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "12px 12px 50px 50px", pointerEvents: "none" }} />
+              <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 15, color: "#fff", letterSpacing: "0.04em", textShadow: "0 2px 4px rgba(0,0,0,0.4)" }}>
+                {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
+              </span>
+            </div>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 8 }}>
             Resets daily · G$ feeds the prize pool
           </div>
         </div>
       ) : (
-        <button
-          onClick={onStart}
-          disabled={busy}
-          style={{
-            background: busy ? "rgba(251,191,36,0.4)" : `linear-gradient(180deg, ${RIM}, #f59e0b)`,
-            color: "#04001a",
-            border: "none",
-            borderRadius: 18,
-            padding: "18px 0",
-            fontSize: 18,
-            fontWeight: 900,
-            letterSpacing: "0.06em",
-            cursor: busy ? "wait" : "pointer",
-            animation: busy ? "none" : "glowPulse 2.2s ease-in-out infinite",
-          }}
+        // juicy candy ENTER ARENA · green identity, wall+face+gloss pattern
+        <div
+          role="button"
+          onClick={busy ? undefined : onStart}
+          style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+          onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+          onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
         >
-          {busy ? "SUMMONING MARKOV…" : "⚔️ ENTER ARENA"}
-        </button>
+          <div style={{ borderRadius: "16px 16px 12px 12px", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "17px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+            <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
+            <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 18, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
+              {busy ? "SUMMONING MARKOV…" : "⚔️ ENTER ARENA"}
+            </span>
+          </div>
+        </div>
       )}
 
       {remaining !== null && !refillOffer && (
-        <div style={{ fontSize: 11.5, color: remaining <= 2 ? "#fca5a5" : "rgba(220,210,255,0.55)", textAlign: "center", fontWeight: 700 }}>
+        <div style={{ fontFamily: T.body, fontSize: 11, color: remaining <= 2 ? "#fca5a5" : T.inkSoft, textAlign: "center", fontWeight: 700 }}>
           {remaining} free {remaining === 1 ? "match" : "matches"} left today
         </div>
       )}
 
-      <div
-        style={{
-          fontSize: 11.5,
-          color: "rgba(220,210,255,0.5)",
-          textAlign: "center",
-          lineHeight: 1.6,
-        }}
-      >
-        Provably fair · MARKOV's moves are hash-committed before round 1
-        <br />
-        and the seed is revealed after the match so you can verify every throw.
+      <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.6 }}>
+        Provably fair · moves hash-committed before round 1, seed revealed after
       </div>
     </div>
   );
