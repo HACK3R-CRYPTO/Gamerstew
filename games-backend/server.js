@@ -3104,9 +3104,28 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     standings.forEach((s, i) => { s.rank = i + 1; });
 
     const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
+
+    // Live pool = seeded base + this week's player purchases. Keeps the
+    // "your G$ goes into the pool" promise visibly true: every refill
+    // bought this week grows the number players are competing for.
+    let purchasedGs = 0;
+    try {
+      const weekStart = new Date();
+      const day = weekStart.getUTCDay() || 7;
+      weekStart.setUTCDate(weekStart.getUTCDate() - day + 1);
+      weekStart.setUTCHours(0, 0, 0, 0);
+      const { data: buys } = await supabase
+        .from('arena_purchases')
+        .select('amount_wei')
+        .gte('created_at', weekStart.toISOString());
+      for (const b of buys || []) purchasedGs += Number(b.amount_wei) / 1e18;
+    } catch { /* purchases table absent → base pool only */ }
+
     return res.json({
       week,
-      poolGs: ARENA_WEEKLY_POOL_GS,
+      poolGs: Math.round(ARENA_WEEKLY_POOL_GS + purchasedGs),
+      poolBaseGs: ARENA_WEEKLY_POOL_GS,
+      poolFromPlayersGs: Math.round(purchasedGs * 100) / 100,
       players: standings.length,
       top: standings.slice(0, 20),
       me,
