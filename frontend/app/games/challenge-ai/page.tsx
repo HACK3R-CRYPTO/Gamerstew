@@ -494,11 +494,34 @@ function Lobby({
 
       {/* top chips row: record + ladder rank · info ON the scene, not cards */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, position: "relative", zIndex: 2 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800 }}>
-          <span style={{ color: "#86efac" }}>{record.w}W</span>
-          <span style={{ color: "#fca5a5" }}>{record.l}L</span>
-          {record.streak > 1 && <span style={{ color: RIM }}>🔥{record.streak}</span>}
-        </span>
+        {/* this week's record · same source of truth as the ladder */}
+        {(() => {
+          const mine = ladder?.me ?? (ladder && myAddress ? ladder.top.find((e) => e.wallet === myAddress.toLowerCase()) : undefined);
+          return (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800 }}>
+              <span style={{ color: T.inkSoft, letterSpacing: "0.06em" }}>WEEK</span>
+              <span style={{ color: "#86efac" }}>{mine?.wins ?? 0}W</span>
+              <span style={{ color: T.inkDim }}>{mine?.matches ?? 0} played</span>
+              {record.streak > 1 && <span style={{ color: RIM }}>🔥{record.streak}</span>}
+            </span>
+          );
+        })()}
+
+        {/* match tickets · the energy counter, always visible */}
+        {remaining !== null && (
+          <span
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "6px 13px", borderRadius: 999,
+              background: remaining === 0 ? "rgba(239,68,68,0.18)" : "rgba(0,0,0,0.4)",
+              border: `1px solid ${remaining === 0 ? "rgba(239,68,68,0.6)" : remaining <= 2 ? "rgba(251,191,36,0.55)" : T.hairline}`,
+              fontFamily: T.display, fontSize: 12.5, letterSpacing: "0.04em",
+              color: remaining === 0 ? "#fca5a5" : remaining <= 2 ? RIM : "#fff",
+            }}
+          >
+            🎟 {remaining === 0 ? "NO MATCHES" : remaining}
+          </span>
+        )}
         <Link href="/games/challenge-ai/leaderboard" style={{ textDecoration: "none" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${myRank === 1 ? "rgba(251,191,36,0.5)" : T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.inkDim, cursor: "pointer" }}>
             🏆 {myRank ? (myRank === 1 ? <span style={{ color: RIM }}>#1 · {myPts} pts</span> : `#${myRank} · ${myPts} pts`) : leader ? `${leader.wallet.slice(0, 4)}… leads` : "Weekly ladder"}
@@ -588,7 +611,10 @@ function Lobby({
       <div style={{ position: "relative", zIndex: 2, paddingTop: 8 }}>
         {refillOffer ? (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontFamily: T.display, fontSize: 14, color: RIM, letterSpacing: "0.03em", marginBottom: 8 }}>OUT OF FREE MATCHES</div>
+            <div style={{ fontFamily: T.display, fontSize: 14, color: RIM, letterSpacing: "0.03em" }}>OUT OF MATCHES FOR TODAY</div>
+            <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, margin: "5px 0 8px" }}>
+              🎟 0 left → pay {refillOffer.priceGs} G$ → play {refillOffer.grants} more right now
+            </div>
             <div
               role="button"
               onClick={buying ? undefined : onBuyRefill}
@@ -624,11 +650,6 @@ function Lobby({
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
-              {remaining !== null && (
-                <span style={{ color: remaining <= 2 ? "#fca5a5" : T.inkSoft }}>
-                  🎟 {remaining} {remaining === 1 ? "match" : "matches"} left today
-                </span>
-              )}
               <span>🔒 provably fair</span>
             </div>
           </>
