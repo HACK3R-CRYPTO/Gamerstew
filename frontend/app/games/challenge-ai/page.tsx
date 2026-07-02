@@ -18,6 +18,7 @@
 // from seed + observed history, so the match is replayable and verifiable.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -505,71 +506,51 @@ function Lobby({
         ))}
       </div>
 
-      {/* weekly ladder — where matches turn into G$ */}
-      {ladder && (
-        <div
-          style={{
-            borderRadius: 18,
-            border: "1px solid rgba(134,239,172,0.25)",
-            background: "rgba(8,2,32,0.75)",
-            padding: "14px 16px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
-              🏆 WEEKLY LADDER · {ladder.week.split("-")[1]}
-            </span>
-            <span style={{ fontSize: 11.5, fontWeight: 900, color: "#86efac", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 999, padding: "3px 10px" }}>
-              {ladder.poolGs} G$ POOL
-            </span>
-          </div>
-          {ladder.top.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "rgba(220,210,255,0.6)", textAlign: "center", padding: "6px 0" }}>
-              Fresh week — first win tops the board. Pool pays Sunday.
+      {/* weekly ladder teaser — top 3 + you · tap for the full board */}
+      {ladder && ladder.top.length > 0 && (
+        <Link href="/games/challenge-ai/leaderboard" style={{ textDecoration: "none" }}>
+          <div
+            style={{
+              borderRadius: 18,
+              border: "1px solid rgba(134,239,172,0.25)",
+              background: "rgba(8,2,32,0.75)",
+              padding: "12px 16px",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac" }}>
+                🏆 WEEKLY LADDER
+              </span>
+              <span style={{ fontSize: 11, color: "rgba(220,210,255,0.5)", fontWeight: 700 }}>
+                View all ›
+              </span>
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {ladder.top.slice(0, 5).map((e) => {
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {ladder.top.slice(0, 3).map((e) => {
                 const mine = myAddress && e.wallet === myAddress.toLowerCase();
                 return (
-                  <div
-                    key={e.wallet}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      fontSize: 12.5,
-                      padding: "5px 10px",
-                      borderRadius: 10,
-                      background: mine ? "rgba(251,191,36,0.12)" : "transparent",
-                      border: mine ? "1px solid rgba(251,191,36,0.4)" : "1px solid transparent",
-                    }}
-                  >
+                  <div key={e.wallet} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "3px 6px", borderRadius: 8, background: mine ? "rgba(251,191,36,0.1)" : "transparent" }}>
                     <span style={{ width: 22, fontWeight: 900, color: e.rank === 1 ? RIM : "rgba(220,210,255,0.6)" }}>
                       {e.rank === 1 ? "👑" : `#${e.rank}`}
                     </span>
                     <span style={{ flex: 1, fontFamily: "monospace", color: mine ? RIM : "rgba(230,222,255,0.85)" }}>
                       {mine ? "YOU" : `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`}
                     </span>
-                    <span style={{ color: "rgba(220,210,255,0.55)", fontSize: 11.5 }}>{e.wins}W</span>
                     <span style={{ fontWeight: 900, color: "#86efac" }}>{e.points} pts</span>
                   </div>
                 );
               })}
-              {ladder.me && ladder.me.rank > 5 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "5px 10px", borderRadius: 10, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.4)", marginTop: 2 }}>
+              {ladder.me && ladder.me.rank > 3 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "3px 6px", borderRadius: 8, background: "rgba(251,191,36,0.1)" }}>
                   <span style={{ width: 22, fontWeight: 900, color: "rgba(220,210,255,0.6)" }}>#{ladder.me.rank}</span>
                   <span style={{ flex: 1, fontFamily: "monospace", color: RIM }}>YOU</span>
-                  <span style={{ color: "rgba(220,210,255,0.55)", fontSize: 11.5 }}>{ladder.me.wins}W</span>
                   <span style={{ fontWeight: 900, color: "#86efac" }}>{ladder.me.points} pts</span>
                 </div>
               )}
             </div>
-          )}
-          <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.45)", marginTop: 8, textAlign: "center" }}>
-            Win matches → earn points → top climbers split the pool every Sunday
           </div>
-        </div>
+        </Link>
       )}
 
       {error && (
@@ -601,11 +582,7 @@ function Lobby({
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 900, color: RIM }}>OUT OF FREE MATCHES TODAY</div>
-          <div style={{ fontSize: 12.5, color: "rgba(230,222,255,0.8)", marginTop: 6, lineHeight: 1.6 }}>
-            Fresh {`${refillOffer.grants}`} matches for <b style={{ color: "#86efac" }}>{refillOffer.priceGs} G$</b> —
-            your G$ goes straight into this week's prize pool, not to us.
-          </div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: RIM }}>OUT OF FREE MATCHES</div>
           <button
             onClick={onBuyRefill}
             disabled={buying}
@@ -626,7 +603,7 @@ function Lobby({
             {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
           </button>
           <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.5)", marginTop: 8 }}>
-            Or come back tomorrow — {`${10}`} free matches reset daily
+            Resets daily · G$ feeds the prize pool
           </div>
         </div>
       ) : (

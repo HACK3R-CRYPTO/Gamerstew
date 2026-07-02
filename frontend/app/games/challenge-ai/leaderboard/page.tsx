@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
+import { getArenaLadder, type LadderData } from "@/app/actions/arena";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -136,6 +137,62 @@ function PvpRow({ entry, rank, isMe }: { entry: PvpEntry; rank: number; isMe: bo
   );
 }
 
+// ─── weekly ladder row · same pill language as PvpRow, points-first ─────────
+const WEEK_ACCENT = "#4ade80";
+function WeekRow({ entry, isMe }: { entry: { rank: number; wallet: string; points: number; wins: number; matches: number }; isMe: boolean }) {
+  const gold = entry.rank === 1;
+  return (
+    <div style={{
+      borderRadius: 999, padding: 2.5,
+      background: gold
+        ? "linear-gradient(135deg, #fbbf24 0%, #fbbf2477 100%)"
+        : `linear-gradient(135deg, ${WEEK_ACCENT} 0%, ${WEEK_ACCENT}66 100%)`,
+      boxShadow: gold ? "0 0 16px #fbbf2466, 0 8px 18px rgba(0,0,0,0.6)" : `0 0 12px ${WEEK_ACCENT}44, 0 8px 18px rgba(0,0,0,0.6)`,
+    }}>
+      <div style={{
+        borderRadius: 999,
+        background: isMe
+          ? `linear-gradient(90deg, ${WEEK_ACCENT}26 0%, rgba(20,10,50,0.9) 100%)`
+          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
+        padding: "8px 14px 8px 10px",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 28, height: 28, borderRadius: 999,
+          background: gold ? "#fbbf241f" : `${WEEK_ACCENT}1f`,
+          border: `1px solid ${gold ? "#fbbf2466" : WEEK_ACCENT + "66"}`,
+          fontFamily: T.display, fontSize: gold ? 15 : 13, color: T.ink,
+        }}>{gold ? "👑" : `#${entry.rank}`}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {isMe ? "You" : `${entry.wallet.slice(0, 6)}…${entry.wallet.slice(-4)}`}
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>
+            {entry.wins}W · {entry.matches} matches
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <span style={{ fontFamily: T.display, fontSize: 15, color: WEEK_ACCENT }}>{entry.points}</span>
+          <span style={{ fontFamily: T.body, fontSize: 9, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em" }}>PTS</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function untilSundayUtc(): string {
+  const now = new Date();
+  const end = new Date(now);
+  const day = now.getUTCDay() || 7;
+  end.setUTCDate(now.getUTCDate() + (7 - day));
+  end.setUTCHours(23, 59, 59, 999);
+  const ms = end.getTime() - now.getTime();
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  return d > 0 ? `${d}d ${h}h` : `${h}h`;
+}
+
 export default function ChallengeAILeaderboardPage() {
   const router = useRouter();
   const { address } = useAccount();
@@ -143,6 +200,13 @@ export default function ChallengeAILeaderboardPage() {
   const [data, setData] = useState<PvpData | null>(null);
   const [loadErr, setLoadErr] = useState(false);
   const [page, setPage] = useState(0);
+  const [tab, setTab] = useState<"week" | "alltime">("week");
+  const [week, setWeek] = useState<LadderData | null>(null);
+  const resetIn = useMemo(untilSundayUtc, []);
+
+  useEffect(() => {
+    getArenaLadder(address).then((l) => { if (!l.error) setWeek(l); }).catch(() => {});
+  }, [address]);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -180,6 +244,84 @@ export default function ChallengeAILeaderboardPage() {
           <ChevLeft /> Back to Challenge AI
         </button>
 
+        {/* Tabs · weekly ladder is the live board, all-time is the archive */}
+        <div style={{ display: "flex", gap: 8 }}>
+          {([["week", "🏆 THIS WEEK"], ["alltime", "ALL-TIME"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              style={{
+                flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
+                background: tab === id ? "linear-gradient(180deg, rgba(74,222,128,0.2), rgba(20,10,50,0.6))" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${tab === id ? "rgba(74,222,128,0.5)" : T.hairline}`,
+                color: tab === id ? "#fff" : T.inkDim,
+                fontFamily: T.body, fontSize: 12, fontWeight: 900, letterSpacing: "0.08em",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "week" && (
+          <>
+            {/* Weekly header strip */}
+            <div style={{
+              padding: "14px 18px", borderRadius: 16,
+              background: "linear-gradient(180deg, rgba(34,197,94,0.14) 0%, rgba(20,10,50,0.7) 100%)",
+              border: "1px solid rgba(74,222,128,0.35)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>🏆</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em" }}>WEEKLY LADDER</div>
+                  <div style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
+                    Resets in {resetIn}
+                    {(week?.poolGs ?? 0) > 0 && <> · {week!.poolGs} G$ pool pays Sunday</>}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: "rgba(134,239,172,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>CLIMBERS</div>
+                  <div style={{ color: WEEK_ACCENT, fontSize: 16, fontWeight: 900 }}>{week?.players ?? "—"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Your standing */}
+            {week?.me && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${WEEK_ACCENT}1f, rgba(0,0,0,0.25))`, border: `1px solid ${WEEK_ACCENT}55` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink }}>You&apos;re #{week.me.rank}</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>{week.me.points} pts · {week.me.wins}W · {week.me.matches} matches</div>
+                </div>
+              </div>
+            )}
+
+            {/* Board */}
+            {!week ? (
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading this week&apos;s standings…</div>
+            ) : week.top.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "28px 20px", borderRadius: 16, background: "rgba(255,255,255,0.03)", border: `1px dashed ${WEEK_ACCENT}44` }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🤖</div>
+                <div style={{ color: "#fff", fontSize: 14, fontWeight: 900 }}>Fresh week — the board is empty</div>
+                <div style={{ color: T.inkDim, fontSize: 11.5, marginTop: 6 }}>First win claims the crown.</div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                {week.top.map((e) => (
+                  <WeekRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} />
+                ))}
+              </div>
+            )}
+
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center" }}>
+              Win +10 · flawless +3 · tie +4 · loss +2
+            </div>
+          </>
+        )}
+
+        {tab === "alltime" && (
+          <>
         {/* Header strip · PVP ARENA identity + totals */}
         <div style={{
           padding: "14px 18px", borderRadius: 16,
@@ -298,6 +440,8 @@ export default function ChallengeAILeaderboardPage() {
                 }}>NEXT ›</button>
               </div>
             )}
+          </>
+        )}
           </>
         )}
       </div>
