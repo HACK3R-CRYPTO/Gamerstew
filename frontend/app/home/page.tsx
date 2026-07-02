@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
-import { useAccount, useDisconnect } from "wagmi";
+import { useAccount } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
@@ -373,7 +373,6 @@ export default function HomePage() {
     },
   });
   const { address: walletAddress } = useAccount();
-  const { disconnectAsync } = useDisconnect();
   const audio = useAudioSettings();
   // Safety redirect for MiniPay users · the splash already routes them to
   // /dashboard, but a back-nav or direct deep link to /home would land them
@@ -511,13 +510,11 @@ export default function HomePage() {
   //      that race was the reason players had to tap Sign in twice.
   const onConnect = async () => {
     playClick();
-    // Sign in is ALWAYS a fresh start: drop any existing Privy session and
-    // wagmi connection, then open the modal. No state detection — the old
-    // three-branch logic kept routing half-dead sessions (authenticated
-    // but extension-disconnected, embedded wallet auto-attached) straight
-    // to /verify instead of letting the player actually sign in.
-    try { await disconnectAsync(); } catch { /* best-effort */ }
-    if (authenticated) {
+    if (authenticated && walletAddress) {
+      router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+      return;
+    }
+    if (authenticated && !walletAddress) {
       try { await logout(); } catch { /* best-effort */ }
     }
     login();

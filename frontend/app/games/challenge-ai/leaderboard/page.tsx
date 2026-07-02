@@ -1,18 +1,15 @@
 "use client";
 
-// ─── Weekly MARKOV Ladder ────────────────────────────────────────────────────
-// The arena's competition board, wearing the app's signature leaderboard
-// skin: character podium + confetti for the top 3, glowing pill rows for
-// the rest — same visual grammar as the Rhythm/Simon boards. Weeks are
-// permanent: a selector browses every past week, so a crown won in week
-// 27 is still visible in week 40. Bragging rights don't expire.
+// Challenge AI leaderboard · the legacy "PVP ARENA" tab moved into the
+// game where it belongs. Reads /api/pvp-leaderboard (real source: 20+
+// players, 700+ matches against MARKOV). Different shape from skill
+// leaderboards — ranked by matches, with W / win-rate sub-context.
 
-import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
-import { getArenaLadder, type LadderData, type LadderEntry } from "@/app/actions/arena";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -23,26 +20,20 @@ const T = {
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const ACCENT = "#4ade80"; // arena-green board identity
 
-function fmtName(e: LadderEntry): string {
-  if (e.username && e.username.trim()) return `@${e.username.replace(/^@/, "")}`;
-  return `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`;
+const PAGE_SIZE = 16;
+const ACCENT = "#a5b4fc";   // matches the legacy PVP tab's indigo identity
+const ChevLeft = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6l-6 6 6 6V6z" /></svg>;
+
+type PvpEntry = { rank: number; wallet: string; username: string | null; matches: number; wins: number; ties: number; winRate: number };
+type PvpData = { totalPlayers: number; totalMatches: number; leaderboard: PvpEntry[] };
+
+function fmtName(wallet: string, username?: string | null): string {
+  if (username && username.trim()) return `@${username.replace(/^@/, "")}`;
+  return `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
 }
 
-function untilSundayUtc(): string {
-  const now = new Date();
-  const end = new Date(now);
-  const day = now.getUTCDay() || 7;
-  end.setUTCDate(now.getUTCDate() + (7 - day));
-  end.setUTCHours(23, 59, 59, 999);
-  const ms = end.getTime() - now.getTime();
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms % 86400000) / 3600000);
-  return d > 0 ? `${d}d ${h}h` : `${h}h`;
-}
-
-// ─── confetti + podium · same system as the other leaderboards ──────────────
+// ─── confetti + podium · matches the other leaderboards 1:1 ──────────────
 const CONFETTI = [
   { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
   { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
@@ -74,7 +65,7 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
   return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
 }
 
-function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
+function StagePodium({ podium }: { podium: (PvpEntry | undefined)[] }) {
   const placements = [
     { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
     { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
@@ -95,10 +86,10 @@ function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
         return (
           <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
             <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
-              {pl.entry ? fmtName(pl.entry) : "—"}
+              {pl.entry ? fmtName(pl.entry.wallet, pl.entry.username) : "—"}
             </div>
             <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>
-              {pl.entry ? `${pl.entry.points} pts` : "—"}
+              {pl.entry ? `${pl.entry.matches} matches` : "—"}
             </div>
           </div>
         );
@@ -107,8 +98,9 @@ function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
   );
 }
 
-// ─── pill row · ranks 4+ · same construction as the other boards ────────────
-function LadderRow({ entry, isMe }: { entry: LadderEntry; isMe: boolean }) {
+// ─── pill row · ranks 4+ ─────────────────────────────────────────────────
+function PvpRow({ entry, rank, isMe }: { entry: PvpEntry; rank: number; isMe: boolean }) {
+  const sub = entry.matches >= 10 ? `${entry.wins}W · ${entry.winRate}%` : `${entry.wins}W`;
   return (
     <div style={{
       borderRadius: 999, padding: 2.5,
@@ -128,42 +120,29 @@ function LadderRow({ entry, isMe }: { entry: LadderEntry; isMe: boolean }) {
           width: 28, height: 28, borderRadius: 999,
           background: `${ACCENT}1f`, border: `1px solid ${ACCENT}66`,
           fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em",
-        }}>#{entry.rank}</span>
+        }}>#{rank}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {isMe ? `You · ${fmtName(entry)}` : fmtName(entry)}
+            {isMe ? `You · ${fmtName(entry.wallet, entry.username)}` : fmtName(entry.wallet, entry.username)}
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>
-            {entry.wins}W · {entry.matches} matches
-          </div>
+          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>{sub}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <span style={{ fontFamily: T.display, fontSize: 15, color: ACCENT, letterSpacing: "0.02em" }}>{entry.points}</span>
-          <span style={{ fontFamily: T.body, fontSize: 9, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em" }}>PTS</span>
+          <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{entry.matches}</span>
+          <span style={{ fontFamily: T.body, fontSize: 9, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em" }}>MATCHES</span>
         </div>
       </div>
     </div>
   );
 }
 
-export default function ArenaLadderPage() {
+export default function ChallengeAILeaderboardPage() {
   const router = useRouter();
   const { address } = useAccount();
   const [isDesktop, setIsDesktop] = useState(false);
-  const [ladder, setLadder] = useState<LadderData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"week" | "past">("week");
-  const [selWeek, setSelWeek] = useState<string | undefined>(undefined); // undefined = current
-  const resetIn = useMemo(untilSundayUtc, []);
-
-  // Switching tabs drives which week loads: THIS WEEK always the current
-  // board; PAST defaults to the most recent finished week.
-  const pastWeeks = (ladder?.weeks ?? []).filter((w) => w !== ladder?.currentWeek);
-  const pickTab = (t: "week" | "past") => {
-    setTab(t);
-    if (t === "week") setSelWeek(undefined);
-    else if (pastWeeks.length > 0) setSelWeek(pastWeeks[0]);
-  };
+  const [data, setData] = useState<PvpData | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -173,181 +152,152 @@ export default function ArenaLadderPage() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    getArenaLadder(address, selWeek)
-      .then((l) => { if (!l.error) setLadder(l); })
-      .finally(() => setLoading(false));
-  }, [address, selWeek]);
+    let cancelled = false;
+    fetch("/api/pvp-leaderboard", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (cancelled) return; if (d) setData(d as PvpData); else setLoadErr(true); })
+      .catch(() => { if (!cancelled) setLoadErr(true); });
+    return () => { cancelled = true; };
+  }, []);
 
-  const isCurrentWeek = !ladder?.currentWeek || ladder.week === ladder.currentWeek;
-  const me = ladder?.me ?? null;
-  const podium = ladder?.top?.slice(0, 3) ?? [];
-  const rest = ladder?.top?.slice(3) ?? [];
-  // Advertise the pool ONLY when a base amount was deliberately funded
-  // (env). Player refill spending accumulates silently until then — a
-  // '4 G$ pool' built from two refills is noise, not a prize.
-  const showPool = (ladder?.poolBaseGs ?? 0) > 0 && isCurrentWeek;
+  const myRow = useMemo(() => {
+    if (!address || !data) return null;
+    return data.leaderboard.find(r => r.wallet.toLowerCase() === address.toLowerCase()) ?? null;
+  }, [address, data]);
+
+  const podium = data ? data.leaderboard.slice(0, 3) : [];
+  const restAll = data ? data.leaderboard.slice(3) : [];
+  const totalPages = Math.max(1, Math.ceil(restAll.length / PAGE_SIZE));
+  const rest = restAll.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const myPage = myRow ? (myRow.rank <= 3 ? -1 : Math.floor((myRow.rank - 4) / PAGE_SIZE)) : -1;
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
       <AppHeader />
-      <div style={{ maxWidth: isDesktop ? 760 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ maxWidth: isDesktop ? 760 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        <button
-          onClick={() => router.push("/games/challenge-ai")}
-          style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}
-        >
-          ‹ Back to arena
+        <button onClick={() => router.push("/games/challenge-ai")} style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 12px 6px 8px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}>
+          <ChevLeft /> Back to Challenge AI
         </button>
 
-        {/* THIS WEEK / PAST switcher · same segmented control as /leaderboard */}
-        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
-          {([
-            { id: "week" as const, label: "THIS WEEK" },
-            { id: "past" as const, label: "PAST" },
-          ]).map((opt) => {
-            const active = tab === opt.id;
-            return (
-              <button key={opt.id} onClick={() => pickTab(opt.id)} style={{
-                padding: "8px 18px", borderRadius: 10, cursor: "pointer",
-                background: active ? "#22c55e" : "transparent", border: "none",
-                color: active ? "#fff" : T.inkSoft,
-                fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
-                boxShadow: active ? "0 6px 14px -4px #22c55eaa, inset 0 1px 0 rgba(255,255,255,0.3)" : "none",
-              }}>{opt.label}</button>
-            );
-          })}
-        </div>
-
-        {/* Header strip · arena identity + week status */}
+        {/* Header strip · PVP ARENA identity + totals */}
         <div style={{
           padding: "14px 18px", borderRadius: 16,
-          background: "linear-gradient(180deg, rgba(34,197,94,0.16) 0%, rgba(20,10,50,0.7) 100%)",
-          border: "1px solid rgba(74,222,128,0.4)",
-          boxShadow: "0 0 22px rgba(34,197,94,0.2)",
+          background: "linear-gradient(180deg, rgba(99,102,241,0.18) 0%, rgba(20,10,50,0.7) 100%)",
+          border: "1px solid rgba(99,102,241,0.4)",
+          boxShadow: "0 0 22px rgba(99,102,241,0.25)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: 22 }}>🏆</span>
+            <span style={{ fontSize: 22 }}>⚔️</span>
             <div style={{ flex: 1 }}>
-              <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.display }}>MARKOV LADDER</div>
-              <div style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
-                {isCurrentWeek
-                  ? <>Live · resets in {resetIn}{showPool && <> · {ladder!.poolGs} G$ pool pays Sunday</>}</>
-                  : <>Final standings · week {ladder?.week?.split("-W")[1]}</>}
+              <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em" }}>PVP ARENA · vs MARKOV</div>
+              <div style={{ color: "rgba(165,180,252,0.65)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
+                All-time Challenge-AI standings · G$ wagers · settled on-chain
               </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: "rgba(134,239,172,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>CLIMBERS</div>
-              <div style={{ color: ACCENT, fontSize: 16, fontWeight: 900 }}>{ladder?.players ?? "—"}</div>
+          </div>
+          <div style={{ display: "flex", gap: 16 }}>
+            <div>
+              <div style={{ color: "rgba(165,180,252,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>PLAYERS</div>
+              <div style={{ color: ACCENT, fontSize: 16, fontWeight: 900 }}>{data?.totalPlayers ?? "—"}</div>
+            </div>
+            <div>
+              <div style={{ color: "rgba(165,180,252,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>MATCHES</div>
+              <div style={{ color: ACCENT, fontSize: 16, fontWeight: 900 }}>{data?.totalMatches ?? "—"}</div>
             </div>
           </div>
-
-          {/* past-week chips · only on the PAST tab, newest first */}
-          {tab === "past" && pastWeeks.length > 1 && (
-            <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingTop: 4 }}>
-              {pastWeeks.map((w) => {
-                const active = w === ladder?.week;
-                return (
-                  <button
-                    key={w}
-                    onClick={() => setSelWeek(w)}
-                    style={{
-                      flexShrink: 0, padding: "5px 12px", borderRadius: 999, cursor: "pointer",
-                      background: active ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${active ? "rgba(74,222,128,0.6)" : T.hairline}`,
-                      color: active ? "#bbf7d0" : T.inkDim,
-                      fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
-                    }}
-                  >
-                    W{w.split("-W")[1]}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
 
-        {/* Personal-status chip */}
-        {address && me && !(tab === "past" && pastWeeks.length === 0) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${ACCENT}1f, rgba(0,0,0,0.25))`, border: `1px solid ${ACCENT}55` }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink }}>
-                {isCurrentWeek ? <>You&apos;re #{me.rank}</> : <>You finished #{me.rank}</>}
-              </div>
-              <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>
-                {me.points} pts · {me.wins}W · {me.matches} matches
-              </div>
-            </div>
-            {isCurrentWeek && (
-              <button onClick={() => router.push("/games/challenge-ai")} style={{
-                padding: "7px 14px", borderRadius: 999,
-                background: "linear-gradient(180deg, #6ee76e 0%, #22c55e 100%)",
-                border: "none", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em",
-                cursor: "pointer", boxShadow: "0 0 12px rgba(34,197,94,0.5)", fontFamily: T.body,
-              }}>CLIMB ›</button>
-            )}
-          </div>
-        )}
+        {loadErr && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Couldn&apos;t load standings.</div>}
+        {!loadErr && !data && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading PVP standings…</div>}
 
-        {loading && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading standings…</div>}
-
-        {/* PAST tab before any week has finished */}
-        {!loading && tab === "past" && pastWeeks.length === 0 && (
-          <div style={{ textAlign: "center", padding: "32px 24px", borderRadius: 20, background: "rgba(255,255,255,0.03)", border: `1px dashed ${ACCENT}44` }}>
-            <div style={{ fontSize: 38, marginBottom: 8 }}>📖</div>
-            <div style={{ color: "#fff", fontSize: 15, fontWeight: 900 }}>No finished weeks yet</div>
-            <div style={{ color: T.inkDim, fontSize: 12, marginTop: 6 }}>
-              The first ladder week is still running — final standings land here every Sunday.
-            </div>
-          </div>
-        )}
-
-        {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length === 0 && (
+        {data && data.leaderboard.length === 0 && (
           <div style={{
             width: "100%", maxWidth: 440, margin: "20px auto",
             padding: "32px 24px", borderRadius: 20,
-            background: "linear-gradient(180deg, rgba(34,197,94,0.12) 0%, rgba(20,10,50,0.8) 100%)",
-            border: "1.5px solid rgba(74,222,128,0.4)",
-            boxShadow: "0 0 30px rgba(34,197,94,0.15)",
+            background: "linear-gradient(180deg, rgba(99,102,241,0.12) 0%, rgba(20,10,50,0.8) 100%)",
+            border: "1.5px solid rgba(99,102,241,0.4)",
+            boxShadow: "0 0 30px rgba(99,102,241,0.2)",
             textAlign: "center",
           }}>
             <div style={{ fontSize: 44, marginBottom: 10 }}>🤖</div>
-            <div style={{ color: "#fff", fontSize: 16, fontWeight: 900 }}>
-              {isCurrentWeek ? "Fresh week — the board is empty" : "No matches this week"}
+            <div style={{ color: "#fff", fontSize: 16, fontWeight: 900 }}>Be the first to challenge MARKOV</div>
+            <div style={{ color: "rgba(200,180,255,0.75)", fontSize: 12, marginTop: 10, lineHeight: 1.6 }}>
+              No matches resolved yet. Play one round, claim the top of the board.
             </div>
-            {isCurrentWeek && (
-              <>
-                <div style={{ color: "rgba(200,255,220,0.75)", fontSize: 12, marginTop: 10, lineHeight: 1.6 }}>
-                  Beat MARKOV once, claim the crown.
-                </div>
-                <button onClick={() => router.push("/games/challenge-ai")} style={{
-                  marginTop: 18, padding: "11px 24px", borderRadius: 999,
-                  background: "linear-gradient(90deg, #22c55e 0%, #4ade80 100%)",
-                  border: "none", color: "#fff", fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
-                  boxShadow: "0 0 20px rgba(34,197,94,0.5)", fontFamily: T.body,
-                }}>FIGHT MARKOV →</button>
-              </>
-            )}
+            <button onClick={() => router.push("/games/challenge-ai")} style={{
+              marginTop: 18, padding: "11px 24px", borderRadius: 999,
+              background: "linear-gradient(90deg, #6366f1 0%, #22d3ee 100%)",
+              border: "none", color: "#fff", fontSize: 12, fontWeight: 900, letterSpacing: "0.12em", cursor: "pointer",
+              boxShadow: "0 0 20px rgba(99,102,241,0.5)",
+            }}>PLAY MARKOV →</button>
           </div>
         )}
 
-        {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length > 0 && (
+        {data && data.leaderboard.length > 0 && (
           <>
-            {/* Podium · the crown moment */}
-            <StagePodium podium={[podium[0], podium[1], podium[2]]} />
+            {/* Personal-status chip */}
+            {address && myRow && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${ACCENT}1f, rgba(0,0,0,0.25))`, border: `1px solid ${ACCENT}55` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>You&apos;re #{myRow.rank}</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>{myRow.matches} matches · {myRow.wins}W · {myRow.winRate}% win rate</div>
+                </div>
+                {myPage >= 0 && myPage !== page && (
+                  <button onClick={() => setPage(myPage)} style={{
+                    padding: "7px 14px", borderRadius: 999,
+                    background: `linear-gradient(180deg, #c084fc 0%, ${ACCENT} 100%)`,
+                    border: "none", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em",
+                    cursor: "pointer", boxShadow: `0 0 12px ${ACCENT}55`,
+                  }}>JUMP TO MY ROW</button>
+                )}
+              </div>
+            )}
+            {address && data && !myRow && (
+              <a href="/games/challenge-ai" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${ACCENT}55`, textDecoration: "none" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked yet</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Challenge MARKOV once to claim a spot</div>
+                </div>
+                <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${ACCENT} 100%)`, color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${ACCENT}55` }}>PLAY ›</span>
+              </a>
+            )}
+
+            {/* Podium */}
+            <StagePodium podium={podium} />
 
             {/* Rows 4+ */}
-            {rest.length > 0 && (
+            {restAll.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                {rest.map((e) => (
-                  <LadderRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} />
-                ))}
+                {rest.map((e, i) => {
+                  const rank = 4 + page * PAGE_SIZE + i;
+                  const isMe = !!address && e.wallet.toLowerCase() === address.toLowerCase();
+                  return <PvpRow key={e.wallet + rank} entry={e} rank={rank} isMe={isMe} />;
+                })}
               </div>
             )}
 
-            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", fontWeight: 700 }}>
-              Win +10 · flawless +3 · tie +4 · loss +2
-            </div>
+            {totalPages > 1 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 4 }}>
+                <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{
+                  padding: "8px 14px", borderRadius: 999,
+                  background: page === 0 ? "rgba(255,255,255,0.04)" : `${ACCENT}2e`,
+                  border: `1.5px solid ${page === 0 ? "rgba(255,255,255,0.12)" : ACCENT + "80"}`,
+                  color: page === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em",
+                  cursor: page === 0 ? "not-allowed" : "pointer", fontFamily: T.body,
+                }}>‹ PREV</button>
+                <span style={{ color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>PAGE {page + 1} / {totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1} style={{
+                  padding: "8px 14px", borderRadius: 999,
+                  background: page === totalPages - 1 ? "rgba(255,255,255,0.04)" : `${ACCENT}2e`,
+                  border: `1.5px solid ${page === totalPages - 1 ? "rgba(255,255,255,0.12)" : ACCENT + "80"}`,
+                  color: page === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em",
+                  cursor: page === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body,
+                }}>NEXT ›</button>
+              </div>
+            )}
           </>
         )}
       </div>

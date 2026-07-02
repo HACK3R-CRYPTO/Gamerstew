@@ -113,7 +113,7 @@ const GAMES = [
   {
     id: "challenge-ai",
     title: "Challenge AI",
-    subtitle: "Free · instant · outsmart MARKOV",
+    subtitle: "Wager G$ · beat MARKOV",
     art: "/games/challenge-ais.png",
     bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)",
     glow: "#22c55e",

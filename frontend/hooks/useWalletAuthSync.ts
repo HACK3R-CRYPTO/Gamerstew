@@ -19,12 +19,17 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 // drop the Privy session. The delay is a debounce — wagmi can briefly
 // report no address during a chain switch or RPC hiccup, and a snap
 // auto-logout there would be worse than the original UX gap.
-const DISCONNECT_DELAY_MS = 5000;
+//
+// Embedded wallets are explicitly excluded (`walletClientType === 'privy'`)
+// because they don't have an extension to disconnect from in the first
+// place, and the flicker would falsely log them out.
+const DISCONNECT_DELAY_MS = 3000;
 
 export function useWalletAuthSync(): void {
-  const { authenticated, logout, ready } = usePrivy();
+  const { authenticated, user, logout, ready } = usePrivy();
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
+  const walletType = user?.wallet?.walletClientType;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -33,18 +38,12 @@ export function useWalletAuthSync(): void {
     // a spurious cleanup path.
     if (!ready) return;
     if (!authenticated) return;
-    // MiniPay is in-app — its wallet can't be disconnected the way an
-    // extension can, so never auto-logout there.
-    //
-    // NOTE: the old `walletType === "privy"` exemption was a bug. With
-    // embeddedWallets createOnLogin: 'all-users', EVERY account has an
-    // embedded wallet, so user.wallet often reads as "privy" even for
-    // players who signed in with an extension — the reaper never fired
-    // and extension-disconnected sessions lived forever as half-dead
-    // "authenticated but Guest" states. The address is the truth: with
-    // ActiveWalletSync now activating a wallet (embedded included)
-    // right after login, any session that stays addressless for the
-    // full delay is genuinely dead and should be reaped.
+    // Embedded-wallet users: never auto-logout. The Privy wallet has no
+    // extension to disconnect from; an `address`-flicker during sign-in
+    // is normal and shouldn't sign them out. MiniPay is in-app, also
+    // can't be disconnected the way an extension can — exempt for the
+    // same reason.
+    if (!walletType || walletType === "privy") return;
     if (isMiniPay) return;
     // Wallet still connected — clear any pending logout and bail.
     if (address) {
@@ -60,5 +59,5 @@ export function useWalletAuthSync(): void {
     return () => {
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     };
-  }, [ready, authenticated, address, isMiniPay, logout]);
+  }, [ready, authenticated, address, walletType, isMiniPay, logout]);
 }

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount, useDisconnect } from "wagmi";
+import { useAccount } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 const D = "/splash_screen_icons/dice.png";
@@ -100,26 +100,7 @@ function ConnectInner() {
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
 
-  // A session only counts when there's a usable wallet address behind it.
-  // Privy can stay authenticated=true long after the player disconnects
-  // their extension (Rabby/MetaMask) — matching useAuthStatus's rule here
-  // stops the "tap Sign in → bounced straight into the app with no wallet"
-  // zombie-session path. useWalletAuthSync will reap the stale Privy
-  // session in the background; this just stops the redirect racing it.
-  const isConnected = ready && !!address && (authenticated || isMiniPay);
-
-  // Sign-in entry: always start from a clean slate. Tapping Sign in kills
-  // any existing Privy session AND any wagmi connection before opening the
-  // modal — no zombie-session detection games, no dead ends. A player who
-  // reaches /connect and taps the button always gets the full fresh flow.
-  const { disconnectAsync } = useDisconnect();
-  const freshLogin = async () => {
-    try { await disconnectAsync(); } catch { /* best-effort */ }
-    if (authenticated) {
-      try { await logout(); } catch { /* best-effort */ }
-    }
-    login();
-  };
+  const isConnected = ready && (authenticated || (isMiniPay && !!address));
 
   // MiniPay auto-connects via components/MiniPayConnector.tsx. Per the Celo
   // MiniPay reference, apps running inside MiniPay must NOT show any
@@ -454,7 +435,7 @@ function ConnectInner() {
                 // Not connected — show wallet options (non-MiniPay only)
                 <>
                   <JuicyBtn
-                    onClick={freshLogin}
+                    onClick={login}
                     wall="#003a00"
                     gradient="linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)"
                     glow="rgba(34,197,94,0.6)"
@@ -471,7 +452,7 @@ function ConnectInner() {
                   />
 
                   <JuicyBtn
-                    onClick={freshLogin}
+                    onClick={login}
                     wall="#003050"
                     gradient="linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)"
                     glow="rgba(6,182,212,0.6)"

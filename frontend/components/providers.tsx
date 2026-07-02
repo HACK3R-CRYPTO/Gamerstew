@@ -7,7 +7,6 @@ import { wagmiConfig, supportedChains } from '@/lib/wagmiConfig';
 import { Toaster } from 'react-hot-toast';
 import { SelfVerificationProvider } from '@/contexts/SelfVerificationContext';
 import MiniPayConnector from '@/components/MiniPayConnector';
-import ActiveWalletSync from '@/components/ActiveWalletSync';
 import { useWalletAuthSync } from '@/hooks/useWalletAuthSync';
 
 // Sentinel that runs useWalletAuthSync inside the Privy + Wagmi tree.
@@ -54,7 +53,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           <MiniPayConnector />
-          <ActiveWalletSync />
           <WalletAuthSync />
           <SelfVerificationProvider>
             <Toaster
