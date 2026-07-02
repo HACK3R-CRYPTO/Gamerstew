@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount } from "wagmi";
+import { useAccount, useDisconnect } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 const D = "/splash_screen_icons/dice.png";
@@ -108,11 +108,14 @@ function ConnectInner() {
   // session in the background; this just stops the redirect racing it.
   const isConnected = ready && !!address && (authenticated || isMiniPay);
 
-  // Sign-in entry: if a zombie session is present (authenticated but no
-  // wallet address), clear it first so Privy actually shows the modal
-  // instead of silently reusing the dead session.
+  // Sign-in entry: always start from a clean slate. Tapping Sign in kills
+  // any existing Privy session AND any wagmi connection before opening the
+  // modal — no zombie-session detection games, no dead ends. A player who
+  // reaches /connect and taps the button always gets the full fresh flow.
+  const { disconnectAsync } = useDisconnect();
   const freshLogin = async () => {
-    if (authenticated && !address) {
+    try { await disconnectAsync(); } catch { /* best-effort */ }
+    if (authenticated) {
       try { await logout(); } catch { /* best-effort */ }
     }
     login();
