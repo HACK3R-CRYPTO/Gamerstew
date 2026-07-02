@@ -100,7 +100,23 @@ function ConnectInner() {
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
 
-  const isConnected = ready && (authenticated || (isMiniPay && !!address));
+  // A session only counts when there's a usable wallet address behind it.
+  // Privy can stay authenticated=true long after the player disconnects
+  // their extension (Rabby/MetaMask) — matching useAuthStatus's rule here
+  // stops the "tap Sign in → bounced straight into the app with no wallet"
+  // zombie-session path. useWalletAuthSync will reap the stale Privy
+  // session in the background; this just stops the redirect racing it.
+  const isConnected = ready && !!address && (authenticated || isMiniPay);
+
+  // Sign-in entry: if a zombie session is present (authenticated but no
+  // wallet address), clear it first so Privy actually shows the modal
+  // instead of silently reusing the dead session.
+  const freshLogin = async () => {
+    if (authenticated && !address) {
+      try { await logout(); } catch { /* best-effort */ }
+    }
+    login();
+  };
 
   // MiniPay auto-connects via components/MiniPayConnector.tsx. Per the Celo
   // MiniPay reference, apps running inside MiniPay must NOT show any
@@ -435,7 +451,7 @@ function ConnectInner() {
                 // Not connected — show wallet options (non-MiniPay only)
                 <>
                   <JuicyBtn
-                    onClick={login}
+                    onClick={freshLogin}
                     wall="#003a00"
                     gradient="linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)"
                     glow="rgba(34,197,94,0.6)"
@@ -452,7 +468,7 @@ function ConnectInner() {
                   />
 
                   <JuicyBtn
-                    onClick={login}
+                    onClick={freshLogin}
                     wall="#003050"
                     gradient="linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)"
                     glow="rgba(6,182,212,0.6)"
