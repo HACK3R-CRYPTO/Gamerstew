@@ -22,6 +22,7 @@ import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount } from "wagmi";
+import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
 import { useWriteContract } from "wagmi";
@@ -229,6 +230,10 @@ export default function ChallengeAiPage() {
       if (granted.ok) {
         setRefillOffer(null);
         setRemaining(granted.remaining ?? null);
+        toast.success(
+          `🎟 +5 matches added${typeof granted.remaining === "number" ? ` · ${granted.remaining} left today` : ""}`,
+          { duration: 4000 },
+        );
       } else {
         setError("Payment sent but not verified yet · try Start again in a few seconds");
       }
@@ -616,7 +621,7 @@ function Lobby({
             <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
               {remaining !== null && (
                 <span style={{ color: remaining <= 2 ? "#fca5a5" : T.inkSoft }}>
-                  {remaining} free left today
+                  🎟 {remaining} {remaining === 1 ? "match" : "matches"} left today
                 </span>
               )}
               <span>🔒 provably fair</span>
