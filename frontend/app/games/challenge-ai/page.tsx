@@ -44,10 +44,11 @@ const RIM = "#fbbf24";
 const BG = "#04001a";
 
 const MOVES = [
-  { id: 0, name: "ROCK",     emoji: "🪨" },
-  { id: 1, name: "PAPER",    emoji: "📄" },
-  { id: 2, name: "SCISSORS", emoji: "✂️" },
+  { id: 0, name: "ROCK",     art: "/games/challenge-ai-v2/moves/rock.png" },
+  { id: 1, name: "PAPER",    art: "/games/challenge-ai-v2/moves/paper.png" },
+  { id: 2, name: "SCISSORS", art: "/games/challenge-ai-v2/moves/scissors.png" },
 ] as const;
+const FIST_ART = "/games/challenge-ai-v2/moves/fist.png";
 
 const CHANT = ["ROCK", "PAPER", "SCISSORS"];
 const SHAKE_MS = 1050;        // 3 fist pumps · network hides inside this
@@ -616,15 +617,13 @@ function MatchStage({
               }}
             />
             {/* fist / thrown move */}
-            <div style={{ height: 62, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ height: 68, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {beat === "shaking" ? (
-                <span style={{ fontSize: 46, display: "inline-block", animation: "fistPump 0.35s ease-in-out 3" }}>✊</span>
+                <img src={FIST_ART} alt="" style={{ height: 56, animation: "fistPump 0.35s ease-in-out 3", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.5))" }} />
               ) : impact ? (
-                <span style={{ fontSize: 52, display: "inline-block", animation: "moveSlam 0.45s cubic-bezier(0.22,1.3,0.36,1) both" }}>
-                  {MOVES[lastRound!.playerMove]!.emoji}
-                </span>
+                <img src={MOVES[lastRound!.playerMove]!.art} alt={MOVES[lastRound!.playerMove]!.name} style={{ height: 64, animation: "moveSlam 0.45s cubic-bezier(0.22,1.3,0.36,1) both", filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.55))" }} />
               ) : (
-                <span style={{ fontSize: 40, opacity: 0.4 }}>✊</span>
+                <img src={FIST_ART} alt="" style={{ height: 48, opacity: 0.4 }} />
               )}
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.6)" }}>YOU</div>
@@ -707,15 +706,13 @@ function MatchStage({
                     : "idleBobAlt 2.6s ease-in-out infinite",
               }}
             />
-            <div style={{ height: 62, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ height: 68, display: "flex", alignItems: "center", justifyContent: "center" }}>
               {beat === "shaking" ? (
-                <span style={{ fontSize: 46, display: "inline-block", transform: "scaleX(-1)", animation: "fistPump 0.35s ease-in-out 3" }}>✊</span>
+                <img src={FIST_ART} alt="" style={{ height: 56, transform: "scaleX(-1)", animation: "fistPump 0.35s ease-in-out 3", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.5))" }} />
               ) : impact ? (
-                <span style={{ fontSize: 52, display: "inline-block", animation: "moveSlam 0.45s 0.08s cubic-bezier(0.22,1.3,0.36,1) both" }}>
-                  {MOVES[lastRound!.aiMove]!.emoji}
-                </span>
+                <img src={MOVES[lastRound!.aiMove]!.art} alt={MOVES[lastRound!.aiMove]!.name} style={{ height: 64, transform: "scaleX(-1)", animation: "moveSlam 0.45s 0.08s cubic-bezier(0.22,1.3,0.36,1) both", filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.55))" }} />
               ) : (
-                <span style={{ fontSize: 40, opacity: 0.4, transform: "scaleX(-1)", display: "inline-block" }}>✊</span>
+                <img src={FIST_ART} alt="" style={{ height: 48, opacity: 0.4, transform: "scaleX(-1)" }} />
               )}
             </div>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.6)" }}>MARKOV</div>
@@ -745,7 +742,7 @@ function MatchStage({
             onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
           >
-            <div style={{ fontSize: 36 }}>{m.emoji}</div>
+            <img src={m.art} alt={m.name} style={{ height: 44, filter: armed ? "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" : "grayscale(0.5)" }} />
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.75)", marginTop: 4 }}>
               {m.name}
             </div>
