@@ -15,7 +15,7 @@ import { useAccount } from 'wagmi';
 // the loop: authenticated + wallets available + no wagmi address → activate
 // the first wallet so `useAccount().address` populates.
 export default function ActiveWalletSync() {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
   const { address } = useAccount();
@@ -23,7 +23,24 @@ export default function ActiveWalletSync() {
 
   useEffect(() => {
     if (!ready || !authenticated || address) return;
-    const wallet = wallets[0];
+
+    // Identity rule: NEVER silently swap identities. A player who signed in
+    // with an external wallet (Rabby/MetaMask) IS that address — their
+    // GamePass, ladder rank and history live there. If their extension
+    // disconnects, falling back to the auto-created embedded wallet would
+    // quietly log them in as a different account. So:
+    //   · external wallet connected & in the list → re-attach it
+    //   · only embedded exists AND the user has no external wallet linked
+    //     (Google/email player) → attach the embedded one
+    //   · external linked but disconnected → do NOTHING; the /connect page
+    //     shows the honest banner with reconnect / log out choices.
+    const hasExternalLinked = (user?.linkedAccounts ?? []).some(
+      (a) => a.type === 'wallet' && (a as { walletClientType?: string }).walletClientType !== 'privy',
+    );
+    const external = wallets.find((w) => w.walletClientType !== 'privy');
+    const embedded = wallets.find((w) => w.walletClientType === 'privy');
+    const wallet = external ?? (!hasExternalLinked ? embedded : undefined);
+
     if (!wallet || attempting.current) return;
     attempting.current = true;
     setActiveWallet(wallet)
@@ -33,7 +50,7 @@ export default function ActiveWalletSync() {
         // approves the extension prompt a few seconds later).
         setTimeout(() => { attempting.current = false; }, 1500);
       });
-  }, [ready, authenticated, address, wallets, setActiveWallet]);
+  }, [ready, authenticated, address, wallets, user, setActiveWallet]);
 
   return null;
 }

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useConnectWallet } from "@privy-io/react-auth";
 import { useAccount, useDisconnect } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 
@@ -122,7 +122,15 @@ function ConnectInner() {
     try { await logout(); } catch { /* best-effort */ }
     setLoggingOut(false);
   };
-  const freshLogin = () => { login(); };
+  // Reconnect WITHOUT logging out: re-opens Privy's wallet-connect flow so
+  // the extension re-grants access and the SAME identity comes back. This is
+  // the primary path out of a half-dead session — login() is a no-op while
+  // a session exists, which is exactly the "stuck as Guest" trap.
+  const { connectWallet } = useConnectWallet();
+  const freshLogin = () => {
+    if (zombieSession) { connectWallet(); return; }
+    login();
+  };
 
   // MiniPay auto-connects via components/MiniPayConnector.tsx. Per the Celo
   // MiniPay reference, apps running inside MiniPay must NOT show any
@@ -297,18 +305,20 @@ function ConnectInner() {
                           {source}{shortAddr ? ` · ${shortAddr}` : " · embedded wallet"}
                         </div>
                       </div>
-                      {/* Disconnect — lets user switch account */}
+                      {/* Explicit exit — full logout (Privy session + wagmi),
+                          labeled as what it does. "SWITCH" read as a mystery. */}
                       <button
-                        onClick={() => logout()}
+                        onClick={explicitLogout}
+                        disabled={loggingOut}
                         style={{
                           background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)",
                           borderRadius: "8px", padding: "5px 10px",
                           color: "rgba(252,165,165,0.85)", fontSize: "10px", fontWeight: 700,
-                          letterSpacing: "0.08em", cursor: "pointer", fontFamily: "inherit",
+                          letterSpacing: "0.08em", cursor: loggingOut ? "wait" : "pointer", fontFamily: "inherit",
                           flexShrink: 0,
                         }}
                       >
-                        SWITCH
+                        {loggingOut ? "…" : "LOG OUT"}
                       </button>
                     </div>
 
@@ -469,8 +479,19 @@ function ConnectInner() {
                       <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "rgba(240,230,255,0.85)", lineHeight: 1.4 }}>
                         Still signed in from before, but your wallet is disconnected.
-                        Reconnect it in your wallet extension — or log out and start fresh.
                       </div>
+                      <button
+                        onClick={() => connectWallet()}
+                        style={{
+                          flexShrink: 0, padding: "7px 13px", borderRadius: 999,
+                          background: "rgba(34,197,94,0.18)",
+                          border: "1px solid rgba(34,197,94,0.55)",
+                          color: "#86efac", fontSize: 10.5, fontWeight: 800,
+                          letterSpacing: "0.06em", cursor: "pointer",
+                        }}
+                      >
+                        RECONNECT
+                      </button>
                       <button
                         onClick={explicitLogout}
                         disabled={loggingOut}
