@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
@@ -308,11 +308,27 @@ export default function DashboardPage() {
   const heroes = GAMES.filter(g => g.isNew);
   const heroList = heroes.length > 0 ? heroes : [GAMES[0]];
   const [heroIdx, setHeroIdx] = useState(0);
+  // Manual interactions (dot tap / swipe) bump this to restart the timer —
+  // auto-advance snatching the banner right after a swipe feels broken.
+  const [heroBump, setHeroBump] = useState(0);
+  const goToHero = useCallback((i: number) => {
+    setHeroIdx((cur) => {
+      const len = heroList.length;
+      return ((typeof i === "number" ? i : cur) % len + len) % len;
+    });
+    setHeroBump((b) => b + 1);
+  }, [heroList.length]);
+  // Random starting slide (client-only, post-hydration) — every hero gets
+  // its share of first impressions instead of slide 0 always leading.
+  useEffect(() => {
+    if (heroList.length > 1) setHeroIdx(Math.floor(Math.random() * heroList.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (heroList.length < 2) return;
     const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
     return () => clearInterval(t);
-  }, [heroList.length]);
+  }, [heroList.length, heroBump]);
   const recommended = heroList[heroIdx % heroList.length]!;
 
   return (
@@ -358,7 +374,7 @@ export default function DashboardPage() {
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={setHeroIdx} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
             <DashRight connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
@@ -646,8 +662,35 @@ function HeroCarousel({ heroes, active, onPlayGame, onDot }: {
   onPlayGame: (id: string) => void;
   onDot: (i: number) => void;
 }) {
+  // Swipe navigation: horizontal drag > 48px flips a slide. A swipe that
+  // ends on the card must NOT count as a tap — capture-phase click guard.
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const swiped = useRef(false);
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (t) { touch.current = { x: t.clientX, y: t.clientY }; swiped.current = false; }
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touch.current; touch.current = null;
+    const t = e.changedTouches[0];
+    if (!start || !t) return;
+    const dx = t.clientX - start.x, dy = t.clientY - start.y;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      swiped.current = true;
+      onDot(active + (dx < 0 ? 1 : -1));
+    }
+  };
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (swiped.current) { e.preventDefault(); e.stopPropagation(); swiped.current = false; }
+  };
+
   return (
-    <div style={{ position: "relative", overflow: "hidden", borderRadius: 20 }}>
+    <div
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onClickCapture={onClickCapture}
+      style={{ position: "relative", overflow: "hidden", borderRadius: 20, touchAction: "pan-y" }}
+    >
       {/* sliding track · one viewport-width per slide */}
       <div style={{
         display: "flex",
