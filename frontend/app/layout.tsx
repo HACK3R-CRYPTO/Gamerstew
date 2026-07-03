@@ -5,7 +5,7 @@ import AppAudio from "@/components/AppAudio";
 
 const APP_URL = "https://gamearenahq.xyz";
 const APP_TITLE = "Game Arena";
-const APP_TAGLINE = "Play free skill games on Celo. Top the weekly board, win real USDC.";
+const APP_TAGLINE = "The arena for verified humans. Free skill games, an AI that learns your patterns, weekly ladders paying real G$ - on Celo.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),

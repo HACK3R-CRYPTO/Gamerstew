@@ -1,7 +1,7 @@
 {
   "name": "Game Arena",
   "short_name": "Arena",
-  "description": "Play free skill games on Celo. Top the weekly board, win real USDC.",
+  "description": "The arena for verified humans. Free skill games, an AI that learns your patterns, weekly ladders paying real G$ - on Celo.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
