@@ -108,18 +108,21 @@ function ConnectInner() {
   // session in the background; this just stops the redirect racing it.
   const isConnected = ready && !!address && (authenticated || isMiniPay);
 
-  // Sign-in entry: always start from a clean slate. Tapping Sign in kills
-  // any existing Privy session AND any wagmi connection before opening the
-  // modal — no zombie-session detection games, no dead ends. A player who
-  // reaches /connect and taps the button always gets the full fresh flow.
+  // Sign in NEVER silently destroys a session — surprise at an auth
+  // boundary erodes trust. If a half-dead session exists (Privy still
+  // authenticated but the extension wallet is disconnected), we show it
+  // honestly with an explicit Log out button instead. Sign in itself is
+  // a plain login().
   const { disconnectAsync } = useDisconnect();
-  const freshLogin = async () => {
+  const zombieSession = ready && authenticated && !address && !isMiniPay;
+  const [loggingOut, setLoggingOut] = useState(false);
+  const explicitLogout = async () => {
+    setLoggingOut(true);
     try { await disconnectAsync(); } catch { /* best-effort */ }
-    if (authenticated) {
-      try { await logout(); } catch { /* best-effort */ }
-    }
-    login();
+    try { await logout(); } catch { /* best-effort */ }
+    setLoggingOut(false);
   };
+  const freshLogin = () => { login(); };
 
   // MiniPay auto-connects via components/MiniPayConnector.tsx. Per the Celo
   // MiniPay reference, apps running inside MiniPay must NOT show any
@@ -453,6 +456,36 @@ function ConnectInner() {
               ) : (
                 // Not connected — show wallet options (non-MiniPay only)
                 <>
+                  {zombieSession && (
+                    // Half-dead session: Privy still signed in, but the wallet
+                    // was disconnected from the extension. Show it honestly
+                    // with an explicit way out — never silently nuke it.
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "10px 14px", borderRadius: 13,
+                      background: "rgba(251,191,36,0.1)",
+                      border: "1px solid rgba(251,191,36,0.4)",
+                    }}>
+                      <span style={{ fontSize: 15, flexShrink: 0 }}>⚠️</span>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "rgba(240,230,255,0.85)", lineHeight: 1.4 }}>
+                        Still signed in from before, but your wallet is disconnected.
+                        Reconnect it in your wallet extension — or log out and start fresh.
+                      </div>
+                      <button
+                        onClick={explicitLogout}
+                        disabled={loggingOut}
+                        style={{
+                          flexShrink: 0, padding: "7px 13px", borderRadius: 999,
+                          background: "rgba(244,63,94,0.15)",
+                          border: "1px solid rgba(244,63,94,0.5)",
+                          color: "#fda4af", fontSize: 10.5, fontWeight: 800,
+                          letterSpacing: "0.06em", cursor: loggingOut ? "wait" : "pointer",
+                        }}
+                      >
+                        {loggingOut ? "…" : "LOG OUT"}
+                      </button>
+                    </div>
+                  )}
                   <JuicyBtn
                     onClick={freshLogin}
                     wall="#003a00"
