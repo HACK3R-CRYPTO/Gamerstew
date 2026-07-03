@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { usePrivy, useLogin } from "@privy-io/react-auth";
-import { useAccount } from "wagmi";
+import { usePrivy, useLogin, useConnectWallet } from "@privy-io/react-auth";
+import { useAccount, useDisconnect } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
@@ -131,9 +131,10 @@ const KEYFRAMES = `
 
 // ─── HomeScreen · mobile ─────────────────────────────────────────────────
 function HomeScreenMobile({
-  onPlayFree, onConnect, onAbout, onMute, muted,
+  onPlayFree, onConnect, onAbout, onMute, muted, banner,
 }: {
   onPlayFree: () => void;
+  banner?: React.ReactNode;
   onConnect: () => void;
   onAbout: () => void;
   onMute: () => void;
@@ -181,6 +182,7 @@ function HomeScreenMobile({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: "clamp(56px, 12vh, 124px)", position: "relative", zIndex: 2 }}>
+        {banner}
         {/* Stacked CTAs share the same min-height so they read as
             intentional alignment. Hierarchy lives in fill + label weight,
             not size: Play free carries the accent gradient + display font
@@ -218,9 +220,10 @@ function HomeScreenMobile({
 
 // ─── HomeScreen · desktop ────────────────────────────────────────────────
 function HomeScreenDesktop({
-  onPlayFree, onConnect, onAbout, onMute, muted, live,
+  onPlayFree, onConnect, onAbout, onMute, muted, live, banner,
 }: {
   onPlayFree: () => void;
+  banner?: React.ReactNode;
   onConnect: () => void;
   onAbout: () => void;
   onMute: () => void;
@@ -243,6 +246,7 @@ function HomeScreenDesktop({
           Fun mini-games, live leaderboards, real prizes. Your onchain spot to kick back and play.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 6 }}>
+          {banner}
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onPlayFree} style={{
               fontFamily: T.display, fontSize: 19, color: "#fff",
@@ -356,7 +360,7 @@ function climbPillLabel(climb: { phase: string; endsAt: string } | null): string
 
 export default function HomePage() {
   const router = useRouter();
-  const { authenticated, user } = usePrivy();
+  const { authenticated, user, ready, logout } = usePrivy();
   // Privy's useLogin gives us a guaranteed onComplete callback that fires
   // after auth (and embedded-wallet creation) finishes. This is the source
   // of truth for "the user is now signed in" · using it instead of watching
@@ -373,6 +377,8 @@ export default function HomePage() {
     },
   });
   const { address: walletAddress } = useAccount();
+  const { disconnectAsync } = useDisconnect();
+  const { connectWallet } = useConnectWallet();
   const audio = useAudioSettings();
   // Safety redirect for MiniPay users · the splash already routes them to
   // /dashboard, but a back-nav or direct deep link to /home would land them
@@ -512,21 +518,49 @@ export default function HomePage() {
     playClick();
     // Never silently destroy a session. Three honest states:
     //   fully signed in (auth + wallet)  → continue into the app
-    //   half-dead (auth, no wallet)      → /connect, which shows the
-    //                                      state + an explicit Log out
+    //   half-dead (auth, no wallet)      → reconnect the SAME identity
     //   signed out                        → open the login modal
     if (authenticated && walletAddress) {
       router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
       return;
     }
     if (authenticated && !walletAddress) {
-      router.push("/connect");
+      connectWallet();
       return;
     }
     login();
   };
 
   const onAbout = () => { playClick(); router.push("/games"); };
+
+  // Half-dead session banner · shown right here on home, where the player
+  // actually is. Privy still signed in, wallet disconnected from the
+  // extension → say so, with the two honest exits.
+  const zombie = ready && authenticated && !walletAddress && !isMiniPay;
+  const zombieBanner = zombie ? (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      padding: "10px 14px", borderRadius: 13,
+      background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)",
+    }}>
+      <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+      <span style={{ flex: 1, minWidth: 160, fontFamily: T.body, fontSize: 11.5, color: "rgba(240,230,255,0.85)", lineHeight: 1.4 }}>
+        Signed in, but your wallet is disconnected.
+      </span>
+      <button onClick={() => { playClick(); connectWallet(); }} style={{
+        flexShrink: 0, padding: "7px 13px", borderRadius: 999,
+        background: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.55)",
+        color: "#86efac", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
+        letterSpacing: "0.06em", cursor: "pointer",
+      }}>RECONNECT</button>
+      <button onClick={async () => { playClick(); try { await disconnectAsync(); } catch {} try { await logout(); } catch {} }} style={{
+        flexShrink: 0, padding: "7px 13px", borderRadius: 999,
+        background: "rgba(244,63,94,0.15)", border: "1px solid rgba(244,63,94,0.5)",
+        color: "#fda4af", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
+        letterSpacing: "0.06em", cursor: "pointer",
+      }}>LOG OUT</button>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -545,6 +579,7 @@ export default function HomePage() {
       }}>
         {isDesktop ? (
           <HomeScreenDesktop
+            banner={zombieBanner}
             onPlayFree={onPlayFree}
             onConnect={onConnect}
             onAbout={onAbout}
@@ -555,6 +590,7 @@ export default function HomePage() {
         ) : (
           <div style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column" }}>
             <HomeScreenMobile
+              banner={zombieBanner}
               onPlayFree={onPlayFree}
               onConnect={onConnect}
               onAbout={onAbout}
