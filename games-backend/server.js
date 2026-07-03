@@ -3404,20 +3404,41 @@ app.get('/health', async (_, res) => {
 });
 
 // ── Index on-chain scores on startup ────────────────────────────────────────
+// RPC providers cap eth_getLogs at ~5,000 blocks; the old single 200k-block
+// query reverted with "query exceeds range" on EVERY tick, so on-chain scores
+// silently stopped syncing. Now: a module-level cursor walks forward in
+// ≤4,900-block windows (a few per tick, so backlogs drain across ticks).
+// Cold start looks back one window — the indexer is reconciliation, not the
+// primary write path (frontend submits write scores directly).
+const INDEXER_MAX_RANGE = 4900;
+const INDEXER_WINDOWS_PER_TICK = 6;
+let indexerCursor = null; // last block already indexed
+
 async function indexOnChainScores() {
   if (!passContract || !provider) return;
   try {
     // Reuse the module-level provider + interface instead of allocating
     // fresh ones every 5 min — the old pattern was the main memory leak.
     const currentBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - 200000);
-    const logs = await provider.getLogs({
-      address: GAME_PASS_ADDR,
-      topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256,uint256)')],
-      fromBlock,
-      toBlock: currentBlock,
-    });
-    if (logs.length === 0) { console.log('⛓️  No on-chain scores found'); return; }
+    if (indexerCursor === null) indexerCursor = Math.max(0, currentBlock - INDEXER_MAX_RANGE);
+    if (indexerCursor >= currentBlock) return;
+
+    const logs = [];
+    let windows = 0;
+    while (indexerCursor < currentBlock && windows < INDEXER_WINDOWS_PER_TICK) {
+      const from = indexerCursor + 1;
+      const to = Math.min(from + INDEXER_MAX_RANGE - 1, currentBlock);
+      const chunk = await provider.getLogs({
+        address: GAME_PASS_ADDR,
+        topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256,uint256)')],
+        fromBlock: from,
+        toBlock: to,
+      });
+      logs.push(...chunk);
+      indexerCursor = to;
+      windows++;
+    }
+    if (logs.length === 0) { return; }
 
     let added = 0;
     for (const log of logs) {
