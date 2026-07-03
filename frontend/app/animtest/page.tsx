@@ -12,9 +12,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const KF = `
-@keyframes animtestPump { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-30px) } }
-`;
 
 function Box({ label, ok, children }: { label: string; ok: boolean | null; children: React.ReactNode }) {
   return (
@@ -86,7 +83,6 @@ export default function AnimTestPage() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#150838", color: "#fff", padding: 20, fontFamily: "system-ui" }}>
-      <style>{KF}</style>
       <h1 style={{ fontSize: 20, fontWeight: 900 }}>🔬 Animation Diagnostics</h1>
       <p style={{ fontSize: 13, opacity: 0.7, marginBottom: 16 }}>Screenshot this whole screen after ~2 seconds and send it.</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
