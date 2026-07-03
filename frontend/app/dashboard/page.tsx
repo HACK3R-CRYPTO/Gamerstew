@@ -358,7 +358,7 @@ export default function DashboardPage() {
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroDots={{ count: heroList.length, active: heroIdx % heroList.length }} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
             <DashRight connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
@@ -405,15 +405,16 @@ export default function DashboardPage() {
   );
 }
 
-function DashLeft({ connected, recommended, onPlayGame, router }: {
+function DashLeft({ connected, recommended, onPlayGame, router, heroDots }: {
   connected: boolean;
   recommended: typeof GAMES[number];
   onPlayGame: (id: string) => void;
   router: ReturnType<typeof useRouter>;
+  heroDots?: { count: number; active: number };
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <HeroCard game={recommended} onPlayGame={onPlayGame} dots={{ count: heroList.length, active: heroIdx % heroList.length }} />
+      <HeroCard game={recommended} onPlayGame={onPlayGame} dots={heroDots} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
       <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
       <SectionLabel>Daily missions</SectionLabel>
