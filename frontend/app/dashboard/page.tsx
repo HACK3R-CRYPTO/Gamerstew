@@ -120,9 +120,10 @@ const GAMES: Game[] = [
     desc: "Repeat the color run. Go deeper than everyone else for a top rank.", active: true, href: "/games/simon",
   },
   {
-    id: "arena", title: "Challenge AI", subtitle: "Wager G$ · beat MARKOV",
+    id: "arena", title: "Challenge AI", subtitle: "Free · instant · outsmart MARKOV",
     art: "/games/challenge-ais.png", bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)", glow: "#22c55e",
-    desc: "Duel MARKOV, the on-chain AI agent. Best of 3, ties go to you.", active: true, href: "/games/challenge-ai",
+    desc: "Beat the AI that learns your patterns. Free, instant, weekly ladder.", active: true, href: "/games/challenge-ai",
+    isNew: true,
   },
 ];
 
@@ -301,7 +302,18 @@ export default function DashboardPage() {
   // from a feed-style screen drops players into a disconnected popup
   // with no surrounding context.
   const onConnect = () => router.push("/home");
-  const recommended = GAMES[0];
+  // Hero rotation · every game flagged isNew takes a turn as the banner
+  // (Stack Tower launch + the Challenge AI rebuild). Crossfades every 6s;
+  // falls back to the first game when nothing is flagged.
+  const heroes = GAMES.filter(g => g.isNew);
+  const heroList = heroes.length > 0 ? heroes : [GAMES[0]];
+  const [heroIdx, setHeroIdx] = useState(0);
+  useEffect(() => {
+    if (heroList.length < 2) return;
+    const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
+    return () => clearInterval(t);
+  }, [heroList.length]);
+  const recommended = heroList[heroIdx % heroList.length]!;
 
   return (
     <div style={{
@@ -352,7 +364,7 @@ export default function DashboardPage() {
         ) : (
           <>
             <ClaimCard connected={connected} onConnect={onConnect} router={router} />
-            <HeroCard game={recommended} onPlayGame={onPlayGame} />
+            <HeroCard game={recommended} onPlayGame={onPlayGame} dots={{ count: heroList.length, active: heroIdx % heroList.length }} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
             <SectionLabel>Daily missions</SectionLabel>
@@ -401,7 +413,7 @@ function DashLeft({ connected, recommended, onPlayGame, router }: {
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <HeroCard game={recommended} onPlayGame={onPlayGame} />
+      <HeroCard game={recommended} onPlayGame={onPlayGame} dots={{ count: heroList.length, active: heroIdx % heroList.length }} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
       <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
       <SectionLabel>Daily missions</SectionLabel>
@@ -625,7 +637,7 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
   );
 }
 
-function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void }) {
+function HeroCard({ game, onPlayGame, dots }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void; dots?: { count: number; active: number } }) {
   return (
     <button onClick={() => onPlayGame(game.id)} style={{
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
@@ -639,8 +651,15 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       ) : (
         <div style={{ position: "absolute", right: -8, bottom: -4, width: 150, height: 150, pointerEvents: "none" }}>{game.art}</div>
       )}
-      <div style={{ padding: "14px 14px 0" }}>
-        <Pill color="#fde68a">{game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
+      <div style={{ padding: "14px 14px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Pill color="#fde68a">{game.id === "arena" ? "⚡ BIG UPDATE" : game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
+        {dots && dots.count > 1 && (
+          <span style={{ display: "inline-flex", gap: 4, position: "relative", zIndex: 1 }}>
+            {Array.from({ length: dots.count }, (_, i) => (
+              <span key={i} style={{ width: 6, height: 6, borderRadius: 999, background: i === dots.active ? "#fff" : "rgba(255,255,255,0.35)" }} />
+            ))}
+          </span>
+        )}
       </div>
       <div style={{ padding: "12px 14px 14px", maxWidth: "64%", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: T.display, fontSize: 23, color: "#fff", lineHeight: 1, textShadow: "0 2px 6px rgba(0,0,0,0.45)" }}>{game.title}</div>
