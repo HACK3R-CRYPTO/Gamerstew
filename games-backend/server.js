@@ -2881,6 +2881,304 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 //   res.json({ roll: randomInt(1, 7) }); // 1–6 inclusive, cryptographically secure
 // });
 
+// ─── Arena Instant Match (Challenge AI v3) ──────────────────────────────────
+// MARKOV served over HTTP: instant best-of-5 RPS, commit-reveal fairness,
+// no wagers, no chain in the loop. See lib/arenaMatch.js for the engine.
+const { ArenaMatchEngine } = require('./lib/arenaMatch');
+
+// ISO week bucket ('2026-W27') — the ladder resets on this key. Weeks run
+// Mon-Sun; the Sunday payout script pays the closing week's standings.
+function arenaWeekKey(d = new Date()) {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// Ladder points per match. Wins pay, participation trickles, sweeps bonus.
+// Points are infinite; G$ is budgeted — the weekly pool pays ranks, so the
+// per-match formula can be generous without any treasury risk.
+function arenaPoints(session) {
+  const won = session.playerWins > session.aiWins;
+  const tied = session.playerWins === session.aiWins;
+  let pts = won ? 10 : tied ? 4 : 2;
+  if (won && session.aiWins === 0) pts += 3; // flawless sweep vs the model
+  return pts;
+}
+
+const ARENA_WEEKLY_POOL_GS = Number(process.env.ARENA_WEEKLY_POOL_GS || 500);
+
+// ─── Arena G$ perks: daily limit + purchase rail ────────────────────────────
+// FREE matches/day per wallet. Casual play never hits the wall; ladder
+// grinders refill with G$ that routes to the weekly pool wallet.
+const ARENA_FREE_MATCHES_PER_DAY = Number(process.env.ARENA_FREE_MATCHES_PER_DAY || 10);
+const ARENA_POOL_WALLET = (process.env.ARENA_POOL_WALLET || '').toLowerCase();
+const ARENA_G_TOKEN = (process.env.G_TOKEN_ADDR || '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A').toLowerCase();
+const ARENA_SKUS = {
+  refill_5: { priceWei: ethers.parseEther('2'), grantExtra: 5, label: '+5 matches' },
+};
+const ERC20_TRANSFER_IFACE = new ethers.Interface([
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+]);
+
+function arenaDayKey() { return new Date().toISOString().slice(0, 10); }
+
+// Consume one match slot. Fail-soft: if the table is missing (local setup
+// pre-migration) play is unlimited. Read-then-update has a benign race at
+// this scale; the limit is an economy dial, not a security boundary.
+async function arenaConsumeSlot(wallet) {
+  const day = arenaDayKey();
+  try {
+    const { data, error } = await supabase
+      .from('arena_daily')
+      .select('used, extra')
+      .eq('wallet', wallet)
+      .eq('day', day)
+      .maybeSingle();
+    if (error) throw error;
+    const used = data?.used ?? 0;
+    const extra = data?.extra ?? 0;
+    const allowance = ARENA_FREE_MATCHES_PER_DAY + extra;
+    if (used >= allowance) return { ok: false, remaining: 0 };
+    await supabase.from('arena_daily').upsert({
+      wallet, day, used: used + 1, extra, updated_at: new Date().toISOString(),
+    });
+    return { ok: true, remaining: allowance - used - 1 };
+  } catch (e) {
+    return { ok: true, remaining: null }; // table absent → unlimited local play
+  }
+}
+
+// Verify a G$ transfer to the pool wallet and grant the SKU. Mirrors the
+// verifyScoreTx pattern: receipt polled, status checked, target checked,
+// Transfer(player → pool, ≥price) parsed from logs. tx_hash PK = replay-proof.
+async function arenaVerifyPurchase(txHash, wallet, sku) {
+  const item = ARENA_SKUS[sku];
+  if (!item) return { ok: false, reason: 'unknown_sku' };
+  if (!ARENA_POOL_WALLET) return { ok: false, reason: 'pool_wallet_unconfigured' };
+  if (!provider) return { ok: false, reason: 'rpc_unavailable' };
+
+  const { data: existing } = await supabase
+    .from('arena_purchases').select('tx_hash').eq('tx_hash', txHash).maybeSingle();
+  if (existing) return { ok: false, reason: 'tx_already_used' };
+
+  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+  let receipt = null;
+  while (Date.now() < deadline) {
+    try { receipt = await provider.getTransactionReceipt(txHash); if (receipt) break; } catch {}
+    await new Promise(r => setTimeout(r, RECEIPT_POLL_MS));
+  }
+  if (!receipt) return { ok: false, reason: 'receipt_not_found' };
+  if (Number(receipt.status) !== 1) return { ok: false, reason: 'tx_reverted' };
+  if ((receipt.to || '').toLowerCase() !== ARENA_G_TOKEN) {
+    return { ok: false, reason: 'tx_not_gdollar' };
+  }
+  let paid = null;
+  for (const log of receipt.logs || []) {
+    try {
+      const parsed = ERC20_TRANSFER_IFACE.parseLog({ topics: log.topics, data: log.data });
+      if (!parsed || parsed.name !== 'Transfer') continue;
+      if (String(parsed.args.from).toLowerCase() !== wallet) continue;
+      if (String(parsed.args.to).toLowerCase() !== ARENA_POOL_WALLET) continue;
+      if (BigInt(parsed.args.value) >= item.priceWei) { paid = parsed.args.value; break; }
+    } catch {}
+  }
+  if (!paid) return { ok: false, reason: 'transfer_to_pool_not_found' };
+
+  const { error: insErr } = await supabase.from('arena_purchases').insert({
+    tx_hash: txHash, wallet, sku, amount_wei: paid.toString(),
+  });
+  if (insErr) return { ok: false, reason: 'grant_failed' }; // unique violation = replay race
+
+  // Grant: bump today's extra allowance.
+  const day = arenaDayKey();
+  const { data: row } = await supabase
+    .from('arena_daily').select('used, extra').eq('wallet', wallet).eq('day', day).maybeSingle();
+  await supabase.from('arena_daily').upsert({
+    wallet, day,
+    used: row?.used ?? 0,
+    extra: (row?.extra ?? 0) + item.grantExtra,
+    updated_at: new Date().toISOString(),
+  });
+  const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + item.grantExtra - (row?.used ?? 0);
+  return { ok: true, remaining };
+}
+
+const arenaEngine = new ArenaMatchEngine({
+  onMatchComplete: async (session) => {
+    // Receipt layer: persist completed matches for history, ladder, and the
+    // async Oracle attestation. Table may not exist yet in local setups —
+    // persistence is best-effort, gameplay never depends on it.
+    try {
+      await supabase.from('arena_free_matches').insert({
+        match_id: session.matchId,
+        wallet: session.wallet,
+        player_wins: session.playerWins,
+        ai_wins: session.aiWins,
+        ties: session.ties,
+        outcome: session.playerWins > session.aiWins ? 'player_won'
+               : session.aiWins > session.playerWins ? 'ai_won' : 'tie',
+        rounds: session.rounds,
+        commit_hash: session.commitHash,
+        seed: session.seed,
+        points: arenaPoints(session),
+        week_key: arenaWeekKey(),
+        created_at: new Date(session.createdAt).toISOString(),
+      });
+    } catch (e) {
+      console.error('arena match persist failed:', e?.message);
+    }
+  },
+});
+
+// POST /api/arena/start — open an instant match. Returns the commit hash
+// BEFORE any round: MARKOV's moves are provably pre-seeded. Enforces the
+// daily free-match limit; when exhausted, returns the refill offer.
+app.post('/api/arena/start', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { playerAddress } = req.body || {};
+  if (!playerAddress || !/^0x[0-9a-fA-F]{40}$/.test(playerAddress)) {
+    return res.status(400).json({ error: 'playerAddress required' });
+  }
+  const slot = await arenaConsumeSlot(playerAddress.toLowerCase());
+  if (!slot.ok) {
+    return res.status(402).json({
+      error: 'daily_limit',
+      remaining: 0,
+      refill: {
+        sku: 'refill_5',
+        priceGs: 2,
+        grants: 5,
+        poolWallet: ARENA_POOL_WALLET,
+        gToken: ARENA_G_TOKEN,
+      },
+    });
+  }
+  return res.json({ ...arenaEngine.start(playerAddress), remainingToday: slot.remaining });
+});
+
+// POST /api/arena/purchase — verify an on-chain G$ transfer to the pool
+// wallet and grant the SKU. Body: { wallet, sku, txHash }.
+app.post('/api/arena/purchase', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, sku, txHash } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return res.status(400).json({ error: 'txHash required' });
+  const out = await arenaVerifyPurchase(txHash, wallet.toLowerCase(), String(sku));
+  if (!out.ok) return res.status(400).json({ error: out.reason });
+  return res.json({ ok: true, remaining: out.remaining });
+});
+
+// POST /api/arena/throw — one round. Instant response with MARKOV's move,
+// round result, persona line, and (on match end) the seed reveal + model stats.
+app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
+  const { matchId, move } = req.body || {};
+  if (typeof matchId !== 'string') return res.status(400).json({ error: 'matchId required' });
+  const out = arenaEngine.throw(matchId, Number(move));
+  if (out.error) return res.status(400).json(out);
+  return res.json(out);
+});
+
+// GET /api/arena/ladder?wallet=0x…&week=2026-W27 — the weekly MARKOV ladder.
+// Aggregates the requested ISO week (default: current): points desc, then
+// wins desc. Returns top 20 + own standing + pool + the list of past weeks
+// so finished boards stay viewable forever (bragging rights don't expire).
+app.get('/api/arena/ladder', requireSecret, async (req, res) => {
+  try {
+    const currentWeek = arenaWeekKey();
+    const reqWeek = (req.query.week || '').toString();
+    const week = /^\d{4}-W\d{2}$/.test(reqWeek) ? reqWeek : currentWeek;
+    const wallet = (req.query.wallet || '').toString().toLowerCase();
+    const { data, error } = await supabase
+      .from('arena_free_matches')
+      .select('wallet, points, outcome')
+      .eq('week_key', week);
+    if (error) throw error;
+
+    // Distinct weeks with any matches (cheap at this scale) — newest first.
+    let weeks = [currentWeek];
+    try {
+      const { data: wk } = await supabase
+        .from('arena_free_matches')
+        .select('week_key')
+        .order('week_key', { ascending: false })
+        .limit(2000);
+      const seen = new Set([currentWeek]);
+      for (const r of wk || []) seen.add(r.week_key);
+      weeks = [...seen].sort().reverse().slice(0, 12);
+    } catch { /* keep current-only */ }
+
+    const agg = new Map();
+    for (const row of data || []) {
+      const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
+      a.points += row.points || 0;
+      a.matches += 1;
+      if (row.outcome === 'player_won') a.wins += 1;
+      agg.set(row.wallet, a);
+    }
+    const standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+    standings.forEach((s, i) => { s.rank = i + 1; });
+
+    // Usernames for the visible slice (GamePass on-chain names, LRU-cached).
+    await Promise.all(standings.slice(0, 20).map(async (s) => {
+      s.username = await resolveUsername(s.wallet);
+    }));
+
+    const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
+    if (me && me.username === undefined) me.username = await resolveUsername(me.wallet);
+
+    // Remaining matches today for the asking wallet — lets the lobby show
+    // the counter on entry instead of only after the first match starts.
+    let remainingToday = null;
+    if (wallet) {
+      try {
+        const { data: daily } = await supabase
+          .from('arena_daily')
+          .select('used, extra')
+          .eq('wallet', wallet)
+          .eq('day', arenaDayKey())
+          .maybeSingle();
+        remainingToday = Math.max(0, ARENA_FREE_MATCHES_PER_DAY + (daily?.extra ?? 0) - (daily?.used ?? 0));
+      } catch { /* table absent → unlimited, leave null */ }
+    }
+
+    // Live pool = seeded base + this week's player purchases. Keeps the
+    // "your G$ goes into the pool" promise visibly true: every refill
+    // bought this week grows the number players are competing for.
+    let purchasedGs = 0;
+    try {
+      const weekStart = new Date();
+      const day = weekStart.getUTCDay() || 7;
+      weekStart.setUTCDate(weekStart.getUTCDate() - day + 1);
+      weekStart.setUTCHours(0, 0, 0, 0);
+      const { data: buys } = await supabase
+        .from('arena_purchases')
+        .select('amount_wei')
+        .gte('created_at', weekStart.toISOString());
+      for (const b of buys || []) purchasedGs += Number(b.amount_wei) / 1e18;
+    } catch { /* purchases table absent → base pool only */ }
+
+    return res.json({
+      week,
+      currentWeek,
+      weeks,
+      remainingToday,
+      poolGs: Math.round(ARENA_WEEKLY_POOL_GS + purchasedGs),
+      poolBaseGs: ARENA_WEEKLY_POOL_GS,
+      poolFromPlayersGs: Math.round(purchasedGs * 100) / 100,
+      players: standings.length,
+      top: standings.slice(0, 20),
+      me,
+    });
+  } catch (e) {
+    console.error('arena ladder failed:', e?.message);
+    // Fail soft: an empty ladder renders as "fresh week" instead of an
+    // error. Covers local setups where the migration hasn't run yet.
+    const wk = arenaWeekKey();
+    return res.json({ week: wk, currentWeek: wk, weeks: [wk], poolGs: ARENA_WEEKLY_POOL_GS, players: 0, top: [], me: null });
+  }
+});
+
 // ─── POST /api/faucet — gas drip for fresh wallets ──────────────────────────
 // Sends FAUCET_DRIP_CELO (default 0.1) once per wallet to fresh sign-ins so
 // they don't hit the "insufficient gas" wall on GamePass mint or score
