@@ -2923,6 +2923,39 @@ const ERC20_TRANSFER_IFACE = new ethers.Interface([
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ]);
 
+// ─── Gasless purchases via EIP-2612 permit ──────────────────────────────────
+// G$ on Celo supports permit (verified on-chain: domain GoodDollar/1/42220).
+// The player signs a permit for the relayer off-chain (zero gas, zero CELO);
+// the relayer submits permit + transferFrom(player → pool wallet) and pays
+// the gas. Kills the last purchase friction for embedded-wallet players.
+const ARENA_RELAYER_KEY = process.env.ARENA_RELAYER_KEY || process.env.VALIDATOR_PRIVATE_KEY || '';
+const arenaRelayer = (provider && ARENA_RELAYER_KEY) ? new ethers.Wallet(ARENA_RELAYER_KEY, provider) : null;
+const ARENA_GD = provider ? new ethers.Contract(ARENA_G_TOKEN, [
+  'function nonces(address) view returns (uint256)',
+  'function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
+  'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+], arenaRelayer || provider) : null;
+
+// Shared grant: record the purchase (replay-proof via tx_hash PK) and bump
+// today's extra allowance. Used by both the direct-transfer and gasless paths.
+async function arenaGrantPurchase(wallet, sku, txHash, amountWei) {
+  const item = ARENA_SKUS[sku];
+  const { error: insErr } = await supabase.from('arena_purchases').insert({
+    tx_hash: txHash, wallet, sku, amount_wei: amountWei.toString(),
+  });
+  if (insErr) return { ok: false, reason: 'grant_failed' };
+  const day = arenaDayKey();
+  const { data: row } = await supabase
+    .from('arena_daily').select('used, extra').eq('wallet', wallet).eq('day', day).maybeSingle();
+  await supabase.from('arena_daily').upsert({
+    wallet, day,
+    used: row?.used ?? 0,
+    extra: (row?.extra ?? 0) + item.grantExtra,
+    updated_at: new Date().toISOString(),
+  });
+  return { ok: true, remaining: ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + item.grantExtra - (row?.used ?? 0) };
+}
+
 function arenaDayKey() { return new Date().toISOString().slice(0, 10); }
 
 // Consume one match slot. Fail-soft: if the table is missing (local setup
@@ -3043,6 +3076,13 @@ app.post('/api/arena/start', requireSecret, gameSubmitLimiter, async (req, res) 
   }
   const slot = await arenaConsumeSlot(playerAddress.toLowerCase());
   if (!slot.ok) {
+    // Gasless path metadata: the player's current G$ permit nonce + the
+    // relayer address the permit must approve. Best-effort — if the RPC
+    // read fails, the frontend falls back to the direct-transfer path.
+    let permitNonce = null;
+    if (ARENA_GD && arenaRelayer) {
+      try { permitNonce = (await ARENA_GD.nonces(playerAddress)).toString(); } catch {}
+    }
     return res.status(402).json({
       error: 'daily_limit',
       remaining: 0,
@@ -3052,10 +3092,39 @@ app.post('/api/arena/start', requireSecret, gameSubmitLimiter, async (req, res) 
         grants: 5,
         poolWallet: ARENA_POOL_WALLET,
         gToken: ARENA_G_TOKEN,
+        relayer: arenaRelayer ? arenaRelayer.address : null,
+        permitNonce,
       },
     });
   }
   return res.json({ ...arenaEngine.start(playerAddress), remainingToday: slot.remaining });
+});
+
+// POST /api/arena/purchase-gasless — the player signed an EIP-2612 permit
+// for the relayer; we submit permit + transferFrom(player → pool) paying
+// gas ourselves, then grant. Body: { wallet, sku, deadline, v, r, s }.
+// Replay-safe twice over: the permit nonce is single-use on-chain, and the
+// transferFrom tx hash is the arena_purchases primary key.
+app.post('/api/arena/purchase-gasless', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, sku, deadline, v, r, s } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const item = ARENA_SKUS[String(sku)];
+  if (!item) return res.status(400).json({ error: 'unknown_sku' });
+  if (!ARENA_GD || !arenaRelayer) return res.status(400).json({ error: 'gasless_unavailable' });
+  if (!ARENA_POOL_WALLET) return res.status(400).json({ error: 'pool_wallet_unconfigured' });
+  try {
+    const permitTx = await ARENA_GD.permit(wallet, arenaRelayer.address, item.priceWei, BigInt(deadline), Number(v), r, s);
+    await permitTx.wait();
+    const moveTx = await ARENA_GD.transferFrom(wallet, ARENA_POOL_WALLET, item.priceWei);
+    const rc = await moveTx.wait();
+    if (Number(rc.status) !== 1) return res.status(400).json({ error: 'transfer_reverted' });
+    const out = await arenaGrantPurchase(wallet.toLowerCase(), String(sku), rc.hash, item.priceWei);
+    if (!out.ok) return res.status(400).json({ error: out.reason });
+    return res.json({ ok: true, remaining: out.remaining, txHash: rc.hash });
+  } catch (e) {
+    console.error('gasless purchase failed:', e?.shortMessage || e?.message);
+    return res.status(400).json({ error: 'gasless_failed' });
+  }
 });
 
 // POST /api/arena/purchase — verify an on-chain G$ transfer to the pool

@@ -269,6 +269,106 @@ export function playLose() {
   notes.forEach((f, i) => scheduleBell(ctx, _sfxMaster!, f, now + i * 0.10, 0.65, 0.45));
 }
 
+// ─── Noise burst helper (arena impacts/whooshes) ────────────────────────────
+// White-noise buffer through a bandpass + gain envelope. freq shapes the
+// character: ~500Hz = weighty thud crack, ~2000Hz = airy whoosh.
+function scheduleNoise(ctx: AudioContext, out: AudioNode, startAt: number, duration: number, volume: number, freq: number, q = 0.9) {
+  if (volume <= 0) return;
+  const len = Math.ceil(ctx.sampleRate * duration);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass"; bp.frequency.value = freq; bp.Q.value = q;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, startAt);
+  gain.gain.linearRampToValueAtTime(volume, startAt + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration);
+  src.connect(bp); bp.connect(gain); gain.connect(out);
+  src.start(startAt); src.stop(startAt + duration + 0.02);
+}
+
+// ═══ Arena (Challenge AI) SFX kit ═══════════════════════════════════════════
+
+// Fist pump — short airy whoosh with a falling pitch tail. Fires once per
+// pump, synced to the fistPump keyframe (3× per shake).
+export function playFistPump() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleNoise(ctx, _sfxMaster, now, 0.14, 0.28, 1800, 0.7);
+  scheduleSine(ctx, _sfxMaster, 320, now + 0.02, 0.12, 0.18, 140);
+}
+
+// Chant tick — ROCK · PAPER · SCISSORS. Pitch rises per word; the last word
+// gets a bright octave accent so the reveal lands on a peak.
+export function playChantTick(idx: number) {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  const freqs = [440, 554.37, 659.25]; // A4 C#5 E5 — rising A-major
+  const f = freqs[Math.min(idx, 2)] ?? 440;
+  scheduleBell(ctx, _sfxMaster, f, now, 0.22, idx === 2 ? 0.6 : 0.42);
+  if (idx === 2) scheduleBell(ctx, _sfxMaster, f * 2, now + 0.04, 0.3, 0.3);
+}
+
+// Reveal slam — the fists open. Heavy: sub thump + mid crack + air.
+export function playRevealSlam() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleSine(ctx, _sfxMaster, 130, now, 0.35, 0.85, 55);           // sub thump
+  scheduleNoise(ctx, _sfxMaster, now, 0.16, 0.5, 500, 0.8);          // crack
+  scheduleNoise(ctx, _sfxMaster, now + 0.01, 0.25, 0.22, 2400, 0.6); // air
+}
+
+// Per-round stingers — lighter than the match-end playWin/playLose so five
+// rounds don't fatigue. Two notes each; direction tells the story.
+export function playRoundWin() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 659.25, now, 0.3, 0.5);         // E5
+  scheduleBell(ctx, _sfxMaster, 987.77, now + 0.09, 0.4, 0.5);  // B5 up
+}
+export function playRoundLose() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 349.23, now, 0.3, 0.45);        // F4
+  scheduleBell(ctx, _sfxMaster, 261.63, now + 0.10, 0.4, 0.45); // C4 down
+}
+export function playRoundTie() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 523.25, now, 0.25, 0.4);        // C5
+  scheduleBell(ctx, _sfxMaster, 523.25, now + 0.12, 0.3, 0.3);  // echo
+}
+
+// CALLED IT — menacing two-stab minor second + low dread. MARKOV read you;
+// it should feel slightly wrong on purpose.
+export function playCalledIt() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleSine(ctx, _sfxMaster, 466.16, now, 0.12, 0.5);          // Bb4 stab
+  scheduleSine(ctx, _sfxMaster, 493.88, now + 0.11, 0.30, 0.5);   // B4 rub
+  scheduleSine(ctx, _sfxMaster, 98, now, 0.3, 0.4, 70);           // low dread
+}
+
+// Sudden death — FINAL ROUND banner. Low pedal swell + tritone.
+export function playSuddenDeath() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  resumeCtx();
+  const now = ctx.currentTime;
+  scheduleSine(ctx, _sfxMaster, 82.41, now, 0.9, 0.6);            // E2 pedal
+  scheduleBell(ctx, _sfxMaster, 329.63, now + 0.05, 0.5, 0.45);   // E4
+  scheduleBell(ctx, _sfxMaster, 466.16, now + 0.25, 0.7, 0.5);    // Bb4 tritone
+}
+
 // ═══ Ambient — arpeggiated C-minor pulse, routed through _ambientMaster ═════
 // Previous iteration stacked 3 triangle notes per chord + a soft kick — dense
 // and mood-y but static. This version arpeggiates the same harmony so the pad

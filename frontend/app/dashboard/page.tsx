@@ -120,9 +120,10 @@ const GAMES: Game[] = [
     desc: "Repeat the color run. Go deeper than everyone else for a top rank.", active: true, href: "/games/simon",
   },
   {
-    id: "arena", title: "Challenge AI", subtitle: "Wager G$ · beat MARKOV",
+    id: "arena", title: "Challenge AI", subtitle: "Free · instant · outsmart MARKOV",
     art: "/games/challenge-ais.png", bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)", glow: "#22c55e",
-    desc: "Duel MARKOV, the on-chain AI agent. Best of 3, ties go to you.", active: true, href: "/games/challenge-ai",
+    desc: "Beat the AI that learns your patterns. Free, instant, weekly ladder.", active: true, href: "/games/challenge-ai",
+    isNew: true,
   },
 ];
 
@@ -301,7 +302,18 @@ export default function DashboardPage() {
   // from a feed-style screen drops players into a disconnected popup
   // with no surrounding context.
   const onConnect = () => router.push("/home");
-  const recommended = GAMES[0];
+  // Hero rotation · every game flagged isNew takes a turn as the banner
+  // (Stack Tower launch + the Challenge AI rebuild). Crossfades every 6s;
+  // falls back to the first game when nothing is flagged.
+  const heroes = GAMES.filter(g => g.isNew);
+  const heroList = heroes.length > 0 ? heroes : [GAMES[0]];
+  const [heroIdx, setHeroIdx] = useState(0);
+  useEffect(() => {
+    if (heroList.length < 2) return;
+    const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
+    return () => clearInterval(t);
+  }, [heroList.length]);
+  const recommended = heroList[heroIdx % heroList.length]!;
 
   return (
     <div style={{
@@ -346,13 +358,13 @@ export default function DashboardPage() {
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={setHeroIdx} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
             <DashRight connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
           <>
             <ClaimCard connected={connected} onConnect={onConnect} router={router} />
-            <HeroCard game={recommended} onPlayGame={onPlayGame} />
+            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
             <SectionLabel>Daily missions</SectionLabel>
@@ -393,15 +405,18 @@ export default function DashboardPage() {
   );
 }
 
-function DashLeft({ connected, recommended, onPlayGame, router }: {
+function DashLeft({ connected, recommended, onPlayGame, router, heroes, heroActive, onHeroDot }: {
   connected: boolean;
   recommended: typeof GAMES[number];
   onPlayGame: (id: string) => void;
   router: ReturnType<typeof useRouter>;
+  heroes: (typeof GAMES[number])[];
+  heroActive: number;
+  onHeroDot: (i: number) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <HeroCard game={recommended} onPlayGame={onPlayGame} />
+      <HeroCarousel heroes={heroes} active={heroActive} onPlayGame={onPlayGame} onDot={onHeroDot} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
       <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
       <SectionLabel>Daily missions</SectionLabel>
@@ -625,6 +640,43 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
   );
 }
 
+function HeroCarousel({ heroes, active, onPlayGame, onDot }: {
+  heroes: (typeof GAMES[number])[];
+  active: number;
+  onPlayGame: (id: string) => void;
+  onDot: (i: number) => void;
+}) {
+  return (
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 20 }}>
+      {/* sliding track · one viewport-width per slide */}
+      <div style={{
+        display: "flex",
+        width: `${heroes.length * 100}%`,
+        transform: `translateX(-${(active / heroes.length) * 100}%)`,
+        transition: "transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
+      }}>
+        {heroes.map(g => (
+          <div key={g.id} style={{ width: `${100 / heroes.length}%`, flexShrink: 0 }}>
+            <HeroCard game={g} onPlayGame={onPlayGame} />
+          </div>
+        ))}
+      </div>
+      {/* dots · tappable */}
+      {heroes.length > 1 && (
+        <div style={{ position: "absolute", top: 16, right: 14, display: "flex", gap: 5, zIndex: 2 }}>
+          {heroes.map((_, i) => (
+            <button key={i} onClick={(e) => { e.stopPropagation(); onDot(i); }} aria-label={`slide ${i + 1}`} style={{
+              width: i === active ? 16 : 6, height: 6, borderRadius: 999, border: "none", padding: 0, cursor: "pointer",
+              background: i === active ? "#fff" : "rgba(255,255,255,0.4)",
+              transition: "width 0.3s ease, background 0.3s ease",
+            }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void }) {
   return (
     <button onClick={() => onPlayGame(game.id)} style={{
@@ -640,7 +692,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         <div style={{ position: "absolute", right: -8, bottom: -4, width: 150, height: 150, pointerEvents: "none" }}>{game.art}</div>
       )}
       <div style={{ padding: "14px 14px 0" }}>
-        <Pill color="#fde68a">{game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
+        <Pill color="#fde68a">{game.id === "arena" ? "⚡ BIG UPDATE" : game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
       </div>
       <div style={{ padding: "12px 14px 14px", maxWidth: "64%", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: T.display, fontSize: 23, color: "#fff", lineHeight: 1, textShadow: "0 2px 6px rgba(0,0,0,0.45)" }}>{game.title}</div>

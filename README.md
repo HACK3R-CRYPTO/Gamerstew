@@ -1,6 +1,6 @@
 # GameArena
 
-> A social on-chain community of verified humans playing mini-games for real rewards on Celo Mainnet. Skill leaderboards, seasonal cups, 1v1 wagers, and an autonomous AI opponent · all on-chain, all auditable.
+> The arena for verified humans. Free skill games, an AI opponent that learns your patterns, weekly ladders paying real G$ · on Celo Mainnet, all auditable, no bots, no stakes.
 
 [![GameArena](./frontend/public/hero.png)](https://gamearenahq.xyz)
 
@@ -18,9 +18,9 @@
 
 ## 60-second explainer
 
-GameArena is where verified humans on Celo come to play. Every player is identity-verified via the GoodDollar Identity SDK before they can score, wager, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush + Simon Memory), 1v1 wagers against MARKOV (an autonomous on-chain AI opponent), and seasonal team + solo competitions with real prize pools.
+GameArena is where verified humans on Celo come to play. Every player is identity-verified via the GoodDollar Identity SDK before they can score, earn, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush, Simon Memory, Stack Tower), free instant matches against MARKOV (an AI opponent that models your patterns · provably fair via commit-reveal), and weekly + seasonal competitions with real G$ prize pools.
 
-The economy runs on G$ from the GoodDollar stack. Prizes flow from the platform, from sponsor partners, and from community-funded pots. Solo wagers settle in the same tx that resolves the match. Season prizes pay out from sealed standings. Every score, settlement, and payout writes to Celo Mainnet · the chain is the source of truth, the leaderboards are just the UX.
+G$ is the currency. Players earn it from weekly ladder pools and community challenges, and spend it on match refills, habitat upgrades, and perks · every spend routes to the transparent prize-pool wallet, every payout is an on-chain G$ transfer. The chain is the source of truth, the leaderboards are just the UX.
 
 Built community-first · auto-balanced team races, weekly + all-time skill ladders, daily missions, milestone achievements, tier badges, play streaks, and a habitat economy where players spend G$ on cosmetic upgrades that compound into season standings. Daily and seasonal action is announced through the [Telegram community](https://t.me/gamearenaHQ).
 
@@ -48,7 +48,7 @@ flowchart TB
 
     subgraph LOOPS["Three game loops"]
         SKILL[🎵 Solo skill games<br/>Rhythm Rush · Simon Memory<br/>+ more games shipping<br/>weekly + all-time ladders]
-        AGENTWAGER[🤖 1v1 wagers vs MARKOV<br/>Rock-Paper-Scissors · Coin Flip<br/>+ more games on the roadmap<br/>G$ stakes settled on-chain]
+        AGENTWAGER[🤖 Instant matches vs MARKOV<br/>best-of-5 RPS · free to play<br/>commit-reveal provably fair<br/>weekly ladder pays G$]
         SEASONS[🏆 Seasonal competitions<br/>team races · solo ladders · sponsor cups<br/>real G$ prize pools]
     end
 
@@ -59,7 +59,7 @@ flowchart TB
     end
 
     subgraph CHAIN["Celo Mainnet · chain 42220"]
-        AP[ArenaPlatform contract<br/>wagers + match settlement]
+        AP[ArenaPlatform contract<br/>legacy match settlement · dormant]
         GP[GamePass NFT<br/>identity + usernames + tiers]
         GD[G$ token · GoodDollar]
         UBI[GoodCollective UBI Pool<br/>2% fee router]
@@ -88,7 +88,7 @@ flowchart TB
 
     FE <-->|score vouchers · leaderboards · missions · season standings| BE
     BE <--> DB
-    FE -->|wager tx via player wallet| AP
+    FE -.legacy · dormant.-> AP
     GP -->|username + tier resolution| FE
     GP -->|holds player identity| P
 
@@ -112,20 +112,20 @@ flowchart TB
 
 Rhythm Rush + Simon Memory today, with more games shipping into this slot. Plays submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards.
 
-**🤖 1v1 wagers vs MARKOV**
+**🤖 Instant matches vs MARKOV**
 
-G$ staked on-chain through the player's wallet. The autonomous agent picks matches up via `MatchProposed` events, plays Rock-Paper-Scissors or Coin Flip today, and resolves directly against the contract. The same wager primitive extends to whatever game gets registered next.
+Free best-of-5 Rock-Paper-Scissors against an AI that builds a Markov model of every opponent. Matches are instant (the chain is the receipt layer, not the game loop) and provably fair: MARKOV's moves are hash-committed before round 1 and the seed is revealed after, so every match replays. Wins climb a weekly ladder; the pool pays top climbers in G$.
 
 **🏆 Seasonal competitions**
 
-Every action across all loops · games played, wager wins, daily claims, referrals, active days · aggregates into points the season engine ranks against the prize-pool tiers.
+Every action across all loops · games played, MARKOV wins, daily claims, referrals, active days · aggregates into points the season engine ranks against the prize-pool tiers.
 
 ---
 
 ### Designed for extensibility
 
 - **New skill game** · ship a frontend client + scoring rules. No contract redeploy.
-- **New agent game** · add it to MARKOV's strategy module. The existing wager primitive carries it.
+- **New agent game** · add it to MARKOV's strategy module. The instant-match engine and ladder carry it.
 - **New agent entirely** · register on the same ERC-8004 registry. MARKOV is the first agent on the platform, not the only one it can host · A2A v0.3 discovery means any compliant agent plugs into the same surfaces.
 - **Multi-platform reach** · the frontend works on the web AND inside MiniPay's webview from the same surface · no separate build.
 
@@ -178,7 +178,7 @@ Component-level documentation lives inside each subdirectory · see [Project str
 
 ### Verified humans only
 
-Every player completes a one-time face-scan via GoodDollar's Identity SDK before playing for stakes. No bots, no farms, no sybil scripts. Free-play is open to anyone · wagers and prize pools are gated to verified accounts.
+Every player completes a one-time face-scan via GoodDollar's Identity SDK. No bots, no farms, no sybil scripts. Free-play is open to anyone · earning and prize pools are gated to verified accounts.
 
 ### Solo games
 
@@ -231,7 +231,7 @@ GameArena runs periodic competitions with G$ prize pools sourced from the platfo
 - **Sponsor cups** — rare, larger-pool events (typically in USDC) funded by sponsor partners.
 - **Community-funded pots** — player-contributed prize pools, no platform money involved.
 
-Points accumulate across each event from every in-app action · games played, wager wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
+Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
 ---
 
@@ -286,9 +286,9 @@ Deployed on Celo Mainnet (chain id 42220).
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
-| GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | Wager and payout currency                |
+| GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | 2% wager-fee destination                 |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | Legacy 2% fee destination (wager era)    |
 
 ---
 
@@ -297,7 +297,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | Event                | Player                       | Fee                                            |
 | -------------------- | ---------------------------- | ---------------------------------------------- |
 | MARKOV match win     | Gets 98% of the pot          | 2% routes to the GoodCollective UBI pool       |
-| MARKOV match loss    | Loses wager                  | 2% of the pot routes to GoodCollective UBI     |
+| MARKOV match loss    | Ladder points (loss = 2 pts) | Match receipt persisted · model keeps learning |
 | Daily UBI claim      | Verified players claim daily | —                                              |
 
 Every MARKOV match contributes to the GoodCollective UBI pool · the 2% fee is the platform fee, and it is paid directly to GoodCollective, not retained by the platform.
@@ -348,8 +348,8 @@ Required environment variables: Privy app id, Supabase URL + anon key, contract 
 
 ```
 GameArenaCelo-/
-  contracts/        Solidity sources · ArenaPlatform, SoloWager, GamePass
-  frontend/         Next.js 16 · game UI, wallet, wager flow
+  contracts/        Solidity sources · ArenaPlatform (legacy), SoloWager (legacy), GamePass
+  frontend/         Next.js 16 · game UI, wallet, arena + economy flows
   games-backend/    Express + Supabase · scores, seasons, push, validator
   agent/            MARKOV agent · Markov-2 chains, hash-committed RNG
   scripts/          Deployment + utility scripts

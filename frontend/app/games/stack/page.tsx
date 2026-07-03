@@ -41,6 +41,7 @@ import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -987,6 +988,8 @@ export default function StackTowerPage() {
                   </div>
                 </div>
               </div>
+
+              <ArenaCrossPromo />
 
               {/* Leaderboard nudge · only after a clean submit so it's a reward, not noise */}
               {submitResult && (

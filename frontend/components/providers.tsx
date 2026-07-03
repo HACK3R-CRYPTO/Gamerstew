@@ -8,14 +8,11 @@ import { Toaster } from 'react-hot-toast';
 import { SelfVerificationProvider } from '@/contexts/SelfVerificationContext';
 import MiniPayConnector from '@/components/MiniPayConnector';
 import ActiveWalletSync from '@/components/ActiveWalletSync';
-import { useWalletAuthSync } from '@/hooks/useWalletAuthSync';
-
-// Sentinel that runs useWalletAuthSync inside the Privy + Wagmi tree.
-// Renders nothing; the hook itself owns the auto-logout effect.
-function WalletAuthSync() {
-  useWalletAuthSync();
-  return null;
-}
+// NOTE: the auto-logout reaper (useWalletAuthSync) was retired on purpose.
+// Sessions now end EXPLICITLY: a half-dead session (Privy authed, wallet
+// disconnected) is shown honestly on /connect with a Log out button, and
+// every auth check requires a wallet address, so a lingering session is
+// inert. Silent background logouts surprised players.
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,7 +52,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <WagmiProvider config={wagmiConfig}>
           <MiniPayConnector />
           <ActiveWalletSync />
-          <WalletAuthSync />
           <SelfVerificationProvider>
             <Toaster
               position="top-center"

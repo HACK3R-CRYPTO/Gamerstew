@@ -233,7 +233,7 @@ function PlayNowSlide() {
             <li>Point your camera at the code.</li>
             <li>Sign in with Google in 10 seconds.</li>
             <li>Claim G$. Play Rhythm or Simon.</li>
-            <li>Every wager funds real UBI.</li>
+            <li>Every match feeds a player-funded prize pool.</li>
           </ul>
           <a href={URL} target="_blank" rel="noreferrer"
             style={{
@@ -373,7 +373,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           letterSpacing: "0.14em",
           textShadow: "0 0 16px rgba(251,191,36,0.6)",
         }}>
-          SKILL LADDERS · 1V1 WAGERS · SEASONAL CUPS
+          SKILL LADDERS · BEAT THE AI · SEASONAL CUPS
         </div>
         <div style={{
           marginTop: "clamp(14px, 2.5vh, 22px)",
@@ -384,7 +384,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
           lineHeight: 1.5,
           padding: "0 8px",
         }}>
-          A social on-chain community of verified humans playing mini-games for real rewards on Celo Mainnet. Skill leaderboards, seasonal cups, 1v1 wagers, and an autonomous AI opponent · all on-chain, all auditable.
+          The arena for verified humans. Free skill games, an AI opponent that learns your patterns, weekly ladders paying real G$ · on Celo Mainnet, all auditable, no bots, no stakes.
         </div>
         <div style={{
           marginTop: "clamp(24px, 5vh, 44px)",
@@ -455,7 +455,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
       <SlideFrame eyebrow="THE SOLUTION">
         <H1>Three game loops. Three reasons people show up.</H1>
         <Lead>
-          Free play is open to anyone. Wagers and prize pools gated by GoodDollar Identity. MARKOV wagers settle in G$ on the platform contract · winner takes 98%, 2% routes to the GoodCollective UBI pool. Cup prizes pay USDC or G$ depending on the event · sponsor cups skew USDC, community-funded pots skew G$.
+          Free play is open to anyone. Earning and prize pools gated by GoodDollar Identity. G$ is the currency: spend it on match refills and perks (every spend routes to the transparent pool wallet), earn it from weekly ladder payouts. Cup prizes pay USDC or G$ depending on the event · sponsor cups skew USDC, community-funded pots skew G$.
         </Lead>
         <div style={{
           marginTop: "clamp(16px, 3vh, 32px)",
@@ -532,7 +532,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             },
             {
               name: "1V1 VS MARKOV", icon: "🤖", accent: GOLD,
-              body: "Wager G$ against MARKOV, our autonomous on-chain agent. Token #6386 on ERC-8004 Agent Trust Protocol. First agent on the platform · A2A v0.3 discovery, open to other agents next. Rock-Paper-Scissors and Coin Flip today, same primitive scales to any future game.",
+              body: "Free instant best-of-5 RPS against MARKOV, our AI agent. Token #6386 on ERC-8004 Agent Trust Protocol. It models your patterns (watch its read meter climb), every match is commit-reveal provably fair, and wins climb a weekly G$ ladder. First agent on the platform · A2A v0.3 discovery, open to other agents next.",
             },
           ].map((g, i) => (
             <div key={i} style={{
@@ -572,7 +572,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         <Step n={1} title="Play" body="Open Rhythm or Simon. No wallet required. Pure skill." />
         <Step n={2} title="Connect" body="Google, email, or wallet via Privy. 10 seconds. No seed phrase." />
         <Step n={3} title="Mint Game Pass" body="Soulbound NFT with your username. A few cents of CELO for gas. Unlocks leaderboards and hosted Cups." />
-        <Step n={4} title="Verify (optional)" body="One GoodDollar face scan. Only needed if you want to claim free G$ and wager later." />
+        <Step n={4} title="Verify (optional)" body="One GoodDollar face scan. Only needed if you want to claim free G$ and earn from the ladder." />
         <Step n={5} title="Climb" body="Earn XP. Level up. Evolve your pet. Win weekly badges." />
       </SlideFrame>
     ),
@@ -595,7 +595,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>Weekly seasons mint badges.</strong> Bronze, Silver, and Gold per game, per week. On chain and auditable.
           </Bullet>
           <Bullet accent={CYAN}>
-            <strong>Wager flow is live.</strong> Challenge MARKOV in Rock-Paper-Scissors or Coin Flip · stake G$, the agent auto-accepts, plays, resolves on chain. Winner takes 98% of the pot. 2% routes to the GoodCollective UBI pool. Free G$ claims every 24h from GoodDollar.
+            <strong>The arena is live.</strong> Challenge MARKOV free in instant best-of-5 RPS · it learns your patterns, matches are provably fair, wins climb the weekly ladder. G$ powers refills and perks; the pool pays climbers. Free G$ claims every 24h from GoodDollar.
           </Bullet>
           <Bullet accent="#f472b6">
             <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 90% G$ to the GoodCollective UBI pool, 10% to platform sustainability. G$ activity recycles into the economy that gates entry.
@@ -698,7 +698,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         }}>
           {[
             { icon: "🔌", title: "Plug in a skill game", body: "Ship a frontend client + scoring rules. Score vouchers, leaderboards, and seasons are already built. No contract redeploy.", c: GREEN },
-            { icon: "🤖", title: "Plug in an agent", body: "Register on the same ERC-8004 Agent Trust Protocol. A2A v0.3 discovery means any compliant agent slots into the same wager and attestation surfaces MARKOV uses today.", c: "#22d3ee" },
+            { icon: "🤖", title: "Plug in an agent", body: "Register on the same ERC-8004 Agent Trust Protocol. A2A v0.3 discovery means any compliant agent slots into the same match and attestation surfaces MARKOV uses today.", c: "#22d3ee" },
             { icon: "🏆", title: "Shared infrastructure", body: "Identity, scores, seasons, cups, XP, streaks, pet system, and prize pools. Every new game and agent inherits all of it.", c: MAGENTA },
             { icon: "🌍", title: "Instant reach", body: "Verified humans, MiniPay distribution, and a built community on day one. No cold start.", c: GOLD },
           ].map((card, i) => (
@@ -732,7 +732,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         <H1>Every score, settlement, and attestation lives on chain.</H1>
         <BulletList>
           <Bullet accent={GOLD}>
-            <strong>Celo mainnet.</strong> Scores, wagers, and badges write to the chain first. The database mirrors chain state, not the other way around.
+            <strong>Celo mainnet.</strong> Scores, G$ flows, and badges write to the chain first. The database mirrors chain state, not the other way around.
           </Bullet>
           <Bullet accent={GREEN}>
             <strong>Signed scores.</strong> EIP-712 vouchers. Backend signs, wallet countersigns. Neither side can post a score alone.
@@ -778,7 +778,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
                 "Arena Cups with USDC and G$ prize pools",
                 "XP, levels, and 5 stage pet evolution",
                 "Daily missions, achievements, play streaks",
-                "Wager contracts deployed on Celo mainnet",
+                "Arena + GamePass contracts deployed on Celo mainnet",
                 "Game Pass, username mint, MiniPay and Privy auth",
                 "Karma project page for builder reputation",
               ],
@@ -787,7 +787,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
               label: "NEXT",
               c: GOLD,
               items: [
-                "Wager UI toggle inside the game flow",
+                "Instant AI arena inside the game flow",
                 "Achievement NFT badge mint",
                 "Tournament brackets",
                 "True player vs player with matchmaking",
