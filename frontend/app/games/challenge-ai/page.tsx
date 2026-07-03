@@ -24,7 +24,12 @@ import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
+import {
+  playFightSlam, playWin, playLose, playTie,
+  playFistPump, playChantTick, playRevealSlam,
+  playRoundWin, playRoundLose, playRoundTie,
+  playCalledIt, playSuddenDeath, playWhooshIn,
+} from "@/hooks/useAppAudio";
 import { useWriteContract, useSignTypedData } from "wagmi";
 import { parseEther, parseSignature } from "viem";
 import { startArenaMatch, throwArenaMove, getArenaLadder, purchaseArenaRefill, purchaseArenaRefillGasless, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
@@ -328,9 +333,10 @@ export default function ChallengeAiPage() {
       if (!matchId || throwLock.current || beat !== "armed") return;
       throwLock.current = true;
       setBeat("shaking");
-      setChantIdx(0);
-      later(() => setChantIdx(1), 350);
-      later(() => setChantIdx(2), 700);
+      // Chant + pump are one audiovisual beat: word pops as the fists rise.
+      setChantIdx(0); playChantTick(0); playFistPump();
+      later(() => { setChantIdx(1); playChantTick(1); playFistPump(); }, 350);
+      later(() => { setChantIdx(2); playChantTick(2); playFistPump(); }, 700);
 
       const started = Date.now();
       const res = await throwArenaMove(matchId, move);
@@ -348,9 +354,17 @@ export default function ChallengeAiPage() {
         setScore(res.score);
         setMatchStreak((s) => (res.result === "win" ? s + 1 : 0));
         setBeat("impact");
-        if (res.result === "win") playWin();
-        else if (res.result === "loss") playLose();
-        else playTie();
+        // Impact = slam first (the physical hit), stinger rides on top a
+        // beat later (the emotional read), CALLED IT stabs last if the
+        // model predicted the throw. Layered, not simultaneous — mixes
+        // clean and reads as cause → effect.
+        playRevealSlam();
+        later(() => {
+          if (res.result === "win") playRoundWin();
+          else if (res.result === "loss") playRoundLose();
+          else playRoundTie();
+        }, 120);
+        if (res.called) later(() => playCalledIt(), 300);
 
         if (res.final) {
           const fin = res.final;
@@ -358,12 +372,19 @@ export default function ChallengeAiPage() {
             setFinalData(fin);
             updateRecord(fin.outcome);
             setPhase("result");
+            // Match-end fanfare — the big stingers stay reserved for this.
+            if (fin.outcome === "player_won") playWin();
+            else if (fin.outcome === "ai_won") playLose();
+            else playTie();
             throwLock.current = false;
           }, IMPACT_HOLD_MS);
         } else {
           later(() => {
             setRoundNum((n) => n + 1);
             setBeat("banner");
+            // Banner sweep whoosh · sudden death gets the ominous sting.
+            if (res.suddenDeath) playSuddenDeath();
+            else playWhooshIn();
             later(() => { setBeat("armed"); throwLock.current = false; }, BANNER_MS);
           }, IMPACT_HOLD_MS);
         }
