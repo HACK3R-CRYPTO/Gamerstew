@@ -24,6 +24,7 @@ import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { shareArenaCard } from "@/lib/arenaShareCard";
 import {
   playFightSlam, playWin, playLose, playTie,
   playFistPump, playChantTick, playRevealSlam,
@@ -1341,6 +1342,38 @@ function ResultStage({
           Lobby
         </button>
       </div>
+
+      {/* Share card · free forever — every shared win is an ad. Most
+          prominent after a victory (that's the shareable moment); still
+          available on losses (the "it read my mind" stat is share-bait too). */}
+      <button
+        onClick={async () => {
+          const res = await shareArenaCard({
+            outcome: final.outcome,
+            playerScore: score.player,
+            aiScore: score.ai,
+            calledCount: final.calledCount,
+            totalRounds: final.totalRounds,
+            favoriteMove: reveal?.favoriteMove ?? null,
+            favoritePct: reveal?.favoritePct ?? null,
+          });
+          toast.success(res === "shared" ? "Shared! ⚔️" : "Card saved — post it anywhere 📸");
+        }}
+        style={{
+          background: won ? "rgba(134,239,172,0.1)" : "rgba(255,255,255,0.04)",
+          border: `1px solid ${won ? "rgba(134,239,172,0.45)" : "rgba(255,255,255,0.14)"}`,
+          color: won ? "#86efac" : "rgba(220,210,255,0.8)",
+          borderRadius: 14,
+          padding: "12px 0",
+          fontSize: 13,
+          fontWeight: 800,
+          letterSpacing: "0.06em",
+          cursor: "pointer",
+          animation: "riseIn 0.45s 0.45s ease both",
+        }}
+      >
+        📸 SHARE {won ? "YOUR WIN" : "THE MATCH"}
+      </button>
 
       <div style={{ fontSize: 11, color: "rgba(220,210,255,0.4)", textAlign: "center" }}>
         Record vs MARKOV: {record.w}W · {record.l}L · {record.t}T
