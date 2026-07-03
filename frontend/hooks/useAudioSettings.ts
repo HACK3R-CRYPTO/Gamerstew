@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 export type AudioSettings = {
   musicOn: boolean;       // in-game music (rhythm/simon: bass, hats, lead)
   sfxOn: boolean;         // in-game sfx (rhythm/simon: tap bells, miss buzz)
-  appAudioOn: boolean;    // EVERYTHING app-wide: ambient pad + UI clicks + stings + chimes + coin + tab switch
+  appAudioOn: boolean;    // ambient/background pad ONLY - independent of sfx/music
   musicVol: number;       // 0–100
   sfxVol: number;         // 0–100
   appAudioVol: number;    // 0–100
@@ -117,13 +117,14 @@ export function useAudioSettings() {
 // and kept playing · made the mute button feel half-broken. Per-channel
 // volume sliders (sfxVol, musicVol) are preserved untouched so unmuting
 // restores the player's actual preferences.
+// Three INDEPENDENT channels — the industry-standard audio settings model.
+// App Audio owns only the ambient/background layer; muting the menu music
+// must never silence gameplay feedback (players who play muted-music with
+// SFX on are a large, normal segment).
 export function effectiveGains(s: AudioSettings) {
-  if (!s.appAudioOn) {
-    return { music: 0, sfx: 0, appAudio: 0 };
-  }
   return {
-    music:    s.musicOn ? s.musicVol    / 100 : 0,
-    sfx:      s.sfxOn   ? s.sfxVol      / 100 : 0,
-    appAudio: s.appAudioVol / 100,
+    music:    s.musicOn    ? s.musicVol    / 100 : 0,
+    sfx:      s.sfxOn      ? s.sfxVol      / 100 : 0,
+    appAudio: s.appAudioOn ? s.appAudioVol / 100 : 0,
   };
 }
