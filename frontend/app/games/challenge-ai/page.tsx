@@ -25,6 +25,7 @@ import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { renderArenaShareCard, canNativeShare, nativeShareCard, downloadCard } from "@/lib/arenaShareCard";
+import { startWaapiFallback } from "@/lib/waapiFallback";
 import {
   playFightSlam, playWin, playLose, playTie,
   playFistPump, playChantTick, playRevealSlam,
@@ -357,10 +358,20 @@ export default function ChallengeAiPage() {
     [matchId, beat, later, updateRecord],
   );
 
+  // WAAPI fallback: devices where CSS animations are suppressed (iOS
+  // Reduce Motion, content blockers - see /animtest) get the same
+  // animations replayed through element.animate(). No-op elsewhere.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!rootRef.current) return;
+    return startWaapiFallback(rootRef.current);
+  }, []);
+
   const inMatch = phase === "vs" || phase === "match";
 
   return (
     <div
+      ref={rootRef}
       style={{
         minHeight: "100dvh",
         background: T.bg,
