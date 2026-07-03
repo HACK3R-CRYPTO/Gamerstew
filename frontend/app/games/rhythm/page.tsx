@@ -28,6 +28,7 @@ import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -2410,6 +2411,8 @@ function FinishedView({
             <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
             <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
           </div>
+
+          <ArenaCrossPromo />
         </div>
       </div>
     </div>

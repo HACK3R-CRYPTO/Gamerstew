@@ -27,6 +27,7 @@ import { PushOptInModal } from "@/components/PushOptInModal";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -1802,6 +1803,8 @@ function FinishedView({
             <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
             <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
           </div>
+
+          <ArenaCrossPromo />
         </div>
       </div>
     </div>
