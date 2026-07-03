@@ -14,6 +14,8 @@ export type RefillOffer = {
   grants: number;
   poolWallet: string;
   gToken: string;
+  relayer?: string | null;      // gasless path: permit spender
+  permitNonce?: string | null;  // player's current G$ permit nonce
 };
 
 type StartResponse = {
@@ -103,6 +105,19 @@ export async function getArenaLadder(wallet?: string, week?: string): Promise<La
     return await res.json();
   } catch {
     return { week: '', poolGs: 0, players: 0, top: [], me: null, error: 'backend_unreachable' };
+  }
+}
+
+// Gasless refill: the player signed an EIP-2612 permit; the backend relays
+// permit + transferFrom and pays the gas. Zero CELO needed to buy.
+export async function purchaseArenaRefillGasless(
+  wallet: string,
+  sig: { deadline: string; v: number; r: string; s: string },
+): Promise<{ ok?: boolean; remaining?: number; error?: string }> {
+  try {
+    return await backend('/api/arena/purchase-gasless', { wallet, sku: 'refill_5', ...sig });
+  } catch {
+    return { error: 'backend_unreachable' };
   }
 }
 

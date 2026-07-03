@@ -25,9 +25,9 @@ import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { playFightSlam, playWin, playLose, playTie } from "@/hooks/useAppAudio";
-import { useWriteContract } from "wagmi";
-import { parseEther } from "viem";
-import { startArenaMatch, throwArenaMove, getArenaLadder, purchaseArenaRefill, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
+import { useWriteContract, useSignTypedData } from "wagmi";
+import { parseEther, parseSignature } from "viem";
+import { startArenaMatch, throwArenaMove, getArenaLadder, purchaseArenaRefill, purchaseArenaRefillGasless, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
 
 const ERC20_TRANSFER_ABI = [
   {
@@ -217,21 +217,61 @@ export default function ChallengeAiPage() {
   const [buying, setBuying] = useState(false);
   const { writeContractAsync } = useWriteContract();
 
+  const { signTypedDataAsync } = useSignTypedData();
+
   const buyRefill = useCallback(async () => {
     if (!address || !refillOffer || buying) return;
     setBuying(true);
     setError(null);
     try {
-      // 1. Player sends the G$ transfer to the pool wallet from their own
-      //    wallet — the spend IS the pool contribution, visible on-chain.
-      const txHash = await writeContractAsync({
-        address: refillOffer.gToken as `0x${string}`,
-        abi: ERC20_TRANSFER_ABI,
-        functionName: "transfer",
-        args: [refillOffer.poolWallet as `0x${string}`, parseEther(String(refillOffer.priceGs))],
-      });
-      // 2. Backend verifies the receipt on-chain and grants the matches.
-      const granted = await purchaseArenaRefill(address, txHash);
+      let granted: { ok?: boolean; remaining?: number } = {};
+
+      if (refillOffer.relayer && refillOffer.permitNonce !== null && refillOffer.permitNonce !== undefined) {
+        // Gasless path (preferred): sign an EIP-2612 permit — one signature,
+        // zero gas, zero CELO. The backend relays and pays. Domain verified
+        // on-chain: GoodDollar / 1 / 42220.
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+        const signature = await signTypedDataAsync({
+          domain: {
+            name: "GoodDollar",
+            version: "1",
+            chainId: 42220,
+            verifyingContract: refillOffer.gToken as `0x${string}`,
+          },
+          types: {
+            Permit: [
+              { name: "owner", type: "address" },
+              { name: "spender", type: "address" },
+              { name: "value", type: "uint256" },
+              { name: "nonce", type: "uint256" },
+              { name: "deadline", type: "uint256" },
+            ],
+          },
+          primaryType: "Permit",
+          message: {
+            owner: address,
+            spender: refillOffer.relayer as `0x${string}`,
+            value: parseEther(String(refillOffer.priceGs)),
+            nonce: BigInt(refillOffer.permitNonce),
+            deadline,
+          },
+        });
+        const { v, r, s } = parseSignature(signature);
+        granted = await purchaseArenaRefillGasless(address, {
+          deadline: deadline.toString(), v: Number(v), r, s,
+        });
+      } else {
+        // Direct-transfer fallback: player sends the G$ themselves (needs a
+        // little gas · MiniPay covers it via the fee-currency adapter).
+        const txHash = await writeContractAsync({
+          address: refillOffer.gToken as `0x${string}`,
+          abi: ERC20_TRANSFER_ABI,
+          functionName: "transfer",
+          args: [refillOffer.poolWallet as `0x${string}`, parseEther(String(refillOffer.priceGs))],
+        });
+        granted = await purchaseArenaRefill(address, txHash);
+      }
+
       if (granted.ok) {
         setRefillOffer(null);
         setRemaining(granted.remaining ?? null);
@@ -246,7 +286,7 @@ export default function ChallengeAiPage() {
       setError("Purchase cancelled");
     }
     setBuying(false);
-  }, [address, refillOffer, buying, writeContractAsync]);
+  }, [address, refillOffer, buying, writeContractAsync, signTypedDataAsync]);
 
   // ─── Start a match ─────────────────────────────────────────────────────────
   const startMatch = useCallback(async () => {
