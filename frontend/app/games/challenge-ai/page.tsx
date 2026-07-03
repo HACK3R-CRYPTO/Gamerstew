@@ -911,7 +911,7 @@ function MatchStage({
             {armed && (
               <>
                 <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", color: sudden ? "#fca5a5" : "rgba(220,210,255,0.75)", animation: "chantPop 0.3s ease both" }}>
-                  {sudden ? "WINNER TAKES ALL 💀" : "PICK YOUR THROW ⚡"}
+                  {sudden ? "NEXT ROUND DECIDES IT 💀" : "PICK YOUR THROW ⚡"}
                 </div>
                 {hint && (
                   <div
