@@ -546,7 +546,6 @@ function Lobby({
           style={{
             position: "absolute", top: ic.top, left: ic.left as number | undefined, right: (ic as { right?: number }).right,
             width: ic.size, opacity: 0.13, pointerEvents: "none",
-            filter: `drop-shadow(0 0 18px ${ic.glow})`,
             ["--rot" as string]: `${ic.rot}deg`,
             animation: `iconDrift ${4.5 + i}s ease-in-out ${ic.delay}s infinite`,
             zIndex: 0,
@@ -625,7 +624,6 @@ function Lobby({
             width: "min(62vw, 250px)",
             height: "auto",
             objectFit: "contain",
-            filter: `drop-shadow(0 0 40px ${RIM}55) drop-shadow(0 10px 20px rgba(0,0,0,0.6))`,
             animation: "idleBob 3.2s ease-in-out infinite",
             position: "relative",
             zIndex: 1,
@@ -656,7 +654,6 @@ function Lobby({
             height: 74,
             objectFit: "contain",
             transform: "scaleX(-1)",
-            filter: `drop-shadow(0 0 14px ${pet.color}66)`,
             animation: "idleBobAlt 2.8s ease-in-out infinite",
             zIndex: 2,
           }}
@@ -895,7 +892,6 @@ function MatchStage({
                 width: 88,
                 height: 88,
                 objectFit: "contain",
-                filter: `drop-shadow(0 0 18px ${pet.color}66)`,
                 animation: playerWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
                   : aiWonRound
@@ -947,7 +943,6 @@ function MatchStage({
                 width: 88,
                 height: 88,
                 objectFit: "contain",
-                filter: `drop-shadow(0 0 18px ${RIM}66)`,
                 animation: aiWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
                   : playerWonRound
@@ -1032,10 +1027,10 @@ function MatchStage({
               {beat === "shaking" ? (
                 <>
                   <div style={{ animation: "handEnterL 0.25s ease-out both" }}>
-                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handPumpL 0.35s 0.25s ease-in-out infinite", willChange: "transform" }} />
+                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", animation: "handPumpL 0.35s 0.25s ease-in-out infinite", willChange: "transform", transform: "translateZ(0)" }} />
                   </div>
                   <div style={{ animation: "handEnterR 0.25s ease-out both" }}>
-                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", transform: "scaleX(-1)", filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handPumpR 0.35s 0.25s ease-in-out infinite", willChange: "transform" }} />
+                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", transform: "scaleX(-1) translateZ(0)", animation: "handPumpR 0.35s 0.25s ease-in-out infinite", willChange: "transform" }} />
                   </div>
                 </>
               ) : (
