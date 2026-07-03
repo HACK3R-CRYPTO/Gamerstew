@@ -648,16 +648,26 @@ export default function StackTowerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Background gradient cache — creating a CanvasGradient is an expensive
+  // allocation, and the old code did it EVERY frame (60×/s). The hue only
+  // moves when the level changes, so cache by (level, height): one
+  // allocation per stacked block instead of ~3,600/minute.
+  const bgGradRef = useRef<{ key: string; grad: CanvasGradient } | null>(null);
+
   // ─── Draw ─────────────────────────────────────────────────────────────────
   const draw = (ctx: CanvasRenderingContext2D, wall: number) => {
     const { w, h } = sizeRef.current;
 
     // Background — shifts hue as you climb. Sells progress without a counter.
     const climb = Math.min(levelRef.current / 60, 1);
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, `hsl(${240 - climb * 80} 50% ${8 + climb * 10}%)`);
-    grad.addColorStop(1, "#07021c");
-    ctx.fillStyle = grad;
+    const gradKey = `${levelRef.current}|${h}`;
+    if (!bgGradRef.current || bgGradRef.current.key !== gradKey) {
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, `hsl(${240 - climb * 80} 50% ${8 + climb * 10}%)`);
+      grad.addColorStop(1, "#07021c");
+      bgGradRef.current = { key: gradKey, grad };
+    }
+    ctx.fillStyle = bgGradRef.current.grad;
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
