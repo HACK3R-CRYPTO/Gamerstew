@@ -146,7 +146,7 @@ const KEYFRAMES = `
 @keyframes vsPop { 0% { transform: scale(0.2); opacity: 0 } 70% { transform: scale(1.3) } 100% { transform: scale(1); opacity: 1 } }
 @keyframes stampSlam { 0% { transform: scale(3) rotate(-18deg); opacity: 0 } 60% { transform: scale(0.9) rotate(-12deg); opacity: 1 } 100% { transform: scale(1) rotate(-12deg); opacity: 1 } }
 @keyframes handEnterL { 0% { transform: translateX(-140px) scale(0.6); opacity: 0 } 100% { transform: translateX(0) scale(1); opacity: 1 } }
-@keyframes handEnterR { 0% { transform: translateX(140px) scale(0.6) scaleX(-1); opacity: 0 } 100% { transform: translateX(0) scale(1) scaleX(-1); opacity: 1 } }
+@keyframes handEnterR { 0% { transform: translateX(140px) scale(0.6); opacity: 0 } 100% { transform: translateX(0) scale(1); opacity: 1 } }
 @keyframes handPumpL { 0%,100% { transform: translateY(0) rotate(0deg) } 45% { transform: translateY(-30px) rotate(-8deg) } 62% { transform: translateY(6px) rotate(2deg) } }
 @keyframes handPumpR { 0%,100% { transform: scaleX(-1) translateY(0) rotate(0deg) } 45% { transform: scaleX(-1) translateY(-30px) rotate(8deg) } 62% { transform: scaleX(-1) translateY(6px) rotate(-2deg) } }
 @keyframes clashL { 0% { transform: translateX(-90px) scale(1.5); opacity: 0 } 45% { transform: translateX(26px) scale(1.05); opacity: 1 } 65% { transform: translateX(-8px) scale(1) } 100% { transform: translateX(0) scale(1) } }
@@ -1031,8 +1031,12 @@ function MatchStage({
               )}
               {beat === "shaking" ? (
                 <>
-                  <img src={FIST_ART} alt="" style={{ height: 110, filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handEnterL 0.25s ease-out both, handPumpL 0.35s 0.25s ease-in-out 3" }} />
-                  <img src={FIST_ART} alt="" style={{ height: 110, filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handEnterR 0.25s ease-out both, handPumpR 0.35s 0.25s ease-in-out 3" }} />
+                  <div style={{ animation: "handEnterL 0.25s ease-out both" }}>
+                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handPumpL 0.35s 0.25s ease-in-out infinite", willChange: "transform" }} />
+                  </div>
+                  <div style={{ animation: "handEnterR 0.25s ease-out both" }}>
+                    <img src={FIST_ART} alt="" style={{ height: 110, display: "block", transform: "scaleX(-1)", filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.6))", animation: "handPumpR 0.35s 0.25s ease-in-out infinite", willChange: "transform" }} />
+                  </div>
                 </>
               ) : (
                 <>
