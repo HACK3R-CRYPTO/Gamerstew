@@ -1676,6 +1676,12 @@ app.get('/api/seasons', async (_, res) => {
       VALID_GAMES.flatMap(g => rawByGame[g].map(e => e.wallet_address))
     );
 
+    // Prefetch usernames ONCE per unique wallet. Without this, a wallet in
+    // three games' top-10s fired three concurrent uncached contract reads
+    // (the LRU only stores completed lookups) — up to 150 RPC calls per
+    // /api/seasons hit. After the prefetch, fmt() below is pure cache hits.
+    await Promise.all([...allPlayers].map((w) => resolveUsername(w)));
+
     const fmt = async (e) => ({
       player: e.wallet_address,
       username: await resolveUsername(e.wallet_address) || null,
