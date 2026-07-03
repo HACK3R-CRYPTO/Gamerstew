@@ -110,27 +110,33 @@ export async function renderArenaShareCard(input: ShareCardInput): Promise<Blob>
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
 }
 
-export async function shareArenaCard(input: ShareCardInput): Promise<'shared' | 'downloaded'> {
-  const blob = await renderArenaShareCard(input);
+// Can this device open a native share sheet with an image file?
+export function canNativeShare(): boolean {
+  if (typeof navigator === 'undefined' || !navigator.canShare) return false;
+  try {
+    const probe = new File([new Blob(['x'])], 'probe.png', { type: 'image/png' });
+    return navigator.canShare({ files: [probe] });
+  } catch { return false; }
+}
+
+// Native share sheet (mobile) — one tap to WhatsApp/TG/X.
+export async function nativeShareCard(blob: Blob): Promise<boolean> {
   const file = new File([blob], 'gamearena-markov.png', { type: 'image/png' });
+  try {
+    await navigator.share({
+      files: [file],
+      title: 'GameArena',
+      text: 'I fought MARKOV, the AI that learns your patterns ⚔️ gamearenahq.xyz',
+    });
+    return true;
+  } catch { return false; /* user cancelled */ }
+}
 
-  // Web Share API with files (mobile) — the one-tap path to WhatsApp/TG/X.
-  if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({
-        files: [file],
-        title: 'GameArena',
-        text: 'I fought MARKOV, the AI that learns your patterns ⚔️ gamearenahq.xyz',
-      });
-      return 'shared';
-    } catch { /* user cancelled → fall through to download */ }
-  }
-
-  // Desktop fallback: download the PNG.
+// Desktop path: save the PNG.
+export function downloadCard(blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'gamearena-markov.png';
   a.click();
   URL.revokeObjectURL(url);
-  return 'downloaded';
 }

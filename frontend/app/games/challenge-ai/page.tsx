@@ -24,7 +24,7 @@ import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount } from "wagmi";
 import toast from "react-hot-toast";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { shareArenaCard } from "@/lib/arenaShareCard";
+import { renderArenaShareCard, canNativeShare, nativeShareCard, downloadCard } from "@/lib/arenaShareCard";
 import {
   playFightSlam, playWin, playLose, playTie,
   playFistPump, playChantTick, playRevealSlam,
@@ -1185,6 +1185,13 @@ function ResultStage({
   const won = final.outcome === "player_won";
   const tied = final.outcome === "tie";
   const reveal = final.modelReveal;
+  // Share preview modal state — show the card BEFORE sharing/saving.
+  const [shareBlob, setShareBlob] = useState<Blob | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const closeShare = () => {
+    if (shareUrl) URL.revokeObjectURL(shareUrl);
+    setShareUrl(null); setShareBlob(null);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, animation: "riseIn 0.4s ease both" }}>
@@ -1348,7 +1355,7 @@ function ResultStage({
           available on losses (the "it read my mind" stat is share-bait too). */}
       <button
         onClick={async () => {
-          const res = await shareArenaCard({
+          const blob = await renderArenaShareCard({
             outcome: final.outcome,
             playerScore: score.player,
             aiScore: score.ai,
@@ -1357,7 +1364,8 @@ function ResultStage({
             favoriteMove: reveal?.favoriteMove ?? null,
             favoritePct: reveal?.favoritePct ?? null,
           });
-          toast.success(res === "shared" ? "Shared! ⚔️" : "Card saved — post it anywhere 📸");
+          setShareBlob(blob);
+          setShareUrl(URL.createObjectURL(blob));
         }}
         style={{
           background: won ? "rgba(134,239,172,0.1)" : "rgba(255,255,255,0.04)",
@@ -1374,6 +1382,56 @@ function ResultStage({
       >
         📸 SHARE {won ? "YOUR WIN" : "THE MATCH"}
       </button>
+
+      {/* Card preview modal · show-then-share */}
+      {shareUrl && shareBlob && (
+        <div
+          onClick={closeShare}
+          style={{
+            position: "fixed", inset: 0, zIndex: 60,
+            background: "rgba(4,0,26,0.85)", backdropFilter: "blur(6px)",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: 20, gap: 14, animation: "arenaFadeIn 0.2s ease",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shareUrl}
+            alt="Match card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(86vw, 420px)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,0.7)", animation: "riseIn 0.3s ease both" }}
+          />
+          <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 10, width: "min(86vw, 420px)" }}>
+            <button
+              onClick={async () => {
+                if (canNativeShare()) {
+                  const ok = await nativeShareCard(shareBlob);
+                  if (ok) toast.success("Shared! ⚔️");
+                } else {
+                  downloadCard(shareBlob);
+                  toast.success("Saved to your downloads 📸");
+                }
+              }}
+              style={{
+                flex: 2, background: "linear-gradient(180deg, #4ade80, #16a34a)", color: "#04160a",
+                border: "none", borderRadius: 14, padding: "14px 0", fontSize: 14, fontWeight: 900,
+                letterSpacing: "0.05em", cursor: "pointer",
+              }}
+            >
+              {canNativeShare() ? "SHARE ›" : "⬇ SAVE IMAGE"}
+            </button>
+            <button
+              onClick={closeShare}
+              style={{
+                flex: 1, background: "rgba(15,11,38,0.9)", border: "1px solid rgba(255,255,255,0.16)",
+                color: "#ede9fe", borderRadius: 14, padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: "rgba(220,210,255,0.4)", textAlign: "center" }}>
         Record vs MARKOV: {record.w}W · {record.l}L · {record.t}T
