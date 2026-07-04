@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -81,6 +81,51 @@ const BG_ICONS = [
   { src: J, top: "76%", left: "-14px", size: 88, dur: 5.0, delay: 1.7, rotate: -18 },
   { src: M, top: "88%", right: "30px", size: 72, dur: 4.2, delay: 0.9, rotate: 20 },
 ];
+
+// ─── Ambient starfield type (hoisted to module scope for the memo below) ──────
+type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
+
+// ─── Ambient background layer — memoized so per-tap score/combo re-renders of
+// the parent skip re-rendering these ~50 animated divs. `active` (true during
+// live play) pauses the CSS animations. ────────────────────────────────────────
+const AmbientLayer = React.memo(function AmbientLayer({ stars, active }: { stars: Star[]; active: boolean }) {
+  return (
+    <>
+      {stars.map((s, i) => (
+        <div key={i} className={active ? "" : "dot-pulse"} style={{
+          position: "absolute",
+          top: `${s.y}%`,
+          left: `${s.x}%`,
+          width: `${s.size}px`,
+          height: `${s.size}px`,
+          borderRadius: "50%",
+          background: "white",
+          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
+          ["--dur" as string]: `${s.dur}s`,
+          ["--delay" as string]: `${s.delay}s`,
+          opacity: s.alpha,
+          pointerEvents: "none", zIndex: 1,
+        }} />
+      ))}
+
+      {BG_ICONS.map((ic, i) => (
+        <div key={i} className={active ? "" : "icon-float"} style={{
+          position: "absolute",
+          top: ic.top,
+          ...("left" in ic ? { left: ic.left } : { right: ic.right }),
+          width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`,
+          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          opacity: 0.22, pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
+        </div>
+      ))}
+    </>
+  );
+});
 
 // ─── Lane palette (V2 discipline: magenta world + 3 supporting game colors) ──
 type LaneTheme = { wall: string; face: string; glow: string; accent: string };
@@ -614,7 +659,6 @@ export default function RhythmGamePage() {
 
   // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
   // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
-  type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
   const [stars, setStars] = useState<Star[]>([]);
   useEffect(() => {
     setStars(Array.from({ length: 44 }, () => ({
@@ -1430,43 +1474,8 @@ export default function RhythmGamePage() {
           44 animated box-shadow divs + canvas + particles = too much GPU work
           on low-end Android). Stars are purely ambient; players don't notice
           them mid-game. Resume on idle/finished phases. */}
-      {stars.map((s, i) => (
-        <div key={i} className={phase === "playing" || phase === "encore" ? "" : "dot-pulse"} style={{
-          position: "absolute",
-          top: `${s.y}%`,
-          left: `${s.x}%`,
-          width: `${s.size}px`,
-          height: `${s.size}px`,
-          borderRadius: "50%",
-          background: "white",
-          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
-          ["--dur" as string]: `${s.dur}s`,
-          ["--delay" as string]: `${s.delay}s`,
-          opacity: s.alpha,
-          pointerEvents: "none", zIndex: 1,
-        }} />
-      ))}
-
-      {/* Splash icons — ambient texture at low opacity. We pause the
-          float animation while a run is active (playing/encore) — the
-          tiles ARE the animation, and 6+ infinite drop-shadow + transform
-          keyframes running in parallel cooked low-end phones. Idle and
-          finished phases still bob. */}
-      {BG_ICONS.map((ic, i) => (
-        <div key={i} className={phase === "playing" || phase === "encore" ? "" : "icon-float"} style={{
-          position: "absolute",
-          top: ic.top,
-          ...("left" in ic ? { left: ic.left } : { right: ic.right }),
-          width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`,
-          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          opacity: 0.22, pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
-        </div>
-      ))}
+      {/* Splash icons pause during active play too — see AmbientLayer. */}
+      <AmbientLayer stars={stars} active={phase === "playing" || phase === "encore"} />
 
       {/* Magenta tint wash — intensifies as the track progresses, adds tension */}
       <div style={{
