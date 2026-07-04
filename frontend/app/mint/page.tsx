@@ -101,7 +101,7 @@ function MintInner() {
   // entirely and the MINT button is always enabled.
   const { data: celoBalance } = useBalance({
     address,
-    query: { enabled: !!address && !isMiniPay, refetchInterval: 15_000 },
+    query: { enabled: !!address && !isMiniPay, refetchInterval: 30_000 },
   });
   const hasGas = isMiniPay || (celoBalance ? celoBalance.value >= GAS_MIN_CELO_WEI : false);
 

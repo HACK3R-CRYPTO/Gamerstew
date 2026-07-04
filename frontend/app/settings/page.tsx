@@ -217,13 +217,13 @@ export default function SettingsPage() {
 
   // Balances for the wallet card. Hidden when not connected so we never
   // show fake zeros to guests.
-  const { data: celoBal } = useBalance({ address, chainId: celo.id, query: { enabled: connected, refetchInterval: 20_000 } });
+  const { data: celoBal } = useBalance({ address, chainId: celo.id, query: { enabled: connected, refetchInterval: 60_000 } });
   const { data: gBal } = useReadContract({
     address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: connected, refetchInterval: 30_000 },
+    query: { enabled: connected, refetchInterval: 90_000 },
   });
 
   const { isVerified } = useSelfVerification();
