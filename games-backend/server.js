@@ -1903,7 +1903,10 @@ app.get('/api/missions/today/:address', async (req, res) => {
 // Origin-restricted via CORS. Mission lookup enforces wallet ownership (wallet eq check),
 // so the worst a malicious caller can do is claim someone else's completed mission FOR them
 // (no benefit to themselves). For Phase 4 we'll add signature-based wallet proof.
-app.post('/api/missions/claim', async (req, res) => {
+// requireSecret: claims arrive via Next server actions that verify wallet
+// control first (Privy token / MiniPay signature) — the browser can no
+// longer claim XP for arbitrary wallets by calling this directly.
+app.post('/api/missions/claim', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { wallet, missionId } = req.body || {};
   if (!wallet || missionId == null) return res.status(400).json({ error: 'Missing wallet or missionId' });
   const addr = wallet.toLowerCase();

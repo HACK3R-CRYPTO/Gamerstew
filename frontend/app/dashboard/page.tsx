@@ -11,6 +11,8 @@ import { fetchPreview } from "@/lib/leaderboardPreview";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { useSignMessage } from "wagmi";
+import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 
@@ -801,6 +803,9 @@ function fmtMissionCountdown(s: number) {
 
 function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: () => void }) {
   const { address } = useAccount();
+  const isMiniPay = useIsMiniPay();
+  const { getAccessToken } = usePrivy();
+  const { signMessageAsync } = useSignMessage();
   const [missions, setMissions] = useState<ApiMission[] | null>(null);
   const [resetSec, setResetSec] = useState(0);
   const [claimingId, setClaimingId] = useState<number | null>(null);
@@ -831,14 +836,17 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
     if (!address || claimingId !== null) return;
     setClaimingId(id);
     try {
-      // Backend expects { wallet, missionId } · sending walletAddress/
-      // missionDbId returned 400 "Missing wallet or missionId" so claims
-      // silently failed and the row stayed in CLAIM-able state forever.
-      await fetch(`${MISSIONS_BACKEND_URL}/api/missions/claim`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: address, missionId: id }),
-      });
+      // Claims prove wallet control before the server forwards them:
+      // MiniPay signs a scoped message, everyone else presents their
+      // Privy access token. Direct browser->backend claiming is gone.
+      if (isMiniPay) {
+        const message = `GameArena|mission|${id}|${Date.now()}`;
+        const sig = await signMessageAsync({ message });
+        await claimMissionMiniPay(sig, message, address, id);
+      } else {
+        const token = await getAccessToken();
+        if (token) await claimMission(token, address, id);
+      }
     } catch { /* fall through to refetch — server is the source of truth */ }
     setClaimingId(null);
     refetch();
