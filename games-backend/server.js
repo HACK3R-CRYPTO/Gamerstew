@@ -1676,6 +1676,12 @@ app.get('/api/seasons', async (_, res) => {
       VALID_GAMES.flatMap(g => rawByGame[g].map(e => e.wallet_address))
     );
 
+    // Prefetch usernames ONCE per unique wallet. Without this, a wallet in
+    // three games' top-10s fired three concurrent uncached contract reads
+    // (the LRU only stores completed lookups) — up to 150 RPC calls per
+    // /api/seasons hit. After the prefetch, fmt() below is pure cache hits.
+    await Promise.all([...allPlayers].map((w) => resolveUsername(w)));
+
     const fmt = async (e) => ({
       player: e.wallet_address,
       username: await resolveUsername(e.wallet_address) || null,
@@ -1897,7 +1903,10 @@ app.get('/api/missions/today/:address', async (req, res) => {
 // Origin-restricted via CORS. Mission lookup enforces wallet ownership (wallet eq check),
 // so the worst a malicious caller can do is claim someone else's completed mission FOR them
 // (no benefit to themselves). For Phase 4 we'll add signature-based wallet proof.
-app.post('/api/missions/claim', async (req, res) => {
+// requireSecret: claims arrive via Next server actions that verify wallet
+// control first (Privy token / MiniPay signature) — the browser can no
+// longer claim XP for arbitrary wallets by calling this directly.
+app.post('/api/missions/claim', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { wallet, missionId } = req.body || {};
   if (!wallet || missionId == null) return res.status(400).json({ error: 'Missing wallet or missionId' });
   const addr = wallet.toLowerCase();
@@ -3404,20 +3413,41 @@ app.get('/health', async (_, res) => {
 });
 
 // ── Index on-chain scores on startup ────────────────────────────────────────
+// RPC providers cap eth_getLogs at ~5,000 blocks; the old single 200k-block
+// query reverted with "query exceeds range" on EVERY tick, so on-chain scores
+// silently stopped syncing. Now: a module-level cursor walks forward in
+// ≤4,900-block windows (a few per tick, so backlogs drain across ticks).
+// Cold start looks back one window — the indexer is reconciliation, not the
+// primary write path (frontend submits write scores directly).
+const INDEXER_MAX_RANGE = 4900;
+const INDEXER_WINDOWS_PER_TICK = 6;
+let indexerCursor = null; // last block already indexed
+
 async function indexOnChainScores() {
   if (!passContract || !provider) return;
   try {
     // Reuse the module-level provider + interface instead of allocating
     // fresh ones every 5 min — the old pattern was the main memory leak.
     const currentBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - 200000);
-    const logs = await provider.getLogs({
-      address: GAME_PASS_ADDR,
-      topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256,uint256)')],
-      fromBlock,
-      toBlock: currentBlock,
-    });
-    if (logs.length === 0) { console.log('⛓️  No on-chain scores found'); return; }
+    if (indexerCursor === null) indexerCursor = Math.max(0, currentBlock - INDEXER_MAX_RANGE);
+    if (indexerCursor >= currentBlock) return;
+
+    const logs = [];
+    let windows = 0;
+    while (indexerCursor < currentBlock && windows < INDEXER_WINDOWS_PER_TICK) {
+      const from = indexerCursor + 1;
+      const to = Math.min(from + INDEXER_MAX_RANGE - 1, currentBlock);
+      const chunk = await provider.getLogs({
+        address: GAME_PASS_ADDR,
+        topics: [ethers.id('ScoreRecorded(address,uint8,uint256,uint256,uint256)')],
+        fromBlock: from,
+        toBlock: to,
+      });
+      logs.push(...chunk);
+      indexerCursor = to;
+      windows++;
+    }
+    if (logs.length === 0) { return; }
 
     let added = 0;
     for (const log of logs) {

@@ -118,14 +118,14 @@ export default function AppHeader() {
   const { data: celoBal } = useBalance({
     address,
     chainId: celo.id,
-    query: { enabled: connected, refetchInterval: 15_000 },
+    query: { enabled: connected, refetchInterval: 60_000 },
   });
   const { data: gBal } = useReadContract({
     address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: connected, refetchInterval: 30_000 },
+    query: { enabled: connected, refetchInterval: 90_000 },
   });
 
   // Display name = on-chain GamePass username (the slime name they picked).

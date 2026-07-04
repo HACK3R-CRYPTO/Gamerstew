@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -75,6 +75,51 @@ const BG_ICONS = [
   { src: G, top: "76%", left: "-16px", size: 95,  dur: 5.0, delay: 1.7, rotate: -16 },
   { src: D, top: "90%", right: "32px", size: 72,  dur: 4.2, delay: 0.9, rotate: 20  },
 ];
+
+// ─── Ambient starfield type (hoisted to module scope for the memo below) ──────
+type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
+
+// ─── Ambient background layer — memoized so per-tap score/combo re-renders of
+// the parent skip re-rendering these ~50 animated divs. Animations always run
+// here (Simon never paused them mid-play), so the only prop is `stars`. ────────
+const AmbientLayer = React.memo(function AmbientLayer({ stars }: { stars: Star[] }) {
+  return (
+    <>
+      {stars.map((s, i) => (
+        <div key={i} className="dot-pulse" style={{
+          position: "absolute",
+          top: `${s.y}%`,
+          left: `${s.x}%`,
+          width: `${s.size}px`,
+          height: `${s.size}px`,
+          borderRadius: "50%",
+          background: "white",
+          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
+          ["--dur" as string]: `${s.dur}s`,
+          ["--delay" as string]: `${s.delay}s`,
+          opacity: s.alpha,
+          pointerEvents: "none", zIndex: 1,
+        }} />
+      ))}
+
+      {BG_ICONS.map((ic, i) => (
+        <div key={i} className="icon-float" style={{
+          position: "absolute",
+          top: ic.top,
+          ...("left" in ic ? { left: ic.left } : { right: ic.right }),
+          width: ic.size, height: ic.size,
+          transform: `rotate(${ic.rotate}deg)`,
+          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
+          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
+          opacity: 0.22, pointerEvents: "none", zIndex: 0,
+        }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
+        </div>
+      ))}
+    </>
+  );
+});
 
 // ─── Button palette — retro Simon colors styled in the V2 wall+face language ─
 // Four base colors (each a C minor scale root note) + one purple bonus unlocked
@@ -248,7 +293,6 @@ export default function SimonGamePage() {
   // ─── Ambient starfield — cosmic atmosphere behind the device ─────────────
   // Lazily generated on mount so server and client render the same initial
   // empty array (no hydration mismatch from Math.random).
-  type Star = { x: number; y: number; size: number; delay: number; dur: number; alpha: number };
   const [stars, setStars] = useState<Star[]>([]);
   useEffect(() => {
     // 44 animated dots on desktop; mobile gets 18 to cut the composite-
@@ -756,40 +800,9 @@ export default function SimonGamePage() {
       fontFamily: "inherit",
       touchAction: "manipulation",
     }}>
-      {/* Starfield — 44 ambient points, each twinkling on its own cadence */}
-      {stars.map((s, i) => (
-        <div key={i} className="dot-pulse" style={{
-          position: "absolute",
-          top: `${s.y}%`,
-          left: `${s.x}%`,
-          width: `${s.size}px`,
-          height: `${s.size}px`,
-          borderRadius: "50%",
-          background: "white",
-          boxShadow: `0 0 ${s.size * 3}px rgba(232,121,249,0.85)`,
-          ["--dur" as string]: `${s.dur}s`,
-          ["--delay" as string]: `${s.delay}s`,
-          opacity: s.alpha,
-          pointerEvents: "none", zIndex: 1,
-        }} />
-      ))}
-
-      {/* Subtle splash icons — kept at very low opacity as ambient texture */}
-      {BG_ICONS.map((ic, i) => (
-        <div key={i} className="icon-float" style={{
-          position: "absolute",
-          top: ic.top,
-          ...("left" in ic ? { left: ic.left } : { right: ic.right }),
-          width: ic.size, height: ic.size,
-          transform: `rotate(${ic.rotate}deg)`,
-          filter: "drop-shadow(0 0 6px rgba(232,121,249,0.4))",
-          ["--dur" as string]: `${ic.dur}s`, ["--delay" as string]: `${ic.delay}s`,
-          opacity: 0.22, pointerEvents: "none", zIndex: 0,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ic.src} alt="" width={ic.size} height={ic.size} style={{ objectFit: "contain" }} />
-        </div>
-      ))}
+      {/* Starfield + splash icons — extracted to a memoized child so per-tap
+          parent re-renders skip this ~50-div subtree. */}
+      <AmbientLayer stars={stars} />
 
       {/* Magenta halo behind the device — intensifies with rounds for tension */}
       <div style={{
