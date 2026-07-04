@@ -399,6 +399,9 @@ export default function SplashScreen() {
             alt=""
             width={icon.size}
             height={icon.size}
+            loading="lazy"
+            fetchPriority="low"
+            decoding="async"
             style={{ objectFit: "contain", display: "block" }}
           />
         </div>
@@ -429,6 +432,9 @@ export default function SplashScreen() {
             alt=""
             width={icon.size}
             height={icon.size}
+            loading="lazy"
+            fetchPriority="low"
+            decoding="async"
             style={{ objectFit: "contain", display: "block" }}
           />
         </div>
@@ -455,7 +461,7 @@ export default function SplashScreen() {
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
+          <img src={icon.src} alt="" width={icon.size} height={icon.size} loading="lazy" fetchPriority="low" decoding="async" style={{ objectFit: "contain", display: "block" }} />
         </div>
       ))}
       {MOBILE_RIGHT_ICONS.map((icon, i) => (
@@ -478,7 +484,7 @@ export default function SplashScreen() {
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={icon.src} alt="" width={icon.size} height={icon.size} style={{ objectFit: "contain", display: "block" }} />
+          <img src={icon.src} alt="" width={icon.size} height={icon.size} loading="lazy" fetchPriority="low" decoding="async" style={{ objectFit: "contain", display: "block" }} />
         </div>
       ))}
 
@@ -521,14 +527,20 @@ export default function SplashScreen() {
         <img
           src="/logo-full.png"
           alt="Game Arena"
+          // LCP element on the splash — the site's largest paint. fetchPriority
+          // high + no lazy loading so the browser fetches it before the
+          // decorative icons; the animation delay was cut 0.8s→0.15s because
+          // the element isn't "painted" for LCP until it reaches full size.
+          fetchPriority="high"
+          decoding="async"
           style={{
             // Min lowered from 364px → 240px so the logo fits a 360px
             // phone without clipping the main content padding.
             width: "clamp(240px, 58.5vw, 832px)",
             height: "auto",
             animation:
-              "bounce-scale-in 1s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-            animationDelay: "0.8s",
+              "bounce-scale-in 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+            animationDelay: "0.15s",
           }}
         />
 
