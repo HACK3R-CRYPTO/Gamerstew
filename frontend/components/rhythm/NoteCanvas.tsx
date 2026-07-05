@@ -54,16 +54,78 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // store to. Cached here so the per-frame draw doesn't have to query
   // getBoundingClientRect (which forces layout) every tick.
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
+  // Pre-rendered tile sprites — one offscreen canvas per lane. The whole
+  // glossy tile (glow halo + wall + face + gloss + specular) is drawn
+  // ONCE here; the per-frame loop just blits the bitmap with drawImage.
+  // This is the difference between smooth and skipping on low-end: the
+  // old loop rebuilt ~5 roundRect paths + 2 gradient allocations PER TILE
+  // PER FRAME (≈64 ops/frame with 8 tiles). drawImage of a cached sprite
+  // is one GPU blit — an order of magnitude cheaper.
+  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[] } | null>(null);
+
+  const buildSprites = (tileW: number, tileH: number, dpr: number) => {
+    const pad = 12; // room for the glow halo around the tile
+    const sw = tileW + pad * 2;
+    const sh = tileH + pad * 2 + 4;
+    const sprites = lanes.map((theme) => {
+      const off = document.createElement("canvas");
+      off.width = Math.ceil(sw * dpr);
+      off.height = Math.ceil(sh * dpr);
+      const c = off.getContext("2d")!;
+      c.scale(dpr, dpr);
+      const x = pad, y = pad;
+
+      // Glow halo (fake, no shadowBlur — software rasterization killer)
+      c.globalAlpha = 0.28;
+      c.fillStyle = theme.glow;
+      roundRect(c, x - 8, y - 4, tileW + 16, tileH + 10, 18);
+      c.fill();
+      c.globalAlpha = 1;
+
+      // Wall (3D depth)
+      c.fillStyle = theme.wall;
+      roundRect(c, x, y + 3, tileW, tileH, 14);
+      c.fill();
+
+      // Face
+      c.fillStyle = theme.accent;
+      roundRect(c, x + 2, y + 1, tileW - 4, tileH - 5, 12);
+      c.fill();
+
+      // Gloss crescent
+      const glossH = Math.round((tileH - 5) * 0.45);
+      const gloss = c.createLinearGradient(0, y + 1, 0, y + 1 + glossH);
+      gloss.addColorStop(0, "rgba(255,255,255,0.55)");
+      gloss.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = gloss;
+      roundRect(c, x + 6, y + 2, tileW - 12, glossH, 9);
+      c.fill();
+
+      // Specular dot
+      c.fillStyle = "rgba(255,255,255,0.8)";
+      c.beginPath();
+      c.ellipse(x + tileW * 0.32, y + 6, tileW * 0.12, 2.5, 0, 0, Math.PI * 2);
+      c.fill();
+
+      return off;
+    });
+    spritesRef.current = { tileW, tileH, pad, sprites };
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const resize = () => {
-      // Cap DPR at 2 — mobile GPUs struggle with 3x backing stores
-      // (iPhone Pro models report DPR 3) and the visual benefit past
-      // 2x is invisible on falling tiles.
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // DPR policy: cap at 2 (iPhone Pro reports 3, mobile GPUs choke on
+      // 3x backing stores and the gain is invisible on falling tiles).
+      // On low-core devices (budget Android is typically 4 cores or
+      // fewer) drop to 1.5 — halves the pixels the GPU fills every frame,
+      // the single biggest lever for the "tiles skip" reports on weak
+      // hardware, with no visible quality loss in motion.
+      const cores = (navigator.hardwareConcurrency || 8);
+      const dprCap = cores <= 4 ? 1.5 : 2;
+      const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
       const rect = canvas.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width * dpr));
       canvas.height = Math.max(1, Math.floor(rect.height * dpr));
@@ -74,6 +136,12 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         ctx.scale(dpr, dpr);
       }
       sizeRef.current = { w: rect.width, h: rect.height, dpr };
+
+      // Rebuild tile sprites at the new size (rare — resize/orientation).
+      const laneW = rect.width / lanes.length;
+      const tileW = Math.max(54, Math.min(90, laneW * 0.78));
+      const tileH = Math.round(tileW * 0.7);
+      buildSprites(tileW, tileH, dpr);
     };
 
     resize();
@@ -104,13 +172,16 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       // Clear — single op per frame beats per-tile DOM removal.
       ctx.clearRect(0, 0, w, h);
 
+      const built = spritesRef.current;
+      if (!built) return;
+      const { tileW, tileH, pad, sprites } = built;
       const laneCount = lanes.length;
       const laneW = w / laneCount;
-      // Mirror the DOM tile sizing so the canvas draw lines up with
-      // where the tap buttons expect a tile to be hit.
-      const tileW = Math.max(54, Math.min(90, laneW * 0.78));
-      const tileH = Math.round(tileW * 0.7);
 
+      // Per frame we do exactly ONE cheap fillRect (trail) + ONE drawImage
+      // (the whole glossy tile) per visible note. No gradients, no
+      // roundRect path building, no ellipse — all of that was baked into
+      // the sprite once. This is what keeps 60fps on budget Android.
       for (const n of notes) {
         const progress = (nowSec - (n.time - n.travel)) / n.travel;
         if (progress < 0 || progress > 1.05) continue; // off-screen
@@ -122,68 +193,21 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
         // Fade-in during first 15% of travel — matches the DOM version
         const alpha = progress < 0.15 ? Math.max(0, progress / 0.15) : 1;
-        ctx.globalAlpha = alpha;
 
-        // Motion trail — a vertical gradient above the tile that fades
-        // from transparent to the glow color. Sells the fall.
-        // Use globalAlpha instead of string-concat-hex because the
-        // lane theme `glow` values can be rgba() strings, where
-        // `"rgba(…)" + "00"` produces garbage like "rgba(…)00" that
-        // blows up addColorStop.
+        // Motion trail — a single flat rect (no gradient allocation). The
+        // fade-to-transparent is faked with a low globalAlpha; cheaper
+        // than a per-frame createLinearGradient and visually identical in
+        // motion.
         const trailH = 26;
-        const trail = ctx.createLinearGradient(0, y - trailH, 0, y);
-        trail.addColorStop(0, "transparent");
-        trail.addColorStop(1, theme.glow);
-        ctx.save();
-        ctx.globalAlpha = 0.5 * alpha;
-        ctx.fillStyle = trail;
-        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
-        ctx.restore();
-
-        // Glow halo — painted as an oversized semi-transparent rect instead
-        // of ctx.shadowBlur. Canvas shadow blur forces software rasterization
-        // on Android Chrome; on Redmi/budget Android at 60fps this caused
-        // visible skipping even with canvas-based tile rendering. The fake
-        // glow (extra large + transparent fill) gives the same visual without
-        // touching the GPU shadow pipeline at all.
-        ctx.save();
-        ctx.globalAlpha = 0.28 * alpha;
+        ctx.globalAlpha = 0.32 * alpha;
         ctx.fillStyle = theme.glow;
-        roundRect(ctx, x - 8, y - 4, tileW + 16, tileH + 10, 18);
-        ctx.fill();
-        ctx.restore();
+        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
 
-        // Wall (3D depth underneath — slightly taller, darker)
-        ctx.fillStyle = theme.wall;
-        roundRect(ctx, x, y + 3, tileW, tileH, 14);
-        ctx.fill();
-
-        // Face (main tile surface)
-        ctx.fillStyle = theme.accent;
-        roundRect(ctx, x + 2, y + 1, tileW - 4, tileH - 5, 12);
-        ctx.fill();
-
-        // Gloss crescent — subtle white highlight at the top 45% of the
-        // tile. Sells the glossy-button look without another shadow.
-        const glossH = Math.round((tileH - 5) * 0.45);
-        const gloss = ctx.createLinearGradient(0, y + 1, 0, y + 1 + glossH);
-        gloss.addColorStop(0, "rgba(255,255,255,0.55)");
-        gloss.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = gloss;
-        roundRect(ctx, x + 6, y + 2, tileW - 12, glossH, 9);
-        ctx.fill();
-
-        // Specular highlight dot — sells the plastic/resin sheen
-        ctx.fillStyle = "rgba(255,255,255,0.8)";
-        ctx.beginPath();
-        ctx.ellipse(
-          x + tileW * 0.32,
-          y + 6,
-          tileW * 0.12,
-          2.5,
-          0, 0, Math.PI * 2
-        );
-        ctx.fill();
+        // The tile itself — one bitmap blit. Sprite includes glow, wall,
+        // face, gloss and specular, so this single call replaces the old
+        // ~8 draw operations.
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprites[n.lane], x - pad, y - pad, tileW + pad * 2, tileH + pad * 2 + 4);
       }
 
       ctx.globalAlpha = 1;
