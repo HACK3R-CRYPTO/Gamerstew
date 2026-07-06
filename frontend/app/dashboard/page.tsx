@@ -202,6 +202,13 @@ export default function DashboardPage() {
   // Once they've minted GamePass they're a fully connected player.
   const isMiniPay = useIsMiniPay();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
+  // UBI claim is GoodDollar's, gated only by GoodDollar's OWN whitelist
+  // (the ClaimCard checks isVerified internally). Requiring a GamePass
+  // mint on top is redundant friction that blocks verified humans from
+  // their UBI · a whitelisted wallet reaching the dashboard via free
+  // play should claim without minting anything. GamePass still gates OUR
+  // features (scores, leaderboards, pools); it does not gate UBI.
+  const walletReady = (authenticated || isMiniPay) && !!address;
   // Display name = on-chain slime name. Never the email or address.
   const username = (chainUsername as string | undefined) || "";
 
@@ -377,11 +384,11 @@ export default function DashboardPage() {
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
             <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
-            <DashRight connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
+            <DashRight walletReady={walletReady} connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
           <>
-            <ClaimCard connected={connected} onConnect={onConnect} router={router} />
+            <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
             <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
@@ -443,8 +450,9 @@ function DashLeft({ connected, recommended, onPlayGame, router, heroes, heroActi
   );
 }
 
-function DashRight({ connected, dash, me, address, onConnect, router }: {
+function DashRight({ connected, walletReady, dash, me, address, onConnect, router }: {
   connected: boolean;
+  walletReady: boolean;
   dash: DashData | null;
   me: { rank: number; peak: number } | null;
   address: string | null;
@@ -454,7 +462,7 @@ function DashRight({ connected, dash, me, address, onConnect, router }: {
   const feed = buildFeed(dash, me, connected);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <ClaimCard connected={connected} onConnect={onConnect} router={router} />
+      <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
       <ClimbCard connected={connected} dash={dash} address={address} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
