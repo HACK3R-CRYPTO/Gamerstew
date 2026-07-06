@@ -999,7 +999,10 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
-              <ArenaCrossPromo />
+              {/* MARKOV cross-promo is a navigation link · hide it while
+                  the score is still saving so a reflexive tap can't abort
+                  the on-chain save and lose the run. */}
+              {!(submitting || signingOnChain) && <ArenaCrossPromo />}
 
               {/* Leaderboard nudge · only after a clean submit so it's a reward, not noise */}
               {submitResult && (

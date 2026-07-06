@@ -2426,13 +2426,33 @@ function FinishedView({
             />
           )}
 
-          {/* CTAs · primary (Play Again, magenta filled) + secondary (Exit, outline) */}
-          <div style={{ marginTop: 22, display: "flex", gap: 10 }}>
-            <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
-            <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
-          </div>
-
-          <ArenaCrossPromo />
+          {/* CTAs. While the score is still saving (wallet signature +
+              on-chain confirm), leaving would abort the save and the
+              player loses a run they earned. Humans reflexively tap the
+              game-over screen, so we LOCK the exits until the score is
+              safe: dim + non-interactive while saving, plus a plain-
+              language notice. Once saved (or failed), they unlock. */}
+          {(() => {
+            const saving = submitting || signingOnChain;
+            return (
+              <>
+                <div style={{ marginTop: 22, display: "flex", gap: 10, opacity: saving ? 0.45 : 1, pointerEvents: saving ? "none" : "auto", transition: "opacity 0.25s ease" }}>
+                  <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
+                  <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
+                </div>
+                {saving && (
+                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
+                    💾 Saving your score · hold on a sec
+                  </div>
+                )}
+                {/* MARKOV cross-promo is a navigation link · a tap-landmine
+                    on the most reflexive screen in the game. Only show it
+                    once the score is safely saved, never during the save
+                    window. This is the button the player flagged. */}
+                {!saving && <ArenaCrossPromo />}
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>

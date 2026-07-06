@@ -1811,13 +1811,26 @@ function FinishedView({
             />
           )}
 
-          {/* CTAs · cyan-tinted primary fits Simon's color identity */}
-          <div style={{ marginTop: 22, display: "flex", gap: 10 }}>
-            <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
-            <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
-          </div>
-
-          <ArenaCrossPromo />
+          {/* CTAs. Lock the exits while the score is still saving so a
+              reflexive tap can't abort the on-chain save. The MARKOV
+              cross-promo link is hidden during the save window. */}
+          {(() => {
+            const saving = submitting || signingOnChain;
+            return (
+              <>
+                <div style={{ marginTop: 22, display: "flex", gap: 10, opacity: saving ? 0.45 : 1, pointerEvents: saving ? "none" : "auto", transition: "opacity 0.25s ease" }}>
+                  <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
+                  <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
+                </div>
+                {saving && (
+                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
+                    💾 Saving your score · hold on a sec
+                  </div>
+                )}
+                {!saving && <ArenaCrossPromo />}
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
