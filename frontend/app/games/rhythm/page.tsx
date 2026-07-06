@@ -854,12 +854,23 @@ export default function RhythmGamePage() {
     if (countdown <= 0) {
       // GO! — bright higher-octave bell to signal play starts
       playBell(783.99, 0.28);  // G5
-      startRef.current = performance.now();
-      gameStartMsRef.current = Date.now();  // wall-clock start for gameTime calculation
-      setPhase("playing");
-      // Schedule the full 30-second drum track aligned to the audio clock.
       const ctx = getAudioCtx();
-      if (ctx) scheduleDrumTrack(ctx.currentTime);
+      // Latency-compensated start. The music is scheduled on the audio
+      // clock (ctx.currentTime) but is not HEARD until baseLatency +
+      // outputLatency later (100-250ms on Android). The falling notes,
+      // anchored at performance.now(), have zero such delay. Anchoring
+      // them at the same wall-clock instant makes the tiles run
+      // latency-AHEAD of the beat, which players read as "the notes
+      // don't follow the song." Fix: push BOTH anchors forward by the
+      // measured audio latency so the first tile reaches the hit line
+      // exactly when the first beat is heard.
+      const outLat = ctx ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0;
+      const lead = Math.min(0.35, Math.max(0.12, outLat + 0.05)); // clamp 120-350ms
+      startRef.current = performance.now() + lead * 1000;
+      gameStartMsRef.current = Date.now() + lead * 1000;
+      setPhase("playing");
+      // Schedule the drum track at the SAME future audible moment.
+      if (ctx) scheduleDrumTrack(ctx.currentTime + lead);
       return;
     }
     // 3 / 2 / 1 — steady bell tick on each count (same pitch, builds anticipation)
