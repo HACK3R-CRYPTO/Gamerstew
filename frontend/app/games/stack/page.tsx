@@ -19,7 +19,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useSignMessage, useWriteContract } from "wagmi";
+import { useAccount, useSignMessage, useWriteContract, useReadContract } from "wagmi";
+import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
@@ -131,6 +132,17 @@ export default function StackTowerPage() {
   const [petEvolveAtLevel, setPetEvolveAtLevel] = useState<number>(1);
 
   const { authed } = useAuthStatus();
+  // Connected wallet without a GamePass (e.g. a whitelisted UBI claimer)
+  // can play but scores can't save on-chain. needsMint shows a "mint to
+  // save" invite instead of firing a tx that reverts "No game pass".
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const needsMint = authed && hasMinted === false;
   const { getAccessToken, user } = usePrivy();
   // signMessageAsync is unused for stack (no tap-log replay) but kept here
   // so the import shape matches simon · easier diff when we add anti-replay.
@@ -439,6 +451,7 @@ export default function StackTowerPage() {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
     if (!address) return;
+    if (hasMinted === false) return; // no pass · show mint prompt, don't revert
     submittedRef.current = true;
 
     const rawGameTime = Date.now() - gameStartMsRef.current;
@@ -952,6 +965,10 @@ export default function StackTowerPage() {
               {!authed ? (
                 <div style={{ marginTop: 14 }}>
                   <GuestScorePrompt nextPath="/games/stack" />
+                </div>
+              ) : needsMint ? (
+                <div style={{ marginTop: 14 }}>
+                  <MintScorePrompt score={score} />
                 </div>
               ) : (
                 <StackRewardPanel

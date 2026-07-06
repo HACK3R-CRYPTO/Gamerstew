@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useAccount, useSignMessage, useWriteContract } from "wagmi";
+import { useAccount, useSignMessage, useWriteContract, useReadContract } from "wagmi";
+import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
@@ -172,6 +173,17 @@ export default function SimonGamePage() {
   // finish screen shows a sign-in CTA instead of the rank/XP panel.
   // Signing in is the gate for SAVING, not PLAYING.
   const { authed } = useAuthStatus();
+  // Connected wallet without a GamePass (e.g. a whitelisted UBI claimer)
+  // can play but scores can't save on-chain. needsMint shows a "mint to
+  // save" invite instead of firing a tx that reverts "No game pass".
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const needsMint = authed && hasMinted === false;
   // Mobile flag drives lighter-weight GPU effects on the Simon device.
   // Stacked 80/160/240px box-shadow blurs + triple drop-shadow filters
   // cause "Aww, snap!" renderer OOMs on low-end Android and the MiniPay
@@ -417,6 +429,7 @@ export default function SimonGamePage() {
 
     if (submittedRef.current) return;
     if (!address) return;
+    if (hasMinted === false) return; // no pass · show mint prompt, don't revert
     submittedRef.current = true;
 
     const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(finalScore)));
@@ -880,6 +893,7 @@ export default function SimonGamePage() {
           submitError={submitError}
           txError={txError}
           guest={!authed}
+          needsMint={needsMint}
         />
       )}
 
@@ -1674,7 +1688,7 @@ function FinishedView({
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
-  guest,
+  guest, needsMint,
 }: {
   grade: ReturnType<typeof gradeFor>;
   score: number; rounds: number; gameTimeMs: number;
@@ -1686,6 +1700,7 @@ function FinishedView({
   submitError: string | null;
   txError: string | null;
   guest?: boolean;
+  needsMint?: boolean;
 }) {
   const seconds = Math.max(0, Math.floor(gameTimeMs / 1000));
   return (
@@ -1800,6 +1815,8 @@ function FinishedView({
           {/* Reward panel (or guest CTA) — unchanged behavior */}
           {guest ? (
             <GuestScorePrompt nextPath="/games/simon" />
+          ) : needsMint ? (
+            <MintScorePrompt score={score} />
           ) : (
             <RewardPanel
               submitting={submitting}

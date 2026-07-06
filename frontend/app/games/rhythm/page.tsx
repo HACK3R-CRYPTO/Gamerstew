@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useAccount, useSignMessage, useWriteContract } from "wagmi";
+import { useAccount, useSignMessage, useWriteContract, useReadContract } from "wagmi";
+import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
@@ -303,6 +304,18 @@ export default function RhythmGamePage() {
   // address), and the finish screen shows a sign-in CTA instead of
   // the rank/XP panel. Signing in is the gate for SAVING, not PLAYING.
   const { authed } = useAuthStatus();
+  // Has this connected wallet minted a GamePass? A whitelisted wallet can
+  // come in to claim UBI and play without minting, but scores can't save
+  // on-chain without a pass. needsMint drives the finish screen to show a
+  // "mint to save" conversion prompt instead of firing a tx that reverts.
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const needsMint = authed && hasMinted === false;
   const [phase, setPhase] = useState<Phase>("idle");
 
   // User audio preferences from profile — persisted in localStorage.
@@ -892,6 +905,11 @@ export default function RhythmGamePage() {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
     if (!address) return;
+    // No GamePass = the on-chain save would revert "No game pass". Don't
+    // fire a wallet tx that's guaranteed to fail; the finish screen shows
+    // the "mint to save" prompt instead. hasMinted is resolved well before
+    // any run finishes, so `=== false` here is reliable.
+    if (hasMinted === false) return;
     submittedRef.current = true;
 
     const rawGameTime = Date.now() - gameStartMsRef.current;
@@ -1572,6 +1590,7 @@ export default function RhythmGamePage() {
           submitError={submitError}
           txError={txError}
           guest={!authed}
+          needsMint={needsMint}
         />
       )}
 
@@ -2258,7 +2277,7 @@ function FinishedView({
   grade, score, maxCombo, hits, total,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
-  guest,
+  guest, needsMint,
 }: {
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
@@ -2272,6 +2291,7 @@ function FinishedView({
   submitError: string | null;
   txError: string | null;
   guest?: boolean;
+  needsMint?: boolean;
 }) {
   const accuracy = total === 0 ? 0 : Math.round(((hits.perfect + hits.good * 0.5) / total) * 100);
   return (
@@ -2412,9 +2432,14 @@ function FinishedView({
             </div>
           </div>
 
-          {/* Reward panel (or guest CTA) — unchanged behavior */}
+          {/* Save surface, three ways:
+              · guest (no wallet)      → sign in to save
+              · connected, no GamePass → mint to save (conversion moment)
+              · full player            → normal reward/save panel */}
           {guest ? (
             <GuestScorePrompt nextPath="/games/rhythm" />
+          ) : needsMint ? (
+            <MintScorePrompt score={score} />
           ) : (
             <RewardPanel
               submitting={submitting}
