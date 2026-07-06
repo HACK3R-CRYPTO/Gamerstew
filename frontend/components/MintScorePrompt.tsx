@@ -48,15 +48,15 @@ export default function MintScorePrompt({ score }: { score?: number }) {
         lineHeight: 1.35, marginTop: 8, letterSpacing: "-0.005em",
       }}>
         {typeof score === "number" && score > 0
-          ? `${score.toLocaleString()} points · mint your free pass to put it on the board.`
-          : "Mint your free pass to save scores and climb the board."}
+          ? `${score.toLocaleString()} points · get your free pass to save it.`
+          : "Get your free pass to save your score."}
       </div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
         color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
         lineHeight: 1.5, marginTop: 4,
       }}>
-        One tap, gas is on us. Keep your UBI and free play either way.
+        One tap. Gas is on us.
       </div>
 
       <button
@@ -72,7 +72,7 @@ export default function MintScorePrompt({ score }: { score?: number }) {
           boxShadow: "0 10px 22px -6px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.5)",
         }}
       >
-        MINT FREE PASS &amp; SAVE
+        GET FREE PASS &amp; SAVE
       </button>
     </div>
   );
