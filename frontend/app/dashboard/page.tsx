@@ -389,7 +389,7 @@ export default function DashboardPage() {
         ) : (
           <>
             <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
-            <VoteCard connected={walletReady} router={router} />
+            <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
             <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
@@ -464,7 +464,7 @@ function DashRight({ connected, walletReady, dash, me, address, onConnect, route
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
-      <VoteCard connected={walletReady} router={router} />
+      <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
       <ClimbCard connected={connected} dash={dash} address={address} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
@@ -668,22 +668,29 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
   );
 }
 
-// VoteCard · surfaces the GoodBuilders community vote to verified players
-// (the only ones who can vote). Same button-card idiom as ClaimCard, purple
-// accent so it reads distinct from the green claim card. Renders nothing for
-// guests / unverified players so it never clutters the feed for people who
-// can't act on it.
-function VoteCard({ connected, router }: { connected: boolean; router: ReturnType<typeof useRouter> }) {
+// VoteCard · surfaces the GoodBuilders community vote as a funnel. Same
+// button-card idiom as ClaimCard, purple accent so it reads distinct from
+// the green claim card. Adapts to the player's state so it's a reason to
+// sign in + verify, not just something verified players see:
+//   guest        → "Sign in to vote"  → onboarding
+//   unverified   → "Verify to vote"   → /verify
+//   verified     → "Vote for GameArena" → /vote
+function VoteCard({ connected, onConnect, router }: { connected: boolean; onConnect: () => void; router: ReturnType<typeof useRouter> }) {
   const { isVerified } = useSelfVerification();
-  if (!connected || !isVerified) return null;
+  const state = !connected ? "guest" : !isVerified ? "unverified" : "ready";
+  const title = state === "guest" ? "Sign in to vote" : state === "unverified" ? "Verify to vote" : "Vote for GameArena";
+  const onClick =
+    state === "guest" ? onConnect
+    : state === "unverified" ? () => router.push(`/verify?next=${encodeURIComponent("/vote")}`)
+    : () => router.push("/vote");
   return (
-    <button onClick={() => router.push("/vote")} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}2e, rgba(15,8,40,0.6))`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
+    <button onClick={onClick} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}2e, rgba(15,8,40,0.6))`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ width: 30, height: 30, borderRadius: 999, background: `radial-gradient(circle at 35% 35%, ${T.accent}, #4c1d95)`, boxShadow: `0 0 12px ${T.accent}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🗳️</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.12em" }}>COMMUNITY VOTE</div>
-          <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, marginTop: 1 }}>Vote for GameArena</div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, marginTop: 2 }}>Grow the prize pools · takes 1 min</div>
+          <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, marginTop: 1 }}>{title}</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, marginTop: 2 }}>Back GameArena · grow the prize pools</div>
         </div>
         <Icon name="chev" size={16} color={T.inkSoft} />
       </div>
