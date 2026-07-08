@@ -359,6 +359,17 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
           <div>
             <SectionLabel>Account</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* Vote row · campaign entry to /vote (GoodBuilders community
+                  vote). Green-accented so it reads as an opportunity that
+                  grows the prize pools, placed first so it's the first thing
+                  a player sees in the hub. */}
+              <NavRow
+                accent
+                icon="🗳️"
+                label="Vote for GameArena"
+                sub="Grow the prize pools · takes 1 min"
+                onClick={() => goTo("/vote")}
+              />
               <NavRow icon="🐣" label="My pet · profile" sub="Stats, achievements, equipped habitat" onClick={() => goTo("/profile")} />
               <NavRow icon="⚙️" label="Settings" sub="Audio, notifications, verification, sign out" onClick={() => goTo("/settings")} />
               {/* Community row · the always-on door to the player chat.
@@ -469,28 +480,32 @@ function TokenRow({
 }
 
 function NavRow({
-  icon, label, sub, onClick,
+  icon, label, sub, onClick, accent = false,
 }: {
   icon: string;
   label: string;
   sub: string;
   onClick: () => void;
+  // Campaign highlight · green wash so a time-sensitive row (e.g. Vote)
+  // reads as an opportunity, not just another nav link.
+  accent?: boolean;
 }) {
+  const A = "#22c55e";
   return (
     <button
       onClick={onClick}
       style={{
         width: "100%", display: "flex", alignItems: "center", gap: 12,
         padding: "11px 14px", borderRadius: 14, cursor: "pointer",
-        background: "rgba(255,255,255,0.03)",
-        border: `1px solid ${T.hairline}`,
+        background: accent ? "rgba(34,197,94,0.09)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${accent ? "rgba(34,197,94,0.35)" : T.hairline}`,
         textAlign: "left",
       }}
     >
       <div style={{
         width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-        background: `${T.accent}1f`,
-        border: `1px solid ${T.accent}33`,
+        background: accent ? `${A}22` : `${T.accent}1f`,
+        border: `1px solid ${accent ? `${A}55` : `${T.accent}33`}`,
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: 18,
       }}>

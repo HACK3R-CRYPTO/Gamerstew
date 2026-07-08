@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useExportWallet } from "@privy-io/react-auth";
 import { useAccount, useReadContract, useBalance, useDisconnect } from "wagmi";
 import { celo } from "viem/chains";
 import { formatEther } from "viem";
@@ -157,6 +157,16 @@ function fmtG(rawWei?: bigint) {
 export default function SettingsPage() {
   const router = useRouter();
   const { authenticated, logout } = usePrivy();
+  // Export the embedded wallet's private key via Privy's secure modal (key
+  // loads in an isolated iframe our app can't read). Players use this to
+  // import their verified address into Valora / MetaMask / Rabby so they can
+  // vote for GameArena on Flow State. MiniPay users skip it — they already
+  // hold a standalone wallet.
+  const { exportWallet } = useExportWallet();
+  const onExportKey = async () => {
+    if (!address) return;
+    try { await exportWallet({ address }); } catch { /* user closed modal */ }
+  };
   const { address } = useAccount();
   // Wagmi's disconnect tears down the connector's wallet link so the
   // browser extension reflects "disconnected" instead of staying lit
@@ -394,6 +404,21 @@ export default function SettingsPage() {
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: gasStatus === "block" ? "rgba(239,68,68,0.14)" : "rgba(251,191,36,0.14)", border: `1px solid ${gasStatus === "block" ? "rgba(239,68,68,0.5)" : "rgba(251,191,36,0.45)"}`, color: gasStatus === "block" ? "#fda4af" : "#fbbf24", fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
                     TOP UP
+                  </span>
+                </Row>
+              )}
+              {/* Export key · only for embedded-wallet (Privy) players.
+                  MiniPay users already have a standalone wallet so they
+                  never need this. Opens Privy's secure export modal. */}
+              {!isMiniPay && (
+                <Row
+                  icon="🔑"
+                  label="Export wallet key"
+                  sub="Move your wallet to MetaMask, Rabby or any wallet — needed to vote for GameArena on Flow State."
+                  onClick={address ? onExportKey : undefined}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: "rgba(167,139,250,0.14)", border: "1px solid rgba(167,139,250,0.45)", color: T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
+                    EXPORT
                   </span>
                 </Row>
               )}
