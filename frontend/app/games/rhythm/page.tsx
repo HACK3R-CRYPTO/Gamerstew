@@ -68,6 +68,22 @@ const TRAVEL_VERSE = 2.1;   // medium
 const TRAVEL_BUILD = 1.7;   // faster — building tension
 const TRAVEL_DROP = 1.4;   // fastest — but still readable
 
+// ─── Scoring 2.0 · addition only ──────────────────────────────────────────────
+// The two laws: points only ADD (no standing multipliers), difficulty only
+// RISES (the encore accelerates until it beats you). The old design multiplied
+// points by an uncapped combo multiplier AND let a flat encore run forever —
+// stacked, those produced quadratic million-point scores that measured
+// patience, not skill. New math: Perfect=10, Good=5, flat. FEVER is the only
+// multiplier in the game — ×2 for 6 seconds, earned by a streak of PERFECTs,
+// killed instantly by a miss. Temporary by nature, so it can't compound.
+// A perfect main run lands ~600-900 with fever; deep encore survival adds a
+// few hundred more before the speed wall ends the run. No caps anywhere —
+// big numbers aren't forbidden, they're unreachable.
+const FEVER_TRIGGER = 12;    // consecutive PERFECTs to ignite fever
+const FEVER_DURATION = 6;    // seconds of ×2 once ignited
+const FEVER_MULT = 2;        // the only multiplier in the game
+const ENCORE_POINTS = 5;     // flat per encore tile — encore is for glory, not farming
+
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -260,12 +276,16 @@ function buildChart(): NoteDef[] {
 }
 
 // ─── Grades ────────────────────────────────────────────────────────────────────
-function gradeFor(score: number, total: number) {
-  const pct = total === 0 ? 0 : score / total;
-  if (pct >= 0.92) return { letter: "S", color: "#fbbf24", desc: "PERFECTION" };
-  if (pct >= 0.78) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
-  if (pct >= 0.60) return { letter: "B", color: "#67e8f9", desc: "GREAT" };
-  if (pct >= 0.40) return { letter: "C", color: "#22c55e", desc: "GOOD" };
+// Graded on MAIN-TRACK ACCURACY (perfect=1, good=½, over the chart's note
+// count), not on raw score. Score includes fever bonuses + encore survival;
+// the grade answers one question only: how well did you play the song?
+// Encore depth gets its own badge on the finish screen instead.
+const MAIN_NOTE_COUNT = 59; // buildChart() note count — keep in sync if the chart changes
+function gradeFor(accuracy: number) {
+  if (accuracy >= 0.95) return { letter: "S", color: "#fbbf24", desc: "PERFECTION" };
+  if (accuracy >= 0.85) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
+  if (accuracy >= 0.70) return { letter: "B", color: "#67e8f9", desc: "GREAT" };
+  if (accuracy >= 0.50) return { letter: "C", color: "#22c55e", desc: "GOOD" };
   return { letter: "D", color: "#f97316", desc: "KEEP GOING" };
 }
 
@@ -648,7 +668,7 @@ export default function RhythmGamePage() {
   // adds floating "+X" feedback per hit / "MISS" feedback per miss.
   const juice = useGameJuice();
   const [flashLane, setFlashLane] = useState<number | null>(null);
-  const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number } | null>(null);
+  const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null>(null);
 
   const chartRef = useRef<NoteDef[]>([]);
   const startRef = useRef<number>(0);
@@ -662,13 +682,27 @@ export default function RhythmGamePage() {
   // components/rhythm/NoteCanvas.tsx for rationale.
   const canvasHandleRef = useRef<NoteCanvasHandle | null>(null);
 
-  // Encore refs — drive the unbounded survival mode after the main track
+  // Encore refs — drive the accelerating survival mode after the main track
   const encoreMissesRef = useRef(0);                  // 3 = game over
   const encoreNextSpawnRef = useRef(0);                  // wall-clock time for next tile
   const encorePoolIdxRef = useRef(0);                  // rotates through ENCORE_POOL
   const encoreIdRef = useRef(100000);             // high id base to avoid clashes
   const encoreLoopAtRef = useRef(0);                  // next audio loop reschedule time
   const [encoreLives, setEncoreLives] = useState(3);     // UI display
+  // Loop counter — 1-based once encore starts. Each completed pass through
+  // ENCORE_POOL steps the speed up; the loop number is the survival brag
+  // stat ("reached Loop 5") shown in the HUD and on the finish screen.
+  const [encoreLoop, setEncoreLoop] = useState(0);
+
+  // ─── FEVER — the game's only multiplier ────────────────────────────────────
+  // Ignites after FEVER_TRIGGER consecutive PERFECTs, doubles points for
+  // FEVER_DURATION seconds, dies instantly on a miss. perfectStreak is state
+  // (not a ref) so the HUD can show progress toward ignition; feverUntilRef
+  // holds the song-time expiry the RAF tick polls without re-rendering.
+  const [perfectStreak, setPerfectStreak] = useState(0);
+  const [feverActive, setFeverActive] = useState(false);
+  const feverUntilRef = useRef(0);      // song-time (s) when fever expires · 0 = off
+  const perfectStreakRef = useRef(0);   // synchronous mirror for scoring math
 
   // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
   // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
@@ -687,7 +721,7 @@ export default function RhythmGamePage() {
   // Snapshot of hit counters at the moment the main 45s track ends. Encore
   // misses/goods shouldn't disqualify FC/AP — those achievements reward
   // completing the chart cleanly, not surviving encore perfectly.
-  const mainTrackStatsRef = useRef<{ misses: number; goods: number }>({ misses: 0, goods: 0 });
+  const mainTrackStatsRef = useRef<{ misses: number; goods: number; perfects: number }>({ misses: 0, goods: 0, perfects: 0 });
 
   // ═══ Anti-cheat session state ═══
   // Server-issued session ticket from /api/start-game. Required by the
@@ -768,7 +802,7 @@ export default function RhythmGamePage() {
     encorePoolIdxRef.current = 0;
     encoreIdRef.current = 100000;
     encoreLoopAtRef.current = 0;
-    mainTrackStatsRef.current = { misses: 0, goods: 0 };
+    mainTrackStatsRef.current = { misses: 0, goods: 0, perfects: 0 };
     // Zero the timeline anchor. If the user quit mid-run and hit START
     // again immediately, the RAF loop could mount with a stale
     // startRef from the PREVIOUS run (countdown's anchor-set can miss
@@ -781,6 +815,11 @@ export default function RhythmGamePage() {
     // writer.
     startRef.current = 0;
     setEncoreLives(3);
+    setEncoreLoop(0);
+    feverUntilRef.current = 0;
+    perfectStreakRef.current = 0;
+    setFeverActive(false);
+    setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
     setHits({ perfect: 0, good: 0, miss: 0 });
     setTimeLeft(TRACK_DURATION);
@@ -1181,16 +1220,41 @@ export default function RhythmGamePage() {
 
     const type: "perfect" | "good" = diff <= PERFECT_WINDOW ? "perfect" : "good";
 
-    // ═══ SCORING — uncapped by design ═══
-    // Multiplier grows with combo FOREVER (no cap). 50 combo = 11×, 100 combo = 21×.
-    const multiplier = 1 + Math.floor(combo / 5);
+    // ═══ SCORING 2.0 — addition only ═══
+    // Perfect=10, Good=5, flat. FEVER (×2 for 6s after 12 straight perfects)
+    // is the ONLY multiplier — temporary, earned, killed by a miss. Encore
+    // tiles pay a flat 5: the encore is a survival exam, not a point mine.
+    // No standing combo multiplier and no precision bonus — combo is pride
+    // and fever fuel, and the millions the old quadratic math produced are
+    // now simply unreachable.
+    let gained: number;
+    if (phase === "encore") {
+      gained = ENCORE_POINTS;
+    } else {
+      const base = type === "perfect" ? 10 : 5;
+      const inFever = feverUntilRef.current > 0 && now < feverUntilRef.current;
+      gained = inFever ? base * FEVER_MULT : base;
 
-    // Precision bonus: exact-on-beat = up to +8, edge of good window = +0.
-    // Means two "all perfect" runs never score identically — tighter timing wins.
-    const precision = Math.max(0, 1 - diff / GOOD_WINDOW);
-    const precisionBonus = Math.round(precision * 8);
-    const basePoints = type === "perfect" ? 10 : 5;
-    const gained = (basePoints + precisionBonus) * multiplier;
+      if (type === "perfect") {
+        perfectStreakRef.current += 1;
+        setPerfectStreak(perfectStreakRef.current);
+        // Ignition — the 12th perfect lights fever for the NEXT 6 seconds.
+        // The igniting tap itself scores un-doubled (checked above), so the
+        // client and the server replay agree tap-for-tap.
+        if (!inFever && perfectStreakRef.current >= FEVER_TRIGGER) {
+          feverUntilRef.current = now + FEVER_DURATION;
+          perfectStreakRef.current = 0;
+          setPerfectStreak(0);
+          setFeverActive(true);
+          juice.fireCallout({ text: "FEVER!", sub: "×2 · DON'T MISS", color: "#fbbf24" }, 500);
+          haptic(30);
+        }
+      } else {
+        // A GOOD breaks the perfect chain (fever stays lit if already burning).
+        perfectStreakRef.current = 0;
+        setPerfectStreak(0);
+      }
+    }
 
     // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
     playHitForNote(note.freq, type);
@@ -1212,14 +1276,17 @@ export default function RhythmGamePage() {
       if (next === 50 || next === 100 || next === 250) {
         juice.fireCallout({
           text: next === 250 ? "MYTHIC" : next === 100 ? "LEGENDARY" : "GOD MODE",
-          sub:  `${Math.floor(next / 5) + 1}× multiplier`,
+          sub:  `${next} COMBO`,
           color: "#fbbf24",
         }, next);
       }
       return next;
     });
     setHits(h => ({ ...h, [type]: h[type] + 1 }));
-    setFeedback({ lane, type, ts: performance.now() });
+    // ms offset readout: GOODs carry a signed millisecond offset so players
+    // can calibrate ("-40ms early" → tap later). Perfects stay clean.
+    const signedMs = Math.round((now - note.time) * 1000);
+    setFeedback({ lane, type, ts: performance.now(), ms: type === "good" ? signedMs : undefined });
 
     // Spawn particles
     const laneWidth = 100 / LANES.length;
@@ -1276,7 +1343,7 @@ export default function RhythmGamePage() {
       // Snapshot current hits for the finished screen, then bail to
       // finished. Same path the QUIT button takes mid-run.
       setHits(h => {
-        mainTrackStatsRef.current = { misses: h.miss, goods: h.good };
+        mainTrackStatsRef.current = { misses: h.miss, goods: h.good, perfects: h.perfect };
         return h;
       });
       setPhase("finished");
@@ -1329,7 +1396,7 @@ export default function RhythmGamePage() {
       const dt = wall - lastWall;
       if (dt > STALL_THRESHOLD_MS) {
         setHits(h => {
-          mainTrackStatsRef.current = { misses: h.miss, goods: h.good };
+          mainTrackStatsRef.current = { misses: h.miss, goods: h.good, perfects: h.perfect };
           return h;
         });
         setPhase("finished");
@@ -1355,15 +1422,37 @@ export default function RhythmGamePage() {
         }
       }
 
-      // ── Encore: spawn new tiles dynamically, accelerating over time ──
-      if (phase === "encore" && now >= encoreNextSpawnRef.current) {
-        const encoreElapsed = now - TRACK_DURATION;
-        // Travel time shrinks from 1.4s → 0.7s over 30s of encore (skill ceiling rises)
-        const travel = Math.max(0.7, 1.4 - encoreElapsed * 0.023);
-        // Spawn gap shrinks from 0.55s → 0.22s (tiles pack tighter)
-        const nextGap = Math.max(0.22, 0.55 - encoreElapsed * 0.011);
+      // ── Fever expiry — poll the song clock; fires once, then idles ──
+      if (feverUntilRef.current > 0 && now >= feverUntilRef.current) {
+        feverUntilRef.current = 0;
+        setFeverActive(false);
+      }
 
-        const [lane, freq] = ENCORE_POOL[encorePoolIdxRef.current % ENCORE_POOL.length];
+      // ── Encore: loop-stepped acceleration until the game beats the player ──
+      // Each full pass through ENCORE_POOL is one LOOP; every loop the tiles
+      // fall 15% faster and pack 15% tighter. Loop 1 is comfortable, loop 5
+      // is frantic, loop 7 is past human reaction time — the difficulty wall
+      // does the score-bounding, no cap rule needed. Points stay flat at 5.
+      if (phase === "encore" && now >= encoreNextSpawnRef.current) {
+        const poolIdx = encorePoolIdxRef.current;
+        const loop = Math.floor(poolIdx / ENCORE_POOL.length);   // 0-based
+        const speed = Math.pow(0.85, loop);                       // 15% faster per loop
+        const travel = Math.max(0.5, 1.5 * speed);
+        const nextGap = Math.max(0.16, 0.5 * speed);
+
+        // Loop boundary — announce the step-up so survival depth is felt
+        // and legible ("LOOP 3 · +38% SPEED" punches in center-screen).
+        if (poolIdx > 0 && poolIdx % ENCORE_POOL.length === 0) {
+          setEncoreLoop(loop + 1);
+          juice.fireCallout({
+            text: `LOOP ${loop + 1}`,
+            sub: `SPEED +${Math.round((1 / speed - 1) * 100)}%`,
+            color: "#f97316",
+          }, 400 + loop);
+          haptic(20);
+        }
+
+        const [lane, freq] = ENCORE_POOL[poolIdx % ENCORE_POOL.length];
         encorePoolIdxRef.current++;
         chartRef.current.push({
           id: encoreIdRef.current++,
@@ -1406,11 +1495,20 @@ export default function RhythmGamePage() {
       // React state at all anymore (saves a reconcile per id change).
       canvasHandleRef.current?.draw(visible, now);
 
-      // Flag misses: notes that passed the good window without being hit
+      // Flag misses: notes that passed the good window without being hit.
+      // A miss kills everything fragile at once: combo, the perfect streak,
+      // and — the cruellest part — an active FEVER. That instant loss is
+      // what makes fever's 6 golden seconds tense instead of free.
       for (const n of chartRef.current) {
         if (now > n.time + GOOD_WINDOW && !missedRef.current.has(n.id)) {
           missedRef.current.add(n.id);
           setCombo(0);
+          perfectStreakRef.current = 0;
+          setPerfectStreak(0);
+          if (feverUntilRef.current > 0) {
+            feverUntilRef.current = 0;
+            setFeverActive(false);
+          }
           setHits(h => ({ ...h, miss: h.miss + 1 }));
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
           // Floating "MISS" popup at the lane + light screen shake.
@@ -1454,11 +1552,18 @@ export default function RhythmGamePage() {
       // (which would tear down the RAF every time a hit registers).
       if (phase === "playing" && now >= TRACK_DURATION) {
         setHits(h => {
-          mainTrackStatsRef.current = { misses: h.miss, goods: h.good };
+          mainTrackStatsRef.current = { misses: h.miss, goods: h.good, perfects: h.perfect };
           return h;
         });
+        // Fever doesn't cross into encore — the survival exam has no
+        // multipliers of any kind. (Matches the server replay exactly.)
+        feverUntilRef.current = 0;
+        setFeverActive(false);
+        perfectStreakRef.current = 0;
+        setPerfectStreak(0);
         if (combo > 0) {
           setPhase("encore");
+          setEncoreLoop(1);
           setComboToast("ENCORE!");
           setTimeout(() => setComboToast(null), 1500);
           encoreNextSpawnRef.current = now + 0.8;  // first encore tile after brief beat
@@ -1476,9 +1581,14 @@ export default function RhythmGamePage() {
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
-  const totalNotes = chartRef.current.length || buildChart().length;
-  const maxScore = 10 * 5 * totalNotes; // perfect + max multiplier per note
-  const grade = gradeFor(score, maxScore);
+  // Grade + accuracy come from the MAIN-TRACK snapshot (taken at every exit
+  // path: track end, quit, stall, tab-hide), NOT from the live hits state —
+  // hits keeps counting through encore, which would inflate accuracy past
+  // 100%. The chart also grows during encore (dynamic tiles get pushed into
+  // chartRef), so the note total uses the static main-chart count.
+  const mainStats = mainTrackStatsRef.current;
+  const accuracy = Math.min(1, (mainStats.perfects + mainStats.goods * 0.5) / MAIN_NOTE_COUNT);
+  const grade = gradeFor(accuracy);
 
   // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -1551,7 +1661,7 @@ export default function RhythmGamePage() {
             // Snapshot main-track stats if they quit before reaching the end,
             // so FC/AP flags stay accurate (they quit → they didn't FC).
             if (phase === "playing") {
-              mainTrackStatsRef.current = { misses: hits.miss + 1, goods: hits.good };
+              mainTrackStatsRef.current = { misses: hits.miss + 1, goods: hits.good, perfects: hits.perfect };
             }
             setPhase("finished");
           }}
@@ -1560,6 +1670,9 @@ export default function RhythmGamePage() {
           pet={pet}
           isEncore={phase === "encore"}
           encoreLives={encoreLives}
+          encoreLoop={encoreLoop}
+          fever={feverActive}
+          perfectStreak={perfectStreak}
         />
       )}
       {/* Shared juice overlay — floating popups + screen shake + big combo
@@ -1575,7 +1688,8 @@ export default function RhythmGamePage() {
         <FinishedView
           grade={grade}
           score={score} maxCombo={maxCombo} hits={hits}
-          total={totalNotes}
+          accuracy={Math.round(accuracy * 100)}
+          encoreLoop={encoreLoop}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
           // bouncing out to the /games hub. The hub is a separate tap
@@ -1902,12 +2016,13 @@ function PlayingView({
   comboToast, flashLane, feedback,
   onTapLane, onQuit, startRef, canvasHandleRef,
   pet,
-  isEncore, encoreLives,
+  isEncore, encoreLives, encoreLoop,
+  fever, perfectStreak,
 }: {
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
   comboToast: string | null; flashLane: number | null;
-  feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number } | null;
+  feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null;
   onTapLane: (lane: number) => void;
   onQuit: () => void;
   startRef: React.MutableRefObject<number>;
@@ -1918,13 +2033,23 @@ function PlayingView({
   pet: PetStage;
   isEncore: boolean;
   encoreLives: number;
+  encoreLoop: number;
+  fever: boolean;
+  perfectStreak: number;
 }) {
   const timePct = 1 - timeLeft / TRACK_DURATION;
-  // Multiplier is uncapped now — display 5× as max to avoid HUD overflow but score uses real value
-  const multiplier = 1 + Math.floor(combo / 5);
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+      {/* ═══ FEVER VIGNETTE — the whole screen ignites gold for the 6
+          doubled seconds. pointerEvents:none so lanes stay tappable. ═══ */}
+      {fever && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none",
+          background: "radial-gradient(ellipse 90% 80% at 50% 50%, transparent 40%, rgba(251,191,36,0.16) 75%, rgba(251,191,36,0.32) 100%)",
+          boxShadow: "inset 0 0 90px rgba(251,191,36,0.4)",
+        }} />
+      )}
 
       {/* ═══ TOP HUD ═══ */}
       <div style={{
@@ -2008,7 +2133,16 @@ function PlayingView({
       }}>
         <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
         <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
-        <StatGem label="MULT" value={`×${multiplier}`} color="#67e8f9" wall="#083a6b" />
+        {/* Third gem tells the run's current story: encore shows survival
+            depth (LOOP N), main track shows fever state — burning ×2, or
+            progress toward ignition (perfect streak / trigger). */}
+        {isEncore ? (
+          <StatGem label="LOOP" value={`${Math.max(1, encoreLoop)}`} color="#f97316" wall="#3a1400" emphasize />
+        ) : fever ? (
+          <StatGem label="FEVER" value="×2 🔥" color="#fbbf24" wall="#2a1800" emphasize />
+        ) : (
+          <StatGem label="FEVER" value={`${perfectStreak}/${FEVER_TRIGGER}`} color="#67e8f9" wall="#083a6b" emphasize={perfectStreak >= FEVER_TRIGGER - 3} />
+        )}
       </div>
 
       {/* ═══ PET — top center, reacts to hits ═══ */}
@@ -2157,9 +2291,15 @@ function StatGem({ label, value, color, wall, emphasize }: { label: string; valu
 }
 
 // ─── Lane — the vertical track where notes fall ──────────────────────────────
-function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number } | null }) {
+function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null }) {
   const feedbackLabel = feedback ? (feedback.type === "perfect" ? "PERFECT!" : feedback.type === "good" ? "GOOD" : "MISS") : null;
   const feedbackColor = feedback?.type === "perfect" ? "#fbbf24" : feedback?.type === "good" ? theme.accent : "#ef4444";
+  // Calibration readout — GOODs show the signed ms offset so the player
+  // learns WHY it wasn't perfect ("-40ms early" → tap later). This is the
+  // detail that turns tappers into calibrators; perfects stay clean.
+  const msLabel = feedback?.type === "good" && typeof feedback.ms === "number"
+    ? `${feedback.ms > 0 ? "+" : ""}${feedback.ms}ms ${feedback.ms > 0 ? "late" : "early"}`
+    : null;
   return (
     <div style={{
       position: "relative",
@@ -2208,7 +2348,17 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
           animation: "bubble-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both",
           pointerEvents: "none", zIndex: 2,
           whiteSpace: "nowrap",
-        }}>{feedbackLabel}</div>
+          textAlign: "center",
+        }}>
+          {feedbackLabel}
+          {msLabel && (
+            <div style={{
+              fontSize: "clamp(8px, 2.4vw, 10px)", fontWeight: 700,
+              color: "rgba(255,255,255,0.65)", letterSpacing: "0.04em",
+              textShadow: "0 1px 3px rgba(0,0,0,0.8)", marginTop: 1,
+            }}>{msLabel}</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -2274,7 +2424,7 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
-  grade, score, maxCombo, hits, total,
+  grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
@@ -2282,7 +2432,12 @@ function FinishedView({
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
   hits: { perfect: number; good: number; miss: number };
-  total: number;
+  // Main-track accuracy percentage (0-100) computed by the parent from the
+  // snapshot taken when the chart ended — encore hits don't inflate it.
+  accuracy: number;
+  // Deepest encore loop survived · 0 = never reached encore. The survival
+  // brag stat: shown as a badge next to the score.
+  encoreLoop: number;
   onPlayAgain: () => void;
   onExit: () => void;
   submitting: boolean;
@@ -2293,7 +2448,6 @@ function FinishedView({
   guest?: boolean;
   needsMint?: boolean;
 }) {
-  const accuracy = total === 0 ? 0 : Math.round(((hits.perfect + hits.good * 0.5) / total) * 100);
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
@@ -2394,6 +2548,24 @@ function FinishedView({
               lineHeight: 1, marginTop: 4,
               letterSpacing: "0.01em",
             }}>{score.toLocaleString()}</div>
+            {/* Survival badge — how deep into the accelerating encore this
+                run made it. The depth flex ("LOOP 5") replaces the old
+                million-point flex the flat encore used to hand out. */}
+            {encoreLoop > 0 && (
+              <div style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                marginTop: 8, padding: "4px 12px", borderRadius: 999,
+                background: "rgba(249,115,22,0.12)",
+                border: "1px solid rgba(249,115,22,0.5)",
+                boxShadow: "0 0 14px rgba(249,115,22,0.25)",
+              }}>
+                <span style={{ fontSize: 11 }}>⚡</span>
+                <span style={{
+                  fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+                  color: "#fdba74", fontSize: 10.5, fontWeight: 900, letterSpacing: "0.16em",
+                }}>REACHED LOOP {encoreLoop}</span>
+              </div>
+            )}
           </div>
 
           {/* Stats · refined chip row, 4 columns */}
