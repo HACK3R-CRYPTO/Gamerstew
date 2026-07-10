@@ -68,55 +68,140 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // old loop rebuilt ~5 roundRect paths + 2 gradient allocations PER TILE
   // PER FRAME (≈64 ops/frame with 8 tiles). drawImage of a cached sprite
   // is one GPU blit — an order of magnitude cheaper.
-  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[] } | null>(null);
+  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[]; trails: HTMLCanvasElement[] } | null>(null);
 
+  // Candy shapes, one per lane — square / triangle / coin / star. Shape +
+  // color double-codes the lanes (reads faster at speed, works for
+  // colorblind players) and matches the brand's candy-arcade art. Each
+  // sprite still renders ONCE here; the per-frame loop stays a single
+  // drawImage blit per tile.
   const buildSprites = (tileW: number, tileH: number, dpr: number) => {
-    const pad = 12; // room for the glow halo around the tile
+    const pad = 12; // room for the glow halo around the shape
     const sw = tileW + pad * 2;
     const sh = tileH + pad * 2 + 4;
-    const sprites = lanes.map((theme) => {
+
+    // Path helpers — all centered in the sprite box
+    const tracePath = (c: CanvasRenderingContext2D, kind: number, cx: number, cy: number, w: number, h: number) => {
+      c.beginPath();
+      if (kind === 0) {
+        // Rounded square (magenta lane)
+        const s = Math.min(w, h);
+        roundRect(c, cx - s / 2, cy - s / 2, s, s, s * 0.28);
+      } else if (kind === 1) {
+        // Triangle (blue lane) — softened joins via lineJoin round stroke
+        const s = Math.min(w, h) * 1.06;
+        c.moveTo(cx, cy - s / 2);
+        c.lineTo(cx + s / 2, cy + s / 2);
+        c.lineTo(cx - s / 2, cy + s / 2);
+        c.closePath();
+      } else if (kind === 2) {
+        // Coin (gold lane)
+        c.arc(cx, cy, Math.min(w, h) / 2, 0, Math.PI * 2);
+      } else {
+        // 5-point star (green lane)
+        const R = Math.min(w, h) * 0.58;
+        const r = R * 0.5;
+        for (let i = 0; i < 10; i++) {
+          const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+          const rad = i % 2 === 0 ? R : r;
+          const px = cx + Math.cos(ang) * rad;
+          const py = cy + Math.sin(ang) * rad;
+          if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+        }
+        c.closePath();
+      }
+    };
+
+    const sprites = lanes.map((theme, laneIdx) => {
       const off = document.createElement("canvas");
       off.width = Math.ceil(sw * dpr);
       off.height = Math.ceil(sh * dpr);
       const c = off.getContext("2d")!;
       c.scale(dpr, dpr);
-      const x = pad, y = pad;
+      const cx = pad + tileW / 2;
+      const cy = pad + tileH / 2;
+      const shapeW = tileW * 0.82;
+      const shapeH = tileH * 1.12;
 
       // Glow halo (fake, no shadowBlur — software rasterization killer)
-      c.globalAlpha = 0.28;
+      c.globalAlpha = 0.3;
       c.fillStyle = theme.glow;
-      roundRect(c, x - 8, y - 4, tileW + 16, tileH + 10, 18);
+      tracePath(c, laneIdx, cx, cy + 1, shapeW + 14, shapeH + 14);
       c.fill();
       c.globalAlpha = 1;
 
-      // Wall (3D depth)
+      // Drop wall (3D depth under the candy)
       c.fillStyle = theme.wall;
-      roundRect(c, x, y + 3, tileW, tileH, 14);
+      tracePath(c, laneIdx, cx, cy + 3, shapeW, shapeH);
       c.fill();
 
-      // Face
+      // Candy body — SOLID saturated accent with a white rim, exactly the
+      // banner's look. (A soft radial gradient bleached the colors into
+      // pastel; flat + rim + shine is what reads as candy.)
       c.fillStyle = theme.accent;
-      roundRect(c, x + 2, y + 1, tileW - 4, tileH - 5, 12);
+      c.lineJoin = "round";
+      c.lineWidth = 3;
+      c.strokeStyle = "rgba(255,255,255,0.75)";
+      tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
       c.fill();
+      c.stroke();
 
-      // Gloss crescent
-      const glossH = Math.round((tileH - 5) * 0.45);
-      const gloss = c.createLinearGradient(0, y + 1, 0, y + 1 + glossH);
-      gloss.addColorStop(0, "rgba(255,255,255,0.55)");
-      gloss.addColorStop(1, "rgba(255,255,255,0)");
-      c.fillStyle = gloss;
-      roundRect(c, x + 6, y + 2, tileW - 12, glossH, 9);
-      c.fill();
-
-      // Specular dot
-      c.fillStyle = "rgba(255,255,255,0.8)";
+      // Specular dot — the candy shine, CLIPPED inside the shape so it
+      // never floats outside a triangle/star silhouette
+      c.save();
+      tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
+      c.clip();
+      c.fillStyle = "rgba(255,255,255,0.85)";
       c.beginPath();
-      c.ellipse(x + tileW * 0.32, y + 6, tileW * 0.12, 2.5, 0, 0, Math.PI * 2);
+      c.ellipse(cx - shapeW * 0.14, cy - shapeH * 0.14, shapeW * 0.13, shapeH * 0.09, -0.5, 0, Math.PI * 2);
       c.fill();
+      c.restore();
 
       return off;
     });
-    spritesRef.current = { tileW, tileH, pad, sprites };
+
+    // Motion-fade sprites — a straight, uniform-width ribbon baked ONCE
+    // per lane: fully transparent at the top, lane color at the bottom.
+    // Drawn OVERLAPPING the shape's top so the note visibly fades out of
+    // its own motion — "dropping from a fade" — instead of a separate
+    // shape hovering above it. Uses theme.accent (hex): theme.glow is an
+    // rgba() string the hex parser can't read (that bug painted every
+    // trail magenta).
+    const trailH = Math.round(tileH * 5.2);
+    const trails = lanes.map((theme) => {
+      const off = document.createElement("canvas");
+      const tw = Math.ceil(tileW * 0.7);
+      off.width = Math.ceil(tw * dpr);
+      off.height = Math.ceil(trailH * dpr);
+      const c = off.getContext("2d")!;
+      c.scale(dpr, dpr);
+      // Long light-shaft: invisible far above, building to a strong lane-
+      // color glow right where the note is. The note falls down its own
+      // beam of light — the banner's exact read.
+      // Peak glow just before the end, then a quick fade-out — the ribbon
+      // has NO hard bottom edge, so narrow shapes (the star) can't expose
+      // a visible "start" of the trail around their silhouette.
+      const g = c.createLinearGradient(0, 0, 0, trailH);
+      g.addColorStop(0, hexToRgba(theme.accent, 0));
+      g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
+      g.addColorStop(0.78, hexToRgba(theme.accent, 0.34));
+      g.addColorStop(0.9, hexToRgba(theme.accent, 0.55));
+      g.addColorStop(1, hexToRgba(theme.accent, 0));
+      c.fillStyle = g;
+      c.fillRect(0, 0, tw, trailH);
+      // Bright core column down the middle of the shaft — the hot center
+      // that makes it read as light, not fog. Same soft tail-off.
+      const core = c.createLinearGradient(0, 0, 0, trailH);
+      core.addColorStop(0, "rgba(255,255,255,0)");
+      core.addColorStop(0.72, "rgba(255,255,255,0.06)");
+      core.addColorStop(0.88, "rgba(255,255,255,0.2)");
+      core.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = core;
+      c.fillRect(tw * 0.3, 0, tw * 0.4, trailH);
+      return off;
+    });
+
+    spritesRef.current = { tileW, tileH, pad, sprites, trails };
   };
 
   useEffect(() => {
@@ -181,7 +266,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
       const built = spritesRef.current;
       if (!built) return;
-      const { tileW, tileH, pad, sprites } = built;
+      const { tileW, tileH, pad, sprites, trails } = built;
       const laneCount = lanes.length;
       const laneW = w / laneCount;
 
@@ -215,10 +300,9 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         if (n.hold) {
           const pxPerSec = h / n.travel;
           const barH = n.hold * pxPerSec;
-          // Full tile width — hold bars are first-class tiles that happen
-          // to be long, not skinny ribbons. Solid body + stroked border
-          // reads instantly as "this one is different: pin it".
-          const barW = tileW;
+          // Slim track — the banner's hold is an elegant narrow groove,
+          // not a wall. Length stays timing-true (length = duration).
+          const barW = tileW * 0.56;
           const bx = Math.round(xCenter - barW / 2);
           const held = heldIds?.has(n.id) || n.holdState === "held";
           const dropped = n.holdState === "dropped";
@@ -235,54 +319,101 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
           const dim = dropped ? 0.16 : 1;
 
+          // TRACK-AND-PILL design (matches the brand art): an outlined
+          // groove shows the hold's full length, and a bright glowing
+          // pill floats inside it — the living part your finger owns.
+
           // Outer glow — swells while held
-          ctx.globalAlpha = (held ? 0.6 : 0.3) * alpha * dim;
+          ctx.globalAlpha = (held ? 0.55 : 0.25) * alpha * dim;
           ctx.fillStyle = theme.glow;
-          roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 22);
+          roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 24);
           ctx.fill();
 
-          // Solid body — near-opaque. A hold bar is a wall, not a mist.
-          ctx.globalAlpha = (held ? 1 : 0.82) * alpha * dim;
+          // The track — tinted glass groove with an accent outline
+          ctx.globalAlpha = (held ? 0.4 : 0.25) * alpha * dim;
           ctx.fillStyle = theme.accent;
-          roundRect(ctx, bx, top, barW, visH, 16);
+          roundRect(ctx, bx, top, barW, visH, barW / 2);
           ctx.fill();
-
-          // Stroked border — the crisp edge that separates it from taps
-          ctx.globalAlpha = (held ? 1 : 0.7) * alpha * dim;
-          ctx.lineWidth = held ? 3 : 2;
-          ctx.strokeStyle = held ? "#ffffff" : "rgba(255,255,255,0.65)";
-          roundRect(ctx, bx, top, barW, visH, 16);
+          ctx.globalAlpha = (held ? 1 : 0.85) * alpha * dim;
+          ctx.lineWidth = held ? 3.5 : 2.5;
+          ctx.strokeStyle = held ? "#ffffff" : theme.accent;
+          roundRect(ctx, bx, top, barW, visH, barW / 2);
           ctx.stroke();
 
-          // Inner gloss — top-lit like the tap tile sprites, so both tile
-          // families share one material language
-          ctx.globalAlpha = (held ? 0.5 : 0.35) * alpha * dim;
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          roundRect(ctx, bx + 6, top + 5, barW - 12, Math.min(14, Math.max(5, visH * 0.16)), 8);
+          // The pill — SATURATED capsule inset in the groove, glowing hot
+          // while held. Small inset keeps the track edge visible so the
+          // two-layer read survives at speed.
+          const inset = 5;
+          const pillW = barW - inset * 2;
+          const pillTop = top + inset;
+          const pillH = Math.max(10, visH - inset * 2);
+          ctx.globalAlpha = alpha * dim;
+          ctx.fillStyle = theme.accent;
+          roundRect(ctx, bx + inset, pillTop, pillW, pillH, pillW / 2);
           ctx.fill();
 
-          // While held: a hot consumption edge where the bar meets the
-          // judgment line — the anchor that says "being eaten right here,
-          // don't let go".
+          // Pill shine — a slim edge highlight, not a bleach wash
+          ctx.globalAlpha = (held ? 0.8 : 0.5) * alpha * dim;
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          roundRect(ctx, bx + inset + 3, pillTop + 5, Math.max(3, pillW * 0.18), Math.max(6, pillH * 0.4), 4);
+          ctx.fill();
+
+          // While held: the bar visibly BURNS DOWN. Three stacked signals
+          // so the diminishing is impossible to miss:
+          //   1. urgency tint — the remaining pill heats toward white as
+          //      the hold progresses (a countdown you feel, not read)
+          //   2. fuse edge — the eating point flickers like a lit fuse,
+          //      not a static line
+          //   3. sparks — embers fly off at the burn point
           if (held) {
-            ctx.globalAlpha = alpha;
+            const holdProgress = Math.max(0, Math.min(1, (nowSec - n.time) / (n.hold || 1)));
+
+            // 1. Urgency tint over the remaining pill — hotter as it drains
+            ctx.globalAlpha = 0.45 * holdProgress * alpha;
             ctx.fillStyle = "#ffffff";
-            ctx.fillRect(bx - 5, Math.round(bottom) - 3, barW + 10, 6);
-            ctx.globalAlpha = 0.55 * alpha;
+            roundRect(ctx, bx + inset, pillTop, pillW, pillH, pillW / 2);
+            ctx.fill();
+
+            // 2. Fuse edge — flickers using the frame clock (no state)
+            const flick = 0.75 + 0.25 * Math.sin(nowSec * 30);
+            ctx.globalAlpha = alpha * flick;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(bx - 6, Math.round(bottom) - 3, barW + 12, 6);
+            ctx.globalAlpha = 0.6 * alpha * flick;
             ctx.fillStyle = theme.glow;
-            ctx.fillRect(bx - 12, Math.round(bottom) - 8, barW + 24, 16);
+            ctx.fillRect(bx - 14, Math.round(bottom) - 9, barW + 28, 18);
+
+            // 3. Sparks — deterministic pseudo-random from the frame clock
+            // (no allocations, no state): five ember dots dancing at the
+            // burn point, jumping every 50ms
+            const tick = Math.floor(nowSec * 20);
+            ctx.fillStyle = "#ffffff";
+            for (let i = 0; i < 5; i++) {
+              const rnd = Math.abs(Math.sin(tick * 7.31 + i * 13.7));
+              const rnd2 = Math.abs(Math.sin(tick * 3.7 + i * 29.3));
+              const sx = bx + rnd * barW;
+              const sy = bottom - 4 - rnd2 * 16;
+              ctx.globalAlpha = (0.5 + 0.5 * rnd) * alpha;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 1.5 + rnd2 * 2, 0, Math.PI * 2);
+              ctx.fill();
+            }
           }
           continue; // the capsule replaces the head sprite entirely
         }
 
-        // Motion trail — a single flat rect (no gradient allocation). The
-        // fade-to-transparent is faked with a low globalAlpha; cheaper
-        // than a per-frame createLinearGradient and visually identical in
-        // motion.
-        const trailH = 26;
-        ctx.globalAlpha = 0.32 * alpha;
-        ctx.fillStyle = theme.glow;
-        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
+        // Motion shaft — a long beam of the lane's light with its bright
+        // end COVERING the note, stretching far up the lane. Bottom lands
+        // just below the shape's center so the note visibly drops out of
+        // its own light. One drawImage, gradient baked in the sprite.
+        const trailSprite = trails[n.lane];
+        const trailW = tileW * 0.7;
+        const trailHpx = tileH * 5.2;
+        // The fade-out tail ends at the shape's center — every silhouette
+        // is widest around its mid-band, so the ribbon's end stays hidden
+        // behind the candy on all four shapes, star included.
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter + tileH * 0.1 - trailHpx, trailW, trailHpx);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
@@ -316,6 +447,15 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 });
 
 export default NoteCanvas;
+
+// Hex (#rrggbb) → rgba() string with the given alpha. Used when baking
+// gradient sprites, where hex + globalAlpha can't express per-stop fades.
+function hexToRgba(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(232,121,249,${a})`; // brand magenta fallback
+  const v = parseInt(m[1], 16);
+  return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${a})`;
+}
 
 // Cross-browser roundRect polyfill. Safari < 16 and older Android don't
 // support the spec `CanvasRenderingContext2D.roundRect` yet.
