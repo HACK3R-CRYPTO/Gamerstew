@@ -2268,23 +2268,40 @@ function PlayingView({
       <PetCenter pet={pet} combo={combo} feedback={feedback} />
 
 
-      {/* ═══ PLAY FIELD (lanes + falling notes) ═══ */}
+      {/* ═══ PLAY FIELD — the lane IS the instrument ═══
+          No button row. The entire lane is the touch target (Beatstar /
+          Cytus school): tap anywhere in your lane, a beam of light
+          answers from the judgment line, and holds keep the beam lit.
+          Maximum play area, zero widget clutter — the cosmic void and
+          the tiles own the whole screen. */}
       <div style={{
         flex: 1,
         position: "relative",
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
         gap: "6px",
-        padding: "0 10px 10px",
+        padding: "0 10px calc(12px + env(safe-area-inset-bottom, 0px))",
         overflow: "hidden",
       }}>
         {LANES.map((theme, i) => (
-          <Lane
+          <div
             key={i}
-            theme={theme}
-            laneIdx={i}
-            flashing={flashLane === i}
-            feedback={feedback && feedback.lane === i ? feedback : null}
-          />
+            role="button" tabIndex={0}
+            data-no-click-sound="true"
+            onPointerDown={e => { e.preventDefault(); onTapLane(i); }}
+            onPointerUp={e => { e.preventDefault(); onReleaseLane(i); }}
+            onPointerLeave={() => onReleaseLane(i)}
+            onPointerCancel={() => onReleaseLane(i)}
+            style={{ position: "relative", touchAction: "manipulation", userSelect: "none", cursor: "pointer" }}
+          >
+            <Lane
+              theme={theme}
+              laneIdx={i}
+              flashing={flashLane === i}
+              holding={heldLanes[i]}
+              showKeycap={showKeycaps}
+              feedback={feedback && feedback.lane === i ? feedback : null}
+            />
+          </div>
         ))}
 
         {/* Falling tiles — rendered on a single <canvas>, drawn
@@ -2329,29 +2346,6 @@ function PlayingView({
             </div>
           );
         })}
-      </div>
-
-      {/* ═══ SLIME KEYS — you don't press buttons, you boop slimes ═══
-          The brand's own creature is the instrument. Tap = squash-and-
-          stretch boing. Hold = the slime stays pinned flat under your
-          finger, eyes squeezed, jiggling with effort until the bar
-          completes. Uniquely GameArena — no rhythm game has this. */}
-      <div style={{
-        padding: "0 10px 14px",
-        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px",
-      }}>
-        {LANES.map((theme, i) => (
-          <SlimeKey
-            key={i}
-            theme={theme}
-            laneIdx={i}
-            isDown={flashLane === i || heldLanes[i]}
-            isHolding={heldLanes[i]}
-            showKeycap={showKeycaps}
-            onPress={() => onTapLane(i)}
-            onRelease={() => onReleaseLane(i)}
-          />
-        ))}
       </div>
 
       {/* ═══ COMBO TOAST (center) ═══
@@ -2417,7 +2411,8 @@ function StatGem({ label, value, color, wall, emphasize }: { label: string; valu
 }
 
 // ─── Lane — the vertical track where notes fall ──────────────────────────────
-function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null }) {
+function Lane({ theme, laneIdx, flashing, holding, showKeycap, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; holding: boolean; showKeycap?: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null }) {
+  const keyLabels = ["A", "S", "D", "F"];
   const feedbackLabel = feedback ? (feedback.type === "perfect" ? "PERFECT!" : feedback.type === "good" ? "GOOD" : "MISS") : null;
   const feedbackColor = feedback?.type === "perfect" ? "#fbbf24" : feedback?.type === "good" ? theme.accent : "#ef4444";
   // Calibration readout — GOODs show the signed ms offset so the player
@@ -2426,37 +2421,60 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
   const msLabel = feedback?.type === "good" && typeof feedback.ms === "number"
     ? `${feedback.ms > 0 ? "+" : ""}${feedback.ms}ms ${feedback.ms > 0 ? "late" : "early"}`
     : null;
+  const lit = flashing || holding;
   return (
     <div style={{
-      position: "relative",
+      position: "relative", height: "100%",
       borderRadius: "14px",
-      background: flashing
-        ? `linear-gradient(180deg, ${theme.accent}18 0%, rgba(0,0,0,0.2) 100%)`
-        : "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.25) 100%)",
-      border: `1.5px solid ${flashing ? theme.accent : "rgba(255,255,255,0.08)"}`,
-      boxShadow: flashing ? `inset 0 0 24px ${theme.glow}` : "none",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.22) 100%)",
+      border: `1px solid ${lit ? theme.accent + "88" : "rgba(255,255,255,0.07)"}`,
       overflow: "hidden",
-      transition: "border-color 0.08s, box-shadow 0.08s",
+      transition: "border-color 0.08s",
     }}>
-      {/* Lane glow strip down center */}
+      {/* LIGHT BEAM — the lane's answer to your touch. Rises from the
+          judgment line, flashes on a tap, and STAYS LIT for the entire
+          duration of a hold. This is the whole feedback language now:
+          light instead of buttons. */}
       <div style={{
-        position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-        width: "2px", height: "100%",
-        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}33 50%, transparent 100%)`,
+        position: "absolute", left: 0, right: 0, bottom: 0, height: "68%",
+        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}18 55%, ${theme.accent}55 100%)`,
+        opacity: lit ? 1 : 0,
+        transition: holding ? "opacity 0.05s" : "opacity 0.22s ease-out",
         pointerEvents: "none",
       }} />
 
-      {/* Landing glow — the piano keys below ARE the tap targets now, so
-          the lane just breathes a soft pool of light where tiles land,
-          brightening when the key underneath sounds. */}
+      {/* JUDGMENT LINE — where tiles land. Always faintly present so the
+          eye knows the target; ignites in the lane color on contact. */}
       <div style={{
-        position: "absolute", bottom: 0, left: 0, right: 0, height: "22%",
-        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}${flashing ? "40" : "14"} 100%)`,
+        position: "absolute", left: "6%", right: "6%", bottom: 14, height: 3,
+        borderRadius: 999,
+        background: lit ? theme.accent : "rgba(255,255,255,0.22)",
+        boxShadow: lit ? `0 0 14px ${theme.glow}, 0 0 34px ${theme.glow}` : `0 0 6px rgba(255,255,255,0.12)`,
+        transition: "background 0.08s, box-shadow 0.08s",
         pointerEvents: "none",
-        transition: "background 0.08s",
       }} />
 
-      {/* Feedback label (floats up from bottom on hit).
+      {/* Keycap — desktop only, floats just under the judgment line and
+          presses in sync with the lane so keyboard players see their
+          physical key mirrored. Phones never render it. */}
+      {showKeycap && (
+        <span style={{
+          position: "absolute", bottom: 24, left: "50%",
+          transform: `translateX(-50%) ${lit ? "translateY(2px)" : ""}`,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 24, height: 24, borderRadius: 6,
+          background: "linear-gradient(180deg, #3a3550 0%, #211c33 100%)",
+          border: "1px solid rgba(255,255,255,0.22)",
+          borderBottom: lit ? "1px solid rgba(0,0,0,0.6)" : "3px solid rgba(0,0,0,0.6)",
+          boxShadow: lit ? `0 0 10px ${theme.glow}` : "0 2px 4px rgba(0,0,0,0.5)",
+          color: lit ? "#fff" : "rgba(255,255,255,0.6)",
+          fontSize: 11, fontWeight: 900,
+          transition: "all 0.05s",
+          pointerEvents: "none", zIndex: 2,
+        }}>{keyLabels[laneIdx]}</span>
+      )}
+
+      {/* Feedback label (floats up from the judgment line on hit).
           Fluid font — each lane on a 4-lane mobile layout is ~22vw wide;
           a fixed 14px "PERFECT!" clipped at the lane edges. */}
       {feedbackLabel && (
@@ -2481,122 +2499,6 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
             }}>{msLabel}</div>
           )}
         </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Tap button (juicy wall + face — same pattern as game card START) ────────
-// ─── SlimeKey — the keys are slimes. ─────────────────────────────────────────
-// GameArena's pet is the brand; the strike zone leans into it. Each lane
-// ends in a slime blob you BOOP instead of a button you press:
-//   idle    → breathing belly wobble
-//   tap     → squash-and-stretch: squishes flat, boings back with overshoot
-//   holding → pinned flat under the finger, eyes squeezed shut, jiggling
-//             with effort while the note sings — the hold made adorable
-//   release → pops back up
-// Pure CSS transforms (GPU-cheap), transform-origin at the base so all
-// squashing is grounded like real jelly.
-function SlimeKey({ theme, laneIdx, isDown, isHolding, showKeycap, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isDown: boolean; isHolding: boolean; showKeycap?: boolean; onPress: () => void; onRelease: () => void }) {
-  const keyLabels = ["A", "S", "D", "F"];
-  return (
-    <div
-      role="button" tabIndex={0}
-      // Opt out of the global UI click blip — booping a slime plays the
-      // bell at the tile's pitch (melodic). A UI tick would muddle it.
-      data-no-click-sound="true"
-      onPointerDown={e => { e.preventDefault(); onPress(); }}
-      // Release ends any active hold on this lane. pointerleave/cancel
-      // count as releases too — a finger sliding off the slime mid-hold
-      // shouldn't sustain forever.
-      onPointerUp={e => { e.preventDefault(); onRelease(); }}
-      onPointerLeave={() => onRelease()}
-      onPointerCancel={() => onRelease()}
-      style={{ cursor: "pointer", userSelect: "none", touchAction: "manipulation", position: "relative", height: "clamp(58px, 10vh, 78px)" }}
-    >
-      <style>{`
-        @keyframes slime-breathe { 0%, 100% { transform: scaleY(1) scaleX(1); } 50% { transform: scaleY(0.94) scaleX(1.04); } }
-        @keyframes slime-strain  { 0%, 100% { transform: scaleY(0.5) scaleX(1.32) translateY(0); } 50% { transform: scaleY(0.46) scaleX(1.36) translateY(1px); } }
-      `}</style>
-
-      {/* Landing shadow — grounds the blob */}
-      <div style={{
-        position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
-        width: isDown ? "88%" : "72%", height: 10, borderRadius: "50%",
-        background: `radial-gradient(ellipse, ${theme.glow} 0%, transparent 70%)`,
-        opacity: isDown ? 0.9 : 0.45,
-        transition: "width 0.1s, opacity 0.1s",
-        pointerEvents: "none",
-      }} />
-
-      {/* The slime body — all squash happens from the base */}
-      <div style={{
-        position: "absolute", bottom: 2, left: "8%", right: "8%", top: 4,
-        transformOrigin: "50% 100%",
-        transform: isHolding ? undefined : isDown ? "scaleY(0.62) scaleX(1.22)" : undefined,
-        animation: isHolding
-          ? "slime-strain 0.22s ease-in-out infinite"
-          : isDown ? undefined : "slime-breathe 2.6s ease-in-out infinite",
-        transition: "transform 0.16s cubic-bezier(0.34, 1.8, 0.64, 1)",
-        pointerEvents: "none",
-      }}>
-        <div style={{
-          position: "absolute", inset: 0,
-          borderRadius: "48% 48% 44% 44% / 62% 62% 40% 40%",
-          background: theme.face,
-          border: `2px solid rgba(255,255,255,${isHolding ? 0.85 : 0.5})`,
-          boxShadow: isDown
-            ? `0 0 26px ${theme.glow}, inset 0 6px 12px rgba(255,255,255,0.75), inset 0 -4px 8px rgba(0,0,0,0.25)`
-            : `0 6px 16px -4px ${theme.glow}, inset 0 6px 12px rgba(255,255,255,0.6), inset 0 -4px 8px rgba(0,0,0,0.3)`,
-          overflow: "hidden",
-        }}>
-          {/* Jelly gloss */}
-          <div style={{
-            position: "absolute", top: "6%", left: "14%", width: "34%", height: "26%",
-            borderRadius: "50%",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.85), transparent)",
-            transform: "rotate(-18deg)",
-          }} />
-          {/* Eyes — dots normally, squeezed-shut arcs while straining */}
-          {[36, 64].map(x => (
-            <div key={x} style={{
-              position: "absolute", left: `${x}%`, top: "42%", transform: "translate(-50%, -50%)",
-              width: 7, height: isHolding ? 2.5 : 8,
-              borderRadius: isHolding ? 2 : "50%",
-              background: "rgba(20,8,40,0.9)",
-              transition: "height 0.1s, border-radius 0.1s",
-            }} />
-          ))}
-          {/* Mouth — tiny line, becomes an effort "o" while holding */}
-          <div style={{
-            position: "absolute", left: "50%", top: "60%", transform: "translate(-50%, -50%)",
-            width: isHolding ? 8 : 10, height: isHolding ? 8 : 2.5,
-            borderRadius: isHolding ? "50%" : 2,
-            background: "rgba(20,8,40,0.75)",
-            transition: "all 0.1s",
-          }} />
-        </div>
-      </div>
-
-      {/* Keycap — a real 3D keyboard key under the slime, DESKTOP ONLY
-          (hover + fine pointer). It presses down in sync with the slime,
-          so keyboard players see their physical key mirrored on screen.
-          Phones never render it. */}
-      {showKeycap && (
-        <span style={{
-          position: "absolute", bottom: -4, left: "50%",
-          transform: `translateX(-50%) ${isDown ? "translateY(2px)" : ""}`,
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          width: 24, height: 24, borderRadius: 6,
-          background: "linear-gradient(180deg, #3a3550 0%, #211c33 100%)",
-          border: "1px solid rgba(255,255,255,0.22)",
-          borderBottom: isDown ? "1px solid rgba(0,0,0,0.6)" : "3px solid rgba(0,0,0,0.6)",
-          boxShadow: isDown ? `0 0 10px ${theme.glow}` : "0 2px 4px rgba(0,0,0,0.5)",
-          color: isDown ? "#fff" : "rgba(255,255,255,0.75)",
-          fontSize: 11, fontWeight: 900,
-          transition: "all 0.05s",
-          pointerEvents: "none", zIndex: 2,
-        }}>{keyLabels[laneIdx]}</span>
       )}
     </div>
   );
