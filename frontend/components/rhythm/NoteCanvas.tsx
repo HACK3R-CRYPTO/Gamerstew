@@ -38,10 +38,17 @@ export type ActiveNote = {
   lane: number;
   time: number;   // scheduled hit time (seconds from start)
   travel: number; // seconds the tile takes to fall from top to bottom
+  hold?: number;  // sustain duration (seconds) — renders as a long capsule bar
+  // Hold lifecycle set by the game loop after the head is hit:
+  //   "held"    → finger is down: bar anchors at the line and gets consumed
+  //   "dropped" → released early / head missed: bar falls away dimmed
+  holdState?: "held" | "dropped";
 };
 
 export type NoteCanvasHandle = {
-  draw: (notes: ActiveNote[], nowSec: number) => void;
+  // heldIds: note ids currently being sustained by a finger — their hold
+  // bars render brighter so the player feels the connection.
+  draw: (notes: ActiveNote[], nowSec: number, heldIds?: Set<number>) => void;
 };
 
 type Props = {
@@ -161,7 +168,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   }, []);
 
   useImperativeHandle(ref, () => ({
-    draw(notes, nowSec) {
+    draw(notes, nowSec, heldIds) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -184,7 +191,10 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       // the sprite once. This is what keeps 60fps on budget Android.
       for (const n of notes) {
         const progress = (nowSec - (n.time - n.travel)) / n.travel;
-        if (progress < 0 || progress > 1.05) continue; // off-screen
+        // Hold tiles stay on-screen while their stem is still crossing
+        // the line — extend the cull window by the hold's travel share.
+        const holdProg = n.hold ? n.hold / n.travel : 0;
+        if (progress < 0 || progress > 1.05 + holdProg) continue; // off-screen
         const yCenter = progress * h;
         const xCenter = (n.lane + 0.5) * laneW;
         const x = Math.round(xCenter - tileW / 2);
@@ -193,6 +203,66 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
         // Fade-in during first 15% of travel — matches the DOM version
         const alpha = progress < 0.15 ? Math.max(0, progress / 0.15) : 1;
+
+        // HOLD BAR — one continuous glowing capsule, Synthesia/Magic Tiles
+        // style: the tile IS the long bar. Three lives:
+        //   falling  → translucent capsule approaching the line
+        //   held     → BRIGHT, and visually CONSUMED: everything below the
+        //               hit line is clipped away, so the bar shrinks into
+        //               the line as the sustain progresses — the "keep
+        //               holding" feeling, drawn
+        //   dropped  → dim ghost falling away (released early/head missed)
+        if (n.hold) {
+          const pxPerSec = h / n.travel;
+          const barH = n.hold * pxPerSec;
+          const barW = tileW * 0.86;
+          const bx = Math.round(xCenter - barW / 2);
+          const held = heldIds?.has(n.id) || n.holdState === "held";
+          const dropped = n.holdState === "dropped";
+
+          // Bar geometry: bottom edge = the head (falls past the line
+          // while holding), top edge = the tail. While HELD, clip the
+          // bottom at the hit line so the consumed part disappears.
+          const rawBottom = yCenter + tileH / 2;
+          const top = Math.round(yCenter - barH);
+          const hitLineY = h - tileH * 0.5; // where the tap zone sits
+          const bottom = held ? Math.min(rawBottom, hitLineY + tileH / 2) : rawBottom;
+          const visH = Math.max(6, bottom - top);
+          if (bottom <= top) continue; // fully consumed — RAF resolves it this frame
+
+          const dim = dropped ? 0.18 : 1;
+
+          // Soft outer glow — pulses while held
+          ctx.globalAlpha = (held ? 0.55 : 0.22) * alpha * dim;
+          ctx.fillStyle = theme.glow;
+          roundRect(ctx, bx - 6, top - 6, barW + 12, visH + 12, 20);
+          ctx.fill();
+
+          // Capsule body — bright while held, translucent while falling
+          ctx.globalAlpha = (held ? 0.95 : 0.5) * alpha * dim;
+          ctx.fillStyle = theme.accent;
+          roundRect(ctx, bx, top, barW, visH, 16);
+          ctx.fill();
+
+          // Center gloss stripe — lit-from-within, reference piano-roll look
+          ctx.globalAlpha = (held ? 0.6 : 0.28) * alpha * dim;
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          roundRect(ctx, Math.round(xCenter - barW * 0.14), top + 6, Math.round(barW * 0.28), Math.max(4, visH - 12), 10);
+          ctx.fill();
+
+          // While held: a hot consumption edge where the bar meets the
+          // line — the visual anchor that says "the bar is being eaten
+          // right here, don't let go".
+          if (held) {
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(bx - 4, Math.round(bottom) - 3, barW + 8, 5);
+            ctx.globalAlpha = 0.5 * alpha;
+            ctx.fillStyle = theme.glow;
+            ctx.fillRect(bx - 10, Math.round(bottom) - 7, barW + 20, 13);
+          }
+          continue; // the capsule replaces the head sprite entirely
+        }
 
         // Motion trail — a single flat rect (no gradient allocation). The
         // fade-to-transparent is faked with a low globalAlpha; cheaper

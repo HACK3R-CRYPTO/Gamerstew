@@ -83,6 +83,18 @@ const FEVER_TRIGGER = 12;    // consecutive PERFECTs to ignite fever
 const FEVER_DURATION = 6;    // seconds of ×2 once ignited
 const FEVER_MULT = 2;        // the only multiplier in the game
 const ENCORE_POINTS = 5;     // flat per encore tile — encore is for glory, not farming
+// Hold notes — genre-standard rules (Magic Tiles / Piano Tiles):
+//   · Press the head like a normal tap (judged perfect/good as usual).
+//   · HOLD until the bar finishes crossing the line. Completing pays the
+//     full sustain bonus (HOLD_TICK_POINTS per 0.5s of the bar's length).
+//   · Release EARLY = the hold BREAKS: no bonus, combo dies, fever dies,
+//     "DROPPED" flashes. Holding is a commitment, not a suggestion.
+//   · A small release grace (humans lift slightly early) keeps it fair.
+// Addition-only law: the bonus adds, never multiplies, and fever doesn't
+// touch it — mirrors the server replay exactly.
+const HOLD_TICK_POINTS = 2;      // per 0.5s of the bar's length, paid on completion
+const HOLD_TICK_SEC = 0.5;
+const HOLD_RELEASE_GRACE = 0.15; // releasing within 150ms of the end still completes
 
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -153,124 +165,104 @@ const LANES: LaneTheme[] = [
   { wall: "#003a00", face: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)", glow: "rgba(34,197,94,0.8)", accent: "#22c55e" },
 ];
 
-// ─── Note chart — London Bridge Is Falling Down, C major ────────────────────
+// ─── Note chart — Turkish March / Rondo alla Turca (Mozart, 1783), A minor ──
 // Piano Tiles principle: the sequence of taps IS the melody. Every tile has
 // a lane (visual) AND a freq (the note it plays when tapped). Lanes run
 // low-left to high-right so tapping across the screen feels like walking
 // up a piano keyboard.
 //
-// Mapping (diatonic):
-//   lane 0 → C5, D5   (bottom of the scale)
-//   lane 1 → E5       (mid-low)
-//   lane 2 → F5       (mid)
-//   lane 3 → G5, A5   (top — both share since London Bridge climbs to A)
+// Mapping (A minor):
+//   lane 0 → G#4, A4  (the turn's floor)
+//   lane 1 → B4, C5   (mid)
+//   lane 2 → D5, D#5  (upper-mid)
+//   lane 3 → E5, F5   (the run's top)
 //
-// Song: "London Bridge Is Falling Down" — traditional English nursery rhyme.
-// Switched in for this new season. Stays in C major so the I-V-vi-IV-I-V
-// chord progression and audio scheduling carry over without rework. London
-// Bridge is one note higher than Saints (it climbs to A5), so the high
-// lane (3) holds both G and A — the rocking back-and-forth between them
-// at the start IS the song's recognizable hook.
-type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number };
+// Song: "Rondo alla Turca" — the second-most recognized piano piece on
+// Earth after Für Elise: the bouncy da-da-da-DA gallop everyone knows even
+// without knowing its name. Its personality IS this game's design —
+// playful start, relentless build, sprint finish. Public-domain
+// composition; every note synthesized in WebAudio.
+//
+// HOLD NOTES: phrase-ending notes carry `hold` (seconds) — the player
+// presses at the head and keeps the finger down while the long tile's
+// stem crosses the line, releasing when it ends. Sustains are how the
+// real melody breathes, and holding-vs-tapping is the texture change
+// that makes rhythm charts feel rich.
+type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number; hold?: number };
 
-// C major scale pitches — London Bridge spans D5 → A5.
-const P_C5 = 523.25, P_D5 = 587.33, P_E5 = 659.25, P_F5 = 698.46,
-  P_G5 = 783.99, P_A5 = 880.00;
+// A minor pitches — the theme spans G#4 → F5 (the G# is the signature
+// leading-tone of the famous opening turn).
+const P_GS4 = 415.30, P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25,
+  P_D5 = 587.33, P_DS5 = 622.25, P_E5 = 659.25, P_F5 = 698.46;
 
 function buildChart(): NoteDef[] {
   const notes: NoteDef[] = [];
   let id = 0;
-  const push = (lane: number, time: number, travel: number, freq: number) =>
-    notes.push({ id: id++, lane, time, travel, freq });
+  const push = (lane: number, time: number, travel: number, freq: number, hold?: number) =>
+    notes.push({ id: id++, lane, time, travel, freq, ...(hold ? { hold } : {}) });
 
-  // London Bridge canonical melody — exact pitches from noobnotes/Skoove,
-  // no padding. Two full verses (P1-P4 and P5-P8), then an eighth-note
-  // climax reprise (P9) of the opening hook for skill expression. The
-  // half-step climax is THE place where "perfect" runs separate skilled
-  // players from casual ones — coupled with the ±80ms PERFECT window,
-  // the leaderboard gap forms here.
-  //   P1: G A G F E F G         (7, "London Bridge is falling down")
-  //   P2: D E F E F G           (6, "falling down, falling down")
-  //   P3: G A G F E F G         (7, repeat opening line)
-  //   P4: D G E C               (4, "my fair lady" — clean tonic resolve)
-  //   P5: G A G F E F G         (7, verse 2 opening)
-  //   P6: D E F E F G           (6, verse 2 second line)
-  //   P7: G A G F E F G         (7, verse 2 third line)
-  //   P8: D G E C               (4, verse 2 final cadence)
-  //   P9: G A G F E F G         (7, eighth-note climax — half tempo, skill check)
-  type Pitch = number;
-  const P1: Pitch[] = [P_G5, P_A5, P_G5, P_F5, P_E5, P_F5, P_G5];
-  const P2: Pitch[] = [P_D5, P_E5, P_F5, P_E5, P_F5, P_G5];
-  const P3: Pitch[] = P1;
-  const P4: Pitch[] = [P_D5, P_G5, P_E5, P_C5];
-  const P5: Pitch[] = P1;
-  const P6: Pitch[] = P2;
-  const P7: Pitch[] = P1;
-  const P8: Pitch[] = P4;
-  const P9: Pitch[] = P1;  // climax reprise — same pitches, half the time
+  // Rondo alla Turca opening theme, simplified to one octave. Phrase
+  // entries are [pitch, holdSeconds?] — phrase-ending notes sustain,
+  // which is exactly how Mozart phrases it (the turn lands and RINGS).
+  //   T1: B A G# A → C(hold)      (5, THE famous opening turn)
+  //   T2: D C B C → E(hold)       (5, the turn sequenced up — the echo)
+  //   T3: F E D# E B A G# A       (8, the cascade run — no holds, pure taps)
+  //   T4: C B → A(long hold)      (3, landing home on the tonic)
+  //   Two passes, then T3 at eighth notes as the climax sprint — the
+  //   skill check where the ±80ms PERFECT window forms the leaderboard.
+  type TN = [number, number?];
+  const T1: TN[] = [[P_B4], [P_A4], [P_GS4], [P_A4], [P_C5, 1.0]];
+  const T2: TN[] = [[P_D5], [P_C5], [P_B4], [P_C5], [P_E5, 1.0]];
+  const T3: TN[] = [[P_F5], [P_E5], [P_DS5], [P_E5], [P_B4], [P_A4], [P_GS4], [P_A4]];
+  const T4: TN[] = [[P_C5], [P_B4], [P_A4, 1.5]];
 
-  // Lane map — low-left to high-right. C D on lane 0, E on lane 1, F on
-  // lane 2, G on lane 3. Spreads the six-note Ode palette across all four
-  // lanes so the player's hand visits every tile zone.
-  const laneFor = (f: Pitch): number => {
-    if (f === P_C5 || f === P_D5) return 0;
-    if (f === P_E5) return 1;
-    if (f === P_F5) return 2;
-    return 3; // P_G5
+  // Lane map — low-left to high-right, two pitches per lane. The turn
+  // rocks between lanes 1 and 0; the cascade run sweeps 3 → 0 across
+  // the full width of the screen. Melody and hand motion agree.
+  const laneFor = (f: number): number => {
+    if (f === P_GS4 || f === P_A4) return 0;
+    if (f === P_B4 || f === P_C5) return 1;
+    if (f === P_D5 || f === P_DS5) return 2;
+    return 3; // P_E5 / P_F5
   };
 
   // Section stamper — lays a phrase at `start` with the given `travel` and
-  // `step` (seconds per note). Quarter notes on the first pass, eighth-note
-  // reprise for the climb, which is how rhythm games build tension without
-  // changing the tune.
-  const stamp = (phrase: Pitch[], start: number, travel: number, step = BEAT) => {
-    phrase.forEach((f, i) => push(laneFor(f), start + i * step, travel, f));
+  // `step` (seconds per note). Quarter notes on the passes, eighth-note
+  // sprint for the climax, which is how rhythm games build tension
+  // without changing the tune.
+  const stamp = (phrase: TN[], start: number, travel: number, step = BEAT) => {
+    phrase.forEach(([f, hold], i) => push(laneFor(f), start + i * step, travel, f, hold));
+  };
+  // Climax variant — drops the holds (an eighth-note sprint has no time
+  // to sustain; it's pure tapping).
+  const stampTapsOnly = (phrase: TN[], start: number, travel: number, step: number) => {
+    phrase.forEach(([f], i) => push(laneFor(f), start + i * step, travel, f));
   };
 
-  // ─── Full canonical play-through ─────────────────────────────────────────
-  //   All 8 phrases end to end at quarter notes. One 0.5s breath between
-  //   each phrase so the ear hears the phrasing. Travel tightens as the
-  //   song progresses so early tiles are readable and the finale drives.
+  // ─── Pass 1 — quarter notes, teaches the melody ──────────────────────────
+  // T1 (4.0s → 6.0s + 1.0s hold): B A G# A C— · the famous turn
+  stamp(T1, 4.0, TRAVEL_INTRO);
+  // T2 (7.5s → 9.5s + hold): D C B C E— · the echo, a third up
+  stamp(T2, 7.5, TRAVEL_INTRO);
+  // T3 (11.0s → 14.5s): F E D# E B A G# A · the cascade run
+  stamp(T3, 11.0, TRAVEL_VERSE);
+  // T4 (15.5s → 16.5s + 1.5s hold): C B A—— · land on home
+  stamp(T4, 15.5, TRAVEL_VERSE);
 
-  // ─── Verse 1 — quarter notes, teaches the melody ─────────────────────────
-  // Phrase 1 (4.0s → 7.5s): G A G F E F G — "London Bridge is falling down"
-  stamp(P1, 4.0, TRAVEL_INTRO);
+  // ─── Pass 2 — same melody, internalisation phase, faster tiles ───────────
+  stamp(T1, 18.5, TRAVEL_VERSE);
+  stamp(T2, 22.0, TRAVEL_BUILD);
+  stamp(T3, 25.5, TRAVEL_BUILD);
+  stamp(T4, 30.0, TRAVEL_DROP);
 
-  // Phrase 2 (8.0s → 11.0s): D E F E F G — "falling down, falling down"
-  stamp(P2, 8.0, TRAVEL_INTRO);
+  // ─── Climax (32.5s → 34.25s): EIGHTH-NOTE sprint of the cascade run ──────
+  // T3 at half the time (250ms apart) — Mozart's alla turca coda energy.
+  stampTapsOnly(T3, 32.5, TRAVEL_DROP, BEAT / 2);
 
-  // Phrase 3 (11.5s → 15.0s): G A G F E F G — repeat opening line
-  stamp(P3, 11.5, TRAVEL_VERSE);
-
-  // Phrase 4 (15.5s → 17.5s): D G E C — "my fair lady" cadence
-  stamp(P4, 15.5, TRAVEL_VERSE);
-
-  // ─── Verse 2 — same melody, internalisation phase ────────────────────────
-  // Phrase 5 (18.0s → 21.5s): G A G F E F G
-  stamp(P5, 18.0, TRAVEL_VERSE);
-
-  // Phrase 6 (22.0s → 25.0s): D E F E F G
-  stamp(P6, 22.0, TRAVEL_BUILD);
-
-  // Phrase 7 (25.5s → 29.0s): G A G F E F G
-  stamp(P7, 25.5, TRAVEL_BUILD);
-
-  // Phrase 8 (29.5s → 31.5s): D G E C — verse 2 final cadence
-  stamp(P8, 29.5, TRAVEL_DROP);
-
-  // ─── Climax (32.5s → 34.25s): EIGHTH-NOTE reprise of the opening hook ────
-  // Same 7 pitches as P1, played at half the time (250ms apart instead of
-  // 500ms). This is THE skill check — coupled with the ±80ms PERFECT
-  // window, it's where consistent perfect runs separate skilled players
-  // from casual ones. The leaderboard gap forms here.
-  stamp(P9, 32.5, TRAVEL_DROP, BEAT / 2);
-
-  // ─── RITARDANDO (36.0s → 43.0s): held tonic — the "Freude!" resolution.
-  //   The tutorial ends P8 with "C C" held; rhythm games need the timeline
-  //   filled, so we lay three more C's at slowing intervals. Still canonical
-  //   in spirit: the piece simply holds its tonic to close.
-  const holds: number[] = [36.0, 38.0, 40.0, 42.5];
-  holds.forEach(t => push(laneFor(P_C5), t, TRAVEL_BUILD, P_C5));
+  // ─── OUTRO (36.0s → 43.5s): four held tonic A's at slowing intervals —
+  //   long-press landings that close the run on the home note.
+  const outro: number[] = [36.0, 38.0, 40.0, 42.5];
+  outro.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0));
 
   return notes.sort((a, b) => a.time - b.time);
 }
@@ -280,7 +272,7 @@ function buildChart(): NoteDef[] {
 // count), not on raw score. Score includes fever bonuses + encore survival;
 // the grade answers one question only: how well did you play the song?
 // Encore depth gets its own badge on the finish screen instead.
-const MAIN_NOTE_COUNT = 59; // buildChart() note count — keep in sync if the chart changes
+const MAIN_NOTE_COUNT = 54; // buildChart() note count — keep in sync if the chart changes
 function gradeFor(accuracy: number) {
   if (accuracy >= 0.95) return { letter: "S", color: "#fbbf24", desc: "PERFECTION" };
   if (accuracy >= 0.85) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
@@ -295,25 +287,24 @@ type Burst = { id: number; x: number; y: number; color: string; born: number };
 // ─── Page ──────────────────────────────────────────────────────────────────────
 type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
 
-// Encore pool — one full canonical verse of London Bridge: opening line,
-// falling-down answer, repeat opening, my-fair-lady cadence. Player hears
-// the unmodified nursery rhyme cycle as tile pace accelerates.
-//   P1 + P2: G A G F E F G | D E F E F G
-//   P3 + P4: G A G F E F G | D G E C
+// Encore pool — one full cycle of the Turkish March theme: turn, echo,
+// cascade, landing. 21 notes per loop, taps only (no holds — the
+// accelerating survival exam has no time to sustain). The rondo repeats
+// faster and faster until it beats you, which is pure alla turca energy.
+//   T1 + T2: B A G# A C | D C B C E
+//   T3 + T4: F E D# E B A G# A | C B A
 // Lane mapping matches buildChart.laneFor:
-//   C, D → lane 0   E → lane 1   F → lane 2   G, A → lane 3
+//   G#, A → lane 0   B, C → lane 1   D, D# → lane 2   E, F → lane 3
 const ENCORE_POOL: [number, number][] = [
-  // Phrase 1 — G A G F E F G (London Bridge is falling down)
-  [3, P_G5], [3, P_A5], [3, P_G5], [2, P_F5],
-  [1, P_E5], [2, P_F5], [3, P_G5],
-  // Phrase 2 — D E F E F G (falling down, falling down)
-  [0, P_D5], [1, P_E5], [2, P_F5], [1, P_E5],
-  [2, P_F5], [3, P_G5],
-  // Phrase 3 — G A G F E F G (repeat opening)
-  [3, P_G5], [3, P_A5], [3, P_G5], [2, P_F5],
-  [1, P_E5], [2, P_F5], [3, P_G5],
-  // Phrase 4 — D G E C (my fair lady, clean tonic resolve)
-  [0, P_D5], [3, P_G5], [1, P_E5], [0, P_C5],
+  // T1 — B A G# A C (the famous turn)
+  [1, P_B4], [0, P_A4], [0, P_GS4], [0, P_A4], [1, P_C5],
+  // T2 — D C B C E (the echo, a third up)
+  [2, P_D5], [1, P_C5], [1, P_B4], [1, P_C5], [3, P_E5],
+  // T3 — F E D# E B A G# A (the cascade run)
+  [3, P_F5], [3, P_E5], [2, P_DS5], [3, P_E5],
+  [1, P_B4], [0, P_A4], [0, P_GS4], [0, P_A4],
+  // T4 — C B A (land on home)
+  [1, P_C5], [1, P_B4], [0, P_A4],
 ];
 
 export default function RhythmGamePage() {
@@ -464,122 +455,29 @@ export default function RhythmGamePage() {
     scheduledNodesRef.current.push(noise);
   }, []);
 
-  // Schedule the 45-second backing track: a musical C major bassline + hi-hats.
-  // Voiced in C major so it consonates with the London Bridge melody the
-  // player taps out on top. Pitched bass plays the chord roots so a bell on
-  // top plus a bass root = full triad in your ear.
-  //
-  // Sections follow the chart exactly (45s total):
-  //   intro   (0–9s)    → hats only → soft C2 pulse starting t=4
-  //   verse1  (9–15s)   → I-V-vi-IV progression — works for any C-major
-  //                       hymn/folk melody we slot in (Ode to Joy, Saints,
-  //                       London Bridge all share the tonal centre)
-  //   build1  (15–21s)  → C major arpeggio on every beat, ascending
-  //   drop1   (21–29s)  → driving I-V pattern on every beat
-  //   break   (29–30s)  → hats only — the calm before the reprise
-  //   verse2  (30–35s)  → same progression as verse 1 (the earworm repeats)
-  //   build2  (35–37s)  → short re-ramp
-  //   drop2   (37–44s)  → final drop, loudest, resolves on C
-  //   outro   (44–45s)  → hats tail
+  // ═══ Piano Tiles audio law: the player IS the song. ═══
+  // No backing band. No bass progression, no fills, no beat playing AT the
+  // player while they play. The tiles themselves are the metronome — your
+  // eyes keep time, and every sound in the run is a note the player earned
+  // with a finger. A miss = a hole in the melody, and that silence is the
+  // feedback. The only thing left underneath is a whisper-quiet hi-hat on
+  // the quarter notes (a subconscious pulse, mixed so low it disappears the
+  // moment the melody is playing over it).
   const scheduleDrumTrack = useCallback((audioStartTime: number) => {
     const ctx = getAudioCtx();
     if (!ctx) return;
     const total = TRACK_DURATION;
-    const eighth = BEAT / 2;
 
-    // C major note frequencies — used by every bass call
-    const C2 = 65.41;
-    const E2 = 82.41;
-    const F2 = 87.31;
-    const G2 = 98.00;
-    const A2 = 110.00;
-
-    // ── INTRO pulse (4.0s–8.5s)
-    for (let t = 4.0; t < 9.0; t += BEAT) {
-      scheduleBass(ctx, audioStartTime + t, C2, 0.3);
-    }
-
-    // ── VERSE 1 progression (9.0s–15.0s): I-V-vi-IV-I-V
-    // C G Am F C G in C major — generic enough to harmonise any folk/hymn
-    // melody we slot into the chart. Resolves to the tonic; the Am passing
-    // chord adds colour without dragging.
-    const verseChords = [C2, G2, A2, F2, C2, G2];
-    for (let i = 0; i < verseChords.length; i++) {
-      scheduleBass(ctx, audioStartTime + 9.0 + i * BEAT, verseChords[i], 0.38);
-    }
-
-    // ── BUILD 1 (15.0s–21.0s): ascending C major arpeggio (C E G C) on every beat
-    const buildScale = [C2, E2, G2, C2 * 2];
-    for (let i = 0; i < 12; i++) {
-      scheduleBass(ctx, audioStartTime + 15.0 + i * BEAT, buildScale[i % 4], 0.42);
-    }
-
-    // ── DROP 1 (21.0s–29.0s): driving I-V pattern on every beat, C major
-    const dropPattern = [C2, C2, G2, G2];
-    for (let i = 0; i < 16; i++) {
-      scheduleBass(ctx, audioStartTime + 21.0 + i * BEAT, dropPattern[i % 4], 0.48);
-    }
-
-    // ── BREAK (29.0s–30.0s): silence on bass — hats carry the tempo alone
-
-    // ── VERSE 2 (30.0s–35.0s): hook reprise, same progression as verse 1
-    for (let i = 0; i < 10; i++) {
-      scheduleBass(ctx, audioStartTime + 30.0 + i * BEAT, verseChords[i % 6], 0.42);
-    }
-
-    // ── BUILD 2 (35.0s–37.0s): short re-ramp into the final drop
-    for (let i = 0; i < 4; i++) {
-      scheduleBass(ctx, audioStartTime + 35.0 + i * BEAT, buildScale[i % 4], 0.5);
-    }
-
-    // ── DROP 2 (37.0s–44.0s): final drop — louder punch, 14 beats resolving on C
-    for (let i = 0; i < 14; i++) {
-      // Resolve on C on the last two beats instead of G-G
-      const freq = i >= 12 ? C2 : dropPattern[i % 4];
-      scheduleBass(ctx, audioStartTime + 37.0 + i * BEAT, freq, 0.56);
-    }
-
-    // ── FAST-RUN FILLS: bass on every off-beat eighth during eighth-note tile runs,
-    //    so every fast tile lands on a bass pulse (not just hats). This is what fixes
-    //    the "tiles come fast but don't groove with the music" feel during cascades.
-    const fastFills: [number, number][] = [
-      // Build burst (tiles 18.5→19.25): on-beats 18.5/19.0 already covered by main loop
-      [18.75, G2], [19.25, G2],
-      // Drop 1 eighth pair (tiles 23.5/23.75)
-      [23.75, G2],
-      // Drop 1 cascade (tiles 25.0→25.75)
-      [25.25, G2], [25.75, C2],
-      // Rebuild (tiles 35.5→36.25)
-      [35.75, G2], [36.25, G2],
-      // Drop 2 eighth pair (tiles 39.5→40.25)
-      [39.75, G2], [40.25, G2],
-      // Drop 2 cascade (tiles 41.0→41.75)
-      [41.25, G2], [41.75, C2],
-    ];
-    for (const [t, f] of fastFills) {
-      scheduleBass(ctx, audioStartTime + t, f, 0.44);
-    }
-
-    // ═══ No ghost melody — pure Piano Tiles feel ═══
-    // Tiles ONLY make sound when the player taps them. Bass + hats carry the
-    // song's rhythm underneath; bells (played from hitLane) carry the melody.
-    // Missing a tile = silence on that note. That's the whole point of the
-    // genre: the player IS playing the melody.
-
-    // HATS — the tempo spine underneath everything
-    for (let h = 2; h < total; h += eighth) {
+    // Whisper spine — quarter-note hats only, one dynamic bump in the
+    // final stretch so the sprint still breathes. ~4× quieter than the
+    // old mix; melody bells sit far above it.
+    for (let h = 2; h < total; h += BEAT) {
       const when = audioStartTime + h;
-      if (h < 9) scheduleHihat(ctx, when, 0.06);
-      else if (h < 15) scheduleHihat(ctx, when, 0.09);
-      else if (h < 21) scheduleHihat(ctx, when, 0.12);
-      else if (h < 29) scheduleHihat(ctx, when, 0.14);       // drop 1
-      else if (h < 30) scheduleHihat(ctx, when, 0.08);       // break
-      else if (h < 35) scheduleHihat(ctx, when, 0.11);       // verse 2
-      else if (h < 37) scheduleHihat(ctx, when, 0.14);       // build 2
-      else if (h < 44) scheduleHihat(ctx, when, 0.16);       // final drop
-      else scheduleHihat(ctx, when, 0.10);                   // outro
+      if (h < 32) scheduleHihat(ctx, when, 0.035);
+      else if (h < 44) scheduleHihat(ctx, when, 0.05);   // climax + holds
+      else scheduleHihat(ctx, when, 0.03);               // outro tail
     }
-  }, [getAudioCtx, scheduleBass, scheduleLead, scheduleHihat]);
+  }, [getAudioCtx, scheduleHihat]);
 
   // Stop every still-playing scheduled drum hit (used on exit/end)
   const stopDrumTrack = useCallback(() => {
@@ -609,7 +507,11 @@ export default function RhythmGamePage() {
   }, [getAudioCtx]);
 
   // Bell/pluck for player taps — this is SFX, gated on the sfx gain.
-  const playBell = useCallback((freq: number, volume = 0.18) => {
+  // With the backing band gone (Piano Tiles law: the player IS the song),
+  // the bell carries the entire musical experience, so it gets a fuller
+  // voice: fundamental + octave shimmer + a warm sub-octave that gives it
+  // piano-ish body instead of a thin ping.
+  const playBell = useCallback((freq: number, volume = 0.18, ring = 0.6) => {
     const ctx = getAudioCtx();
     if (!ctx) return;
     const v = volume * gainsRef.current.sfx;
@@ -618,19 +520,28 @@ export default function RhythmGamePage() {
     const master = ctx.createGain();
     master.gain.setValueAtTime(0, now);
     master.gain.linearRampToValueAtTime(v, now + 0.005);
-    master.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    master.gain.exponentialRampToValueAtTime(0.001, now + ring);
     master.connect(ctx.destination);
 
     const o1 = ctx.createOscillator();
     o1.type = "sine"; o1.frequency.value = freq;
-    o1.connect(master); o1.start(now); o1.stop(now + 0.5);
+    o1.connect(master); o1.start(now); o1.stop(now + ring);
 
     const o2 = ctx.createOscillator();
     const o2Gain = ctx.createGain();
     o2Gain.gain.value = 0.35;
     o2.type = "triangle"; o2.frequency.value = freq * 2;
     o2.connect(o2Gain); o2Gain.connect(master);
-    o2.start(now); o2.stop(now + 0.4);
+    o2.start(now); o2.stop(now + ring * 0.7);
+
+    // Sub-octave warmth — low partial that fills the space the old bass
+    // progression used to occupy, but only when the player earns a note.
+    const o3 = ctx.createOscillator();
+    const o3Gain = ctx.createGain();
+    o3Gain.gain.value = 0.22;
+    o3.type = "triangle"; o3.frequency.value = freq / 2;
+    o3.connect(o3Gain); o3Gain.connect(master);
+    o3.start(now); o3.stop(now + ring * 0.9);
   }, [getAudioCtx]);
 
   // Hit sound — plays the tile's OWN melody pitch (Piano Tiles style).
@@ -639,8 +550,63 @@ export default function RhythmGamePage() {
   // loud; good hits are quieter but still play the same pitch (so missed timing
   // doesn't corrupt the melody).
   const playHitForNote = useCallback((freq: number, type: "perfect" | "good") => {
-    playBell(freq, type === "perfect" ? 0.24 : 0.15);
+    playBell(freq, type === "perfect" ? 0.3 : 0.2);
   }, [playBell]);
+
+  // ─── Sustained hold tone — the note SINGS while the finger is down ─────────
+  // Starts on the hold's head press, stops (with a soft release ramp) the
+  // instant the finger lifts or the bar completes. This is the audio side
+  // of the hold contract: sound follows the finger, so the player's ear
+  // knows "still holding" without looking. Sine fundamental + warm
+  // sub-octave + gentle vibrato so the sustain feels alive, not like a
+  // test tone.
+  const playHoldTone = useCallback((freq: number): { stop: () => void } | null => {
+    const ctx = getAudioCtx();
+    if (!ctx) return null;
+    const v = 0.2 * gainsRef.current.sfx;
+    if (v <= 0) return null;
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0, now);
+    master.gain.linearRampToValueAtTime(v, now + 0.03);
+    master.connect(ctx.destination);
+
+    const o1 = ctx.createOscillator();
+    o1.type = "sine"; o1.frequency.value = freq;
+    o1.connect(master);
+
+    const o2 = ctx.createOscillator();
+    const o2Gain = ctx.createGain();
+    o2Gain.gain.value = 0.25;
+    o2.type = "triangle"; o2.frequency.value = freq / 2;
+    o2.connect(o2Gain); o2Gain.connect(master);
+
+    // Vibrato — 5Hz, ±4 cents. Makes the sustain sound played, not held.
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.value = 5;
+    lfoGain.gain.value = freq * 0.0023;
+    lfo.connect(lfoGain); lfoGain.connect(o1.frequency);
+
+    o1.start(now); o2.start(now); lfo.start(now);
+    // Hard safety stop at 3s — no chart hold is longer than 1.5s, this
+    // only fires if a stop() call was somehow lost.
+    const hardStop = now + 3;
+    o1.stop(hardStop); o2.stop(hardStop); lfo.stop(hardStop);
+
+    let stopped = false;
+    return {
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        const t = ctx.currentTime;
+        master.gain.cancelScheduledValues(t);
+        master.gain.setValueAtTime(master.gain.value, t);
+        master.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        try { o1.stop(t + 0.15); o2.stop(t + 0.15); lfo.stop(t + 0.15); } catch { /* already stopped */ }
+      },
+    };
+  }, [getAudioCtx]);
 
   // Haptic buzz on mobile — gated on the hapticsOn user preference.
   // Reads from the settings object directly (not a ref) since haptic is small
@@ -703,6 +669,18 @@ export default function RhythmGamePage() {
   const [feverActive, setFeverActive] = useState(false);
   const feverUntilRef = useRef(0);      // song-time (s) when fever expires · 0 = off
   const perfectStreakRef = useRef(0);   // synchronous mirror for scoring math
+
+  // ─── HOLD notes — one active hold per lane ──────────────────────────────────
+  // Registered on the head press, resolved on release / auto-completion in
+  // the RAF tick. Pure refs: holds resolve at input/frame cadence and the
+  // score state update is the only React-visible effect. `tone` is the
+  // sustained note that sings while the finger is down.
+  const activeHoldsRef = useRef<(({ note: NoteDef; pressAt: number; tone: { stop: () => void } | null }) | null)[]>([null, null, null, null]);
+  // Per-note lifecycle for hold bars: "held" keeps the bar rendering
+  // (anchored + consumed at the line), "dropped" lets it fall away dim,
+  // "done" removes it. Without this, the head hit marked the note
+  // consumed and the whole bar vanished on tap — the bug players felt.
+  const holdStateRef = useRef<Map<number, "held" | "dropped" | "done">>(new Map());
 
   // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
   // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
@@ -814,6 +792,9 @@ export default function RhythmGamePage() {
     // startRef.current === 0 so the countdown effect is the only
     // writer.
     startRef.current = 0;
+    for (const ah of activeHoldsRef.current) ah?.tone?.stop();
+    activeHoldsRef.current = [null, null, null, null];
+    holdStateRef.current.clear();
     setEncoreLives(3);
     setEncoreLoop(0);
     feverUntilRef.current = 0;
@@ -1190,7 +1171,58 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase === "playing" || phase === "encore") return;
     stopDrumTrack();
+    // Kill any sustained hold tones — quitting mid-hold must not leave a
+    // note singing over the finish screen.
+    for (const ah of activeHoldsRef.current) ah?.tone?.stop();
+    activeHoldsRef.current = [null, null, null, null];
   }, [phase, stopDrumTrack]);
+
+  // ─── Resolve an active hold — on finger release OR auto-completion ─────────
+  // Complete-or-break, the genre-standard rule: the bar must be held until
+  // it FINISHES crossing the line (note.time + hold, minus a small human
+  // release grace). Complete = full sustain bonus. Early = DROPPED — no
+  // bonus, combo dies, fever dies. A release entry is ALWAYS pushed to the
+  // tap log so the server replays the identical judgment.
+  const resolveHold = useCallback((lane: number, releaseTimeSec: number) => {
+    const h = activeHoldsRef.current[lane];
+    if (!h) return;
+    activeHoldsRef.current[lane] = null;
+    h.tone?.stop();
+    const holdDur = h.note.hold ?? 0;
+    const endTime = h.note.time + holdDur;      // when the bar's tail crosses the line
+    const complete = releaseTimeSec >= endTime - HOLD_RELEASE_GRACE;
+    holdStateRef.current.set(h.note.id, complete ? "done" : "dropped");
+    tapLogRef.current.push({ lane, time: releaseTimeSec, up: 1 });
+
+    const laneWidth = 100 / LANES.length;
+    const x = laneWidth * lane + laneWidth / 2;
+    if (complete) {
+      const bonus = Math.floor(holdDur / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+      setScore(s => s + bonus);
+      juice.scorePopup(x, 80, bonus, "perfect");
+      haptic(14);
+    } else {
+      // DROPPED — the commitment was broken. Same price as a miss for
+      // everything fragile, but accuracy stats stay untouched (the head
+      // hit was real; the sustain is what failed).
+      setCombo(0);
+      perfectStreakRef.current = 0;
+      setPerfectStreak(0);
+      if (feverUntilRef.current > 0) {
+        feverUntilRef.current = 0;
+        setFeverActive(false);
+      }
+      juice.lossPopup(x, 80, "DROPPED");
+      juice.bump(6);
+    }
+  }, [juice, haptic]);
+
+  // Finger lifted / key released — resolve any hold on that lane.
+  const releaseLane = useCallback((lane: number) => {
+    if (phase !== "playing" && phase !== "encore") return;
+    const now = (performance.now() - startRef.current) / 1000;
+    resolveHold(lane, now);
+  }, [phase, resolveHold]);
 
   // Handle a hit (from tap or keyboard)
   const hitLane = useCallback((lane: number) => {
@@ -1256,6 +1288,16 @@ export default function RhythmGamePage() {
       }
     }
 
+    // HOLD head — register the sustain, mark the bar as held (it keeps
+    // rendering, anchored at the line, being consumed), and start the
+    // sustained tone that sings until the finger lifts. Bonus credits on
+    // completion (RAF) or the hold breaks on early release. Encore has
+    // no holds by design, so this only fires on main-track tiles.
+    if (note.hold && phase === "playing") {
+      activeHoldsRef.current[lane] = { note, pressAt: now, tone: playHoldTone(note.freq) };
+      holdStateRef.current.set(note.id, "held");
+    }
+
     // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
     playHitForNote(note.freq, type);
     haptic(type === "perfect" ? 12 : 8);
@@ -1303,21 +1345,32 @@ export default function RhythmGamePage() {
     setTimeout(() => setFlashLane(l => (l === lane ? null : l)), 100);
   }, [phase, combo, maxCombo, playHitForNote, haptic]);
 
-  // Keyboard controls
+  // Keyboard controls — keydown presses, keyup resolves holds. Held keys
+  // auto-repeat keydown on most OSes, so repeats are ignored or a
+  // hold-note press would re-fire hitLane every ~30ms.
   useEffect(() => {
     if (phase !== "playing" && phase !== "encore") return;
-    const handler = (e: KeyboardEvent) => {
-      const keyMap: Record<string, number> = {
-        "a": 0, "s": 1, "d": 2, "f": 3,
-        "1": 0, "2": 1, "3": 2, "4": 3,
-        "ArrowLeft": 0, "ArrowDown": 1, "ArrowUp": 2, "ArrowRight": 3,
-      };
+    const keyMap: Record<string, number> = {
+      "a": 0, "s": 1, "d": 2, "f": 3,
+      "1": 0, "2": 1, "3": 2, "4": 3,
+      "ArrowLeft": 0, "ArrowDown": 1, "ArrowUp": 2, "ArrowRight": 3,
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const lane = keyMap[e.key];
       if (lane !== undefined) { e.preventDefault(); hitLane(lane); }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [phase, hitLane]);
+    const up = (e: KeyboardEvent) => {
+      const lane = keyMap[e.key];
+      if (lane !== undefined) { e.preventDefault(); releaseLane(lane); }
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [phase, hitLane, releaseLane]);
 
   // ── Tab-visibility / mobile-backgrounding guard ──
   //
@@ -1428,6 +1481,16 @@ export default function RhythmGamePage() {
         setFeverActive(false);
       }
 
+      // ── Hold auto-completion — the finger stayed down until the bar's
+      // tail crossed the line. Credit the full bonus + log the synthetic
+      // release at the exact end time so the server replay matches.
+      for (let lane = 0; lane < activeHoldsRef.current.length; lane++) {
+        const ah = activeHoldsRef.current[lane];
+        if (ah && now >= ah.note.time + (ah.note.hold ?? 0)) {
+          resolveHold(lane, ah.note.time + (ah.note.hold ?? 0));
+        }
+      }
+
       // ── Encore: loop-stepped acceleration until the game beats the player ──
       // Each full pass through ENCORE_POOL is one LOOP; every loop the tiles
       // fall 15% faster and pack 15% tighter. Loop 1 is comfortable, loop 5
@@ -1462,29 +1525,36 @@ export default function RhythmGamePage() {
         });
         encoreNextSpawnRef.current = now + nextGap;
 
-        // Reschedule the backing loop every 8 seconds so the rhythm never
-        // drops. Bass + hats only — no lead melody, same Piano Tiles rule as
-        // the main track: only player taps produce melodic notes.
+        // Reschedule the whisper spine every 8 seconds so the pulse never
+        // drops. Same Piano Tiles rule as the main track: only player taps
+        // produce notes — the encore's drama comes from the tiles
+        // accelerating, not from a backing band getting louder.
         const ctx = getAudioCtx();
         if (ctx && ctx.currentTime >= encoreLoopAtRef.current) {
           const loopStart = ctx.currentTime;
-          const C2 = 65.41, G2 = 98.00;
-          for (let i = 0; i < 16; i++) {
-            scheduleBass(ctx, loopStart + i * BEAT, i % 4 < 2 ? C2 : G2, 0.46);
-          }
-          for (let h = 0; h < 8; h += BEAT / 2) {
-            scheduleHihat(ctx, loopStart + h, 0.14);
+          for (let h = 0; h < 8; h += BEAT) {
+            scheduleHihat(ctx, loopStart + h, 0.045);
           }
           encoreLoopAtRef.current = loopStart + 7.8; // slight overlap to avoid gaps
         }
       }
 
       // Spawn notes that are now visible (notes whose fall window has started)
-      const visible: (NoteDef & { spawnedAt: number })[] = [];
+      const visible: (NoteDef & { spawnedAt: number; holdState?: "held" | "dropped" })[] = [];
       for (const n of chartRef.current) {
-        if (now >= n.time - n.travel && now <= n.time + GOOD_WINDOW + 0.3) {
+        if (now >= n.time - n.travel && now <= n.time + (n.hold ?? 0) + GOOD_WINDOW + 0.3) {
           if (!spawnedRef.current.has(n.id)) spawnedRef.current.add(n.id);
-          if (!missedRef.current.has(n.id)) visible.push({ ...n, spawnedAt: n.time - n.travel });
+          if (!missedRef.current.has(n.id)) {
+            visible.push({ ...n, spawnedAt: n.time - n.travel });
+          } else if (n.hold) {
+            // Hold bars outlive the head hit. "held" renders anchored +
+            // consumed at the line; "dropped" keeps falling, dimmed;
+            // "done" (completed) vanishes.
+            const hs = holdStateRef.current.get(n.id);
+            if (hs === "held" || hs === "dropped") {
+              visible.push({ ...n, spawnedAt: n.time - n.travel, holdState: hs });
+            }
+          }
         }
       }
 
@@ -1493,7 +1563,13 @@ export default function RhythmGamePage() {
       // components/rhythm/NoteCanvas.tsx. Nothing outside this RAF
       // tick consumes the visible list, so we don't mirror it into
       // React state at all anymore (saves a reconcile per id change).
-      canvasHandleRef.current?.draw(visible, now);
+      // Held tiles glow bright on the canvas — build the id set from the
+      // active holds (max 4 entries, negligible per-frame cost).
+      let heldIds: Set<number> | undefined;
+      for (const ah of activeHoldsRef.current) {
+        if (ah) { (heldIds ??= new Set()).add(ah.note.id); }
+      }
+      canvasHandleRef.current?.draw(visible, now, heldIds);
 
       // Flag misses: notes that passed the good window without being hit.
       // A miss kills everything fragile at once: combo, the perfect streak,
@@ -1502,6 +1578,7 @@ export default function RhythmGamePage() {
       for (const n of chartRef.current) {
         if (now > n.time + GOOD_WINDOW && !missedRef.current.has(n.id)) {
           missedRef.current.add(n.id);
+          if (n.hold) holdStateRef.current.set(n.id, "dropped");
           setCombo(0);
           perfectStreakRef.current = 0;
           setPerfectStreak(0);
@@ -1577,7 +1654,7 @@ export default function RhythmGamePage() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [phase, combo, getAudioCtx, scheduleBass, scheduleHihat, scheduleLead, playTone]);
+  }, [phase, combo, getAudioCtx, scheduleBass, scheduleHihat, scheduleLead, playTone, resolveHold]);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
@@ -1654,6 +1731,7 @@ export default function RhythmGamePage() {
           bursts={bursts}
           comboToast={comboToast} flashLane={flashLane} feedback={feedback}
           onTapLane={hitLane}
+          onReleaseLane={releaseLane}
           // QUIT ends the run with the current score. Transitions to "finished"
           // which triggers the normal submit flow — player sees their grade
           // and whatever XP/achievements they earned.
@@ -2014,7 +2092,7 @@ function PetCenter({
 function PlayingView({
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
-  onTapLane, onQuit, startRef, canvasHandleRef,
+  onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
   pet,
   isEncore, encoreLives, encoreLoop,
   fever, perfectStreak,
@@ -2024,6 +2102,7 @@ function PlayingView({
   comboToast: string | null; flashLane: number | null;
   feedback: { lane: number; type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null;
   onTapLane: (lane: number) => void;
+  onReleaseLane: (lane: number) => void;
   onQuit: () => void;
   startRef: React.MutableRefObject<number>;
   // Parent RAF calls canvasHandleRef.current.draw() every tick.
@@ -2224,6 +2303,7 @@ function PlayingView({
             laneIdx={i}
             isFlashing={flashLane === i}
             onPress={() => onTapLane(i)}
+            onRelease={() => onReleaseLane(i)}
           />
         ))}
       </div>
@@ -2365,7 +2445,7 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
 }
 
 // ─── Tap button (juicy wall + face — same pattern as game card START) ────────
-function TapButton({ theme, laneIdx, isFlashing, onPress }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void }) {
+function TapButton({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void; onRelease: () => void }) {
   const keyLabels = ["A", "S", "D", "F"];
   return (
     <div
@@ -2374,6 +2454,12 @@ function TapButton({ theme, laneIdx, isFlashing, onPress }: { theme: LaneTheme; 
       // at the tile's pitch (melodic). A UI tick on top would muddle it.
       data-no-click-sound="true"
       onPointerDown={e => { e.preventDefault(); onPress(); }}
+      // Release ends any active hold on this lane. pointerleave/cancel
+      // count as releases too — a finger sliding off the button mid-hold
+      // shouldn't sustain forever.
+      onPointerUp={e => { e.preventDefault(); onRelease(); }}
+      onPointerLeave={() => onRelease()}
+      onPointerCancel={() => onRelease()}
       style={{
         cursor: "pointer", userSelect: "none",
         transition: "transform 0.05s",

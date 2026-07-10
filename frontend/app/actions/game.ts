@@ -112,7 +112,10 @@ type SignScoreResult =
 // Tap log row — every player input recorded by the client during a rhythm
 // session. The server replays these to compute the score; the client never
 // claims a number. lane: 0-3, time: seconds since game start.
-export type RhythmTap = { lane: number; time: number };
+// `up: 1` marks a hold-note release (finger lifted); presses omit it. The
+// server judges hits from presses and pairs each hold-note press with the
+// next same-lane release to credit sustain ticks.
+export type RhythmTap = { lane: number; time: number; up?: 1 };
 
 type StartGameResult =
   | { success: true;  sessionToken: string }
