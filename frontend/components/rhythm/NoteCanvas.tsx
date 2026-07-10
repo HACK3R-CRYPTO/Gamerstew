@@ -178,19 +178,24 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       // Long light-shaft: invisible far above, building to a strong lane-
       // color glow right where the note is. The note falls down its own
       // beam of light — the banner's exact read.
+      // Peak glow just before the end, then a quick fade-out — the ribbon
+      // has NO hard bottom edge, so narrow shapes (the star) can't expose
+      // a visible "start" of the trail around their silhouette.
       const g = c.createLinearGradient(0, 0, 0, trailH);
       g.addColorStop(0, hexToRgba(theme.accent, 0));
       g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
-      g.addColorStop(0.8, hexToRgba(theme.accent, 0.32));
-      g.addColorStop(1, hexToRgba(theme.accent, 0.58));
+      g.addColorStop(0.78, hexToRgba(theme.accent, 0.34));
+      g.addColorStop(0.9, hexToRgba(theme.accent, 0.55));
+      g.addColorStop(1, hexToRgba(theme.accent, 0));
       c.fillStyle = g;
       c.fillRect(0, 0, tw, trailH);
       // Bright core column down the middle of the shaft — the hot center
-      // that makes it read as light, not fog
+      // that makes it read as light, not fog. Same soft tail-off.
       const core = c.createLinearGradient(0, 0, 0, trailH);
       core.addColorStop(0, "rgba(255,255,255,0)");
-      core.addColorStop(0.75, "rgba(255,255,255,0.06)");
-      core.addColorStop(1, "rgba(255,255,255,0.22)");
+      core.addColorStop(0.72, "rgba(255,255,255,0.06)");
+      core.addColorStop(0.88, "rgba(255,255,255,0.2)");
+      core.addColorStop(1, "rgba(255,255,255,0)");
       c.fillStyle = core;
       c.fillRect(tw * 0.3, 0, tw * 0.4, trailH);
       return off;
@@ -404,8 +409,11 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         const trailSprite = trails[n.lane];
         const trailW = tileW * 0.7;
         const trailHpx = tileH * 5.2;
+        // The fade-out tail ends at the shape's center — every silhouette
+        // is widest around its mid-band, so the ribbon's end stays hidden
+        // behind the candy on all four shapes, star included.
         ctx.globalAlpha = alpha;
-        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter + tileH * 0.35 - trailHpx, trailW, trailHpx);
+        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter + tileH * 0.1 - trailHpx, trailW, trailHpx);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
