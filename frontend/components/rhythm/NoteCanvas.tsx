@@ -353,16 +353,46 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           roundRect(ctx, bx + inset + 3, pillTop + 5, Math.max(3, pillW * 0.18), Math.max(6, pillH * 0.4), 4);
           ctx.fill();
 
-          // While held: a hot consumption edge where the bar meets the
-          // judgment line — the anchor that says "being eaten right here,
-          // don't let go".
+          // While held: the bar visibly BURNS DOWN. Three stacked signals
+          // so the diminishing is impossible to miss:
+          //   1. urgency tint — the remaining pill heats toward white as
+          //      the hold progresses (a countdown you feel, not read)
+          //   2. fuse edge — the eating point flickers like a lit fuse,
+          //      not a static line
+          //   3. sparks — embers fly off at the burn point
           if (held) {
-            ctx.globalAlpha = alpha;
+            const holdProgress = Math.max(0, Math.min(1, (nowSec - n.time) / (n.hold || 1)));
+
+            // 1. Urgency tint over the remaining pill — hotter as it drains
+            ctx.globalAlpha = 0.45 * holdProgress * alpha;
             ctx.fillStyle = "#ffffff";
-            ctx.fillRect(bx - 5, Math.round(bottom) - 3, barW + 10, 6);
-            ctx.globalAlpha = 0.55 * alpha;
+            roundRect(ctx, bx + inset, pillTop, pillW, pillH, pillW / 2);
+            ctx.fill();
+
+            // 2. Fuse edge — flickers using the frame clock (no state)
+            const flick = 0.75 + 0.25 * Math.sin(nowSec * 30);
+            ctx.globalAlpha = alpha * flick;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(bx - 6, Math.round(bottom) - 3, barW + 12, 6);
+            ctx.globalAlpha = 0.6 * alpha * flick;
             ctx.fillStyle = theme.glow;
-            ctx.fillRect(bx - 12, Math.round(bottom) - 8, barW + 24, 16);
+            ctx.fillRect(bx - 14, Math.round(bottom) - 9, barW + 28, 18);
+
+            // 3. Sparks — deterministic pseudo-random from the frame clock
+            // (no allocations, no state): five ember dots dancing at the
+            // burn point, jumping every 50ms
+            const tick = Math.floor(nowSec * 20);
+            ctx.fillStyle = "#ffffff";
+            for (let i = 0; i < 5; i++) {
+              const rnd = Math.abs(Math.sin(tick * 7.31 + i * 13.7));
+              const rnd2 = Math.abs(Math.sin(tick * 3.7 + i * 29.3));
+              const sx = bx + rnd * barW;
+              const sy = bottom - 4 - rnd2 * 16;
+              ctx.globalAlpha = (0.5 + 0.5 * rnd) * alpha;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 1.5 + rnd2 * 2, 0, Math.PI * 2);
+              ctx.fill();
+            }
           }
           continue; // the capsule replaces the head sprite entirely
         }
