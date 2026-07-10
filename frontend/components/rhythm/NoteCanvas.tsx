@@ -135,15 +135,13 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       tracePath(c, laneIdx, cx, cy + 3, shapeW, shapeH);
       c.fill();
 
-      // Candy body — radial gradient for the glossy jelly look
-      const grad = c.createRadialGradient(cx - shapeW * 0.22, cy - shapeH * 0.28, 2, cx, cy, Math.max(shapeW, shapeH) * 0.75);
-      grad.addColorStop(0, "rgba(255,255,255,0.85)");
-      grad.addColorStop(0.25, theme.accent);
-      grad.addColorStop(1, theme.wall);
-      c.fillStyle = grad;
+      // Candy body — SOLID saturated accent with a white rim, exactly the
+      // banner's look. (A soft radial gradient bleached the colors into
+      // pastel; flat + rim + shine is what reads as candy.)
+      c.fillStyle = theme.accent;
       c.lineJoin = "round";
       c.lineWidth = 3;
-      c.strokeStyle = "rgba(255,255,255,0.5)";
+      c.strokeStyle = "rgba(255,255,255,0.75)";
       tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
       c.fill();
       c.stroke();
@@ -255,10 +253,9 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         if (n.hold) {
           const pxPerSec = h / n.travel;
           const barH = n.hold * pxPerSec;
-          // Full tile width — hold bars are first-class tiles that happen
-          // to be long, not skinny ribbons. Solid body + stroked border
-          // reads instantly as "this one is different: pin it".
-          const barW = tileW;
+          // Slim track — the banner's hold is an elegant narrow groove,
+          // not a wall. Length stays timing-true (length = duration).
+          const barW = tileW * 0.56;
           const bx = Math.round(xCenter - barW / 2);
           const held = heldIds?.has(n.id) || n.holdState === "held";
           const dropped = n.holdState === "dropped";
@@ -285,33 +282,33 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 24);
           ctx.fill();
 
-          // The track — dark translucent groove with an accent outline
-          ctx.globalAlpha = (held ? 0.75 : 0.55) * alpha * dim;
-          ctx.fillStyle = theme.wall;
-          roundRect(ctx, bx, top, barW, visH, 18);
+          // The track — tinted glass groove with an accent outline
+          ctx.globalAlpha = (held ? 0.4 : 0.25) * alpha * dim;
+          ctx.fillStyle = theme.accent;
+          roundRect(ctx, bx, top, barW, visH, barW / 2);
           ctx.fill();
-          ctx.globalAlpha = (held ? 1 : 0.8) * alpha * dim;
-          ctx.lineWidth = held ? 3 : 2;
+          ctx.globalAlpha = (held ? 1 : 0.85) * alpha * dim;
+          ctx.lineWidth = held ? 3.5 : 2.5;
           ctx.strokeStyle = held ? "#ffffff" : theme.accent;
-          roundRect(ctx, bx, top, barW, visH, 18);
+          roundRect(ctx, bx, top, barW, visH, barW / 2);
           ctx.stroke();
 
-          // The pill — bright capsule inset in the groove, glowing hot
-          // while held. Inset margin keeps the track edge visible so the
+          // The pill — SATURATED capsule inset in the groove, glowing hot
+          // while held. Small inset keeps the track edge visible so the
           // two-layer read survives at speed.
-          const inset = Math.max(5, barW * 0.16);
+          const inset = 5;
           const pillW = barW - inset * 2;
           const pillTop = top + inset;
-          const pillH = Math.max(8, visH - inset * 2);
-          ctx.globalAlpha = (held ? 1 : 0.85) * alpha * dim;
+          const pillH = Math.max(10, visH - inset * 2);
+          ctx.globalAlpha = alpha * dim;
           ctx.fillStyle = theme.accent;
           roundRect(ctx, bx + inset, pillTop, pillW, pillH, pillW / 2);
           ctx.fill();
 
-          // Pill core highlight — lit-from-within
-          ctx.globalAlpha = (held ? 0.75 : 0.45) * alpha * dim;
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
-          roundRect(ctx, bx + inset + pillW * 0.28, pillTop + 4, pillW * 0.44, Math.max(4, pillH - 8), pillW * 0.22);
+          // Pill shine — a slim edge highlight, not a bleach wash
+          ctx.globalAlpha = (held ? 0.8 : 0.5) * alpha * dim;
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          roundRect(ctx, bx + inset + 3, pillTop + 5, Math.max(3, pillW * 0.18), Math.max(6, pillH * 0.4), 4);
           ctx.fill();
 
           // While held: a hot consumption edge where the bar meets the

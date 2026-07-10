@@ -2424,21 +2424,27 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
     <div style={{
       position: "relative",
       borderRadius: "14px",
+      // Tinted neon channel — every lane visibly carries its color, like
+      // the banner art. Dark at the top, warming toward the strike zone.
       background: flashing
-        ? `linear-gradient(180deg, ${theme.accent}18 0%, rgba(0,0,0,0.2) 100%)`
-        : "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.25) 100%)",
-      border: `1.5px solid ${flashing ? theme.accent : "rgba(255,255,255,0.08)"}`,
-      boxShadow: flashing ? `inset 0 0 24px ${theme.glow}` : "none",
+        ? `linear-gradient(180deg, ${theme.accent}22 0%, ${theme.accent}14 55%, ${theme.accent}30 100%)`
+        : `linear-gradient(180deg, ${theme.accent}0a 0%, ${theme.accent}10 55%, ${theme.accent}1f 100%)`,
+      border: `1.5px solid ${flashing ? theme.accent : theme.accent + "3a"}`,
+      boxShadow: flashing ? `inset 0 0 28px ${theme.glow}` : `inset 0 0 16px ${theme.accent}14`,
       overflow: "hidden",
       transition: "border-color 0.08s, box-shadow 0.08s",
     }}>
-      {/* Lane glow strip down center */}
-      <div style={{
-        position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-        width: "2px", height: "100%",
-        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}33 50%, transparent 100%)`,
-        pointerEvents: "none",
-      }} />
+      {/* Neon side rails — the lane's edges glow in its color */}
+      {["left", "right"].map(side => (
+        <div key={side} style={{
+          position: "absolute", top: 0, bottom: 0, [side]: 0,
+          width: "2.5px",
+          background: `linear-gradient(180deg, ${theme.accent}30 0%, ${theme.accent}${flashing ? "ee" : "77"} 70%, ${theme.accent} 100%)`,
+          boxShadow: flashing ? `0 0 10px ${theme.glow}` : `0 0 5px ${theme.accent}55`,
+          pointerEvents: "none",
+          transition: "background 0.08s",
+        }} />
+      ))}
 
       {/* TAP TARGET — dashed tile shape matching the falling notes */}
       <div style={{
