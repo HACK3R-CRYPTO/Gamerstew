@@ -30,9 +30,12 @@ const laneFor = (f) => {
   return 3; // E5 / F5
 };
 
-// Hold-note tick math — MUST mirror the client (page.tsx).
-const HOLD_TICK_POINTS = 2;  // per completed 0.5s of sustain
+// Hold-note math — MUST mirror the client (page.tsx). Complete-or-break:
+// the bar must be held until note.time + hold (minus the release grace).
+// Complete = full bonus. Early release = no bonus + streak/fever break.
+const HOLD_TICK_POINTS = 2;      // per 0.5s of bar length, paid on completion
 const HOLD_TICK_SEC = 0.5;
+const HOLD_RELEASE_GRACE = 0.15;
 
 // Build the main-track chart. Deterministic — no seed needed since the chart
 // is the same every game. The encore is built dynamically by the client; we
@@ -264,15 +267,19 @@ function computeScore(tapLog, elapsedMs) {
       }
       hits.push({ diff: bestDiff, isPerfect });
 
-      // Hold sustain — pair with the next same-lane release; ticks match
-      // the client exactly (floor(heldTime / 0.5) × 2, no fever, capped
-      // at the note's hold duration). No release logged = no ticks (the
-      // client always logs one, including on auto-completion).
+      // Hold sustain — complete-or-break, mirroring the client exactly.
+      // Pair with the next same-lane release: released at/after the bar's
+      // end (minus grace) = full bonus; early = no bonus AND the streak +
+      // fever break (the client fires DROPPED). No release logged = no
+      // bonus (the client always logs one, including auto-completion).
       if (bestNote.hold) {
         const rel = nextReleaseAfter(bestNote.lane, tap.time);
-        if (rel) {
-          const heldTime = Math.max(0, Math.min(rel.time - tap.time, bestNote.hold));
-          score += Math.floor(heldTime / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+        const endTime = bestNote.time + bestNote.hold;
+        if (rel && rel.time >= endTime - HOLD_RELEASE_GRACE) {
+          score += Math.floor(bestNote.hold / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+        } else {
+          perfectStreak = 0;
+          feverUntil = 0;
         }
       }
       continue;

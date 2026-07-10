@@ -83,13 +83,18 @@ const FEVER_TRIGGER = 12;    // consecutive PERFECTs to ignite fever
 const FEVER_DURATION = 6;    // seconds of ×2 once ignited
 const FEVER_MULT = 2;        // the only multiplier in the game
 const ENCORE_POINTS = 5;     // flat per encore tile — encore is for glory, not farming
-// Hold notes: the head press scores like a normal tap; every completed
-// half-second the finger stays down pays HOLD_TICK_POINTS more, credited
-// at release (or automatically when the hold's full duration elapses).
-// Addition-only law holds: ticks add, never multiply, and fever doesn't
-// touch them — mirrors the server replay exactly.
-const HOLD_TICK_POINTS = 2;  // per completed 0.5s of sustain
+// Hold notes — genre-standard rules (Magic Tiles / Piano Tiles):
+//   · Press the head like a normal tap (judged perfect/good as usual).
+//   · HOLD until the bar finishes crossing the line. Completing pays the
+//     full sustain bonus (HOLD_TICK_POINTS per 0.5s of the bar's length).
+//   · Release EARLY = the hold BREAKS: no bonus, combo dies, fever dies,
+//     "DROPPED" flashes. Holding is a commitment, not a suggestion.
+//   · A small release grace (humans lift slightly early) keeps it fair.
+// Addition-only law: the bonus adds, never multiplies, and fever doesn't
+// touch it — mirrors the server replay exactly.
+const HOLD_TICK_POINTS = 2;      // per 0.5s of the bar's length, paid on completion
 const HOLD_TICK_SEC = 0.5;
+const HOLD_RELEASE_GRACE = 0.15; // releasing within 150ms of the end still completes
 
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -1107,23 +1112,42 @@ export default function RhythmGamePage() {
   }, [phase, stopDrumTrack]);
 
   // ─── Resolve an active hold — on finger release OR auto-completion ─────────
-  // heldTime is capped at the note's full hold duration; every completed
-  // HOLD_TICK_SEC pays HOLD_TICK_POINTS. Ticks are addition-only (no fever)
-  // and mirror the server replay math exactly. A synthetic release entry is
-  // ALWAYS pushed to the tap log so the server can credit the same ticks.
+  // Complete-or-break, the genre-standard rule: the bar must be held until
+  // it FINISHES crossing the line (note.time + hold, minus a small human
+  // release grace). Complete = full sustain bonus. Early = DROPPED — no
+  // bonus, combo dies, fever dies. A release entry is ALWAYS pushed to the
+  // tap log so the server replays the identical judgment.
   const resolveHold = useCallback((lane: number, releaseTimeSec: number) => {
     const h = activeHoldsRef.current[lane];
     if (!h) return;
     activeHoldsRef.current[lane] = null;
-    const heldTime = Math.max(0, Math.min(releaseTimeSec - h.pressAt, h.note.hold ?? 0));
-    const ticks = Math.floor(heldTime / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+    const holdDur = h.note.hold ?? 0;
+    const endTime = h.note.time + holdDur;      // when the bar's tail crosses the line
+    const complete = releaseTimeSec >= endTime - HOLD_RELEASE_GRACE;
     tapLogRef.current.push({ lane, time: releaseTimeSec, up: 1 });
-    if (ticks > 0) {
-      setScore(s => s + ticks);
-      const laneWidth = 100 / LANES.length;
-      juice.scorePopup(laneWidth * lane + laneWidth / 2, 80, ticks, "good");
+
+    const laneWidth = 100 / LANES.length;
+    const x = laneWidth * lane + laneWidth / 2;
+    if (complete) {
+      const bonus = Math.floor(holdDur / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+      setScore(s => s + bonus);
+      juice.scorePopup(x, 80, bonus, "perfect");
+      haptic(14);
+    } else {
+      // DROPPED — the commitment was broken. Same price as a miss for
+      // everything fragile, but accuracy stats stay untouched (the head
+      // hit was real; the sustain is what failed).
+      setCombo(0);
+      perfectStreakRef.current = 0;
+      setPerfectStreak(0);
+      if (feverUntilRef.current > 0) {
+        feverUntilRef.current = 0;
+        setFeverActive(false);
+      }
+      juice.lossPopup(x, 80, "DROPPED");
+      juice.bump(6);
     }
-  }, [juice]);
+  }, [juice, haptic]);
 
   // Finger lifted / key released — resolve any hold on that lane.
   const releaseLane = useCallback((lane: number) => {
@@ -1386,13 +1410,13 @@ export default function RhythmGamePage() {
         setFeverActive(false);
       }
 
-      // ── Hold auto-completion — the finger stayed down the whole
-      // duration. Credit full ticks + log the synthetic release at the
-      // exact completion time so the server replay matches to the tick.
+      // ── Hold auto-completion — the finger stayed down until the bar's
+      // tail crossed the line. Credit the full bonus + log the synthetic
+      // release at the exact end time so the server replay matches.
       for (let lane = 0; lane < activeHoldsRef.current.length; lane++) {
         const ah = activeHoldsRef.current[lane];
-        if (ah && now >= ah.pressAt + (ah.note.hold ?? 0)) {
-          resolveHold(lane, ah.pressAt + (ah.note.hold ?? 0));
+        if (ah && now >= ah.note.time + (ah.note.hold ?? 0)) {
+          resolveHold(lane, ah.note.time + (ah.note.hold ?? 0));
         }
       }
 
@@ -1458,7 +1482,13 @@ export default function RhythmGamePage() {
       // components/rhythm/NoteCanvas.tsx. Nothing outside this RAF
       // tick consumes the visible list, so we don't mirror it into
       // React state at all anymore (saves a reconcile per id change).
-      canvasHandleRef.current?.draw(visible, now);
+      // Held tiles glow bright on the canvas — build the id set from the
+      // active holds (max 4 entries, negligible per-frame cost).
+      let heldIds: Set<number> | undefined;
+      for (const ah of activeHoldsRef.current) {
+        if (ah) { (heldIds ??= new Set()).add(ah.note.id); }
+      }
+      canvasHandleRef.current?.draw(visible, now, heldIds);
 
       // Flag misses: notes that passed the good window without being hit.
       // A miss kills everything fragile at once: combo, the perfect streak,

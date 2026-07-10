@@ -42,7 +42,9 @@ export type ActiveNote = {
 };
 
 export type NoteCanvasHandle = {
-  draw: (notes: ActiveNote[], nowSec: number) => void;
+  // heldIds: note ids currently being sustained by a finger — their hold
+  // bars render brighter so the player feels the connection.
+  draw: (notes: ActiveNote[], nowSec: number, heldIds?: Set<number>) => void;
 };
 
 type Props = {
@@ -162,7 +164,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   }, []);
 
   useImperativeHandle(ref, () => ({
-    draw(notes, nowSec) {
+    draw(notes, nowSec, heldIds) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -198,35 +200,48 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         // Fade-in during first 15% of travel — matches the DOM version
         const alpha = progress < 0.15 ? Math.max(0, progress / 0.15) : 1;
 
-        // HOLD STEM — a translucent ribbon extending UP from the head
-        // (the tail arrives later, so it sits above). Two flat rects:
-        // wide soft body + bright core line. No gradients, no paths —
-        // same cheap-ops discipline as the rest of the renderer.
+        // HOLD BAR — one continuous glowing capsule, Synthesia/Magic Tiles
+        // style: the tile IS the long bar. It spans from the head up to
+        // the tail (hold duration × fall speed) and lights up brighter
+        // while the finger is on it. Costs a couple of path fills per
+        // hold tile — there are at most 1-2 on screen, negligible.
         if (n.hold) {
           const pxPerSec = h / n.travel;
-          const stemH = n.hold * pxPerSec;
-          const stemY = Math.round(yCenter - stemH);
-          ctx.globalAlpha = 0.30 * alpha;
+          const barH = n.hold * pxPerSec;
+          const barW = tileW * 0.86;
+          const bx = Math.round(xCenter - barW / 2);
+          const by = Math.round(yCenter - barH);
+          const held = heldIds?.has(n.id) ?? false;
+
+          // Soft outer glow
+          ctx.globalAlpha = (held ? 0.5 : 0.25) * alpha;
           ctx.fillStyle = theme.glow;
-          ctx.fillRect(Math.round(xCenter - tileW * 0.28), stemY, Math.round(tileW * 0.56), Math.round(stemH));
-          ctx.globalAlpha = 0.75 * alpha;
+          roundRect(ctx, bx - 6, by - 6, barW + 12, barH + tileH / 2 + 12, 20);
+          ctx.fill();
+
+          // Capsule body — bright while held, translucent while falling
+          ctx.globalAlpha = (held ? 0.95 : 0.55) * alpha;
           ctx.fillStyle = theme.accent;
-          ctx.fillRect(Math.round(xCenter - 2), stemY, 4, Math.round(stemH));
-          // Tail cap — marks where the finger can let go
-          ctx.globalAlpha = 0.9 * alpha;
-          ctx.fillRect(Math.round(xCenter - tileW * 0.28), stemY - 3, Math.round(tileW * 0.56), 4);
+          roundRect(ctx, bx, by, barW, barH + tileH / 2, 16);
+          ctx.fill();
+
+          // Center gloss stripe — gives the capsule the lit-from-within
+          // look of the reference piano-roll bars.
+          ctx.globalAlpha = (held ? 0.55 : 0.3) * alpha;
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          roundRect(ctx, Math.round(xCenter - barW * 0.14), by + 6, Math.round(barW * 0.28), Math.max(4, barH + tileH / 2 - 14), 10);
+          ctx.fill();
+          continue; // the capsule replaces the head sprite entirely
         }
 
         // Motion trail — a single flat rect (no gradient allocation). The
         // fade-to-transparent is faked with a low globalAlpha; cheaper
         // than a per-frame createLinearGradient and visually identical in
-        // motion. Hold tiles skip it — the stem IS their trail.
-        if (!n.hold) {
-          const trailH = 26;
-          ctx.globalAlpha = 0.32 * alpha;
-          ctx.fillStyle = theme.glow;
-          ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
-        }
+        // motion.
+        const trailH = 26;
+        ctx.globalAlpha = 0.32 * alpha;
+        ctx.fillStyle = theme.glow;
+        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
