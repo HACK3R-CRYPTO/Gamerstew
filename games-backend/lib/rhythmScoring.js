@@ -19,15 +19,15 @@ const TRAVEL_VERSE = 2.1;
 const TRAVEL_BUILD = 1.7;
 const TRAVEL_DROP  = 1.4;
 
-// London Bridge — C major pitches
-const P_C5 = 523.25, P_D5 = 587.33, P_E5 = 659.25, P_F5 = 698.46,
-      P_G5 = 783.99, P_A5 = 880.00;
+// In the Hall of the Mountain King (Grieg) — A minor pitches
+const P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25, P_D5 = 587.33,
+      P_DS5 = 622.25, P_E5 = 659.25;
 
 const laneFor = (f) => {
-  if (f === P_C5 || f === P_D5) return 0;
-  if (f === P_E5) return 1;
-  if (f === P_F5) return 2;
-  return 3; // G5 / A5
+  if (f === P_A4 || f === P_B4) return 0;
+  if (f === P_C5) return 1;
+  if (f === P_D5 || f === P_DS5) return 2;
+  return 3; // E5
 };
 
 // Build the main-track chart. Deterministic — no seed needed since the chart
@@ -39,10 +39,11 @@ function buildMainChart() {
   const push = (lane, time, travel, freq) =>
     notes.push({ id: id++, lane, time, travel, freq });
 
-  const P1 = [P_G5, P_A5, P_G5, P_F5, P_E5, P_F5, P_G5];
-  const P2 = [P_D5, P_E5, P_F5, P_E5, P_F5, P_G5];
+  // Mountain King theme — mirrors page.tsx buildChart exactly.
+  const P1 = [P_A4, P_B4, P_C5, P_D5, P_E5, P_C5, P_E5];
+  const P2 = [P_DS5, P_B4, P_DS5, P_E5, P_C5, P_E5];
   const P3 = P1;
-  const P4 = [P_D5, P_G5, P_E5, P_C5];
+  const P4 = [P_E5, P_C5, P_B4, P_A4];
   const P5 = P1;
   const P6 = P2;
   const P7 = P1;
@@ -68,9 +69,9 @@ function buildMainChart() {
   stamp(P8, 29.5, TRAVEL_DROP);
   stamp(P9, 32.5, TRAVEL_DROP, BEAT / 2); // climax reprise — eighth notes
 
-  // Ritardando holds — four closing C5 tonics (client: holds[])
+  // Ritardando holds — four closing A4 tonics (client: holds[])
   for (const t of [36.0, 38.0, 40.0, 42.5]) {
-    push(laneFor(P_C5), t, TRAVEL_BUILD, P_C5);
+    push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4);
   }
 
   return notes.sort((a, b) => a.time - b.time);

@@ -153,29 +153,29 @@ const LANES: LaneTheme[] = [
   { wall: "#003a00", face: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)", glow: "rgba(34,197,94,0.8)", accent: "#22c55e" },
 ];
 
-// ─── Note chart — London Bridge Is Falling Down, C major ────────────────────
+// ─── Note chart — In the Hall of the Mountain King (Grieg, 1875), A minor ───
 // Piano Tiles principle: the sequence of taps IS the melody. Every tile has
 // a lane (visual) AND a freq (the note it plays when tapped). Lanes run
 // low-left to high-right so tapping across the screen feels like walking
 // up a piano keyboard.
 //
-// Mapping (diatonic):
-//   lane 0 → C5, D5   (bottom of the scale)
-//   lane 1 → E5       (mid-low)
-//   lane 2 → F5       (mid)
-//   lane 3 → G5, A5   (top — both share since London Bridge climbs to A)
+// Mapping (A minor):
+//   lane 0 → A4, B4   (bottom of the run)
+//   lane 1 → C5       (mid-low)
+//   lane 2 → D5, D#5  (mid — D# is the theme's signature chromatic creep)
+//   lane 3 → E5       (top of the run)
 //
-// Song: "London Bridge Is Falling Down" — traditional English nursery rhyme.
-// Switched in for this new season. Stays in C major so the I-V-vi-IV-I-V
-// chord progression and audio scheduling carry over without rework. London
-// Bridge is one note higher than Saints (it climbs to A5), so the high
-// lane (3) holds both G and A — the rocking back-and-forth between them
-// at the start IS the song's recognizable hook.
+// Song: "In the Hall of the Mountain King" — the piece is literally composed
+// to accelerate: it starts as a tiptoe and ends as a stampede, which is the
+// exact emotional arc of our 3-act chart + accelerating encore. The theme's
+// ascending run (A B C D E C E) walks the player's hand up all four lanes —
+// the melody physically climbs the screen. Public-domain composition; every
+// note synthesized in WebAudio.
 type NoteDef = { id: number; lane: number; time: number; travel: number; freq: number };
 
-// C major scale pitches — London Bridge spans D5 → A5.
-const P_C5 = 523.25, P_D5 = 587.33, P_E5 = 659.25, P_F5 = 698.46,
-  P_G5 = 783.99, P_A5 = 880.00;
+// A minor pitches — the theme spans A4 → E5 with the chromatic D#.
+const P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25, P_D5 = 587.33,
+  P_DS5 = 622.25, P_E5 = 659.25;
 
 function buildChart(): NoteDef[] {
   const notes: NoteDef[] = [];
@@ -183,40 +183,37 @@ function buildChart(): NoteDef[] {
   const push = (lane: number, time: number, travel: number, freq: number) =>
     notes.push({ id: id++, lane, time, travel, freq });
 
-  // London Bridge canonical melody — exact pitches from noobnotes/Skoove,
-  // no padding. Two full verses (P1-P4 and P5-P8), then an eighth-note
-  // climax reprise (P9) of the opening hook for skill expression. The
-  // half-step climax is THE place where "perfect" runs separate skilled
-  // players from casual ones — coupled with the ±80ms PERFECT window,
-  // the leaderboard gap forms here.
-  //   P1: G A G F E F G         (7, "London Bridge is falling down")
-  //   P2: D E F E F G           (6, "falling down, falling down")
-  //   P3: G A G F E F G         (7, repeat opening line)
-  //   P4: D G E C               (4, "my fair lady" — clean tonic resolve)
-  //   P5: G A G F E F G         (7, verse 2 opening)
-  //   P6: D E F E F G           (6, verse 2 second line)
-  //   P7: G A G F E F G         (7, verse 2 third line)
-  //   P8: D G E C               (4, verse 2 final cadence)
-  //   P9: G A G F E F G         (7, eighth-note climax — half tempo, skill check)
+  // Mountain King theme — the obsessively repeating run Grieg built the
+  // whole piece from. Two full passes (P1-P4 and P5-P8), then an
+  // eighth-note climax reprise (P9) of the run for skill expression —
+  // which is ALSO what the real piece does at its finale. Coupled with
+  // the ±80ms PERFECT window, the climax is where the leaderboard gap
+  // forms.
+  //   P1: A B C D E C E         (7, the tiptoe run — ascends the lanes)
+  //   P2: D# B D# E C E         (6, the chromatic answer — Grieg's creep)
+  //   P3: A B C D E C E         (7, run repeats — the obsession builds)
+  //   P4: E C B A               (4, descend to the tonic — brief landing)
+  //   P5-P8: same, second pass  (the chase tightens)
+  //   P9: A B C D E C E         (7, eighth-note stampede — the skill check)
   type Pitch = number;
-  const P1: Pitch[] = [P_G5, P_A5, P_G5, P_F5, P_E5, P_F5, P_G5];
-  const P2: Pitch[] = [P_D5, P_E5, P_F5, P_E5, P_F5, P_G5];
+  const P1: Pitch[] = [P_A4, P_B4, P_C5, P_D5, P_E5, P_C5, P_E5];
+  const P2: Pitch[] = [P_DS5, P_B4, P_DS5, P_E5, P_C5, P_E5];
   const P3: Pitch[] = P1;
-  const P4: Pitch[] = [P_D5, P_G5, P_E5, P_C5];
+  const P4: Pitch[] = [P_E5, P_C5, P_B4, P_A4];
   const P5: Pitch[] = P1;
   const P6: Pitch[] = P2;
   const P7: Pitch[] = P1;
   const P8: Pitch[] = P4;
-  const P9: Pitch[] = P1;  // climax reprise — same pitches, half the time
+  const P9: Pitch[] = P1;  // climax stampede — same pitches, half the time
 
-  // Lane map — low-left to high-right. C D on lane 0, E on lane 1, F on
-  // lane 2, G on lane 3. Spreads the six-note Ode palette across all four
-  // lanes so the player's hand visits every tile zone.
+  // Lane map — low-left to high-right. A B on lane 0, C on lane 1, D/D#
+  // on lane 2, E on lane 3. The theme's ascending run walks the hand
+  // across all four lanes in order — melody and motion agree.
   const laneFor = (f: Pitch): number => {
-    if (f === P_C5 || f === P_D5) return 0;
-    if (f === P_E5) return 1;
-    if (f === P_F5) return 2;
-    return 3; // P_G5
+    if (f === P_A4 || f === P_B4) return 0;
+    if (f === P_C5) return 1;
+    if (f === P_D5 || f === P_DS5) return 2;
+    return 3; // P_E5
   };
 
   // Section stamper — lays a phrase at `start` with the given `travel` and
@@ -258,19 +255,18 @@ function buildChart(): NoteDef[] {
   // Phrase 8 (29.5s → 31.5s): D G E C — verse 2 final cadence
   stamp(P8, 29.5, TRAVEL_DROP);
 
-  // ─── Climax (32.5s → 34.25s): EIGHTH-NOTE reprise of the opening hook ────
+  // ─── Climax (32.5s → 34.25s): EIGHTH-NOTE stampede of the theme run ──────
   // Same 7 pitches as P1, played at half the time (250ms apart instead of
-  // 500ms). This is THE skill check — coupled with the ±80ms PERFECT
-  // window, it's where consistent perfect runs separate skilled players
-  // from casual ones. The leaderboard gap forms here.
+  // 500ms) — exactly how Grieg ends the real piece. This is THE skill
+  // check — coupled with the ±80ms PERFECT window, it's where consistent
+  // perfect runs separate skilled players from casual ones.
   stamp(P9, 32.5, TRAVEL_DROP, BEAT / 2);
 
-  // ─── RITARDANDO (36.0s → 43.0s): held tonic — the "Freude!" resolution.
-  //   The tutorial ends P8 with "C C" held; rhythm games need the timeline
-  //   filled, so we lay three more C's at slowing intervals. Still canonical
-  //   in spirit: the piece simply holds its tonic to close.
+  // ─── RITARDANDO (36.0s → 43.0s): held tonic A's — the collapse after
+  //   the stampede. The piece slams its final chord; rhythm games need
+  //   the timeline filled, so we lay four A's at slowing intervals.
   const holds: number[] = [36.0, 38.0, 40.0, 42.5];
-  holds.forEach(t => push(laneFor(P_C5), t, TRAVEL_BUILD, P_C5));
+  holds.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4));
 
   return notes.sort((a, b) => a.time - b.time);
 }
@@ -295,25 +291,26 @@ type Burst = { id: number; x: number; y: number; color: string; born: number };
 // ─── Page ──────────────────────────────────────────────────────────────────────
 type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
 
-// Encore pool — one full canonical verse of London Bridge: opening line,
-// falling-down answer, repeat opening, my-fair-lady cadence. Player hears
-// the unmodified nursery rhyme cycle as tile pace accelerates.
-//   P1 + P2: G A G F E F G | D E F E F G
-//   P3 + P4: G A G F E F G | D G E C
+// Encore pool — one full cycle of the Mountain King theme: run, chromatic
+// answer, run again, descent to the tonic. 24 notes per loop. Looping this
+// faster and faster is EXACTLY what the real piece does to itself — the
+// accelerating encore is the song's own finale, extended until it wins.
+//   P1 + P2: A B C D E C E | D# B D# E C E
+//   P3 + P4: A B C D E C E | E C B A
 // Lane mapping matches buildChart.laneFor:
-//   C, D → lane 0   E → lane 1   F → lane 2   G, A → lane 3
+//   A, B → lane 0   C → lane 1   D, D# → lane 2   E → lane 3
 const ENCORE_POOL: [number, number][] = [
-  // Phrase 1 — G A G F E F G (London Bridge is falling down)
-  [3, P_G5], [3, P_A5], [3, P_G5], [2, P_F5],
-  [1, P_E5], [2, P_F5], [3, P_G5],
-  // Phrase 2 — D E F E F G (falling down, falling down)
-  [0, P_D5], [1, P_E5], [2, P_F5], [1, P_E5],
-  [2, P_F5], [3, P_G5],
-  // Phrase 3 — G A G F E F G (repeat opening)
-  [3, P_G5], [3, P_A5], [3, P_G5], [2, P_F5],
-  [1, P_E5], [2, P_F5], [3, P_G5],
-  // Phrase 4 — D G E C (my fair lady, clean tonic resolve)
-  [0, P_D5], [3, P_G5], [1, P_E5], [0, P_C5],
+  // Phrase 1 — A B C D E C E (the tiptoe run)
+  [0, P_A4], [0, P_B4], [1, P_C5], [2, P_D5],
+  [3, P_E5], [1, P_C5], [3, P_E5],
+  // Phrase 2 — D# B D# E C E (the chromatic creep)
+  [2, P_DS5], [0, P_B4], [2, P_DS5], [3, P_E5],
+  [1, P_C5], [3, P_E5],
+  // Phrase 3 — A B C D E C E (the run again, obsessive)
+  [0, P_A4], [0, P_B4], [1, P_C5], [2, P_D5],
+  [3, P_E5], [1, P_C5], [3, P_E5],
+  // Phrase 4 — E C B A (descend to the tonic)
+  [3, P_E5], [1, P_C5], [0, P_B4], [0, P_A4],
 ];
 
 export default function RhythmGamePage() {
@@ -464,22 +461,22 @@ export default function RhythmGamePage() {
     scheduledNodesRef.current.push(noise);
   }, []);
 
-  // Schedule the 45-second backing track: a musical C major bassline + hi-hats.
-  // Voiced in C major so it consonates with the London Bridge melody the
+  // Schedule the 45-second backing track: an A minor bassline + hi-hats.
+  // Voiced in A minor so it consonates with the Mountain King theme the
   // player taps out on top. Pitched bass plays the chord roots so a bell on
   // top plus a bass root = full triad in your ear.
   //
   // Sections follow the chart exactly (45s total):
-  //   intro   (0–9s)    → hats only → soft C2 pulse starting t=4
-  //   verse1  (9–15s)   → I-V-vi-IV progression — works for any C-major
-  //                       hymn/folk melody we slot in (Ode to Joy, Saints,
-  //                       London Bridge all share the tonal centre)
-  //   build1  (15–21s)  → C major arpeggio on every beat, ascending
-  //   drop1   (21–29s)  → driving I-V pattern on every beat
-  //   break   (29–30s)  → hats only — the calm before the reprise
-  //   verse2  (30–35s)  → same progression as verse 1 (the earworm repeats)
+  //   intro   (0–9s)    → hats only → low A pulse starting t=4 (the tiptoe)
+  //   verse1  (9–15s)   → i-VII-VI-V lament descent (A G F E) — THE minor
+  //                       progression, and the exact harmonic floor Grieg's
+  //                       theme stalks over
+  //   build1  (15–21s)  → ascending A minor arpeggio on every beat
+  //   drop1   (21–29s)  → driving i-V pattern on every beat
+  //   break   (29–30s)  → hats only — the held breath before the chase
+  //   verse2  (30–35s)  → descent again, tighter (the earworm repeats)
   //   build2  (35–37s)  → short re-ramp
-  //   drop2   (37–44s)  → final drop, loudest, resolves on C
+  //   drop2   (37–44s)  → final stampede, loudest, resolves on A
   //   outro   (44–45s)  → hats tail
   const scheduleDrumTrack = useCallback((audioStartTime: number) => {
     const ctx = getAudioCtx();
@@ -487,55 +484,56 @@ export default function RhythmGamePage() {
     const total = TRACK_DURATION;
     const eighth = BEAT / 2;
 
-    // C major note frequencies — used by every bass call
-    const C2 = 65.41;
+    // A minor note frequencies — used by every bass call
     const E2 = 82.41;
     const F2 = 87.31;
     const G2 = 98.00;
     const A2 = 110.00;
+    const C3 = 130.81;
+    const E3 = 164.81;
 
-    // ── INTRO pulse (4.0s–8.5s)
+    // ── INTRO pulse (4.0s–8.5s) — low tonic tiptoe
     for (let t = 4.0; t < 9.0; t += BEAT) {
-      scheduleBass(ctx, audioStartTime + t, C2, 0.3);
+      scheduleBass(ctx, audioStartTime + t, A2, 0.3);
     }
 
-    // ── VERSE 1 progression (9.0s–15.0s): I-V-vi-IV-I-V
-    // C G Am F C G in C major — generic enough to harmonise any folk/hymn
-    // melody we slot into the chart. Resolves to the tonic; the Am passing
-    // chord adds colour without dragging.
-    const verseChords = [C2, G2, A2, F2, C2, G2];
+    // ── VERSE 1 progression (9.0s–15.0s): i-VII-VI-V lament descent
+    // A G F E in A minor — the canonical minor-key tension walk. It lands
+    // on the dominant (E) instead of resolving, which keeps the whole
+    // verse leaning forward — the harmonic version of being chased.
+    const verseChords = [A2, G2, F2, E2, A2, E2];
     for (let i = 0; i < verseChords.length; i++) {
       scheduleBass(ctx, audioStartTime + 9.0 + i * BEAT, verseChords[i], 0.38);
     }
 
-    // ── BUILD 1 (15.0s–21.0s): ascending C major arpeggio (C E G C) on every beat
-    const buildScale = [C2, E2, G2, C2 * 2];
+    // ── BUILD 1 (15.0s–21.0s): ascending A minor arpeggio (A C E A) on every beat
+    const buildScale = [A2, C3, E3, A2 * 2];
     for (let i = 0; i < 12; i++) {
       scheduleBass(ctx, audioStartTime + 15.0 + i * BEAT, buildScale[i % 4], 0.42);
     }
 
-    // ── DROP 1 (21.0s–29.0s): driving I-V pattern on every beat, C major
-    const dropPattern = [C2, C2, G2, G2];
+    // ── DROP 1 (21.0s–29.0s): driving i-V pattern on every beat, A minor
+    const dropPattern = [A2, A2, E2, E2];
     for (let i = 0; i < 16; i++) {
       scheduleBass(ctx, audioStartTime + 21.0 + i * BEAT, dropPattern[i % 4], 0.48);
     }
 
     // ── BREAK (29.0s–30.0s): silence on bass — hats carry the tempo alone
 
-    // ── VERSE 2 (30.0s–35.0s): hook reprise, same progression as verse 1
+    // ── VERSE 2 (30.0s–35.0s): descent reprise, same progression as verse 1
     for (let i = 0; i < 10; i++) {
       scheduleBass(ctx, audioStartTime + 30.0 + i * BEAT, verseChords[i % 6], 0.42);
     }
 
-    // ── BUILD 2 (35.0s–37.0s): short re-ramp into the final drop
+    // ── BUILD 2 (35.0s–37.0s): short re-ramp into the final stampede
     for (let i = 0; i < 4; i++) {
       scheduleBass(ctx, audioStartTime + 35.0 + i * BEAT, buildScale[i % 4], 0.5);
     }
 
-    // ── DROP 2 (37.0s–44.0s): final drop — louder punch, 14 beats resolving on C
+    // ── DROP 2 (37.0s–44.0s): final stampede — louder punch, 14 beats resolving on A
     for (let i = 0; i < 14; i++) {
-      // Resolve on C on the last two beats instead of G-G
-      const freq = i >= 12 ? C2 : dropPattern[i % 4];
+      // Resolve on the tonic A on the last two beats instead of E-E
+      const freq = i >= 12 ? A2 : dropPattern[i % 4];
       scheduleBass(ctx, audioStartTime + 37.0 + i * BEAT, freq, 0.56);
     }
 
@@ -544,17 +542,17 @@ export default function RhythmGamePage() {
     //    the "tiles come fast but don't groove with the music" feel during cascades.
     const fastFills: [number, number][] = [
       // Build burst (tiles 18.5→19.25): on-beats 18.5/19.0 already covered by main loop
-      [18.75, G2], [19.25, G2],
+      [18.75, E2], [19.25, E2],
       // Drop 1 eighth pair (tiles 23.5/23.75)
-      [23.75, G2],
+      [23.75, E2],
       // Drop 1 cascade (tiles 25.0→25.75)
-      [25.25, G2], [25.75, C2],
+      [25.25, E2], [25.75, A2],
       // Rebuild (tiles 35.5→36.25)
-      [35.75, G2], [36.25, G2],
+      [35.75, E2], [36.25, E2],
       // Drop 2 eighth pair (tiles 39.5→40.25)
-      [39.75, G2], [40.25, G2],
+      [39.75, E2], [40.25, E2],
       // Drop 2 cascade (tiles 41.0→41.75)
-      [41.25, G2], [41.75, C2],
+      [41.25, E2], [41.75, A2],
     ];
     for (const [t, f] of fastFills) {
       scheduleBass(ctx, audioStartTime + t, f, 0.44);
@@ -1468,9 +1466,9 @@ export default function RhythmGamePage() {
         const ctx = getAudioCtx();
         if (ctx && ctx.currentTime >= encoreLoopAtRef.current) {
           const loopStart = ctx.currentTime;
-          const C2 = 65.41, G2 = 98.00;
+          const A2 = 110.00, E2 = 82.41;
           for (let i = 0; i < 16; i++) {
-            scheduleBass(ctx, loopStart + i * BEAT, i % 4 < 2 ? C2 : G2, 0.46);
+            scheduleBass(ctx, loopStart + i * BEAT, i % 4 < 2 ? A2 : E2, 0.46);
           }
           for (let h = 0; h < 8; h += BEAT / 2) {
             scheduleHihat(ctx, loopStart + h, 0.14);
