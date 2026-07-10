@@ -160,32 +160,28 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       return off;
     });
 
-    // Motion-trail sprites — a tapered fading streak baked ONCE per lane
-    // (gradient + taper are too expensive per frame; a flat fillRect read
-    // as a floating box). Drawn above the shape while it falls, it sells
-    // "this thing is moving fast" the way the old rectangle never did.
-    const trailH = Math.round(tileH * 1.6);
+    // Motion-fade sprites — a straight, uniform-width ribbon baked ONCE
+    // per lane: fully transparent at the top, lane color at the bottom.
+    // Drawn OVERLAPPING the shape's top so the note visibly fades out of
+    // its own motion — "dropping from a fade" — instead of a separate
+    // shape hovering above it. Uses theme.accent (hex): theme.glow is an
+    // rgba() string the hex parser can't read (that bug painted every
+    // trail magenta).
+    const trailH = Math.round(tileH * 2.1);
     const trails = lanes.map((theme) => {
       const off = document.createElement("canvas");
-      const tw = Math.ceil(tileW * 0.6);
+      const tw = Math.ceil(tileW * 0.5);
       off.width = Math.ceil(tw * dpr);
       off.height = Math.ceil(trailH * dpr);
       const c = off.getContext("2d")!;
       c.scale(dpr, dpr);
-      // Vertical fade: transparent at the top → lane glow at the bottom
+      // Straight vertical fade: nothing → lane color
       const g = c.createLinearGradient(0, 0, 0, trailH);
-      g.addColorStop(0, "rgba(0,0,0,0)");
-      g.addColorStop(0.55, hexToRgba(theme.glow, 0.14));
-      g.addColorStop(1, hexToRgba(theme.glow, 0.5));
+      g.addColorStop(0, hexToRgba(theme.accent, 0));
+      g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
+      g.addColorStop(1, hexToRgba(theme.accent, 0.42));
       c.fillStyle = g;
-      // Taper: narrow at the top, full width at the bottom
-      c.beginPath();
-      c.moveTo(tw * 0.38, 0);
-      c.lineTo(tw * 0.62, 0);
-      c.lineTo(tw, trailH);
-      c.lineTo(0, trailH);
-      c.closePath();
-      c.fill();
+      c.fillRect(0, 0, tw, trailH);
       return off;
     });
 
@@ -360,13 +356,14 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           continue; // the capsule replaces the head sprite entirely
         }
 
-        // Motion streak — pre-baked tapered gradient sprite rising above
-        // the shape. One drawImage, no per-frame gradient allocation.
+        // Motion fade — straight ribbon whose bottom sits at the shape's
+        // center, so the note melts upward into transparency behind
+        // itself. One drawImage, no per-frame gradient allocation.
         const trailSprite = trails[n.lane];
-        const trailW = tileW * 0.6;
-        const trailHpx = tileH * 1.6;
-        ctx.globalAlpha = 0.85 * alpha;
-        ctx.drawImage(trailSprite, xCenter - trailW / 2, y - trailHpx + tileH * 0.25, trailW, trailHpx);
+        const trailW = tileW * 0.5;
+        const trailHpx = tileH * 2.1;
+        ctx.globalAlpha = 0.9 * alpha;
+        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter - trailHpx, trailW, trailHpx);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
