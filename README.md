@@ -136,11 +136,11 @@ Every action across all loops · games played, MARKOV wins, daily claims, referr
 | System | What it does |
 |---|---|
 | **App layer** | UX, score pipeline, seasons, missions, push notifications. Frontend on Vercel, backend on Railway, state in Supabase Postgres. |
-| **Celo Mainnet contracts** | Hold the money and settle every match · ArenaPlatform, GamePass NFT, G$ token, GoodCollective UBI pool. 2% platform fee routes to UBI. |
-| **MARKOV agent** | Lives entirely on-chain as the autonomous opponent. No operator, no keeper. Markov-2 chain prediction + hash-committed RNG. |
+| **Celo Mainnet contracts** | Hold the money · ArenaPlatform (A2A wagers), GamePass NFT (scores), HabitatRegistry (G$ sink), G$ token, GoodCollective UBI pool. |
+| **MARKOV agent** | Autonomous opponent · no operator, no keeper. Markov-2 chain prediction + commit-reveal fairness. Instant Arena rounds run server-side for speed; the seed commitment makes every match replayable and verifiable. On-chain wager interface stays live for agent counterparties. |
 | **Off-chain surfaces** | Make agent activity legible · Moltbook posts (humans), A2A discovery (other agents), Goldsky subgraph (analytics). |
 
-The database mirrors chain state, not the other way around · every settlement, score, and feedback writes to Celo first.
+Scores, habitat unlocks, and A2A wagers write to Celo first · the database mirrors chain state for those. Instant Arena matches settle server-side with a commit-reveal receipt.
 
 For MARKOV's internal four-layer architecture (Economic · Reputation · Discovery · Social), see the [MARKOV section](#markov--autonomous-on-chain-ai-opponent) or [agent/README.md](agent/README.md).
 
@@ -189,26 +189,28 @@ Every player completes a one-time face-scan via GoodDollar's Identity SDK. No bo
 
 Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
 
-### MARKOV — autonomous on-chain AI opponent
+### MARKOV — autonomous AI opponent
 
-MARKOV is an autonomous AI agent you can challenge 1v1 at any time. It auto-accepts your match, plays, and resolves the result · no human in the loop.
+MARKOV is an autonomous AI agent you can challenge at any time · no human in the loop. It runs two interfaces:
+
+**For players (Instant Arena):** free best-of-5 matches, instant rounds. MARKOV commits to its seed (keccak256 hash) before round 1 and reveals it at match end · every decision derives deterministically from seed + observed history, so any match replays and verifies. Wins climb a weekly ladder that pays top climbers in G$. Daily free matches, with refills purchasable in G$ (direct transfer or gasless via EIP-2612 permit · the backend relays and pays gas).
+
+**For agents (A2A / on-chain):** the ArenaPlatform contract remains the on-chain wager interface · agent counterparties discover MARKOV via its A2A card and settle matches in G$ on Celo Mainnet.
 
 | Layer    | Mechanic                                                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Strategy | Markov-2 chains · predicts your next move from your last two                                                                          |
-| Fairness | Hash-committed RNG · agent commits to its random seed at accept time and reveals at resolve, every match verifiable on-chain          |
+| Fairness | Commit-reveal · seed hash published before round 1, revealed at match end, deterministic replay                                       |
 | Identity | Registered on the Celo Agent Trust Protocol (ERC-8004), Token #6386                                                                   |
 | Games    | Rock-Paper-Scissors, Coin Flip                                                                                                        |
 
-Winner takes 98% of the pot. 2% routes to the GoodCollective UBI pool.
-
 #### Architecture · four independent surfaces
 
-Each match produces four parallel signals · economic settlement on-chain, an ERC-8004 reputation attestation, social activity on Moltbook, and discoverability for other agents over A2A. None of them depend on a human in the loop.
+MARKOV operates four parallel surfaces · on-chain economic settlement (the A2A wager interface), an ERC-8004 reputation attestation, social activity on Moltbook, and discoverability for other agents over A2A. None of them depend on a human in the loop.
 
 ```mermaid
 flowchart TB
-    P([Verified human player<br/>GoodDollar Identity SDK])
+    P([Counterparty<br/>verified human or A2A agent])
     PC[Platform Contract<br/>0x5C0eafE7 · Celo Mainnet]
     M{{MARKOV<br/>Markov-2 chain prediction<br/>hash-committed RNG<br/>no operator · no keeper}}
 
@@ -294,13 +296,15 @@ Deployed on Celo Mainnet (chain id 42220).
 
 ## G$ economics
 
-| Event                | Player                       | Fee                                            |
-| -------------------- | ---------------------------- | ---------------------------------------------- |
-| MARKOV match win     | Gets 98% of the pot          | 2% routes to the GoodCollective UBI pool       |
-| MARKOV match loss    | Ladder points (loss = 2 pts) | Match receipt persisted · model keeps learning |
-| Daily UBI claim      | Verified players claim daily | —                                              |
+| Event                    | Player                                     | Where the G$ flows                                  |
+| ------------------------ | ------------------------------------------ | --------------------------------------------------- |
+| MARKOV ladder (weekly)   | Top climbers paid from the ladder pool     | Platform prize pool → winners                        |
+| MARKOV match refill      | Buys extra matches past the daily free cap | Player → platform pool (direct or gasless permit)    |
+| Daily UBI claim          | Verified players claim daily               | GoodDollar → player                                  |
+| Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry (primary G$ sink)           |
+| Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
 
-Every MARKOV match contributes to the GoodCollective UBI pool · the 2% fee is the platform fee, and it is paid directly to GoodCollective, not retained by the platform.
+Legacy wager era: on-chain 1v1 wagers paid the winner 98% of the pot with 2% routed to the GoodCollective UBI pool. That interface remains live on ArenaPlatform for A2A agent counterparties.
 
 ---
 

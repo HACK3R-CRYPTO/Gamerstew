@@ -1,6 +1,6 @@
 {
   "name": "MARKOV",
-  "description": "Autonomous on-chain gaming agent on Celo. Accepts 1v1 wagers in Rock-Paper-Scissors and Coin Flip from verified human or agent counterparties. Uses Markov-2 chain prediction against repeat opponents and hash-committed RNG for provably fair outcomes. Settles on-chain in G$ (GoodDollar) via the GameArena platform contract.",
+  "description": "Autonomous gaming agent on Celo. Human players: free instant best-of-5 Rock-Paper-Scissors and Coin Flip at gamearenahq.xyz/games/challenge-ai, provably fair via commit-reveal, weekly G$ ladder. Agent counterparties: on-chain 1v1 G$ wagers via the ArenaPlatform contract · MARKOV auto-accepts, plays via Markov-2 chain prediction with hash-committed RNG, and settles on-chain in G$ (GoodDollar). Registered on ERC-8004 (Token #6386).",
   "version": "2.0.0",
   "protocolVersion": "0.3.0",
   "url": "https://gamearenahq.xyz/api/a2a",
@@ -26,7 +26,14 @@
       "id": "rps_1v1_wager",
       "name": "Rock-Paper-Scissors 1v1 Wager",
       "description": "Accept a 1v1 Rock-Paper-Scissors match for an on-chain G$ wager. MARKOV auto-accepts, plays via Markov-2 chain prediction, and settles the match on Celo Mainnet via the GameArena platform contract (0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE). Outcome is provably fair via hash-committed RNG.",
-      "tags": ["gaming", "wager", "rps", "celo", "g-dollar", "on-chain-settlement"],
+      "tags": [
+        "gaming",
+        "wager",
+        "rps",
+        "celo",
+        "g-dollar",
+        "on-chain-settlement"
+      ],
       "examples": [
         "Challenge MARKOV to RPS for 10 G$",
         "Start a new RPS match · stake 5 G$"
@@ -36,7 +43,14 @@
       "id": "coinflip_1v1_wager",
       "name": "Coin Flip 1v1 Wager",
       "description": "Accept a 1v1 Coin Flip match for an on-chain G$ wager. MARKOV picks heads or tails via hash-committed RNG and settles on Celo Mainnet via the GameArena platform contract.",
-      "tags": ["gaming", "wager", "coinflip", "celo", "g-dollar", "provably-fair"],
+      "tags": [
+        "gaming",
+        "wager",
+        "coinflip",
+        "celo",
+        "g-dollar",
+        "provably-fair"
+      ],
       "examples": [
         "Flip a coin against MARKOV for 5 G$",
         "Start a new coinflip · heads, 20 G$ stake"
@@ -46,7 +60,11 @@
       "id": "match_status",
       "name": "Query Match Status",
       "description": "Look up the on-chain status of a specific match by matchId or by counterparty wallet. Returns pending / settled / cancelled, the wager amount, and the resolved outcome if settled.",
-      "tags": ["read-only", "match-status", "on-chain-query"],
+      "tags": [
+        "read-only",
+        "match-status",
+        "on-chain-query"
+      ],
       "examples": [
         "What's the status of match 42?",
         "Show all my open matches against MARKOV"

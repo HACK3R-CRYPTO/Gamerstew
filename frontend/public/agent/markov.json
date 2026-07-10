@@ -1,7 +1,7 @@
 {
   "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   "name": "MARKOV",
-  "description": "Autonomous on-chain AI agent inside GameArena. Challenges verified humans in 1v1 wagers (Rock-Paper-Scissors and Coin Flip), auto-accepts matches, plays, and resolves on-chain. Uses Markov-2 chain prediction to model opponent patterns and hash-committed RNG for provably fair outcomes. Lives on Celo Mainnet. Settles real G$ payments end-to-end with no keeper or human in the loop.",
+  "description": "Autonomous AI agent inside GameArena on Celo. Plays verified humans in free, instant best-of-5 matches (Rock-Paper-Scissors and Coin Flip) using Markov-2 chain prediction to model opponent patterns · provably fair via commit-reveal (seed hash published before round 1, revealed at match end, deterministic replay). Weekly ladder pays top climbers in G$. For agent counterparties, an on-chain 1v1 wager interface remains live on the ArenaPlatform contract (Celo Mainnet), discoverable over A2A, settling real G$ with no keeper or human in the loop.",
   "image": "https://gamearenahq.xyz/games/challenge-ai-v2/ai-bot-medium.png",
   "external_url": "https://gamearenahq.xyz/games/challenge-ai",
   "services": [
@@ -39,18 +39,47 @@
   ],
   "x402Support": false,
   "active": true,
-  "supportedTrust": ["reputation"],
+  "supportedTrust": [
+    "reputation"
+  ],
   "version": "2.0.0",
   "attributes": [
-    { "trait_type": "Agent Type", "value": "Autonomous Gaming Agent" },
-    { "trait_type": "Strategy", "value": "Markov-2 Chain" },
-    { "trait_type": "Fairness", "value": "Hash-committed RNG (commit-reveal)" },
-    { "trait_type": "Chain", "value": "Celo Mainnet" },
-    { "trait_type": "Chain ID", "value": 42220 },
-    { "trait_type": "Games Supported", "value": "Rock-Paper-Scissors, Coin Flip" },
-    { "trait_type": "Settlement", "value": "On-chain · G$ token" },
-    { "trait_type": "Identity", "value": "Plays only verified humans (GoodDollar Identity SDK)" },
-    { "trait_type": "Version", "value": "Markov-2" }
+    {
+      "trait_type": "Agent Type",
+      "value": "Autonomous Gaming Agent"
+    },
+    {
+      "trait_type": "Strategy",
+      "value": "Markov-2 Chain"
+    },
+    {
+      "trait_type": "Fairness",
+      "value": "Commit-reveal (seed hash before round 1, revealed at match end)"
+    },
+    {
+      "trait_type": "Chain",
+      "value": "Celo Mainnet"
+    },
+    {
+      "trait_type": "Chain ID",
+      "value": 42220
+    },
+    {
+      "trait_type": "Games Supported",
+      "value": "Rock-Paper-Scissors, Coin Flip"
+    },
+    {
+      "trait_type": "Settlement",
+      "value": "Instant Arena · commit-reveal receipt / A2A wagers · on-chain G$"
+    },
+    {
+      "trait_type": "Identity",
+      "value": "Plays only verified humans (GoodDollar Identity SDK)"
+    },
+    {
+      "trait_type": "Version",
+      "value": "Markov-2"
+    }
   ],
   "capabilities": [
     "wagering",
@@ -59,7 +88,10 @@
     "rps",
     "coin-flip",
     "autonomous-execution",
-    "provable-fairness"
+    "provable-fairness",
+    "instant-matches",
+    "best-of-5",
+    "weekly-ladder"
   ],
   "publisher": {
     "name": "GameArena",
