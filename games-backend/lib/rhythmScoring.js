@@ -53,20 +53,27 @@ function buildMainChart() {
     phrase.forEach((f, i) => push(laneFor(f), start + i * step, travel, f));
   };
 
-  // Mirror the client's layout. Times here MUST match page.tsx exactly or
-  // legit player taps won't line up with notes during replay.
-  let t = 4.0;
-  stamp(P1, t, TRAVEL_INTRO); t += P1.length * BEAT + 0.5;
-  stamp(P2, t, TRAVEL_VERSE); t += P2.length * BEAT + 0.5;
-  stamp(P3, t, TRAVEL_VERSE); t += P3.length * BEAT + 0.5;
-  stamp(P4, t, TRAVEL_BUILD); t += P4.length * BEAT + 0.5;
-  stamp(P5, t, TRAVEL_BUILD); t += P5.length * BEAT + 0.5;
-  stamp(P6, t, TRAVEL_BUILD); t += P6.length * BEAT + 0.5;
-  stamp(P7, t, TRAVEL_DROP);  t += P7.length * BEAT + 0.5;
-  stamp(P8, t, TRAVEL_DROP);  t += P8.length * BEAT + 0.5;
-  stamp(P9, t, TRAVEL_DROP, BEAT / 2); // climax reprise — eighth notes
+  // Mirror the client's layout with EXPLICIT start times copied from
+  // page.tsx buildChart(). The old sequential `t += len*BEAT + 0.5`
+  // arithmetic drifted: it put the P9 climax at 32.0s (client: 32.5s)
+  // and omitted the four closing hold notes entirely — so legit taps on
+  // those were replayed as strays and reset the player's combo/fever.
+  stamp(P1, 4.0,  TRAVEL_INTRO);
+  stamp(P2, 8.0,  TRAVEL_INTRO);
+  stamp(P3, 11.5, TRAVEL_VERSE);
+  stamp(P4, 15.5, TRAVEL_VERSE);
+  stamp(P5, 18.0, TRAVEL_VERSE);
+  stamp(P6, 22.0, TRAVEL_BUILD);
+  stamp(P7, 25.5, TRAVEL_BUILD);
+  stamp(P8, 29.5, TRAVEL_DROP);
+  stamp(P9, 32.5, TRAVEL_DROP, BEAT / 2); // climax reprise — eighth notes
 
-  return notes;
+  // Ritardando holds — four closing C5 tonics (client: holds[])
+  for (const t of [36.0, 38.0, 40.0, 42.5]) {
+    push(laneFor(P_C5), t, TRAVEL_BUILD, P_C5);
+  }
+
+  return notes.sort((a, b) => a.time - b.time);
 }
 
 // ─── Physics check ───────────────────────────────────────────────────────────
@@ -159,33 +166,61 @@ function jitterCheck(hits) {
   return { ok: true };
 }
 
-// ─── computeScore ────────────────────────────────────────────────────────────
-// Server-authoritative score from the client's tap log. Replays taps against
-// the known main-track chart, then accepts the remaining taps as encore
-// (since encore is dynamically spawned client-side, the server can't predict
-// exact note positions, but the same scoring rules still apply: each accepted
-// tap counts once, combo grows, multiplier applies).
+// ─── computeScore · Scoring 2.0 — addition only ──────────────────────────────
+// Mirrors the client's rewritten math EXACTLY (page.tsx hitLane):
+//   · Perfect = 10, Good = 5, flat. NO combo multiplier, NO precision bonus.
+//   · FEVER is the only multiplier: 12 consecutive main-track PERFECTs ignite
+//     ×2 for 6 seconds. The igniting tap itself is NOT doubled. A GOOD breaks
+//     the perfect streak (fever keeps burning); a miss kills streak AND fever.
+//   · Encore taps (t >= TRACK_DURATION) pay a flat 5. No fever in encore.
+//   · No caps. The finite chart + the encore's accelerating speed wall bound
+//     the score naturally — a legit ceiling around ~1,500, not a clamp.
 //
-// Trade-off: a cheater could fabricate encore taps. But each encore tap is
-// still bounded by:
-//   1. Physics check (no two taps within 30ms, no sustained 12+ taps/sec)
-//   2. Jitter check (no synthetic perfect timing)
-//   3. Same scoring math as legit play
-// So the math ceiling for elapsed time still equals real-player ceiling.
+// Trade-off: a cheater could fabricate encore taps, but each one is worth a
+// flat 5 and is still bounded by the physics + jitter checks, so the math
+// ceiling for elapsed time equals the real-player ceiling.
+const FEVER_TRIGGER = 12;
+const FEVER_DURATION = 6;
+const FEVER_MULT = 2;
+const ENCORE_POINTS = 5;
+
 function computeScore(tapLog, elapsedMs) {
   const chart = buildMainChart();
   let score = 0;
-  let combo = 0;
+  let perfectStreak = 0;
+  let feverUntil = 0;              // song-time expiry · 0 = off
   const consumed = new Set();
   const hits = []; // for jitter analysis
 
-  const mainNotes = chart;
+  // Replay taps in time order (the client appends in order, but sorting
+  // makes the miss-sweep below correct even for adversarial logs).
+  const taps = [...tapLog].sort((a, b) => a.time - b.time);
+  const notesByTime = [...chart].sort((a, b) => a.time - b.time);
 
-  for (const tap of tapLog) {
+  // Miss sweep — the client kills the perfect streak and fever the moment a
+  // note expires unhit (RAF miss loop). The server can't see non-taps, so
+  // before scoring each tap it sweeps every note whose good-window closed
+  // earlier and was never consumed: each one is a miss that resets state.
+  let sweepIdx = 0;
+  const sweepMissesBefore = (t) => {
+    while (sweepIdx < notesByTime.length) {
+      const n = notesByTime[sweepIdx];
+      if (n.time + GOOD_WINDOW >= t) break;
+      if (!consumed.has(n.id)) {
+        perfectStreak = 0;
+        feverUntil = 0;
+      }
+      sweepIdx++;
+    }
+  };
+
+  for (const tap of taps) {
+    sweepMissesBefore(tap.time);
+
     // Try to match this tap to an unconsumed main-track note in the same lane
     let bestNote = null;
     let bestDiff = Infinity;
-    for (const note of mainNotes) {
+    for (const note of chart) {
       if (note.lane !== tap.lane) continue;
       if (consumed.has(note.id)) continue;
       const diff = Math.abs(tap.time - note.time);
@@ -193,42 +228,38 @@ function computeScore(tapLog, elapsedMs) {
       if (diff < bestDiff) { bestDiff = diff; bestNote = note; }
     }
 
-    // If matched to main-track note, score normally
     if (bestNote) {
       consumed.add(bestNote.id);
       const isPerfect = bestDiff <= PERFECT_WINDOW;
-      const basePoints = isPerfect ? 10 : 5;
-      const precision = Math.max(0, 1 - bestDiff / GOOD_WINDOW);
-      const precisionBonus = Math.round(precision * 8);
-      combo++;
-      const multiplier = 1 + Math.floor(combo / 5);
-      score += (basePoints + precisionBonus) * multiplier;
+      const base = isPerfect ? 10 : 5;
+      const inFever = feverUntil > 0 && tap.time < feverUntil;
+      score += inFever ? base * FEVER_MULT : base;
+
+      if (isPerfect) {
+        perfectStreak++;
+        if (!inFever && perfectStreak >= FEVER_TRIGGER) {
+          feverUntil = tap.time + FEVER_DURATION;
+          perfectStreak = 0;
+        }
+      } else {
+        perfectStreak = 0; // GOOD breaks the chain; fever keeps burning
+      }
       hits.push({ diff: bestDiff, isPerfect });
       continue;
     }
 
-    // Tap after main-track (encore) — accept as a hit if timing is reasonable
-    // Encore notes are dynamic, so we accept any tap in encore territory
-    // (after TRACK_DURATION) as a hit at perfect timing. The physics + jitter
-    // checks prevent abuse here. Combo continues to grow.
+    // Encore territory — flat points, no fever, no streak bookkeeping.
     if (tap.time >= TRACK_DURATION) {
-      // Treat as a perfect encore hit with full precision bonus.
-      // This is the most generous interpretation; the security comes from
-      // the physics/jitter checks, not from constraining encore hits.
-      combo++;
-      const multiplier = 1 + Math.floor(combo / 5);
-      score += 18 * multiplier;
+      score += ENCORE_POINTS;
       hits.push({ diff: 0, isPerfect: true, encore: true });
       continue;
     }
 
-    // Otherwise: tap in main-track time on a lane with no matching note. Miss.
-    // Real game resets combo on miss; mirror that here.
-    combo = 0;
+    // Stray tap in main-track time with no matching note = a miss on the
+    // client (combo/streak/fever all reset). Mirror that.
+    perfectStreak = 0;
+    feverUntil = 0;
   }
-
-  // Mirror the client hard cap at 1,000,000 points
-  score = Math.min(score, 1_000_000);
 
   return { score, hits };
 }
