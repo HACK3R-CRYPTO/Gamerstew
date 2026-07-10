@@ -215,7 +215,10 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         if (n.hold) {
           const pxPerSec = h / n.travel;
           const barH = n.hold * pxPerSec;
-          const barW = tileW * 0.86;
+          // Full tile width — hold bars are first-class tiles that happen
+          // to be long, not skinny ribbons. Solid body + stroked border
+          // reads instantly as "this one is different: pin it".
+          const barW = tileW;
           const bx = Math.round(xCenter - barW / 2);
           const held = heldIds?.has(n.id) || n.holdState === "held";
           const dropped = n.holdState === "dropped";
@@ -225,41 +228,49 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           // bottom at the hit line so the consumed part disappears.
           const rawBottom = yCenter + tileH / 2;
           const top = Math.round(yCenter - barH);
-          const hitLineY = h - tileH * 0.5; // where the tap zone sits
+          const hitLineY = h - tileH * 0.5; // where the judgment line sits
           const bottom = held ? Math.min(rawBottom, hitLineY + tileH / 2) : rawBottom;
           const visH = Math.max(6, bottom - top);
           if (bottom <= top) continue; // fully consumed — RAF resolves it this frame
 
-          const dim = dropped ? 0.18 : 1;
+          const dim = dropped ? 0.16 : 1;
 
-          // Soft outer glow — pulses while held
-          ctx.globalAlpha = (held ? 0.55 : 0.22) * alpha * dim;
+          // Outer glow — swells while held
+          ctx.globalAlpha = (held ? 0.6 : 0.3) * alpha * dim;
           ctx.fillStyle = theme.glow;
-          roundRect(ctx, bx - 6, top - 6, barW + 12, visH + 12, 20);
+          roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 22);
           ctx.fill();
 
-          // Capsule body — bright while held, translucent while falling
-          ctx.globalAlpha = (held ? 0.95 : 0.5) * alpha * dim;
+          // Solid body — near-opaque. A hold bar is a wall, not a mist.
+          ctx.globalAlpha = (held ? 1 : 0.82) * alpha * dim;
           ctx.fillStyle = theme.accent;
           roundRect(ctx, bx, top, barW, visH, 16);
           ctx.fill();
 
-          // Center gloss stripe — lit-from-within, reference piano-roll look
-          ctx.globalAlpha = (held ? 0.6 : 0.28) * alpha * dim;
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
-          roundRect(ctx, Math.round(xCenter - barW * 0.14), top + 6, Math.round(barW * 0.28), Math.max(4, visH - 12), 10);
+          // Stroked border — the crisp edge that separates it from taps
+          ctx.globalAlpha = (held ? 1 : 0.7) * alpha * dim;
+          ctx.lineWidth = held ? 3 : 2;
+          ctx.strokeStyle = held ? "#ffffff" : "rgba(255,255,255,0.65)";
+          roundRect(ctx, bx, top, barW, visH, 16);
+          ctx.stroke();
+
+          // Inner gloss — top-lit like the tap tile sprites, so both tile
+          // families share one material language
+          ctx.globalAlpha = (held ? 0.5 : 0.35) * alpha * dim;
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          roundRect(ctx, bx + 6, top + 5, barW - 12, Math.min(14, Math.max(5, visH * 0.16)), 8);
           ctx.fill();
 
           // While held: a hot consumption edge where the bar meets the
-          // line — the visual anchor that says "the bar is being eaten
-          // right here, don't let go".
+          // judgment line — the anchor that says "being eaten right here,
+          // don't let go".
           if (held) {
             ctx.globalAlpha = alpha;
             ctx.fillStyle = "#ffffff";
-            ctx.fillRect(bx - 4, Math.round(bottom) - 3, barW + 8, 5);
-            ctx.globalAlpha = 0.5 * alpha;
+            ctx.fillRect(bx - 5, Math.round(bottom) - 3, barW + 10, 6);
+            ctx.globalAlpha = 0.55 * alpha;
             ctx.fillStyle = theme.glow;
-            ctx.fillRect(bx - 10, Math.round(bottom) - 7, barW + 20, 13);
+            ctx.fillRect(bx - 12, Math.round(bottom) - 8, barW + 24, 16);
           }
           continue; // the capsule replaces the head sprite entirely
         }

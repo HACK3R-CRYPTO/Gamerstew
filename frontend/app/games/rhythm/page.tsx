@@ -634,6 +634,22 @@ export default function RhythmGamePage() {
   // adds floating "+X" feedback per hit / "MISS" feedback per miss.
   const juice = useGameJuice();
   const [flashLane, setFlashLane] = useState<number | null>(null);
+  // Input-aware UI: hover + fine pointer = a keyboard almost certainly
+  // exists. Desktop players get keycap affordances (under the slimes +
+  // the countdown hint); phones never see them — a keycap on a touch
+  // screen is noise.
+  const [hasKeyboard, setHasKeyboard] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setHasKeyboard(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+  // Which lanes have a finger pinned on an active hold — keeps the key
+  // visually DOWN for the whole sustain, not just the 100ms tap flash.
+  const [heldLanes, setHeldLanes] = useState<boolean[]>([false, false, false, false]);
   const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null>(null);
 
   const chartRef = useRef<NoteDef[]>([]);
@@ -795,6 +811,7 @@ export default function RhythmGamePage() {
     for (const ah of activeHoldsRef.current) ah?.tone?.stop();
     activeHoldsRef.current = [null, null, null, null];
     holdStateRef.current.clear();
+    setHeldLanes([false, false, false, false]);
     setEncoreLives(3);
     setEncoreLoop(0);
     feverUntilRef.current = 0;
@@ -1175,6 +1192,7 @@ export default function RhythmGamePage() {
     // note singing over the finish screen.
     for (const ah of activeHoldsRef.current) ah?.tone?.stop();
     activeHoldsRef.current = [null, null, null, null];
+    setHeldLanes([false, false, false, false]);
   }, [phase, stopDrumTrack]);
 
   // ─── Resolve an active hold — on finger release OR auto-completion ─────────
@@ -1188,6 +1206,7 @@ export default function RhythmGamePage() {
     if (!h) return;
     activeHoldsRef.current[lane] = null;
     h.tone?.stop();
+    setHeldLanes(hl => { const next = [...hl]; next[lane] = false; return next; });
     const holdDur = h.note.hold ?? 0;
     const endTime = h.note.time + holdDur;      // when the bar's tail crosses the line
     const complete = releaseTimeSec >= endTime - HOLD_RELEASE_GRACE;
@@ -1296,6 +1315,7 @@ export default function RhythmGamePage() {
     if (note.hold && phase === "playing") {
       activeHoldsRef.current[lane] = { note, pressAt: now, tone: playHoldTone(note.freq) };
       holdStateRef.current.set(note.id, "held");
+      setHeldLanes(hl => { const next = [...hl]; next[lane] = true; return next; });
     }
 
     // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
@@ -1722,7 +1742,7 @@ export default function RhythmGamePage() {
       )}
 
       {/* ═══ COUNTDOWN ═══ */}
-      {phase === "countdown" && <CountdownView n={countdown} />}
+      {phase === "countdown" && <CountdownView n={countdown} showKeys={hasKeyboard} />}
 
       {/* ═══ PLAYING + ENCORE (same view, different HUD treatment) ═══ */}
       {(phase === "playing" || phase === "encore") && (
@@ -1751,6 +1771,7 @@ export default function RhythmGamePage() {
           encoreLoop={encoreLoop}
           fever={feverActive}
           perfectStreak={perfectStreak}
+          heldLanes={heldLanes}
         />
       )}
       {/* Shared juice overlay — floating popups + screen shake + big combo
@@ -1932,20 +1953,36 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
 }
 
 // ─── Countdown: 3 · 2 · 1 · GO ────────────────────────────────────────────────
-function CountdownView({ n }: { n: number }) {
+function CountdownView({ n, showKeys }: { n: number; showKeys?: boolean }) {
   const label = n <= 0 ? "GO!" : String(n);
   const color = n <= 0 ? "#fbbf24" : "#e879f9";
   return (
-    <div key={label} style={{
-      position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      animation: "bounce-scale-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-    }}>
-      <div style={{
+    <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28 }}>
+      <div key={label} style={{
         fontSize: "clamp(120px, 24vw, 200px)", fontWeight: 900, color: "white",
         textShadow: `0 0 40px ${color}, 0 0 80px ${color}aa, 0 4px 12px rgba(0,0,0,0.6)`,
         letterSpacing: "0.04em", lineHeight: 1,
+        animation: "bounce-scale-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
       }}>{label}</div>
+      {/* Desktop control hint — taught at the ONE moment eyes are focused
+          and hands are idle. Keycaps map left-to-right onto the lanes. */}
+      {showKeys && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ color: "rgba(220,200,255,0.65)", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em" }}>PLAY WITH</span>
+          {["A", "S", "D", "F"].map((k, i) => (
+            <span key={k} style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 34, height: 34, borderRadius: 8,
+              background: "linear-gradient(180deg, #3a3550 0%, #211c33 100%)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderBottom: "3px solid rgba(0,0,0,0.6)",
+              boxShadow: `0 0 12px ${LANES[i].glow}, inset 0 1px 0 rgba(255,255,255,0.25)`,
+              color: "white", fontSize: 15, fontWeight: 900,
+            }}>{k}</span>
+          ))}
+          <span style={{ color: "rgba(220,200,255,0.45)", fontSize: 11, fontWeight: 700 }}>or ← ↓ ↑ →</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2095,7 +2132,7 @@ function PlayingView({
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
   pet,
   isEncore, encoreLives, encoreLoop,
-  fever, perfectStreak,
+  fever, perfectStreak, heldLanes,
 }: {
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
@@ -2115,6 +2152,7 @@ function PlayingView({
   encoreLoop: number;
   fever: boolean;
   perfectStreak: number;
+  heldLanes: boolean[];
 }) {
   const timePct = 1 - timeLeft / TRACK_DURATION;
 
@@ -2291,7 +2329,10 @@ function PlayingView({
         })}
       </div>
 
-      {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══ */}
+      {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══
+          The game's original candy keys. One invisible upgrade for hold
+          notes: the button stays pressed for the whole sustain (heldLanes)
+          and pointerup/leave/cancel resolve the hold. */}
       <div style={{
         padding: "0 10px 16px",
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px",
@@ -2301,7 +2342,7 @@ function PlayingView({
             key={i}
             theme={theme}
             laneIdx={i}
-            isFlashing={flashLane === i}
+            isFlashing={flashLane === i || heldLanes[i]}
             onPress={() => onTapLane(i)}
             onRelease={() => onReleaseLane(i)}
           />
@@ -2375,8 +2416,7 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
   const feedbackLabel = feedback ? (feedback.type === "perfect" ? "PERFECT!" : feedback.type === "good" ? "GOOD" : "MISS") : null;
   const feedbackColor = feedback?.type === "perfect" ? "#fbbf24" : feedback?.type === "good" ? theme.accent : "#ef4444";
   // Calibration readout — GOODs show the signed ms offset so the player
-  // learns WHY it wasn't perfect ("-40ms early" → tap later). This is the
-  // detail that turns tappers into calibrators; perfects stay clean.
+  // learns WHY it wasn't perfect ("-40ms early" → tap later).
   const msLabel = feedback?.type === "good" && typeof feedback.ms === "number"
     ? `${feedback.ms > 0 ? "+" : ""}${feedback.ms}ms ${feedback.ms > 0 ? "late" : "early"}`
     : null;
@@ -2414,9 +2454,7 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
         transition: "all 0.08s",
       }} />
 
-      {/* Feedback label (floats up from bottom on hit).
-          Fluid font — each lane on a 4-lane mobile layout is ~22vw wide;
-          a fixed 14px "PERFECT!" clipped at the lane edges. */}
+      {/* Feedback label (floats up from bottom on hit). */}
       {feedbackLabel && (
         <div key={feedback!.ts} style={{
           position: "absolute", bottom: "20%", left: "50%", transform: "translateX(-50%)",
@@ -2445,6 +2483,9 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
 }
 
 // ─── Tap button (juicy wall + face — same pattern as game card START) ────────
+// The game's original candy key, byte-for-byte, plus release handlers so
+// hold notes can resolve. isFlashing covers both the tap flash and the
+// stays-pressed-while-holding state.
 function TapButton({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void; onRelease: () => void }) {
   const keyLabels = ["A", "S", "D", "F"];
   return (
@@ -2454,9 +2495,6 @@ function TapButton({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: 
       // at the tile's pitch (melodic). A UI tick on top would muddle it.
       data-no-click-sound="true"
       onPointerDown={e => { e.preventDefault(); onPress(); }}
-      // Release ends any active hold on this lane. pointerleave/cancel
-      // count as releases too — a finger sliding off the button mid-hold
-      // shouldn't sustain forever.
       onPointerUp={e => { e.preventDefault(); onRelease(); }}
       onPointerLeave={() => onRelease()}
       onPointerCancel={() => onRelease()}
