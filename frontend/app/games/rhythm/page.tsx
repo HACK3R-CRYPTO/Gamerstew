@@ -1772,7 +1772,6 @@ export default function RhythmGamePage() {
           fever={feverActive}
           perfectStreak={perfectStreak}
           heldLanes={heldLanes}
-          showKeycaps={hasKeyboard}
         />
       )}
       {/* Shared juice overlay — floating popups + screen shake + big combo
@@ -2133,7 +2132,7 @@ function PlayingView({
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
   pet,
   isEncore, encoreLives, encoreLoop,
-  fever, perfectStreak, heldLanes, showKeycaps,
+  fever, perfectStreak, heldLanes,
 }: {
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
@@ -2154,7 +2153,6 @@ function PlayingView({
   fever: boolean;
   perfectStreak: number;
   heldLanes: boolean[];
-  showKeycaps?: boolean;
 }) {
   const timePct = 1 - timeLeft / TRACK_DURATION;
 
@@ -2268,40 +2266,23 @@ function PlayingView({
       <PetCenter pet={pet} combo={combo} feedback={feedback} />
 
 
-      {/* ═══ PLAY FIELD — the lane IS the instrument ═══
-          No button row. The entire lane is the touch target (Beatstar /
-          Cytus school): tap anywhere in your lane, a beam of light
-          answers from the judgment line, and holds keep the beam lit.
-          Maximum play area, zero widget clutter — the cosmic void and
-          the tiles own the whole screen. */}
+      {/* ═══ PLAY FIELD (lanes + falling notes) ═══ */}
       <div style={{
         flex: 1,
         position: "relative",
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
         gap: "6px",
-        padding: "0 10px calc(12px + env(safe-area-inset-bottom, 0px))",
+        padding: "0 10px 10px",
         overflow: "hidden",
       }}>
         {LANES.map((theme, i) => (
-          <div
+          <Lane
             key={i}
-            role="button" tabIndex={0}
-            data-no-click-sound="true"
-            onPointerDown={e => { e.preventDefault(); onTapLane(i); }}
-            onPointerUp={e => { e.preventDefault(); onReleaseLane(i); }}
-            onPointerLeave={() => onReleaseLane(i)}
-            onPointerCancel={() => onReleaseLane(i)}
-            style={{ position: "relative", touchAction: "manipulation", userSelect: "none", cursor: "pointer" }}
-          >
-            <Lane
-              theme={theme}
-              laneIdx={i}
-              flashing={flashLane === i}
-              holding={heldLanes[i]}
-              showKeycap={showKeycaps}
-              feedback={feedback && feedback.lane === i ? feedback : null}
-            />
-          </div>
+            theme={theme}
+            laneIdx={i}
+            flashing={flashLane === i}
+            feedback={feedback && feedback.lane === i ? feedback : null}
+          />
         ))}
 
         {/* Falling tiles — rendered on a single <canvas>, drawn
@@ -2346,6 +2327,26 @@ function PlayingView({
             </div>
           );
         })}
+      </div>
+
+      {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══
+          The game's original candy keys. One invisible upgrade for hold
+          notes: the button stays pressed for the whole sustain (heldLanes)
+          and pointerup/leave/cancel resolve the hold. */}
+      <div style={{
+        padding: "0 10px 16px",
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px",
+      }}>
+        {LANES.map((theme, i) => (
+          <TapButton
+            key={i}
+            theme={theme}
+            laneIdx={i}
+            isFlashing={flashLane === i || heldLanes[i]}
+            onPress={() => onTapLane(i)}
+            onRelease={() => onReleaseLane(i)}
+          />
+        ))}
       </div>
 
       {/* ═══ COMBO TOAST (center) ═══
@@ -2411,72 +2412,49 @@ function StatGem({ label, value, color, wall, emphasize }: { label: string; valu
 }
 
 // ─── Lane — the vertical track where notes fall ──────────────────────────────
-function Lane({ theme, laneIdx, flashing, holding, showKeycap, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; holding: boolean; showKeycap?: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null }) {
-  const keyLabels = ["A", "S", "D", "F"];
+function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneTheme; laneIdx: number; flashing: boolean; feedback: { type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null }) {
   const feedbackLabel = feedback ? (feedback.type === "perfect" ? "PERFECT!" : feedback.type === "good" ? "GOOD" : "MISS") : null;
   const feedbackColor = feedback?.type === "perfect" ? "#fbbf24" : feedback?.type === "good" ? theme.accent : "#ef4444";
   // Calibration readout — GOODs show the signed ms offset so the player
-  // learns WHY it wasn't perfect ("-40ms early" → tap later). This is the
-  // detail that turns tappers into calibrators; perfects stay clean.
+  // learns WHY it wasn't perfect ("-40ms early" → tap later).
   const msLabel = feedback?.type === "good" && typeof feedback.ms === "number"
     ? `${feedback.ms > 0 ? "+" : ""}${feedback.ms}ms ${feedback.ms > 0 ? "late" : "early"}`
     : null;
-  const lit = flashing || holding;
   return (
     <div style={{
-      position: "relative", height: "100%",
+      position: "relative",
       borderRadius: "14px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0.22) 100%)",
-      border: `1px solid ${lit ? theme.accent + "88" : "rgba(255,255,255,0.07)"}`,
+      background: flashing
+        ? `linear-gradient(180deg, ${theme.accent}18 0%, rgba(0,0,0,0.2) 100%)`
+        : "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.25) 100%)",
+      border: `1.5px solid ${flashing ? theme.accent : "rgba(255,255,255,0.08)"}`,
+      boxShadow: flashing ? `inset 0 0 24px ${theme.glow}` : "none",
       overflow: "hidden",
-      transition: "border-color 0.08s",
+      transition: "border-color 0.08s, box-shadow 0.08s",
     }}>
-      {/* LIGHT BEAM — the lane's answer to your touch. Rises from the
-          judgment line, flashes on a tap, and STAYS LIT for the entire
-          duration of a hold. This is the whole feedback language now:
-          light instead of buttons. */}
+      {/* Lane glow strip down center */}
       <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: "68%",
-        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}18 55%, ${theme.accent}55 100%)`,
-        opacity: lit ? 1 : 0,
-        transition: holding ? "opacity 0.05s" : "opacity 0.22s ease-out",
+        position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+        width: "2px", height: "100%",
+        background: `linear-gradient(180deg, transparent 0%, ${theme.accent}33 50%, transparent 100%)`,
         pointerEvents: "none",
       }} />
 
-      {/* JUDGMENT LINE — where tiles land. Always faintly present so the
-          eye knows the target; ignites in the lane color on contact. */}
+      {/* TAP TARGET — dashed tile shape matching the falling notes */}
       <div style={{
-        position: "absolute", left: "6%", right: "6%", bottom: 14, height: 3,
-        borderRadius: 999,
-        background: lit ? theme.accent : "rgba(255,255,255,0.22)",
-        boxShadow: lit ? `0 0 14px ${theme.glow}, 0 0 34px ${theme.glow}` : `0 0 6px rgba(255,255,255,0.12)`,
-        transition: "background 0.08s, box-shadow 0.08s",
+        position: "absolute", bottom: "0%", left: "50%",
+        transform: "translate(-50%, 50%)",
+        width: "78%", maxWidth: "90px", minWidth: "54px",
+        height: "40px",
+        borderRadius: "12px",
+        border: `2px dashed ${theme.accent}88`,
+        boxShadow: flashing ? `0 0 20px ${theme.glow}` : `inset 0 0 12px ${theme.accent}22`,
+        background: flashing ? `${theme.accent}11` : "transparent",
         pointerEvents: "none",
+        transition: "all 0.08s",
       }} />
 
-      {/* Keycap — desktop only, floats just under the judgment line and
-          presses in sync with the lane so keyboard players see their
-          physical key mirrored. Phones never render it. */}
-      {showKeycap && (
-        <span style={{
-          position: "absolute", bottom: 24, left: "50%",
-          transform: `translateX(-50%) ${lit ? "translateY(2px)" : ""}`,
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          width: 24, height: 24, borderRadius: 6,
-          background: "linear-gradient(180deg, #3a3550 0%, #211c33 100%)",
-          border: "1px solid rgba(255,255,255,0.22)",
-          borderBottom: lit ? "1px solid rgba(0,0,0,0.6)" : "3px solid rgba(0,0,0,0.6)",
-          boxShadow: lit ? `0 0 10px ${theme.glow}` : "0 2px 4px rgba(0,0,0,0.5)",
-          color: lit ? "#fff" : "rgba(255,255,255,0.6)",
-          fontSize: 11, fontWeight: 900,
-          transition: "all 0.05s",
-          pointerEvents: "none", zIndex: 2,
-        }}>{keyLabels[laneIdx]}</span>
-      )}
-
-      {/* Feedback label (floats up from the judgment line on hit).
-          Fluid font — each lane on a 4-lane mobile layout is ~22vw wide;
-          a fixed 14px "PERFECT!" clipped at the lane edges. */}
+      {/* Feedback label (floats up from bottom on hit). */}
       {feedbackLabel && (
         <div key={feedback!.ts} style={{
           position: "absolute", bottom: "20%", left: "50%", transform: "translateX(-50%)",
@@ -2500,6 +2478,59 @@ function Lane({ theme, laneIdx, flashing, holding, showKeycap, feedback }: { the
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Tap button (juicy wall + face — same pattern as game card START) ────────
+// The game's original candy key, byte-for-byte, plus release handlers so
+// hold notes can resolve. isFlashing covers both the tap flash and the
+// stays-pressed-while-holding state.
+function TapButton({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void; onRelease: () => void }) {
+  const keyLabels = ["A", "S", "D", "F"];
+  return (
+    <div
+      role="button" tabIndex={0}
+      // Opt out of the global UI click blip — tapping a lane plays the bell
+      // at the tile's pitch (melodic). A UI tick on top would muddle it.
+      data-no-click-sound="true"
+      onPointerDown={e => { e.preventDefault(); onPress(); }}
+      onPointerUp={e => { e.preventDefault(); onRelease(); }}
+      onPointerLeave={() => onRelease()}
+      onPointerCancel={() => onRelease()}
+      style={{
+        cursor: "pointer", userSelect: "none",
+        transition: "transform 0.05s",
+        transform: isFlashing ? "scale(0.96) translateY(2px)" : "scale(1)",
+        touchAction: "manipulation",
+      }}>
+      <div style={{
+        borderRadius: "14px", background: theme.wall, paddingBottom: "5px",
+        boxShadow: `0 10px 22px -4px ${theme.glow}, 0 0 18px ${theme.glow}55`,
+      }}>
+        <div style={{
+          borderRadius: "12px 12px 10px 10px",
+          background: theme.face,
+          padding: "16px 4px", textAlign: "center",
+          position: "relative", overflow: "hidden",
+          border: "2px solid rgba(255,255,255,0.45)",
+          boxShadow: isFlashing
+            ? `inset 0 6px 14px rgba(255,255,255,0.9), 0 0 30px ${theme.glow}`
+            : "inset 0 6px 14px rgba(255,255,255,0.6), inset 0 -3px 6px rgba(0,0,0,0.3)",
+        }}>
+          {/* Gloss */}
+          <div style={{
+            position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
+          }} />
+          <span style={{
+            position: "relative", zIndex: 1,
+            color: "white", fontSize: "22px", fontWeight: 900,
+            textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+          }}>{keyLabels[laneIdx]}</span>
+        </div>
+      </div>
     </div>
   );
 }
