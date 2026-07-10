@@ -19,59 +19,57 @@ const TRAVEL_VERSE = 2.1;
 const TRAVEL_BUILD = 1.7;
 const TRAVEL_DROP  = 1.4;
 
-// In the Hall of the Mountain King (Grieg) — A minor pitches
-const P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25, P_D5 = 587.33,
-      P_DS5 = 622.25, P_E5 = 659.25;
+// Turkish March / Rondo alla Turca (Mozart) — A minor pitches
+const P_GS4 = 415.30, P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25,
+      P_D5 = 587.33, P_DS5 = 622.25, P_E5 = 659.25, P_F5 = 698.46;
 
 const laneFor = (f) => {
-  if (f === P_A4 || f === P_B4) return 0;
-  if (f === P_C5) return 1;
+  if (f === P_GS4 || f === P_A4) return 0;
+  if (f === P_B4 || f === P_C5) return 1;
   if (f === P_D5 || f === P_DS5) return 2;
-  return 3; // E5
+  return 3; // E5 / F5
 };
+
+// Hold-note tick math — MUST mirror the client (page.tsx).
+const HOLD_TICK_POINTS = 2;  // per completed 0.5s of sustain
+const HOLD_TICK_SEC = 0.5;
 
 // Build the main-track chart. Deterministic — no seed needed since the chart
 // is the same every game. The encore is built dynamically by the client; we
 // reconstruct it from the tap log timing (see computeScore below).
+// Phrase entries are [pitch, holdSeconds?] — mirrors page.tsx exactly.
 function buildMainChart() {
   const notes = [];
   let id = 0;
-  const push = (lane, time, travel, freq) =>
-    notes.push({ id: id++, lane, time, travel, freq });
+  const push = (lane, time, travel, freq, hold) =>
+    notes.push({ id: id++, lane, time, travel, freq, ...(hold ? { hold } : {}) });
 
-  // Mountain King theme — mirrors page.tsx buildChart exactly.
-  const P1 = [P_A4, P_B4, P_C5, P_D5, P_E5, P_C5, P_E5];
-  const P2 = [P_DS5, P_B4, P_DS5, P_E5, P_C5, P_E5];
-  const P3 = P1;
-  const P4 = [P_E5, P_C5, P_B4, P_A4];
-  const P5 = P1;
-  const P6 = P2;
-  const P7 = P1;
-  const P8 = P4;
-  const P9 = P1;
+  const T1 = [[P_B4], [P_A4], [P_GS4], [P_A4], [P_C5, 1.0]];
+  const T2 = [[P_D5], [P_C5], [P_B4], [P_C5], [P_E5, 1.0]];
+  const T3 = [[P_F5], [P_E5], [P_DS5], [P_E5], [P_B4], [P_A4], [P_GS4], [P_A4]];
+  const T4 = [[P_C5], [P_B4], [P_A4, 1.5]];
 
   const stamp = (phrase, start, travel, step = BEAT) => {
-    phrase.forEach((f, i) => push(laneFor(f), start + i * step, travel, f));
+    phrase.forEach(([f, hold], i) => push(laneFor(f), start + i * step, travel, f, hold));
+  };
+  const stampTapsOnly = (phrase, start, travel, step) => {
+    phrase.forEach(([f], i) => push(laneFor(f), start + i * step, travel, f));
   };
 
-  // Mirror the client's layout with EXPLICIT start times copied from
-  // page.tsx buildChart(). The old sequential `t += len*BEAT + 0.5`
-  // arithmetic drifted: it put the P9 climax at 32.0s (client: 32.5s)
-  // and omitted the four closing hold notes entirely — so legit taps on
-  // those were replayed as strays and reset the player's combo/fever.
-  stamp(P1, 4.0,  TRAVEL_INTRO);
-  stamp(P2, 8.0,  TRAVEL_INTRO);
-  stamp(P3, 11.5, TRAVEL_VERSE);
-  stamp(P4, 15.5, TRAVEL_VERSE);
-  stamp(P5, 18.0, TRAVEL_VERSE);
-  stamp(P6, 22.0, TRAVEL_BUILD);
-  stamp(P7, 25.5, TRAVEL_BUILD);
-  stamp(P8, 29.5, TRAVEL_DROP);
-  stamp(P9, 32.5, TRAVEL_DROP, BEAT / 2); // climax reprise — eighth notes
+  // Explicit start times copied from page.tsx buildChart().
+  stamp(T1, 4.0,  TRAVEL_INTRO);
+  stamp(T2, 7.5,  TRAVEL_INTRO);
+  stamp(T3, 11.0, TRAVEL_VERSE);
+  stamp(T4, 15.5, TRAVEL_VERSE);
+  stamp(T1, 18.5, TRAVEL_VERSE);
+  stamp(T2, 22.0, TRAVEL_BUILD);
+  stamp(T3, 25.5, TRAVEL_BUILD);
+  stamp(T4, 30.0, TRAVEL_DROP);
+  stampTapsOnly(T3, 32.5, TRAVEL_DROP, BEAT / 2); // eighth-note climax sprint
 
-  // Ritardando holds — four closing A4 tonics (client: holds[])
+  // Outro — four held tonic A's (1.0s holds) at slowing intervals
   for (const t of [36.0, 38.0, 40.0, 42.5]) {
-    push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4);
+    push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0);
   }
 
   return notes.sort((a, b) => a.time - b.time);
@@ -79,9 +77,24 @@ function buildMainChart() {
 
 // ─── Physics check ───────────────────────────────────────────────────────────
 // Cheap timing-physics gates that run BEFORE the replay. Reject obvious bots.
+// Hold-note RELEASE events (`up: 1`) are validated for shape but excluded
+// from the human-speed gates: a press+release pair on one lane is a single
+// physical gesture, and its intra-gesture gap says nothing about tap rate.
 function physicsCheck(tapLog, elapsedMs) {
   if (!Array.isArray(tapLog)) return { ok: false, reason: 'Tap log missing' };
-  if (tapLog.length === 0)    return { ok: false, reason: 'No taps recorded' };
+
+  // Lane/time validity — every entry, presses and releases alike.
+  for (const tap of tapLog) {
+    if (!Number.isInteger(tap.lane) || tap.lane < 0 || tap.lane > 3) {
+      return { ok: false, reason: 'Invalid lane' };
+    }
+    if (typeof tap.time !== 'number' || tap.time < 0) {
+      return { ok: false, reason: 'Invalid tap time' };
+    }
+  }
+
+  const presses = tapLog.filter(t => !t.up);
+  if (presses.length === 0) return { ok: false, reason: 'No taps recorded' };
 
   // Bounded session length — Rhythm Rush capped at 10 minutes even in encore
   // (real players never survive that long). Anything past = suspicious.
@@ -89,33 +102,23 @@ function physicsCheck(tapLog, elapsedMs) {
     return { ok: false, reason: 'Session too long' };
   }
 
-  // Inter-tap gap — only enforce on SAME-LANE consecutive taps. Two-finger
+  // Inter-tap gap — only enforce on SAME-LANE consecutive PRESSES. Two-finger
   // mobile play legitimately fires cross-lane touch events 10-25ms apart;
   // the sustained-rate gate below still catches real bot patterns.
-  for (let i = 1; i < tapLog.length; i++) {
-    const gap = tapLog[i].time - tapLog[i - 1].time;
+  for (let i = 1; i < presses.length; i++) {
+    const gap = presses[i].time - presses[i - 1].time;
     if (gap < 0) return { ok: false, reason: 'Tap log out of order' };
-    if (tapLog[i].lane === tapLog[i - 1].lane && gap < 0.030) {
+    if (presses[i].lane === presses[i - 1].lane && gap < 0.030) {
       return { ok: false, reason: 'Taps too fast for human' };
     }
   }
 
-  // Sustained APM — no sliding 1-second window can have more than 12 taps
+  // Sustained APM — no sliding 1-second window can have more than 12 presses
   let windowStart = 0;
-  for (let i = 0; i < tapLog.length; i++) {
-    while (tapLog[i].time - tapLog[windowStart].time > 1.0) windowStart++;
+  for (let i = 0; i < presses.length; i++) {
+    while (presses[i].time - presses[windowStart].time > 1.0) windowStart++;
     if (i - windowStart + 1 > 12) {
       return { ok: false, reason: 'Sustained tap rate inhuman' };
-    }
-  }
-
-  // Lane validity — only 4 lanes (0-3)
-  for (const tap of tapLog) {
-    if (!Number.isInteger(tap.lane) || tap.lane < 0 || tap.lane > 3) {
-      return { ok: false, reason: 'Invalid lane' };
-    }
-    if (typeof tap.time !== 'number' || tap.time < 0) {
-      return { ok: false, reason: 'Invalid tap time' };
     }
   }
 
@@ -193,9 +196,23 @@ function computeScore(tapLog, elapsedMs) {
   const consumed = new Set();
   const hits = []; // for jitter analysis
 
-  // Replay taps in time order (the client appends in order, but sorting
-  // makes the miss-sweep below correct even for adversarial logs).
-  const taps = [...tapLog].sort((a, b) => a.time - b.time);
+  // Split presses from hold-releases. Presses drive hit judgment; each
+  // hold-note press pairs with the NEXT same-lane release to credit
+  // sustain ticks (same math as the client's resolveHold).
+  const events = [...tapLog].sort((a, b) => a.time - b.time);
+  const taps = events.filter(t => !t.up);
+  const releases = events.filter(t => t.up);
+  const usedReleases = new Set();
+  const nextReleaseAfter = (lane, t) => {
+    for (let i = 0; i < releases.length; i++) {
+      if (usedReleases.has(i)) continue;
+      if (releases[i].lane === lane && releases[i].time > t) {
+        usedReleases.add(i);
+        return releases[i];
+      }
+    }
+    return null;
+  };
   const notesByTime = [...chart].sort((a, b) => a.time - b.time);
 
   // Miss sweep — the client kills the perfect streak and fever the moment a
@@ -246,6 +263,18 @@ function computeScore(tapLog, elapsedMs) {
         perfectStreak = 0; // GOOD breaks the chain; fever keeps burning
       }
       hits.push({ diff: bestDiff, isPerfect });
+
+      // Hold sustain — pair with the next same-lane release; ticks match
+      // the client exactly (floor(heldTime / 0.5) × 2, no fever, capped
+      // at the note's hold duration). No release logged = no ticks (the
+      // client always logs one, including on auto-completion).
+      if (bestNote.hold) {
+        const rel = nextReleaseAfter(bestNote.lane, tap.time);
+        if (rel) {
+          const heldTime = Math.max(0, Math.min(rel.time - tap.time, bestNote.hold));
+          score += Math.floor(heldTime / HOLD_TICK_SEC) * HOLD_TICK_POINTS;
+        }
+      }
       continue;
     }
 

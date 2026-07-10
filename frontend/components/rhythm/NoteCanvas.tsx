@@ -38,6 +38,7 @@ export type ActiveNote = {
   lane: number;
   time: number;   // scheduled hit time (seconds from start)
   travel: number; // seconds the tile takes to fall from top to bottom
+  hold?: number;  // sustain duration (seconds) — draws a stem above the head
 };
 
 export type NoteCanvasHandle = {
@@ -184,7 +185,10 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       // the sprite once. This is what keeps 60fps on budget Android.
       for (const n of notes) {
         const progress = (nowSec - (n.time - n.travel)) / n.travel;
-        if (progress < 0 || progress > 1.05) continue; // off-screen
+        // Hold tiles stay on-screen while their stem is still crossing
+        // the line — extend the cull window by the hold's travel share.
+        const holdProg = n.hold ? n.hold / n.travel : 0;
+        if (progress < 0 || progress > 1.05 + holdProg) continue; // off-screen
         const yCenter = progress * h;
         const xCenter = (n.lane + 0.5) * laneW;
         const x = Math.round(xCenter - tileW / 2);
@@ -194,14 +198,35 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         // Fade-in during first 15% of travel — matches the DOM version
         const alpha = progress < 0.15 ? Math.max(0, progress / 0.15) : 1;
 
+        // HOLD STEM — a translucent ribbon extending UP from the head
+        // (the tail arrives later, so it sits above). Two flat rects:
+        // wide soft body + bright core line. No gradients, no paths —
+        // same cheap-ops discipline as the rest of the renderer.
+        if (n.hold) {
+          const pxPerSec = h / n.travel;
+          const stemH = n.hold * pxPerSec;
+          const stemY = Math.round(yCenter - stemH);
+          ctx.globalAlpha = 0.30 * alpha;
+          ctx.fillStyle = theme.glow;
+          ctx.fillRect(Math.round(xCenter - tileW * 0.28), stemY, Math.round(tileW * 0.56), Math.round(stemH));
+          ctx.globalAlpha = 0.75 * alpha;
+          ctx.fillStyle = theme.accent;
+          ctx.fillRect(Math.round(xCenter - 2), stemY, 4, Math.round(stemH));
+          // Tail cap — marks where the finger can let go
+          ctx.globalAlpha = 0.9 * alpha;
+          ctx.fillRect(Math.round(xCenter - tileW * 0.28), stemY - 3, Math.round(tileW * 0.56), 4);
+        }
+
         // Motion trail — a single flat rect (no gradient allocation). The
         // fade-to-transparent is faked with a low globalAlpha; cheaper
         // than a per-frame createLinearGradient and visually identical in
-        // motion.
-        const trailH = 26;
-        ctx.globalAlpha = 0.32 * alpha;
-        ctx.fillStyle = theme.glow;
-        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
+        // motion. Hold tiles skip it — the stem IS their trail.
+        if (!n.hold) {
+          const trailH = 26;
+          ctx.globalAlpha = 0.32 * alpha;
+          ctx.fillStyle = theme.glow;
+          ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
+        }
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
