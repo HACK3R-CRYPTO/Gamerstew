@@ -167,21 +167,32 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
     // shape hovering above it. Uses theme.accent (hex): theme.glow is an
     // rgba() string the hex parser can't read (that bug painted every
     // trail magenta).
-    const trailH = Math.round(tileH * 2.1);
+    const trailH = Math.round(tileH * 5.2);
     const trails = lanes.map((theme) => {
       const off = document.createElement("canvas");
-      const tw = Math.ceil(tileW * 0.5);
+      const tw = Math.ceil(tileW * 0.7);
       off.width = Math.ceil(tw * dpr);
       off.height = Math.ceil(trailH * dpr);
       const c = off.getContext("2d")!;
       c.scale(dpr, dpr);
-      // Straight vertical fade: nothing → lane color
+      // Long light-shaft: invisible far above, building to a strong lane-
+      // color glow right where the note is. The note falls down its own
+      // beam of light — the banner's exact read.
       const g = c.createLinearGradient(0, 0, 0, trailH);
       g.addColorStop(0, hexToRgba(theme.accent, 0));
       g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
-      g.addColorStop(1, hexToRgba(theme.accent, 0.42));
+      g.addColorStop(0.8, hexToRgba(theme.accent, 0.32));
+      g.addColorStop(1, hexToRgba(theme.accent, 0.58));
       c.fillStyle = g;
       c.fillRect(0, 0, tw, trailH);
+      // Bright core column down the middle of the shaft — the hot center
+      // that makes it read as light, not fog
+      const core = c.createLinearGradient(0, 0, 0, trailH);
+      core.addColorStop(0, "rgba(255,255,255,0)");
+      core.addColorStop(0.75, "rgba(255,255,255,0.06)");
+      core.addColorStop(1, "rgba(255,255,255,0.22)");
+      c.fillStyle = core;
+      c.fillRect(tw * 0.3, 0, tw * 0.4, trailH);
       return off;
     });
 
@@ -356,14 +367,15 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           continue; // the capsule replaces the head sprite entirely
         }
 
-        // Motion fade — straight ribbon whose bottom sits at the shape's
-        // center, so the note melts upward into transparency behind
-        // itself. One drawImage, no per-frame gradient allocation.
+        // Motion shaft — a long beam of the lane's light with its bright
+        // end COVERING the note, stretching far up the lane. Bottom lands
+        // just below the shape's center so the note visibly drops out of
+        // its own light. One drawImage, gradient baked in the sprite.
         const trailSprite = trails[n.lane];
-        const trailW = tileW * 0.5;
-        const trailHpx = tileH * 2.1;
-        ctx.globalAlpha = 0.9 * alpha;
-        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter - trailHpx, trailW, trailHpx);
+        const trailW = tileW * 0.7;
+        const trailHpx = tileH * 5.2;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(trailSprite, xCenter - trailW / 2, yCenter + tileH * 0.35 - trailHpx, trailW, trailHpx);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
