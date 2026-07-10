@@ -2300,18 +2300,17 @@ function PlayingView({
         })}
       </div>
 
-      {/* ═══ TAP KEYS — GameArena's own candy keys, with piano physics ═══
-          The skin stays in our neon-candy language (an ivory piano bed
-          clashed with the cosmic world). What we KEEP from the piano
-          experiment is the physics: a key stays pressed-down for the
-          entire duration of a hold, not just the tap flash — your finger
-          is on it, the key stays sunk. */}
+      {/* ═══ SLIME KEYS — you don't press buttons, you boop slimes ═══
+          The brand's own creature is the instrument. Tap = squash-and-
+          stretch boing. Hold = the slime stays pinned flat under your
+          finger, eyes squeezed, jiggling with effort until the bar
+          completes. Uniquely GameArena — no rhythm game has this. */}
       <div style={{
-        padding: "0 10px 16px",
-        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px",
+        padding: "0 10px 14px",
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px",
       }}>
         {LANES.map((theme, i) => (
-          <TapButton
+          <SlimeKey
             key={i}
             theme={theme}
             laneIdx={i}
@@ -2456,65 +2455,103 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
 }
 
 // ─── Tap button (juicy wall + face — same pattern as game card START) ────────
-// ─── Tap key (juicy wall + face — GameArena's candy language) ────────────────
-// Piano PHYSICS without the piano SKIN: the key sinks on press and STAYS
-// sunk for the entire duration of a hold (isDown covers both the 100ms tap
-// flash and the sustained heldLanes state). While holding, the face pulses
-// brighter — finger on the key, key under tension.
-function TapButton({ theme, laneIdx, isDown, isHolding, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isDown: boolean; isHolding: boolean; onPress: () => void; onRelease: () => void }) {
+// ─── SlimeKey — the keys are slimes. ─────────────────────────────────────────
+// GameArena's pet is the brand; the strike zone leans into it. Each lane
+// ends in a slime blob you BOOP instead of a button you press:
+//   idle    → breathing belly wobble
+//   tap     → squash-and-stretch: squishes flat, boings back with overshoot
+//   holding → pinned flat under the finger, eyes squeezed shut, jiggling
+//             with effort while the note sings — the hold made adorable
+//   release → pops back up
+// Pure CSS transforms (GPU-cheap), transform-origin at the base so all
+// squashing is grounded like real jelly.
+function SlimeKey({ theme, laneIdx, isDown, isHolding, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isDown: boolean; isHolding: boolean; onPress: () => void; onRelease: () => void }) {
   const keyLabels = ["A", "S", "D", "F"];
   return (
     <div
       role="button" tabIndex={0}
-      // Opt out of the global UI click blip — tapping a lane plays the bell
-      // at the tile's pitch (melodic). A UI tick on top would muddle it.
+      // Opt out of the global UI click blip — booping a slime plays the
+      // bell at the tile's pitch (melodic). A UI tick would muddle it.
       data-no-click-sound="true"
       onPointerDown={e => { e.preventDefault(); onPress(); }}
       // Release ends any active hold on this lane. pointerleave/cancel
-      // count as releases too — a finger sliding off the button mid-hold
+      // count as releases too — a finger sliding off the slime mid-hold
       // shouldn't sustain forever.
       onPointerUp={e => { e.preventDefault(); onRelease(); }}
       onPointerLeave={() => onRelease()}
       onPointerCancel={() => onRelease()}
-      style={{
-        cursor: "pointer", userSelect: "none",
-        transition: "transform 0.05s",
-        transform: isDown ? "scale(0.96) translateY(3px)" : "scale(1)",
-        touchAction: "manipulation",
-      }}>
+      style={{ cursor: "pointer", userSelect: "none", touchAction: "manipulation", position: "relative", height: "clamp(58px, 10vh, 78px)" }}
+    >
+      <style>{`
+        @keyframes slime-breathe { 0%, 100% { transform: scaleY(1) scaleX(1); } 50% { transform: scaleY(0.94) scaleX(1.04); } }
+        @keyframes slime-strain  { 0%, 100% { transform: scaleY(0.5) scaleX(1.32) translateY(0); } 50% { transform: scaleY(0.46) scaleX(1.36) translateY(1px); } }
+      `}</style>
+
+      {/* Landing shadow — grounds the blob */}
       <div style={{
-        borderRadius: "14px", background: theme.wall,
-        // Pressed: the wall (3D depth) compresses — the key is DOWN
-        paddingBottom: isDown ? "2px" : "5px",
-        boxShadow: isDown
-          ? `0 4px 12px -4px ${theme.glow}, 0 0 26px ${theme.glow}`
-          : `0 10px 22px -4px ${theme.glow}, 0 0 18px ${theme.glow}55`,
-        transition: "padding-bottom 0.05s, box-shadow 0.08s",
+        position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+        width: isDown ? "88%" : "72%", height: 10, borderRadius: "50%",
+        background: `radial-gradient(ellipse, ${theme.glow} 0%, transparent 70%)`,
+        opacity: isDown ? 0.9 : 0.45,
+        transition: "width 0.1s, opacity 0.1s",
+        pointerEvents: "none",
+      }} />
+
+      {/* The slime body — all squash happens from the base */}
+      <div style={{
+        position: "absolute", bottom: 2, left: "8%", right: "8%", top: 4,
+        transformOrigin: "50% 100%",
+        transform: isHolding ? undefined : isDown ? "scaleY(0.62) scaleX(1.22)" : undefined,
+        animation: isHolding
+          ? "slime-strain 0.22s ease-in-out infinite"
+          : isDown ? undefined : "slime-breathe 2.6s ease-in-out infinite",
+        transition: "transform 0.16s cubic-bezier(0.34, 1.8, 0.64, 1)",
+        pointerEvents: "none",
       }}>
         <div style={{
-          borderRadius: "12px 12px 10px 10px",
+          position: "absolute", inset: 0,
+          borderRadius: "48% 48% 44% 44% / 62% 62% 40% 40%",
           background: theme.face,
-          padding: "16px 4px", textAlign: "center",
-          position: "relative", overflow: "hidden",
-          border: `2px solid rgba(255,255,255,${isHolding ? 0.85 : 0.45})`,
+          border: `2px solid rgba(255,255,255,${isHolding ? 0.85 : 0.5})`,
           boxShadow: isDown
-            ? `inset 0 6px 14px rgba(255,255,255,0.9), 0 0 30px ${theme.glow}`
-            : "inset 0 6px 14px rgba(255,255,255,0.6), inset 0 -3px 6px rgba(0,0,0,0.3)",
-          transition: "border-color 0.08s",
+            ? `0 0 26px ${theme.glow}, inset 0 6px 12px rgba(255,255,255,0.75), inset 0 -4px 8px rgba(0,0,0,0.25)`
+            : `0 6px 16px -4px ${theme.glow}, inset 0 6px 12px rgba(255,255,255,0.6), inset 0 -4px 8px rgba(0,0,0,0.3)`,
+          overflow: "hidden",
         }}>
-          {/* Gloss */}
+          {/* Jelly gloss */}
           <div style={{
-            position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
+            position: "absolute", top: "6%", left: "14%", width: "34%", height: "26%",
+            borderRadius: "50%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.85), transparent)",
+            transform: "rotate(-18deg)",
           }} />
-          <span style={{
-            position: "relative", zIndex: 1,
-            color: "white", fontSize: "22px", fontWeight: 900,
-            textShadow: isHolding ? `0 0 12px ${theme.glow}, 0 2px 4px rgba(0,0,0,0.5)` : "0 2px 4px rgba(0,0,0,0.5)",
-          }}>{isHolding ? "HOLD" : keyLabels[laneIdx]}</span>
+          {/* Eyes — dots normally, squeezed-shut arcs while straining */}
+          {[36, 64].map(x => (
+            <div key={x} style={{
+              position: "absolute", left: `${x}%`, top: "42%", transform: "translate(-50%, -50%)",
+              width: 7, height: isHolding ? 2.5 : 8,
+              borderRadius: isHolding ? 2 : "50%",
+              background: "rgba(20,8,40,0.9)",
+              transition: "height 0.1s, border-radius 0.1s",
+            }} />
+          ))}
+          {/* Mouth — tiny line, becomes an effort "o" while holding */}
+          <div style={{
+            position: "absolute", left: "50%", top: "60%", transform: "translate(-50%, -50%)",
+            width: isHolding ? 8 : 10, height: isHolding ? 8 : 2.5,
+            borderRadius: isHolding ? "50%" : 2,
+            background: "rgba(20,8,40,0.75)",
+            transition: "all 0.1s",
+          }} />
         </div>
       </div>
+
+      {/* Key letter — tiny tag under the blob, desktop finger-guide */}
+      <span style={{
+        position: "absolute", bottom: -1, left: "50%", transform: "translateX(-50%)",
+        color: "rgba(220,200,255,0.45)", fontSize: 9, fontWeight: 900, letterSpacing: "0.1em",
+        pointerEvents: "none",
+      }}>{keyLabels[laneIdx]}</span>
     </div>
   );
 }
