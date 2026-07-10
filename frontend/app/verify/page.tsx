@@ -82,6 +82,25 @@ function VerifyInner() {
   });
   const username = (chainUsername as string | undefined) || "player";
 
+  // Direct on-chain whitelist read — the page must KNOW the answer before
+  // rendering anything. Without this, verified players saw the full
+  // "verify now" pitch flash for a second before the context hydrated and
+  // redirected — which reads as "the app forgot I'm verified".
+  const { data: whitelistRoot, isLoading: whitelistLoading } = useReadContract({
+    address: "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42",
+    abi: [{
+      inputs: [{ name: "account", type: "address" }],
+      name: "getWhitelistedRoot",
+      outputs: [{ name: "", type: "address" }],
+      stateMutability: "view",
+      type: "function",
+    }] as const,
+    functionName: "getWhitelistedRoot",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const chainVerified = !!whitelistRoot && whitelistRoot !== "0x0000000000000000000000000000000000000000";
+
   // Auth guard: must be connected to be on this page.
   useEffect(() => {
     const connected = authenticated || (isMiniPay && !!address);
@@ -90,13 +109,37 @@ function VerifyInner() {
     }
   }, [authenticated, address, isMiniPay, router]);
 
-  // Auto-advance when verified — same hook as before, just with the new
-  // /dashboard default for `next`.
+  // Auto-advance when verified — from the context OR the direct chain
+  // read, whichever answers first.
   useEffect(() => {
-    if (isVerified) {
+    if (isVerified || chainVerified) {
       router.replace(next);
     }
-  }, [isVerified, next, router]);
+  }, [isVerified, chainVerified, next, router]);
+
+  // Gate the pitch: never show "verify now" until the chain has answered
+  // that this wallet is NOT whitelisted. While resolving (or when verified
+  // and about to redirect), show a calm checking state instead of the
+  // pitch flashing and vanishing.
+  if (whitelistLoading || chainVerified || isVerified) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0,
+        background: T.bg, color: T.ink, fontFamily: T.body,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14,
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: "50%",
+          border: "3px solid rgba(134,239,172,0.25)", borderTopColor: "#22c55e",
+          animation: "verify-spin 0.8s linear infinite",
+        }} />
+        <style>{`@keyframes verify-spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: "rgba(220,210,255,0.6)" }}>
+          {chainVerified || isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "CHECKING YOUR STATUS…"}
+        </div>
+      </div>
+    );
+  }
 
   const benefits = [
     { icon: "🪙", txt: "Claim free G$ every 24 hours" },

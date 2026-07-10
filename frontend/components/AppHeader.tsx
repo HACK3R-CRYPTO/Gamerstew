@@ -47,7 +47,7 @@ function fmtG(rawWei?: bigint) {
 
 export default function AppHeader() {
   const router = useRouter();
-  const { authenticated } = usePrivy();
+  const { authenticated, logout } = usePrivy();
   const { address } = useAccount();
   const audio = useAudioSettings();
   // Notifications sheet · slides up from the bottom when the bell is
@@ -108,6 +108,10 @@ export default function AppHeader() {
   // users from there.
   const isMiniPay = useIsMiniPay();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
+  // Signed in but never minted a GamePass — the "wrong Gmail / bailed on
+  // onboarding" state. Gets its own header treatment (finish setup +
+  // switch account) instead of masquerading as Guest.
+  const authedUnminted = (authenticated || isMiniPay) && !!address && hasMinted === false;
   // GoodDollar / Self verification status · drives the ✓ overlay on the
   // avatar. Only shows when the player is fully connected AND verified ·
   // unverified state shows no badge at all (per design: never mark people
@@ -223,7 +227,7 @@ export default function AppHeader() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {connected ? name : "Guest"}
+            {connected ? name : authedUnminted ? "Almost there" : "Guest"}
           </div>
           {connected ? (
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
@@ -232,6 +236,14 @@ export default function AppHeader() {
                 <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
                 <span style={{ fontFamily: T.body, fontSize: 10, color: "#bae6fd", fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
+            </div>
+          ) : authedUnminted ? (
+            // Signed in but no GamePass — an account exists, setup was never
+            // finished (or they signed into the wrong Gmail and bailed).
+            // Showing "Guest" here made players think the sign-in failed.
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24" }} />
+              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>Signed in · finish your setup</span>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
@@ -333,6 +345,36 @@ export default function AppHeader() {
               <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#fde68a", lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
             </span>
           </button>
+        ) : authedUnminted ? (
+          <>
+            {/* Two exits from the half-done state: finish setup (reopens
+                the onboarding overlay via ?ob=1) or switch account (the
+                escape hatch for "I signed in with the wrong Gmail" —
+                without it that player is permanently stuck). */}
+            <button onClick={() => router.push("/home?ob=1")} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "9px 14px", borderRadius: 999, cursor: "pointer", flexShrink: 0,
+              background: "linear-gradient(180deg, #fde68a, #d97706)",
+              border: "1px solid rgba(251,191,36,0.8)",
+              boxShadow: "0 6px 16px -4px rgba(251,191,36,0.5), inset 0 1px 0 rgba(255,255,255,0.45)",
+              color: "#231005", fontFamily: T.body, fontSize: 12, fontWeight: 800, letterSpacing: "0.03em",
+            }}>
+              Finish setup
+            </button>
+            <button
+              onClick={async () => { playClick(); await logout(); router.push("/home"); }}
+              title="Switch account" aria-label="Switch account"
+              style={{
+                width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: T.inkDim,
+              }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 17l5-5-5-5M21 12H9M13 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8" />
+              </svg>
+            </button>
+          </>
         ) : (
           <button onClick={() => router.push("/home")} style={{
             display: "flex", alignItems: "center", gap: 6,

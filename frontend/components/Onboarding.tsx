@@ -78,7 +78,7 @@ export default function Onboarding({
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
   const { writeContractAsync } = useWriteContract();
-  const { getAccessToken } = usePrivy();
+  const { getAccessToken, logout } = usePrivy();
 
   // Balance · refetches every 6s while the user is on the switch-on panel, every 15s otherwise.
   const { data: balance, refetch: refetchBalance } = useBalance({
@@ -98,6 +98,24 @@ export default function Onboarding({
     query: { enabled: !!address },
   });
 
+  // Already GoodDollar-verified? Then the verify pitch is an insult —
+  // it reads as "we forgot you're verified". Direct on-chain whitelist
+  // read (same Identity contract the verification context uses).
+  const { data: whitelistRoot } = useReadContract({
+    address: "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42",
+    abi: [{
+      inputs: [{ name: "account", type: "address" }],
+      name: "getWhitelistedRoot",
+      outputs: [{ name: "", type: "address" }],
+      stateMutability: "view",
+      type: "function",
+    }] as const,
+    functionName: "getWhitelistedRoot",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const alreadyVerified = !!whitelistRoot && whitelistRoot !== "0x0000000000000000000000000000000000000000";
+
   const [phase, setPhase] = useState<Phase>("create");
   const [username, setUsername] = useState("");
   const [showSwitch, setShowSwitch] = useState(false);
@@ -115,6 +133,15 @@ export default function Onboarding({
   useEffect(() => {
     if (hasMinted === true) onComplete({ username: "", verified: false, alreadyMinted: true });
   }, [hasMinted, onComplete]);
+
+  // Already-verified wallets skip the verify pitch entirely — showing
+  // "Verify & claim G$" to a verified human reads as "we don't know
+  // you're verified" and erodes trust. They complete straight through.
+  useEffect(() => {
+    if (phase === "verify" && alreadyVerified) {
+      onComplete({ username, verified: false });
+    }
+  }, [phase, alreadyVerified, username, onComplete]);
 
   // What gets copied to the clipboard isn't the bare wallet address —
   // it's a short friendly request the player can paste straight into
@@ -259,6 +286,7 @@ export default function Onboarding({
 
   // ── VERIFY (you're in + GoodDollar claim or skip) ──────────────────────
   if (phase === "verify") {
+    if (alreadyVerified) return null; // completing via the effect above
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: `radial-gradient(ellipse 95% 55% at 50% 16%, rgba(34,197,94,0.18) 0%, transparent 60%), ${T.bg}`, display: "flex", flexDirection: "column", animation: "ob-fadeIn 0.25s ease both", overflow: "hidden" }}>
         <style>{KEYFRAMES}</style>
@@ -441,6 +469,20 @@ export default function Onboarding({
             <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", marginTop: -8, lineHeight: 1.4 }}>You can pick your name anytime — nothing&apos;s lost.</div>
           </>
         )}
+
+        {/* Wrong-account escape hatch — always visible on the create step.
+            "I signed in with the wrong Gmail" was a dead end: the player
+            didn't want to name a slime on the wrong account and had no
+            way out. One tap signs them out and returns to the sign-in. */}
+        <button
+          onClick={async () => { try { await logout(); } catch { /* already out */ } onClose(); }}
+          style={{
+            marginTop: 4, background: "transparent", border: "none", cursor: "pointer",
+            fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700,
+            textDecoration: "underline", textUnderlineOffset: 3,
+          }}>
+          Wrong account? Switch account
+        </button>
       </div>
     </div>
   );
