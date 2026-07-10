@@ -275,30 +275,43 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
           const dim = dropped ? 0.16 : 1;
 
+          // TRACK-AND-PILL design (matches the brand art): an outlined
+          // groove shows the hold's full length, and a bright glowing
+          // pill floats inside it — the living part your finger owns.
+
           // Outer glow — swells while held
-          ctx.globalAlpha = (held ? 0.6 : 0.3) * alpha * dim;
+          ctx.globalAlpha = (held ? 0.55 : 0.25) * alpha * dim;
           ctx.fillStyle = theme.glow;
-          roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 22);
+          roundRect(ctx, bx - 7, top - 7, barW + 14, visH + 14, 24);
           ctx.fill();
 
-          // Solid body — near-opaque. A hold bar is a wall, not a mist.
-          ctx.globalAlpha = (held ? 1 : 0.82) * alpha * dim;
-          ctx.fillStyle = theme.accent;
-          roundRect(ctx, bx, top, barW, visH, 16);
+          // The track — dark translucent groove with an accent outline
+          ctx.globalAlpha = (held ? 0.75 : 0.55) * alpha * dim;
+          ctx.fillStyle = theme.wall;
+          roundRect(ctx, bx, top, barW, visH, 18);
           ctx.fill();
-
-          // Stroked border — the crisp edge that separates it from taps
-          ctx.globalAlpha = (held ? 1 : 0.7) * alpha * dim;
+          ctx.globalAlpha = (held ? 1 : 0.8) * alpha * dim;
           ctx.lineWidth = held ? 3 : 2;
-          ctx.strokeStyle = held ? "#ffffff" : "rgba(255,255,255,0.65)";
-          roundRect(ctx, bx, top, barW, visH, 16);
+          ctx.strokeStyle = held ? "#ffffff" : theme.accent;
+          roundRect(ctx, bx, top, barW, visH, 18);
           ctx.stroke();
 
-          // Inner gloss — top-lit like the tap tile sprites, so both tile
-          // families share one material language
-          ctx.globalAlpha = (held ? 0.5 : 0.35) * alpha * dim;
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          roundRect(ctx, bx + 6, top + 5, barW - 12, Math.min(14, Math.max(5, visH * 0.16)), 8);
+          // The pill — bright capsule inset in the groove, glowing hot
+          // while held. Inset margin keeps the track edge visible so the
+          // two-layer read survives at speed.
+          const inset = Math.max(5, barW * 0.16);
+          const pillW = barW - inset * 2;
+          const pillTop = top + inset;
+          const pillH = Math.max(8, visH - inset * 2);
+          ctx.globalAlpha = (held ? 1 : 0.85) * alpha * dim;
+          ctx.fillStyle = theme.accent;
+          roundRect(ctx, bx + inset, pillTop, pillW, pillH, pillW / 2);
+          ctx.fill();
+
+          // Pill core highlight — lit-from-within
+          ctx.globalAlpha = (held ? 0.75 : 0.45) * alpha * dim;
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          roundRect(ctx, bx + inset + pillW * 0.28, pillTop + 4, pillW * 0.44, Math.max(4, pillH - 8), pillW * 0.22);
           ctx.fill();
 
           // While held: a hot consumption edge where the bar meets the
