@@ -68,7 +68,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // old loop rebuilt ~5 roundRect paths + 2 gradient allocations PER TILE
   // PER FRAME (≈64 ops/frame with 8 tiles). drawImage of a cached sprite
   // is one GPU blit — an order of magnitude cheaper.
-  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[] } | null>(null);
+  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[]; trails: HTMLCanvasElement[] } | null>(null);
 
   // Candy shapes, one per lane — square / triangle / coin / star. Shape +
   // color double-codes the lanes (reads faster at speed, works for
@@ -146,15 +146,50 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       c.fill();
       c.stroke();
 
-      // Specular dot — the candy shine
+      // Specular dot — the candy shine, CLIPPED inside the shape so it
+      // never floats outside a triangle/star silhouette
+      c.save();
+      tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
+      c.clip();
       c.fillStyle = "rgba(255,255,255,0.85)";
       c.beginPath();
-      c.ellipse(cx - shapeW * 0.2, cy - shapeH * 0.24, shapeW * 0.12, shapeH * 0.08, -0.5, 0, Math.PI * 2);
+      c.ellipse(cx - shapeW * 0.14, cy - shapeH * 0.14, shapeW * 0.13, shapeH * 0.09, -0.5, 0, Math.PI * 2);
       c.fill();
+      c.restore();
 
       return off;
     });
-    spritesRef.current = { tileW, tileH, pad, sprites };
+
+    // Motion-trail sprites — a tapered fading streak baked ONCE per lane
+    // (gradient + taper are too expensive per frame; a flat fillRect read
+    // as a floating box). Drawn above the shape while it falls, it sells
+    // "this thing is moving fast" the way the old rectangle never did.
+    const trailH = Math.round(tileH * 1.6);
+    const trails = lanes.map((theme) => {
+      const off = document.createElement("canvas");
+      const tw = Math.ceil(tileW * 0.6);
+      off.width = Math.ceil(tw * dpr);
+      off.height = Math.ceil(trailH * dpr);
+      const c = off.getContext("2d")!;
+      c.scale(dpr, dpr);
+      // Vertical fade: transparent at the top → lane glow at the bottom
+      const g = c.createLinearGradient(0, 0, 0, trailH);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(0.55, hexToRgba(theme.glow, 0.14));
+      g.addColorStop(1, hexToRgba(theme.glow, 0.5));
+      c.fillStyle = g;
+      // Taper: narrow at the top, full width at the bottom
+      c.beginPath();
+      c.moveTo(tw * 0.38, 0);
+      c.lineTo(tw * 0.62, 0);
+      c.lineTo(tw, trailH);
+      c.lineTo(0, trailH);
+      c.closePath();
+      c.fill();
+      return off;
+    });
+
+    spritesRef.current = { tileW, tileH, pad, sprites, trails };
   };
 
   useEffect(() => {
@@ -219,7 +254,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
       const built = spritesRef.current;
       if (!built) return;
-      const { tileW, tileH, pad, sprites } = built;
+      const { tileW, tileH, pad, sprites, trails } = built;
       const laneCount = lanes.length;
       const laneW = w / laneCount;
 
@@ -325,14 +360,13 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
           continue; // the capsule replaces the head sprite entirely
         }
 
-        // Motion trail — a single flat rect (no gradient allocation). The
-        // fade-to-transparent is faked with a low globalAlpha; cheaper
-        // than a per-frame createLinearGradient and visually identical in
-        // motion.
-        const trailH = 26;
-        ctx.globalAlpha = 0.32 * alpha;
-        ctx.fillStyle = theme.glow;
-        ctx.fillRect(x + tileW * 0.2, y - trailH, tileW * 0.6, trailH);
+        // Motion streak — pre-baked tapered gradient sprite rising above
+        // the shape. One drawImage, no per-frame gradient allocation.
+        const trailSprite = trails[n.lane];
+        const trailW = tileW * 0.6;
+        const trailHpx = tileH * 1.6;
+        ctx.globalAlpha = 0.85 * alpha;
+        ctx.drawImage(trailSprite, xCenter - trailW / 2, y - trailHpx + tileH * 0.25, trailW, trailHpx);
 
         // The tile itself — one bitmap blit. Sprite includes glow, wall,
         // face, gloss and specular, so this single call replaces the old
@@ -366,6 +400,15 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 });
 
 export default NoteCanvas;
+
+// Hex (#rrggbb) → rgba() string with the given alpha. Used when baking
+// gradient sprites, where hex + globalAlpha can't express per-stop fades.
+function hexToRgba(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(232,121,249,${a})`; // brand magenta fallback
+  const v = parseInt(m[1], 16);
+  return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${a})`;
+}
 
 // Cross-browser roundRect polyfill. Safari < 16 and older Android don't
 // support the spec `CanvasRenderingContext2D.roundRect` yet.
