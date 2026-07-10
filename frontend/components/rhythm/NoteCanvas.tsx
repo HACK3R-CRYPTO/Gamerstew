@@ -70,48 +70,88 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // is one GPU blit — an order of magnitude cheaper.
   const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[] } | null>(null);
 
+  // Candy shapes, one per lane — square / triangle / coin / star. Shape +
+  // color double-codes the lanes (reads faster at speed, works for
+  // colorblind players) and matches the brand's candy-arcade art. Each
+  // sprite still renders ONCE here; the per-frame loop stays a single
+  // drawImage blit per tile.
   const buildSprites = (tileW: number, tileH: number, dpr: number) => {
-    const pad = 12; // room for the glow halo around the tile
+    const pad = 12; // room for the glow halo around the shape
     const sw = tileW + pad * 2;
     const sh = tileH + pad * 2 + 4;
-    const sprites = lanes.map((theme) => {
+
+    // Path helpers — all centered in the sprite box
+    const tracePath = (c: CanvasRenderingContext2D, kind: number, cx: number, cy: number, w: number, h: number) => {
+      c.beginPath();
+      if (kind === 0) {
+        // Rounded square (magenta lane)
+        const s = Math.min(w, h);
+        roundRect(c, cx - s / 2, cy - s / 2, s, s, s * 0.28);
+      } else if (kind === 1) {
+        // Triangle (blue lane) — softened joins via lineJoin round stroke
+        const s = Math.min(w, h) * 1.06;
+        c.moveTo(cx, cy - s / 2);
+        c.lineTo(cx + s / 2, cy + s / 2);
+        c.lineTo(cx - s / 2, cy + s / 2);
+        c.closePath();
+      } else if (kind === 2) {
+        // Coin (gold lane)
+        c.arc(cx, cy, Math.min(w, h) / 2, 0, Math.PI * 2);
+      } else {
+        // 5-point star (green lane)
+        const R = Math.min(w, h) * 0.58;
+        const r = R * 0.5;
+        for (let i = 0; i < 10; i++) {
+          const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+          const rad = i % 2 === 0 ? R : r;
+          const px = cx + Math.cos(ang) * rad;
+          const py = cy + Math.sin(ang) * rad;
+          if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+        }
+        c.closePath();
+      }
+    };
+
+    const sprites = lanes.map((theme, laneIdx) => {
       const off = document.createElement("canvas");
       off.width = Math.ceil(sw * dpr);
       off.height = Math.ceil(sh * dpr);
       const c = off.getContext("2d")!;
       c.scale(dpr, dpr);
-      const x = pad, y = pad;
+      const cx = pad + tileW / 2;
+      const cy = pad + tileH / 2;
+      const shapeW = tileW * 0.82;
+      const shapeH = tileH * 1.12;
 
       // Glow halo (fake, no shadowBlur — software rasterization killer)
-      c.globalAlpha = 0.28;
+      c.globalAlpha = 0.3;
       c.fillStyle = theme.glow;
-      roundRect(c, x - 8, y - 4, tileW + 16, tileH + 10, 18);
+      tracePath(c, laneIdx, cx, cy + 1, shapeW + 14, shapeH + 14);
       c.fill();
       c.globalAlpha = 1;
 
-      // Wall (3D depth)
+      // Drop wall (3D depth under the candy)
       c.fillStyle = theme.wall;
-      roundRect(c, x, y + 3, tileW, tileH, 14);
+      tracePath(c, laneIdx, cx, cy + 3, shapeW, shapeH);
       c.fill();
 
-      // Face
-      c.fillStyle = theme.accent;
-      roundRect(c, x + 2, y + 1, tileW - 4, tileH - 5, 12);
+      // Candy body — radial gradient for the glossy jelly look
+      const grad = c.createRadialGradient(cx - shapeW * 0.22, cy - shapeH * 0.28, 2, cx, cy, Math.max(shapeW, shapeH) * 0.75);
+      grad.addColorStop(0, "rgba(255,255,255,0.85)");
+      grad.addColorStop(0.25, theme.accent);
+      grad.addColorStop(1, theme.wall);
+      c.fillStyle = grad;
+      c.lineJoin = "round";
+      c.lineWidth = 3;
+      c.strokeStyle = "rgba(255,255,255,0.5)";
+      tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
       c.fill();
+      c.stroke();
 
-      // Gloss crescent
-      const glossH = Math.round((tileH - 5) * 0.45);
-      const gloss = c.createLinearGradient(0, y + 1, 0, y + 1 + glossH);
-      gloss.addColorStop(0, "rgba(255,255,255,0.55)");
-      gloss.addColorStop(1, "rgba(255,255,255,0)");
-      c.fillStyle = gloss;
-      roundRect(c, x + 6, y + 2, tileW - 12, glossH, 9);
-      c.fill();
-
-      // Specular dot
-      c.fillStyle = "rgba(255,255,255,0.8)";
+      // Specular dot — the candy shine
+      c.fillStyle = "rgba(255,255,255,0.85)";
       c.beginPath();
-      c.ellipse(x + tileW * 0.32, y + 6, tileW * 0.12, 2.5, 0, 0, Math.PI * 2);
+      c.ellipse(cx - shapeW * 0.2, cy - shapeH * 0.24, shapeW * 0.12, shapeH * 0.08, -0.5, 0, Math.PI * 2);
       c.fill();
 
       return off;
