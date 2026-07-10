@@ -634,6 +634,9 @@ export default function RhythmGamePage() {
   // adds floating "+X" feedback per hit / "MISS" feedback per miss.
   const juice = useGameJuice();
   const [flashLane, setFlashLane] = useState<number | null>(null);
+  // Which lanes have a finger pinned on an active hold — keeps the key
+  // visually DOWN for the whole sustain, not just the 100ms tap flash.
+  const [heldLanes, setHeldLanes] = useState<boolean[]>([false, false, false, false]);
   const [feedback, setFeedback] = useState<{ lane: number; type: "perfect" | "good" | "miss"; ts: number; ms?: number } | null>(null);
 
   const chartRef = useRef<NoteDef[]>([]);
@@ -795,6 +798,7 @@ export default function RhythmGamePage() {
     for (const ah of activeHoldsRef.current) ah?.tone?.stop();
     activeHoldsRef.current = [null, null, null, null];
     holdStateRef.current.clear();
+    setHeldLanes([false, false, false, false]);
     setEncoreLives(3);
     setEncoreLoop(0);
     feverUntilRef.current = 0;
@@ -1175,6 +1179,7 @@ export default function RhythmGamePage() {
     // note singing over the finish screen.
     for (const ah of activeHoldsRef.current) ah?.tone?.stop();
     activeHoldsRef.current = [null, null, null, null];
+    setHeldLanes([false, false, false, false]);
   }, [phase, stopDrumTrack]);
 
   // ─── Resolve an active hold — on finger release OR auto-completion ─────────
@@ -1188,6 +1193,7 @@ export default function RhythmGamePage() {
     if (!h) return;
     activeHoldsRef.current[lane] = null;
     h.tone?.stop();
+    setHeldLanes(hl => { const next = [...hl]; next[lane] = false; return next; });
     const holdDur = h.note.hold ?? 0;
     const endTime = h.note.time + holdDur;      // when the bar's tail crosses the line
     const complete = releaseTimeSec >= endTime - HOLD_RELEASE_GRACE;
@@ -1296,6 +1302,7 @@ export default function RhythmGamePage() {
     if (note.hold && phase === "playing") {
       activeHoldsRef.current[lane] = { note, pressAt: now, tone: playHoldTone(note.freq) };
       holdStateRef.current.set(note.id, "held");
+      setHeldLanes(hl => { const next = [...hl]; next[lane] = true; return next; });
     }
 
     // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
@@ -1751,6 +1758,7 @@ export default function RhythmGamePage() {
           encoreLoop={encoreLoop}
           fever={feverActive}
           perfectStreak={perfectStreak}
+          heldLanes={heldLanes}
         />
       )}
       {/* Shared juice overlay — floating popups + screen shake + big combo
@@ -2095,7 +2103,7 @@ function PlayingView({
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
   pet,
   isEncore, encoreLives, encoreLoop,
-  fever, perfectStreak,
+  fever, perfectStreak, heldLanes,
 }: {
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
@@ -2115,6 +2123,7 @@ function PlayingView({
   encoreLoop: number;
   fever: boolean;
   perfectStreak: number;
+  heldLanes: boolean[];
 }) {
   const timePct = 1 - timeLeft / TRACK_DURATION;
 
@@ -2291,56 +2300,27 @@ function PlayingView({
         })}
       </div>
 
-      {/* ═══ THE KEYBOARD — the bottom of the screen IS a piano ═══
-          Ivory keys in a black key bed, decorative black keys between the
-          naturals (C D E F pattern: black keys after C and D, none after
-          E), and a luminous play-line where tiles land on the keys. The
-          falling tiles stay candy-colored — colorful tiles striking real
-          piano keys is the Magic Tiles formula. */}
-      <div style={{ position: "relative", padding: "0 0 0" }}>
-        {/* Play-line — where tiles meet the keys */}
-        <div style={{
-          position: "absolute", top: -2, left: 0, right: 0, height: 3, zIndex: 3,
-          background: "linear-gradient(90deg, transparent, rgba(232,121,249,0.9) 12%, rgba(232,121,249,0.9) 88%, transparent)",
-          boxShadow: "0 0 12px rgba(232,121,249,0.8), 0 0 30px rgba(232,121,249,0.4)",
-          pointerEvents: "none",
-        }} />
-        {/* Key bed */}
-        <div style={{
-          position: "relative",
-          background: "linear-gradient(180deg, #17111f 0%, #060309 100%)",
-          borderTop: "1px solid rgba(255,255,255,0.14)",
-          padding: "6px 6px calc(10px + env(safe-area-inset-bottom, 0px))",
-          display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "3px",
-        }}>
-          {LANES.map((theme, i) => (
-            <PianoKey
-              key={i}
-              theme={theme}
-              laneIdx={i}
-              isFlashing={flashLane === i}
-              onPress={() => onTapLane(i)}
-              onRelease={() => onReleaseLane(i)}
-            />
-          ))}
-          {/* Decorative black keys — between keys 1-2 and 2-3 (C D E F
-              spacing). Pure chrome: pointerEvents none, taps pass to the
-              white keys underneath. */}
-          {[0.25, 0.5].map(x => (
-            <div key={x} style={{
-              position: "absolute", top: 6, left: `${x * 100}%`,
-              transform: "translateX(-50%)",
-              width: "9%", height: "52%",
-              borderRadius: "0 0 5px 5px",
-              background: "linear-gradient(180deg, #262130 0%, #0b0810 78%, #1d1826 100%)",
-              borderLeft: "1px solid rgba(255,255,255,0.09)",
-              borderRight: "1px solid rgba(0,0,0,0.8)",
-              borderBottom: "2px solid rgba(255,255,255,0.06)",
-              boxShadow: "0 5px 9px rgba(0,0,0,0.75)",
-              pointerEvents: "none", zIndex: 2,
-            }} />
-          ))}
-        </div>
+      {/* ═══ TAP KEYS — GameArena's own candy keys, with piano physics ═══
+          The skin stays in our neon-candy language (an ivory piano bed
+          clashed with the cosmic world). What we KEEP from the piano
+          experiment is the physics: a key stays pressed-down for the
+          entire duration of a hold, not just the tap flash — your finger
+          is on it, the key stays sunk. */}
+      <div style={{
+        padding: "0 10px 16px",
+        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px",
+      }}>
+        {LANES.map((theme, i) => (
+          <TapButton
+            key={i}
+            theme={theme}
+            laneIdx={i}
+            isDown={flashLane === i || heldLanes[i]}
+            isHolding={heldLanes[i]}
+            onPress={() => onTapLane(i)}
+            onRelease={() => onReleaseLane(i)}
+          />
+        ))}
       </div>
 
       {/* ═══ COMBO TOAST (center) ═══
@@ -2476,13 +2456,12 @@ function Lane({ theme, laneIdx: _laneIdx, flashing, feedback }: { theme: LaneThe
 }
 
 // ─── Tap button (juicy wall + face — same pattern as game card START) ────────
-// ─── PianoKey — an ivory piano key, not a candy button ───────────────────────
-// The strike zone reads as a real keyboard: ivory face with a subtle
-// front-edge bevel, a colored LED strip at the top (the lane's identity),
-// and a physical DEPRESS on touch — the key sinks and its shadow
-// compresses, exactly like a weighted key going down. When the lane's
-// tile lands (isFlashing), the whole key blooms in the lane color.
-function PianoKey({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isFlashing: boolean; onPress: () => void; onRelease: () => void }) {
+// ─── Tap key (juicy wall + face — GameArena's candy language) ────────────────
+// Piano PHYSICS without the piano SKIN: the key sinks on press and STAYS
+// sunk for the entire duration of a hold (isDown covers both the 100ms tap
+// flash and the sustained heldLanes state). While holding, the face pulses
+// brighter — finger on the key, key under tension.
+function TapButton({ theme, laneIdx, isDown, isHolding, onPress, onRelease }: { theme: LaneTheme; laneIdx: number; isDown: boolean; isHolding: boolean; onPress: () => void; onRelease: () => void }) {
   const keyLabels = ["A", "S", "D", "F"];
   return (
     <div
@@ -2492,55 +2471,50 @@ function PianoKey({ theme, laneIdx, isFlashing, onPress, onRelease }: { theme: L
       data-no-click-sound="true"
       onPointerDown={e => { e.preventDefault(); onPress(); }}
       // Release ends any active hold on this lane. pointerleave/cancel
-      // count as releases too — a finger sliding off the key mid-hold
+      // count as releases too — a finger sliding off the button mid-hold
       // shouldn't sustain forever.
       onPointerUp={e => { e.preventDefault(); onRelease(); }}
       onPointerLeave={() => onRelease()}
       onPointerCancel={() => onRelease()}
       style={{
         cursor: "pointer", userSelect: "none",
+        transition: "transform 0.05s",
+        transform: isDown ? "scale(0.96) translateY(3px)" : "scale(1)",
         touchAction: "manipulation",
-        position: "relative",
-        height: "clamp(64px, 11vh, 88px)",
-        borderRadius: "0 0 8px 8px",
-        // Ivory face — warm white, slightly darker toward the front edge
-        // like real key material. Flashing floods it with the lane color.
-        background: isFlashing
-          ? `linear-gradient(180deg, #ffffff 0%, ${theme.accent}55 60%, ${theme.accent}88 100%)`
-          : "linear-gradient(180deg, #fdfcf8 0%, #f1eee6 70%, #dedacd 92%, #c9c4b4 100%)",
-        border: "1px solid rgba(0,0,0,0.55)",
-        borderTop: "none",
-        // Depress: the key sinks and its drop shadow compresses
-        transform: isFlashing ? "translateY(3px)" : "translateY(0)",
-        boxShadow: isFlashing
-          ? `0 1px 0 rgba(0,0,0,0.6), inset 0 -2px 5px rgba(0,0,0,0.18), 0 0 22px ${theme.glow}`
-          : "0 4px 0 rgba(0,0,0,0.55), 0 6px 10px rgba(0,0,0,0.5), inset 0 -3px 6px rgba(0,0,0,0.12)",
-        transition: "transform 0.04s, box-shadow 0.04s, background 0.08s",
-        overflow: "hidden",
       }}>
-      {/* LED strip — the lane's identity, glows when the key sounds */}
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 4,
-        background: theme.accent,
-        opacity: isFlashing ? 1 : 0.55,
-        boxShadow: isFlashing ? `0 0 10px ${theme.glow}, 0 2px 8px ${theme.glow}` : "none",
-        transition: "opacity 0.08s",
-      }} />
-      {/* Side shading — keys read as separate physical slabs */}
-      <div style={{
-        position: "absolute", top: 0, bottom: 0, right: 0, width: 3,
-        background: "linear-gradient(90deg, transparent, rgba(0,0,0,0.14))",
-        pointerEvents: "none",
-      }} />
-      {/* Key letter — engraved near the front edge, where pianists' finger
-          guides sit. Quiet, not candy. */}
-      <span style={{
-        position: "absolute", bottom: 7, left: "50%", transform: "translateX(-50%)",
-        color: isFlashing ? "rgba(255,255,255,0.95)" : "rgba(60,54,42,0.5)",
-        fontSize: 13, fontWeight: 800, letterSpacing: "0.06em",
-        textShadow: isFlashing ? `0 0 8px ${theme.glow}` : "none",
-        pointerEvents: "none",
-      }}>{keyLabels[laneIdx]}</span>
+        borderRadius: "14px", background: theme.wall,
+        // Pressed: the wall (3D depth) compresses — the key is DOWN
+        paddingBottom: isDown ? "2px" : "5px",
+        boxShadow: isDown
+          ? `0 4px 12px -4px ${theme.glow}, 0 0 26px ${theme.glow}`
+          : `0 10px 22px -4px ${theme.glow}, 0 0 18px ${theme.glow}55`,
+        transition: "padding-bottom 0.05s, box-shadow 0.08s",
+      }}>
+        <div style={{
+          borderRadius: "12px 12px 10px 10px",
+          background: theme.face,
+          padding: "16px 4px", textAlign: "center",
+          position: "relative", overflow: "hidden",
+          border: `2px solid rgba(255,255,255,${isHolding ? 0.85 : 0.45})`,
+          boxShadow: isDown
+            ? `inset 0 6px 14px rgba(255,255,255,0.9), 0 0 30px ${theme.glow}`
+            : "inset 0 6px 14px rgba(255,255,255,0.6), inset 0 -3px 6px rgba(0,0,0,0.3)",
+          transition: "border-color 0.08s",
+        }}>
+          {/* Gloss */}
+          <div style={{
+            position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
+            borderRadius: "12px 12px 60px 60px", pointerEvents: "none",
+          }} />
+          <span style={{
+            position: "relative", zIndex: 1,
+            color: "white", fontSize: "22px", fontWeight: 900,
+            textShadow: isHolding ? `0 0 12px ${theme.glow}, 0 2px 4px rgba(0,0,0,0.5)` : "0 2px 4px rgba(0,0,0,0.5)",
+          }}>{isHolding ? "HOLD" : keyLabels[laneIdx]}</span>
+        </div>
+      </div>
     </div>
   );
 }
