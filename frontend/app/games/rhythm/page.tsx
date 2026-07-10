@@ -548,11 +548,65 @@ export default function RhythmGamePage() {
   // Each tile carries a freq in its NoteDef, so tapping the correct sequence of
   // tiles literally plays the song's hook note-by-note. Perfect hits ring out
   // loud; good hits are quieter but still play the same pitch (so missed timing
-  // doesn't corrupt the melody). Hold-note heads ring LONGER — the sustain
-  // is audible for as long as the finger should stay down.
-  const playHitForNote = useCallback((freq: number, type: "perfect" | "good", holdSec?: number) => {
-    playBell(freq, type === "perfect" ? 0.3 : 0.2, holdSec ? Math.min(1.6, 0.4 + holdSec) : 0.6);
+  // doesn't corrupt the melody).
+  const playHitForNote = useCallback((freq: number, type: "perfect" | "good") => {
+    playBell(freq, type === "perfect" ? 0.3 : 0.2);
   }, [playBell]);
+
+  // ─── Sustained hold tone — the note SINGS while the finger is down ─────────
+  // Starts on the hold's head press, stops (with a soft release ramp) the
+  // instant the finger lifts or the bar completes. This is the audio side
+  // of the hold contract: sound follows the finger, so the player's ear
+  // knows "still holding" without looking. Sine fundamental + warm
+  // sub-octave + gentle vibrato so the sustain feels alive, not like a
+  // test tone.
+  const playHoldTone = useCallback((freq: number): { stop: () => void } | null => {
+    const ctx = getAudioCtx();
+    if (!ctx) return null;
+    const v = 0.2 * gainsRef.current.sfx;
+    if (v <= 0) return null;
+    const now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0, now);
+    master.gain.linearRampToValueAtTime(v, now + 0.03);
+    master.connect(ctx.destination);
+
+    const o1 = ctx.createOscillator();
+    o1.type = "sine"; o1.frequency.value = freq;
+    o1.connect(master);
+
+    const o2 = ctx.createOscillator();
+    const o2Gain = ctx.createGain();
+    o2Gain.gain.value = 0.25;
+    o2.type = "triangle"; o2.frequency.value = freq / 2;
+    o2.connect(o2Gain); o2Gain.connect(master);
+
+    // Vibrato — 5Hz, ±4 cents. Makes the sustain sound played, not held.
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.value = 5;
+    lfoGain.gain.value = freq * 0.0023;
+    lfo.connect(lfoGain); lfoGain.connect(o1.frequency);
+
+    o1.start(now); o2.start(now); lfo.start(now);
+    // Hard safety stop at 3s — no chart hold is longer than 1.5s, this
+    // only fires if a stop() call was somehow lost.
+    const hardStop = now + 3;
+    o1.stop(hardStop); o2.stop(hardStop); lfo.stop(hardStop);
+
+    let stopped = false;
+    return {
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        const t = ctx.currentTime;
+        master.gain.cancelScheduledValues(t);
+        master.gain.setValueAtTime(master.gain.value, t);
+        master.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        try { o1.stop(t + 0.15); o2.stop(t + 0.15); lfo.stop(t + 0.15); } catch { /* already stopped */ }
+      },
+    };
+  }, [getAudioCtx]);
 
   // Haptic buzz on mobile — gated on the hapticsOn user preference.
   // Reads from the settings object directly (not a ref) since haptic is small
@@ -619,8 +673,14 @@ export default function RhythmGamePage() {
   // ─── HOLD notes — one active hold per lane ──────────────────────────────────
   // Registered on the head press, resolved on release / auto-completion in
   // the RAF tick. Pure refs: holds resolve at input/frame cadence and the
-  // score state update is the only React-visible effect.
-  const activeHoldsRef = useRef<(({ note: NoteDef; pressAt: number }) | null)[]>([null, null, null, null]);
+  // score state update is the only React-visible effect. `tone` is the
+  // sustained note that sings while the finger is down.
+  const activeHoldsRef = useRef<(({ note: NoteDef; pressAt: number; tone: { stop: () => void } | null }) | null)[]>([null, null, null, null]);
+  // Per-note lifecycle for hold bars: "held" keeps the bar rendering
+  // (anchored + consumed at the line), "dropped" lets it fall away dim,
+  // "done" removes it. Without this, the head hit marked the note
+  // consumed and the whole bar vanished on tap — the bug players felt.
+  const holdStateRef = useRef<Map<number, "held" | "dropped" | "done">>(new Map());
 
   // ─── Ambient starfield — same cosmic arcade vibe as Simon ────────────────
   // Client-only via useEffect to avoid SSR hydration mismatches from Math.random
@@ -732,7 +792,9 @@ export default function RhythmGamePage() {
     // startRef.current === 0 so the countdown effect is the only
     // writer.
     startRef.current = 0;
+    for (const ah of activeHoldsRef.current) ah?.tone?.stop();
     activeHoldsRef.current = [null, null, null, null];
+    holdStateRef.current.clear();
     setEncoreLives(3);
     setEncoreLoop(0);
     feverUntilRef.current = 0;
@@ -1109,6 +1171,10 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase === "playing" || phase === "encore") return;
     stopDrumTrack();
+    // Kill any sustained hold tones — quitting mid-hold must not leave a
+    // note singing over the finish screen.
+    for (const ah of activeHoldsRef.current) ah?.tone?.stop();
+    activeHoldsRef.current = [null, null, null, null];
   }, [phase, stopDrumTrack]);
 
   // ─── Resolve an active hold — on finger release OR auto-completion ─────────
@@ -1121,9 +1187,11 @@ export default function RhythmGamePage() {
     const h = activeHoldsRef.current[lane];
     if (!h) return;
     activeHoldsRef.current[lane] = null;
+    h.tone?.stop();
     const holdDur = h.note.hold ?? 0;
     const endTime = h.note.time + holdDur;      // when the bar's tail crosses the line
     const complete = releaseTimeSec >= endTime - HOLD_RELEASE_GRACE;
+    holdStateRef.current.set(h.note.id, complete ? "done" : "dropped");
     tapLogRef.current.push({ lane, time: releaseTimeSec, up: 1 });
 
     const laneWidth = 100 / LANES.length;
@@ -1220,15 +1288,18 @@ export default function RhythmGamePage() {
       }
     }
 
-    // HOLD head — register the sustain. Ticks credit on release (or
-    // auto-complete in the RAF when the full duration elapses). Encore
-    // has no holds by design, so this only fires on main-track tiles.
+    // HOLD head — register the sustain, mark the bar as held (it keeps
+    // rendering, anchored at the line, being consumed), and start the
+    // sustained tone that sings until the finger lifts. Bonus credits on
+    // completion (RAF) or the hold breaks on early release. Encore has
+    // no holds by design, so this only fires on main-track tiles.
     if (note.hold && phase === "playing") {
-      activeHoldsRef.current[lane] = { note, pressAt: now };
+      activeHoldsRef.current[lane] = { note, pressAt: now, tone: playHoldTone(note.freq) };
+      holdStateRef.current.set(note.id, "held");
     }
 
     // Audio + haptic feedback — play THIS tile's own melody pitch (Piano Tiles style)
-    playHitForNote(note.freq, type, note.hold);
+    playHitForNote(note.freq, type);
     haptic(type === "perfect" ? 12 : 8);
 
     setScore(s => s + gained);
@@ -1469,11 +1540,21 @@ export default function RhythmGamePage() {
       }
 
       // Spawn notes that are now visible (notes whose fall window has started)
-      const visible: (NoteDef & { spawnedAt: number })[] = [];
+      const visible: (NoteDef & { spawnedAt: number; holdState?: "held" | "dropped" })[] = [];
       for (const n of chartRef.current) {
         if (now >= n.time - n.travel && now <= n.time + (n.hold ?? 0) + GOOD_WINDOW + 0.3) {
           if (!spawnedRef.current.has(n.id)) spawnedRef.current.add(n.id);
-          if (!missedRef.current.has(n.id)) visible.push({ ...n, spawnedAt: n.time - n.travel });
+          if (!missedRef.current.has(n.id)) {
+            visible.push({ ...n, spawnedAt: n.time - n.travel });
+          } else if (n.hold) {
+            // Hold bars outlive the head hit. "held" renders anchored +
+            // consumed at the line; "dropped" keeps falling, dimmed;
+            // "done" (completed) vanishes.
+            const hs = holdStateRef.current.get(n.id);
+            if (hs === "held" || hs === "dropped") {
+              visible.push({ ...n, spawnedAt: n.time - n.travel, holdState: hs });
+            }
+          }
         }
       }
 
@@ -1497,6 +1578,7 @@ export default function RhythmGamePage() {
       for (const n of chartRef.current) {
         if (now > n.time + GOOD_WINDOW && !missedRef.current.has(n.id)) {
           missedRef.current.add(n.id);
+          if (n.hold) holdStateRef.current.set(n.id, "dropped");
           setCombo(0);
           perfectStreakRef.current = 0;
           setPerfectStreak(0);
