@@ -1392,6 +1392,33 @@ export default function RhythmGamePage() {
     };
   }, [phase, hitLane, releaseLane]);
 
+  // ── Window-focus guard (desktop) ──
+  // Keyboard events only reach the page while the WINDOW has OS focus.
+  // Click into another app (editor, DevTools) and A/S/D/F silently go
+  // there instead — the game must say so, not fail silently. On blur:
+  // release any active holds (their keyup will never arrive, which left
+  // tones singing and buttons stuck), and show a "click to refocus"
+  // chip until focus returns.
+  const [windowFocused, setWindowFocused] = useState(true);
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "encore") return;
+    const onBlur = () => {
+      setWindowFocused(false);
+      const now = (performance.now() - startRef.current) / 1000;
+      for (let lane = 0; lane < activeHoldsRef.current.length; lane++) {
+        if (activeHoldsRef.current[lane]) resolveHold(lane, now);
+      }
+    };
+    const onFocus = () => setWindowFocused(true);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    setWindowFocused(typeof document === "undefined" ? true : document.hasFocus());
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [phase, resolveHold]);
+
   // ── Tab-visibility / mobile-backgrounding guard ──
   //
   // The rhythm RAF loop reads `now = (performance.now() - startRef.current) / 1000`
@@ -1774,6 +1801,28 @@ export default function RhythmGamePage() {
           heldLanes={heldLanes}
         />
       )}
+      {/* Keyboard-disconnected chip — window lost OS focus, so key
+          presses are going to another app. Shown only during play on
+          keyboard-likely devices; disappears the moment focus returns. */}
+      {(phase === "playing" || phase === "encore") && hasKeyboard && !windowFocused && (
+        <div style={{
+          position: "absolute", top: "42%", left: "50%", transform: "translate(-50%, -50%)",
+          zIndex: 40, pointerEvents: "none",
+          padding: "12px 22px", borderRadius: 14,
+          background: "rgba(4,0,20,0.88)",
+          border: "1.5px solid rgba(251,191,36,0.6)",
+          boxShadow: "0 0 30px rgba(251,191,36,0.3), 0 10px 30px rgba(0,0,0,0.6)",
+          textAlign: "center",
+        }}>
+          <div style={{ color: "#fbbf24", fontSize: 13, fontWeight: 900, letterSpacing: "0.14em" }}>
+            ⌨️ KEYBOARD INACTIVE
+          </div>
+          <div style={{ color: "rgba(220,200,255,0.75)", fontSize: 11, fontWeight: 700, marginTop: 4 }}>
+            Click the game to play with A S D F
+          </div>
+        </div>
+      )}
+
       {/* Shared juice overlay — floating popups + screen shake + big combo
           callouts + danger vignette in the last 5 seconds of the main track.
           Sits over the PlayingView (fixed/absolute container at the page
