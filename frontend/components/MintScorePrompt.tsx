@@ -60,7 +60,10 @@ export default function MintScorePrompt({ score }: { score?: number }) {
       </div>
 
       <button
-        onClick={() => router.push("/home")}
+        // Straight into the naming/mint step (?ob=1 forces the onboarding
+        // overlay open) — routing to bare /home dropped the player on the
+        // marketing screen with their score-saving intent lost.
+        onClick={() => router.push("/home?ob=1")}
         style={{
           marginTop: 12, width: "100%", cursor: "pointer",
           borderRadius: 12, padding: "11px 12px",
