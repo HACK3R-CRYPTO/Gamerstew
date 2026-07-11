@@ -373,7 +373,12 @@ export default function HomePage() {
   // visitor, which is most of the sybil-risk traffic.
   const { login } = useLogin({
     onComplete: () => {
-      router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+      // Land on the naming step, NOT /verify. Pushing /verify here made
+      // fresh sign-ins skip "Name your slime" entirely. The Onboarding
+      // overlay owns the routing: minted wallets short-circuit through,
+      // verified wallets skip the verify pitch, new players name their
+      // slime first — the intended order.
+      setShowOnboarding(true);
     },
   });
   const { address: walletAddress } = useAccount();
@@ -447,10 +452,26 @@ export default function HomePage() {
     const addr = user?.wallet?.address?.toLowerCase();
     if (!addr || !walletAddress) return;
     try {
+      // Respect an explicit close: if the player X'd the overlay this
+      // session, don't shove it back in their face on every /home visit.
+      // (?ob=1 and the Sign in button still open it on demand.)
+      const dismissed = window.sessionStorage.getItem(`ob_dismissed_${addr}`);
+      if (dismissed) return;
       const done = window.localStorage.getItem(ONBOARDED_KEY);
       if (done?.toLowerCase() !== addr) setShowOnboarding(true);
     } catch {}
   }, [authenticated, user?.wallet?.address, walletAddress]);
+
+  // Closing the overlay (X or the switch-account link) is a real choice —
+  // remember it for this session so the auto-open doesn't trap the player
+  // in a loop they can't escape.
+  const dismissOnboarding = () => {
+    const addr = user?.wallet?.address?.toLowerCase();
+    if (addr) {
+      try { window.sessionStorage.setItem(`ob_dismissed_${addr}`, "1"); } catch {}
+    }
+    setShowOnboarding(false);
+  };
 
   const completeOnboarding = (r: OnboardingResult) => {
     const addr = user?.wallet?.address?.toLowerCase();
@@ -521,7 +542,10 @@ export default function HomePage() {
     //   half-dead (auth, no wallet)      → reconnect the SAME identity
     //   signed out                        → open the login modal
     if (authenticated && walletAddress) {
-      router.push(`/verify?next=${encodeURIComponent("/dashboard")}`);
+      // Same single entry point as a fresh login: the Onboarding overlay
+      // short-circuits minted wallets onward and gives unminted ones the
+      // naming step + the "Wrong account? Switch account" escape.
+      setShowOnboarding(true);
       return;
     }
     if (authenticated && !walletAddress) {
@@ -603,8 +627,8 @@ export default function HomePage() {
       {showOnboarding && (
         <Onboarding
           onComplete={completeOnboarding}
-          onClose={() => setShowOnboarding(false)}
-          onPlayFree={() => { setShowOnboarding(false); router.push("/dashboard"); }}
+          onClose={dismissOnboarding}
+          onPlayFree={() => { dismissOnboarding(); router.push("/dashboard"); }}
         />
       )}
     </>

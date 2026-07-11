@@ -2894,6 +2894,7 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 // MARKOV served over HTTP: instant best-of-5 RPS, commit-reveal fairness,
 // no wagers, no chain in the loop. See lib/arenaMatch.js for the engine.
 const { ArenaMatchEngine } = require('./lib/arenaMatch');
+const { attestInstantMatch } = require('./lib/feedbackOracle');
 
 // ISO week bucket ('2026-W27') — the ladder resets on this key. Weeks run
 // Mon-Sun; the Sunday payout script pays the closing week's standings.
@@ -3072,6 +3073,12 @@ const arenaEngine = new ArenaMatchEngine({
     } catch (e) {
       console.error('arena match persist failed:', e?.message);
     }
+    // ERC-8004 reputation: emit one match_completed feedback per finished
+    // match (throttled inside the oracle · min-interval, fire-and-forget).
+    // Replaces the wager-era hook that fired after resolveMatch, which v3
+    // Instant Arena matches never reach · without this MARKOV's engagement
+    // dimension on 8004scan stalls.
+    attestInstantMatch(session);
   },
 });
 
