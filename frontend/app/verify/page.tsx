@@ -121,7 +121,17 @@ function VerifyInner() {
   // that this wallet is NOT whitelisted. While resolving (or when verified
   // and about to redirect), show a calm checking state instead of the
   // pitch flashing and vanishing.
-  if (whitelistLoading || chainVerified || isVerified) {
+  // The page must not render until every detail it shows is REAL:
+  // wallet address resolved, mint status answered, and (for minted
+  // players) the actual slime name loaded. Rendering early showed
+  // "Welcome, @player" — players sensed something was off, or tapped
+  // Verify before the wallet plumbing was ready.
+  const detailsLoading =
+    !address ||
+    hasMinted === undefined ||
+    (hasMinted === true && !chainUsername);
+
+  if (detailsLoading || whitelistLoading || chainVerified || isVerified) {
     return (
       <div style={{
         position: "fixed", inset: 0,
@@ -135,7 +145,7 @@ function VerifyInner() {
         }} />
         <style>{`@keyframes verify-spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: "rgba(220,210,255,0.6)" }}>
-          {chainVerified || isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "CHECKING YOUR STATUS…"}
+          {chainVerified || isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "LOADING YOUR DETAILS…"}
         </div>
       </div>
     );
