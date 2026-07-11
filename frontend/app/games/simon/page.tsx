@@ -172,7 +172,7 @@ export default function SimonGamePage() {
   // handleGameOver self-guards (bails without an address) and the
   // finish screen shows a sign-in CTA instead of the rank/XP panel.
   // Signing in is the gate for SAVING, not PLAYING.
-  const { authed } = useAuthStatus();
+  const { authed, pending: authPending } = useAuthStatus();
   // Connected wallet without a GamePass (e.g. a whitelisted UBI claimer)
   // can play but scores can't save on-chain. needsMint shows a "mint to
   // save" invite instead of firing a tx that reverts "No game pass".
@@ -835,7 +835,7 @@ export default function SimonGamePage() {
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/simon/leaderboard")}
-          guest={!authed}
+          guest={!authed && !authPending}
           needsSetup={needsMint}
           onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner self-hides for safe / guest / minipay buckets · only
@@ -904,7 +904,7 @@ export default function SimonGamePage() {
           submitResult={submitResult}
           submitError={submitError}
           txError={txError}
-          guest={!authed}
+          guest={!authed && !authPending}
           needsMint={needsMint}
         />
       )}

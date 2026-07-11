@@ -204,6 +204,9 @@ export default function DashboardPage() {
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
   // Signed in, never minted — needs FINISH SETUP, not another "sign in".
   const authedUnminted = (authenticated || isMiniPay) && !!address && hasMinted === false;
+  // Unknown mint state = loading, not guest — don't flash the sign-in
+  // banner at players whose wallet is still hydrating.
+  const identityResolving = (authenticated || isMiniPay) && (!address || hasMinted === undefined);
   // UBI claim is GoodDollar's, gated only by GoodDollar's OWN whitelist
   // (the ClaimCard checks isVerified internally). Requiring a GamePass
   // mint on top is redundant friction that blocks verified humans from
@@ -356,7 +359,7 @@ export default function DashboardPage() {
 
       {/* Guest banner — only when the player hasn't finished onboarding. The
           design uses this strip as the soft second-prompt to sign in. */}
-      {!connected && (
+      {!connected && !identityResolving && (
         <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "8px auto 0" }}>
           <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
         </div>

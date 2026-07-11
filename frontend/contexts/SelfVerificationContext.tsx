@@ -11,6 +11,10 @@ type AnyIdentitySDK = any;
 interface SelfVerificationContextType {
   isVerified: boolean;
   isVerifying: boolean;
+  // Face-verification link + popup-blocked flag so surfaces can render a
+  // same-tab fallback and unblock steps instead of an infinite spinner.
+  fvLink: string | null;
+  popupBlocked: boolean;
   verifyIdentity: () => Promise<void>;
   claimG$: () => Promise<void>;
   entitlement: bigint;
@@ -45,6 +49,11 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
 
   const [isVerified, setIsVerified] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  // Face-verification link + popup-blocked flag — surfaced so /verify can
+  // render a same-tab fallback and browser-specific unblock steps instead
+  // of an infinite spinner.
+  const [fvLink, setFvLink] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const [entitlement, setEntitlement] = useState(0n);
   const hasCheckedRef = useRef(false);
   const lastAddressRef = useRef<string | null>(null);
@@ -262,8 +271,14 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
 
       toast.dismiss(toastId);
       if (finalLink) {
+        setFvLink(finalLink);
         toast('Opening GoodDollar Face Verification...', { icon: '👤' });
-        window.open(finalLink, '_blank', 'width=800,height=800');
+        // Popup blockers (Safari default, Chrome on many setups) return
+        // null here and the player gets stuck on an infinite "verifying"
+        // spinner with no explanation. Detect it and let the UI offer a
+        // same-tab continue link + unblock instructions.
+        const popup = window.open(finalLink, '_blank', 'width=800,height=800');
+        setPopupBlocked(!popup);
       }
 
       let attempts = 0;
@@ -291,13 +306,15 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
     () => ({
       isVerified,
       isVerifying,
+      fvLink,
+      popupBlocked,
       verifyIdentity,
       claimG$,
       entitlement,
       cancelVerification: () => setIsVerifying(false),
       checkVerificationStatus,
     }),
-    [isVerified, isVerifying, verifyIdentity, claimG$, entitlement, checkVerificationStatus]
+    [isVerified, isVerifying, fvLink, popupBlocked, verifyIdentity, claimG$, entitlement, checkVerificationStatus]
   );
 
   return (
