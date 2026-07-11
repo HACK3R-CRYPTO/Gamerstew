@@ -61,7 +61,7 @@ function VerifyInner() {
   const { authenticated } = usePrivy();
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
-  const { isVerified, isVerifying, verifyIdentity } = useSelfVerification();
+  const { isVerified, isVerifying, verifyIdentity, fvLink, popupBlocked } = useSelfVerification();
 
   // GamePass username so the welcome line is real ("Welcome, @lyra!")
   // instead of generic. Reads only when minted; falls back to "player"
@@ -260,6 +260,40 @@ function VerifyInner() {
             </>
           )}
         </button>
+
+        {/* Popup blocked — the #1 "stuck at verifying" cause. Safari blocks
+            popups by default; Chrome often does too. Offer the same-tab
+            continue first (works regardless of settings), then the
+            per-browser unblock steps for players who prefer the popup. */}
+        {isVerifying && popupBlocked && (
+          <div style={{
+            width: "100%", maxWidth: 340, borderRadius: 14,
+            background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.45)",
+            padding: 14, display: "flex", flexDirection: "column", gap: 10,
+          }}>
+            <div style={{ fontFamily: T.display, fontSize: 14, color: "#fde68a" }}>
+              Your browser blocked the verification window
+            </div>
+            {fvLink && (
+              <a href={fvLink} style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                padding: "12px", borderRadius: 11, textDecoration: "none",
+                background: "linear-gradient(180deg, #fde68a, #d97706)",
+                border: "1px solid rgba(251,191,36,0.8)",
+                color: "#231005", fontFamily: T.body, fontSize: 13, fontWeight: 800,
+              }}>
+                Continue verification here →
+              </a>
+            )}
+            <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, lineHeight: 1.6 }}>
+              Or allow pop-ups and tap Verify again:
+              <br />· <strong style={{ color: T.ink }}>iPhone · Safari:</strong> Settings app → Safari → turn off &quot;Block Pop-ups&quot;
+              <br />· <strong style={{ color: T.ink }}>iPhone · Chrome:</strong> ⋯ menu → Settings → Content Settings → Block Pop-ups → off
+              <br />· <strong style={{ color: T.ink }}>Android · Chrome:</strong> ⋮ menu → Settings → Site settings → Pop-ups and redirects → allow
+              <br />· <strong style={{ color: T.ink }}>Computer:</strong> click the pop-up icon in the address bar → always allow for this site
+            </div>
+          </div>
+        )}
 
         <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", marginTop: -8, lineHeight: 1.4 }}>
           You can verify anytime from your profile.

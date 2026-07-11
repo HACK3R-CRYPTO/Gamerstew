@@ -234,6 +234,9 @@ export default function GamesPage() {
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
   // Signed in, never minted — needs FINISH SETUP, not another "sign in".
   const authedUnminted = (authenticated || isMiniPay) && !!address && hasMinted === false;
+  // Unknown mint state = loading, not guest — don't flash the sign-in
+  // banner at players whose wallet is still hydrating.
+  const identityResolving = (authenticated || isMiniPay) && (!address || hasMinted === undefined);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -291,7 +294,7 @@ export default function GamesPage() {
       <AppHeader />
 
       {/* Guest banner — only when not fully onboarded. Same pattern as /dashboard. */}
-      {!connected && (
+      {!connected && !identityResolving && (
         <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "8px auto 0" }}>
           <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
         </div>

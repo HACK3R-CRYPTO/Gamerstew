@@ -314,7 +314,7 @@ export default function RhythmGamePage() {
   // Score submission self-guards (the submit effect bails without an
   // address), and the finish screen shows a sign-in CTA instead of
   // the rank/XP panel. Signing in is the gate for SAVING, not PLAYING.
-  const { authed } = useAuthStatus();
+  const { authed, pending: authPending } = useAuthStatus();
   // Has this connected wallet minted a GamePass? A whitelisted wallet can
   // come in to claim UBI and play without minting, but scores can't save
   // on-chain without a pass. needsMint drives the finish screen to show a
@@ -1758,7 +1758,7 @@ export default function RhythmGamePage() {
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
-          guest={!authed}
+          guest={!authed && !authPending}
           needsSetup={needsMint}
           onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner sits between the leaderboard preview and the START
@@ -1864,7 +1864,7 @@ export default function RhythmGamePage() {
           submitResult={submitResult}
           submitError={submitError}
           txError={txError}
-          guest={!authed}
+          guest={!authed && !authPending}
           needsMint={needsMint}
         />
       )}

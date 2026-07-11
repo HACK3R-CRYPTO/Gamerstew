@@ -261,6 +261,21 @@ export default function Onboarding({
   }, [phase]);
 
   // ── SETUP (real mint in flight) ─────────────────────────────────────────
+  // The mint read hasn't answered yet — returning players were seeing
+  // "Name your slime" flash (or sit, on slow RPC) before the short-circuit
+  // kicked in, and thought the app forgot their pet. Unknown = loading.
+  if (address && hasMinted === undefined && phase === "create") {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, animation: "ob-fadeIn 0.25s ease both" }}>
+        <style>{KEYFRAMES}</style>
+        <PetHero size={110} />
+        <div style={{ fontFamily: T.body, fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: T.inkSoft }}>
+          LOADING YOUR ARENA…
+        </div>
+      </div>
+    );
+  }
+
   if (phase === "setup") {
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: `radial-gradient(ellipse 90% 50% at 50% 30%, ${T.accent}22 0%, transparent 60%), ${T.bg}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, animation: "ob-fadeIn 0.2s ease both", padding: 24 }}>

@@ -131,7 +131,7 @@ export default function StackTowerPage() {
   const [petEvolveToPet, setPetEvolveToPet] = useState<typeof PET_STAGES[number] | null>(null);
   const [petEvolveAtLevel, setPetEvolveAtLevel] = useState<number>(1);
 
-  const { authed } = useAuthStatus();
+  const { authed, pending: authPending } = useAuthStatus();
   // Connected wallet without a GamePass (e.g. a whitelisted UBI claimer)
   // can play but scores can't save on-chain. needsMint shows a "mint to
   // save" invite instead of firing a tx that reverts "No game pass".
@@ -871,7 +871,7 @@ export default function StackTowerPage() {
             </span>
           </div>
 
-          {!authed && <GuestPlayChip />}
+          {!authed && !authPending && <GuestPlayChip />}
 
           {/* Signed in, no slime yet — honest twin of the guest chip. */}
           {needsMint && <SetupPlayChip onFinishSetup={() => router.push("/home?ob=1")} />}

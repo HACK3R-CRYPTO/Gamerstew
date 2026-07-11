@@ -112,6 +112,11 @@ export default function AppHeader() {
   // onboarding" state. Gets its own header treatment (finish setup +
   // switch account) instead of masquerading as Guest.
   const authedUnminted = (authenticated || isMiniPay) && !!address && hasMinted === false;
+  // Signed in but we DON'T KNOW the mint state yet (wallet still hydrating
+  // or the hasMinted read in flight). Players were being labeled "Guest"
+  // for these seconds — the #1 "I signed in but it shows guest" complaint.
+  // Unknown is a loading state, never a guest state.
+  const identityResolving = (authenticated || isMiniPay) && (!address || hasMinted === undefined);
   // GoodDollar / Self verification status · drives the ✓ overlay on the
   // avatar. Only shows when the player is fully connected AND verified ·
   // unverified state shows no badge at all (per design: never mark people
@@ -227,7 +232,7 @@ export default function AppHeader() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {connected ? name : authedUnminted ? "Almost there" : "Guest"}
+            {connected ? name : authedUnminted ? "Almost there" : identityResolving ? "Connecting…" : "Guest"}
           </div>
           {connected ? (
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
@@ -237,7 +242,9 @@ export default function AppHeader() {
                 <span style={{ fontFamily: T.body, fontSize: 10, color: "#bae6fd", fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
             </div>
-          ) : authedUnminted ? (
+          ) : identityResolving ? (
+          <span style={{ width: 38, height: 38 }} />
+        ) : authedUnminted ? (
             // Signed in but no GamePass — an account exists, setup was never
             // finished (or they signed into the wrong Gmail and bailed).
             // Copy stays SHORT and the row is wrap-proof: on a narrow
@@ -246,6 +253,11 @@ export default function AppHeader() {
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2, minWidth: 0 }}>
               <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24", flexShrink: 0 }} />
               <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Signed in</span>
+            </div>
+          ) : identityResolving ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: "rgba(220,210,255,0.5)" }} />
+              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.02em" }}>One moment</span>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
@@ -347,6 +359,8 @@ export default function AppHeader() {
               <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#fde68a", lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
             </span>
           </button>
+        ) : identityResolving ? (
+          <span style={{ width: 38, height: 38 }} />
         ) : authedUnminted ? (
           <>
             {/* Two exits from the half-done state: finish setup (reopens

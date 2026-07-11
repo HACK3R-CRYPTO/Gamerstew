@@ -43,7 +43,7 @@ export function useRequireAuth(): { ready: boolean; authed: boolean } {
 // Same auth signal as useRequireAuth but WITHOUT the redirect. For
 // free-play routes: guests may enter and play, and the page decides
 // at the action layer (score save, leaderboard) what needs a session.
-export function useAuthStatus(): { ready: boolean; authed: boolean } {
+export function useAuthStatus(): { ready: boolean; authed: boolean; pending: boolean } {
   const { ready, authenticated } = usePrivy();
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
@@ -55,6 +55,10 @@ export function useAuthStatus(): { ready: boolean; authed: boolean } {
   // Requiring `address` closes that gap — no wallet, no entry. MiniPay
   // users are also covered: their address is always set in-app.
   const authed = !!address && (authenticated || isMiniPay);
+  // Privy session exists but wagmi hasn't resolved the wallet yet — a
+  // loading state, NOT a guest state. Callers use this to avoid flashing
+  // guest UI at signed-in players during hydration.
+  const pending = authenticated && !address;
 
-  return { ready, authed };
+  return { ready, authed, pending };
 }
