@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { preloadHomeData } from "@/lib/homePreload";
+import { preloadHomeData, getHomeData } from "@/lib/homePreload";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -26,7 +26,6 @@ const loadingTexts = [
 // the wait that made players bail before they saw /home.
 const LOADING_TEXT_CHANGE_TIME = 700;
 const TYPING_SPEED_MS = 22;     // was 50 · "fast typewriter" feel
-const TAIL_PAUSE_MS = 300;      // was 800 · pause after last text before route
 
 const LEFT_ICONS: {
   src: string;
@@ -333,13 +332,29 @@ export default function SplashScreen() {
   // no ref is present.
   useEffect(() => { captureReferralFromUrl(); }, []);
 
-  // Make the splash WORK for its screen time: start /home's data fetches
-  // (live stats, top 3, climb) + prefetch the route bundle now, so home
-  // paints instantly when the animation hands over. MiniPay users go to
-  // /dashboard instead — prefetch that route for them.
+  // Data-driven splash: no fixed duration. The splash leaves the moment
+  // /home's data is ready (live stats, top 3, climb), bounded by:
+  //   · MIN 1.2s on screen — no jarring flash on fast connections
+  //   · MAX 6s — a slow/failed API never strands the player here;
+  //     /home falls back to its own fetch state
   useEffect(() => {
     preloadHomeData();
-    router.prefetch(isMiniPay ? "/dashboard" : "/home");
+    const dest = isMiniPay ? "/dashboard" : "/home";
+    router.prefetch(dest);
+    const started = Date.now();
+    let cancelled = false;
+    const MIN_MS = 1200;
+    const MAX_MS = 6000;
+    const go = () => {
+      if (cancelled) return;
+      const wait = Math.max(0, MIN_MS - (Date.now() - started));
+      setTimeout(() => { if (!cancelled) router.push(dest); }, wait);
+    };
+    Promise.race([
+      getHomeData(),
+      new Promise(res => setTimeout(res, MAX_MS)),
+    ]).then(go, go);
+    return () => { cancelled = true; };
   }, [router, isMiniPay]);
 
   useEffect(() => {
@@ -348,20 +363,16 @@ export default function SplashScreen() {
       const t = setTimeout(() => setDisplayed((d) => d + 1), TYPING_SPEED_MS);
       return () => clearTimeout(t);
     }
-    // All text typed — auto-advance. MiniPay users land on /dashboard
-    // directly (no sign-in needed · injected wallet is the identity).
-    // Everyone else lands on /home for the Play Free / Sign In choice.
-    if (textIndex >= loadingTexts.length - 1) {
-      const dest = isMiniPay ? '/dashboard' : '/home';
-      const t = setTimeout(() => router.push(dest), TAIL_PAUSE_MS);
-      return () => clearTimeout(t);
-    }
+    // Typing is pure theater now — navigation is driven by the data
+    // preload above, not by this animation finishing. Hold on the last
+    // line ("READY_TO_PLAY…") until the data effect routes us out.
+    if (textIndex >= loadingTexts.length - 1) return;
     const t = setTimeout(() => {
       setTextIndex((i) => i + 1);
       setDisplayed(0);
     }, LOADING_TEXT_CHANGE_TIME);
     return () => clearTimeout(t);
-  }, [textIndex, displayed, router, isMiniPay]);
+  }, [textIndex, displayed]);
 
   return (
     <div
