@@ -104,3 +104,24 @@ export function GuestPlayChip() {
     </div>
   );
 }
+
+// Signed-in-but-unminted twin of GuestPlayChip: play works, saving
+// doesn't — because setup isn't finished, NOT because of gas. Every game
+// lobby shows this instead of the misleading "out of gas" banner for
+// unminted players, with the one tap that fixes it.
+export function SetupPlayChip({ onFinishSetup }: { onFinishSetup: () => void }) {
+  return (
+    <button onClick={onFinishSetup} style={{
+      display: "inline-flex", alignItems: "center", gap: 8,
+      padding: "8px 14px", borderRadius: 999, cursor: "pointer",
+      background: "rgba(251,191,36,0.1)",
+      border: "1px solid rgba(251,191,36,0.45)",
+      fontFamily: "inherit",
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24" }} />
+      <span style={{ color: "rgba(253,230,138,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        Free play · finish setup to save scores ›
+      </span>
+    </button>
+  );
+}

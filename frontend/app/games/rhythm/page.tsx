@@ -7,7 +7,7 @@ import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
-import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
+import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import {
@@ -1754,16 +1754,24 @@ export default function RhythmGamePage() {
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
           guest={!authed}
+          needsSetup={needsMint}
+          onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner sits between the leaderboard preview and the START
              button on warn/block · null otherwise · keeping the lobby
              clean for the happy path. LowGasBanner self-hides for safe /
-             guest / minipay buckets so this prop just passes through. */
+             guest / minipay buckets so this prop just passes through.
+             Suppressed entirely for unminted players: telling them
+             "out of gas · scores won't save" is the WRONG diagnosis —
+             their scores won't save because setup isn't finished, and
+             the needsSetup chip says exactly that instead. */
           gasBanner={
-            <LowGasBanner
-              status={gasStatus}
-              approxSavesLeft={approxSavesLeft}
-              onOpenHelp={() => setGasHelpOpen(true)}
-            />
+            needsMint ? null : (
+              <LowGasBanner
+                status={gasStatus}
+                approxSavesLeft={approxSavesLeft}
+                onOpenHelp={() => setGasHelpOpen(true)}
+              />
+            )
           }
         />
       )}
@@ -1893,11 +1901,15 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
+function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishSetup, gasBanner }: {
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
   guest?: boolean;
+  // Signed in but no GamePass yet — play works, saving doesn't. Gets the
+  // honest chip below instead of the misleading gas banner.
+  needsSetup?: boolean;
+  onFinishSetup?: () => void;
   // Optional slot for the LowGasBanner. The parent owns the gas state +
   // the GasHelpSheet, so IdleView just renders whatever node it gets.
   // Null is the common case (player is safely funded) · the layout
@@ -1959,6 +1971,9 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
       </div>
 
       {guest && <GuestPlayChip />}
+
+      {/* Signed in, no slime yet — honest twin of the guest chip. */}
+      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
 
       {/* Gas posture pill · only renders for warn/block. Empty otherwise
           so the lobby reads clean for the happy-path player. */}

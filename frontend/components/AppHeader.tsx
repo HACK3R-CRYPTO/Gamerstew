@@ -240,10 +240,12 @@ export default function AppHeader() {
           ) : authedUnminted ? (
             // Signed in but no GamePass — an account exists, setup was never
             // finished (or they signed into the wrong Gmail and bailed).
-            // Showing "Guest" here made players think the sign-in failed.
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24" }} />
-              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>Signed in · finish your setup</span>
+            // Copy stays SHORT and the row is wrap-proof: on a narrow
+            // phone this column sits beside four buttons, and the longer
+            // "finish your setup" line exploded into a 4-line tower.
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2, minWidth: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24", flexShrink: 0 }} />
+              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Signed in</span>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
