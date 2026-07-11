@@ -7,7 +7,7 @@ import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
-import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
+import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
@@ -831,16 +831,23 @@ export default function SimonGamePage() {
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/simon/leaderboard")}
           guest={!authed}
+          needsSetup={needsMint}
+          onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner self-hides for safe / guest / minipay buckets · only
              renders for warn (amber strip) or block (red-amber pulse,
              nudging the player to top up before starting). Single tap
-             routes to the GasHelpSheet mounted below. */
+             routes to the GasHelpSheet mounted below. Suppressed for
+             unminted players — "out of gas" is the wrong diagnosis when
+             the real blocker is unfinished setup; the SetupPlayChip
+             carries the honest message instead. */
           gasBanner={
-            <LowGasBanner
-              status={gasStatus}
-              approxSavesLeft={approxSavesLeft}
-              onOpenHelp={() => setGasHelpOpen(true)}
-            />
+            needsMint ? null : (
+              <LowGasBanner
+                status={gasStatus}
+                approxSavesLeft={approxSavesLeft}
+                onOpenHelp={() => setGasHelpOpen(true)}
+              />
+            )
           }
         />
       )}
@@ -933,11 +940,15 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
+function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishSetup, gasBanner }: {
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
   guest?: boolean;
+  // Signed in but no GamePass yet — play works, saving doesn't. Gets the
+  // honest SetupPlayChip instead of the misleading gas banner.
+  needsSetup?: boolean;
+  onFinishSetup?: () => void;
   // Slot for the LowGasBanner · parent owns the gas state and the sheet,
   // IdleView just renders the node it gets. Null in the happy-path case
   // so the lobby reads clean.
@@ -999,6 +1010,7 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, gasBanner }: {
       </div>
 
       {guest && <GuestPlayChip />}
+      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
 
       {/* Gas posture pill · warn/block only · null for the happy path. */}
       {gasBanner}

@@ -202,6 +202,8 @@ export default function DashboardPage() {
   // Once they've minted GamePass they're a fully connected player.
   const isMiniPay = useIsMiniPay();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
+  // Signed in, never minted — needs FINISH SETUP, not another "sign in".
+  const authedUnminted = (authenticated || isMiniPay) && !!address && hasMinted === false;
   // UBI claim is GoodDollar's, gated only by GoodDollar's OWN whitelist
   // (the ClaimCard checks isVerified internally). Requiring a GamePass
   // mint on top is redundant friction that blocks verified humans from
@@ -356,7 +358,7 @@ export default function DashboardPage() {
           design uses this strip as the soft second-prompt to sign in. */}
       {!connected && (
         <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "8px auto 0" }}>
-          <GuestBanner onConnect={onConnect} />
+          <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
         </div>
       )}
 
@@ -479,30 +481,37 @@ function DashRight({ connected, walletReady, dash, me, address, onConnect, route
 
 // ─── blocks ─────────────────────────────────────────────────────────────
 // Slim "you're playing free" strip with a Sign in chip · design pattern.
-function GuestBanner({ onConnect }: { onConnect: () => void }) {
+function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSetup?: boolean }) {
+  // Two truths, one strip: guests need to SIGN IN; signed-in players who
+  // never finished onboarding need to FINISH SETUP. Telling the second
+  // group to "sign in" reads as "your sign-in didn't work".
   return (
     <div style={{
       margin: "0 16px",
       padding: "9px 12px", borderRadius: 13,
-      background: `linear-gradient(90deg, ${T.accent}1f, rgba(255,255,255,0.02))`,
-      border: `1px solid ${T.accent}44`,
+      background: needsSetup
+        ? "linear-gradient(90deg, rgba(251,191,36,0.14), rgba(255,255,255,0.02))"
+        : `linear-gradient(90deg, ${T.accent}1f, rgba(255,255,255,0.02))`,
+      border: needsSetup ? "1px solid rgba(251,191,36,0.4)" : `1px solid ${T.accent}44`,
       display: "flex", alignItems: "center", gap: 10,
     }}>
-      <span style={{ fontSize: 15, flexShrink: 0 }}>🎁</span>
+      <span style={{ fontSize: 15, flexShrink: 0 }}>{needsSetup ? "🐣" : "🎁"}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <span style={{ fontFamily: T.body, fontSize: 11, color: T.ink, fontWeight: 700, lineHeight: 1.3 }}>
-          You&apos;re playing free.
+          {needsSetup ? "You're signed in." : "You're playing free."}
         </span>
         <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, lineHeight: 1.3 }}>
-          {" "}Sign in to win G$, save your pet &amp; climb the board.
+          {needsSetup
+            ? " Name your slime to save scores & win G$."
+            : " Sign in to win G$, save your pet & climb the board."}
         </span>
       </div>
       <button onClick={onConnect} style={{
         flexShrink: 0, padding: "6px 12px", borderRadius: 999, cursor: "pointer",
-        background: T.accent, border: "none",
-        color: "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
-        boxShadow: `0 4px 12px -3px ${T.accent}aa`,
-      }}>SIGN IN</button>
+        background: needsSetup ? "#fbbf24" : T.accent, border: "none",
+        color: needsSetup ? "#231005" : "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
+        boxShadow: needsSetup ? "0 4px 12px -3px rgba(251,191,36,0.7)" : `0 4px 12px -3px ${T.accent}aa`,
+      }}>{needsSetup ? "FINISH SETUP" : "SIGN IN"}</button>
     </div>
   );
 }

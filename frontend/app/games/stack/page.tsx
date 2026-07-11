@@ -26,7 +26,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
-import GuestScorePrompt, { GuestPlayChip } from "@/components/GuestScorePrompt";
+import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
@@ -868,15 +868,22 @@ export default function StackTowerPage() {
 
           {!authed && <GuestPlayChip />}
 
+          {/* Signed in, no slime yet — honest twin of the guest chip. */}
+          {needsMint && <SetupPlayChip onFinishSetup={() => router.push("/home?ob=1")} />}
+
           {/* Gas posture pill · only renders for warn/block buckets.
               Tappable in both states · routes to GasHelpSheet so the player
               has a single path to the top-up flow. Safe/MiniPay/guest all
-              render null so the lobby stays clean for the happy path. */}
-          <LowGasBanner
-            status={gasStatus}
-            approxSavesLeft={approxSavesLeft}
-            onOpenHelp={() => setGasHelpOpen(true)}
-          />
+              render null so the lobby stays clean for the happy path.
+              Suppressed for unminted players — "out of gas" is the wrong
+              diagnosis when the real blocker is unfinished setup. */}
+          {!needsMint && (
+            <LowGasBanner
+              status={gasStatus}
+              approxSavesLeft={approxSavesLeft}
+              onOpenHelp={() => setGasHelpOpen(true)}
+            />
+          )}
 
           <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
 
