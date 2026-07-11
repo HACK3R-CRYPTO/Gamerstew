@@ -844,7 +844,10 @@ export default function RhythmGamePage() {
     // letting them play a full track and lose the score to a guaranteed
     // insufficient-funds throw. MiniPay (USDC fee adapter) and guests
     // (no submit at all) both come back "safe-equivalent" from useGasStatus.
-    if (gasStatus === "block") {
+    // Unminted players play the GUEST path: no gas gate (they submit
+    // nothing on-chain), no session ticket (the backend would refuse it
+    // anyway). Play is free — the finish screen sells the mint.
+    if (!needsMint && gasStatus === "block") {
       setGasHelpOpen(true);
       return;
     }
@@ -859,7 +862,7 @@ export default function RhythmGamePage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time. If we
     // can't get one, surface a quiet error and don't enter the run.
-    if (address) {
+    if (address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -941,7 +944,9 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
-    if (!address) return;
+    // Unminted: nothing to submit — the finish screen shows the mint
+    // prompt instead of a bogus 'session missing' error.
+    if (!address || needsMint) return;
     // No GamePass = the on-chain save would revert "No game pass". Don't
     // fire a wallet tx that's guaranteed to fail; the finish screen shows
     // the "mint to save" prompt instead. hasMinted is resolved well before

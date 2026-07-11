@@ -340,7 +340,10 @@ export default function StackTowerPage() {
     // gas) and "guest" for free-play (no submit happens anyway), so this
     // only triggers for funded-CELO players whose balance dipped under
     // the block threshold.
-    if (gasStatus === "block") {
+    // Unminted players play the GUEST path: no gas gate (they submit
+    // nothing on-chain), no session ticket (the backend would refuse it
+    // anyway). Play is free — the finish screen sells the mint.
+    if (!needsMint && gasStatus === "block") {
       setGasHelpOpen(true);
       return;
     }
@@ -372,7 +375,7 @@ export default function StackTowerPage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══════
     // No ticket = backend refuses to sign the score at submit time. Guests
     // skip this branch and the run stays local-only (localStorage best).
-    if (address) {
+    if (address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -405,7 +408,7 @@ export default function StackTowerPage() {
     setCountdown(3);
     setPhase("countdown");
     startingRef.current = false;
-  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus]);
+  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
@@ -450,7 +453,9 @@ export default function StackTowerPage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
-    if (!address) return;
+    // Unminted: nothing to submit — the finish screen shows the mint
+    // prompt instead of a bogus 'session missing' error.
+    if (!address || needsMint) return;
     if (hasMinted === false) return; // no pass · show mint prompt, don't revert
     submittedRef.current = true;
 

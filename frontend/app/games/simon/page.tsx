@@ -428,7 +428,9 @@ export default function SimonGamePage() {
     clearTimeouts();
 
     if (submittedRef.current) return;
-    if (!address) return;
+    // Unminted: nothing to submit — the finish screen shows the mint
+    // prompt instead of a bogus 'session missing' error.
+    if (!address || needsMint) return;
     if (hasMinted === false) return; // no pass · show mint prompt, don't revert
     submittedRef.current = true;
 
@@ -690,7 +692,10 @@ export default function SimonGamePage() {
     // letting them play a full sequence and lose the score to a guaranteed
     // insufficient-funds throw. MiniPay (USDC fee adapter) and guests both
     // bypass this check via the bucket itself.
-    if (gasStatus === "block") {
+    // Unminted players play the GUEST path: no gas gate (they submit
+    // nothing on-chain), no session ticket (the backend would refuse it
+    // anyway). Play is free — the finish screen sells the mint.
+    if (!needsMint && gasStatus === "block") {
       setGasHelpOpen(true);
       return;
     }
@@ -720,7 +725,7 @@ export default function SimonGamePage() {
 
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time.
-    if (address) {
+    if (address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -759,7 +764,7 @@ export default function SimonGamePage() {
     startingRef.current = false;
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
-  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus]);
+  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint]);
 
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
