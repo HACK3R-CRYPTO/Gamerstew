@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { preloadHomeData } from "@/lib/homePreload";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -331,6 +332,15 @@ export default function SplashScreen() {
   // is idempotent and TTL-cached in localStorage, safe to call when
   // no ref is present.
   useEffect(() => { captureReferralFromUrl(); }, []);
+
+  // Make the splash WORK for its screen time: start /home's data fetches
+  // (live stats, top 3, climb) + prefetch the route bundle now, so home
+  // paints instantly when the animation hands over. MiniPay users go to
+  // /dashboard instead — prefetch that route for them.
+  useEffect(() => {
+    preloadHomeData();
+    router.prefetch(isMiniPay ? "/dashboard" : "/home");
+  }, [router, isMiniPay]);
 
   useEffect(() => {
     const current = loadingTexts[textIndex];

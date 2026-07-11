@@ -7,34 +7,11 @@ import { useAccount, useDisconnect } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
-import { fetchAllTimeLeaderboard, type AllTimeEntry } from "@/lib/subgraph";
+import { type AllTimeEntry } from "@/lib/subgraph";
+import { getHomeData } from "@/lib/homePreload";
 import Onboarding, { type OnboardingResult } from "@/components/Onboarding";
 
 const ONBOARDED_KEY = "gamearena:onboarded";
-
-const SUBGRAPH_URL = "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn";
-
-async function fetchGlobalStat(): Promise<{ totalPlayers: number; totalScores: number; totalUbiDonatedG: number } | null> {
-  try {
-    const res = await fetch(SUBGRAPH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG } }` }),
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const j = await res.json();
-    const g = j?.data?.globalStat;
-    if (!g) return null;
-    return {
-      totalPlayers: Number(g.totalPlayers),
-      totalScores: Number(g.totalScores),
-      totalUbiDonatedG: Number(BigInt(g.totalUbiDonatedG) / BigInt(1e15)) / 1000,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function fmtNum(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
@@ -504,18 +481,16 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    const climbReq = fetch("/api/markov-climb", { cache: "no-store" })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => d?.event ? { phase: String(d.event.phase ?? ""), endsAt: String(d.event.endsAt ?? "") } : null)
-      .catch(() => null);
-    Promise.all([fetchGlobalStat(), fetchAllTimeLeaderboard(3), climbReq])
-      .then(([stat, top, climb]) => {
+    // Joins the flight the splash already started (instant when warm);
+    // starts fresh only on direct /home navigation or hard refresh.
+    getHomeData()
+      .then(({ stat, top3, climb }) => {
         if (cancelled || !stat) return;
         setLive({
           totalPlayers: stat.totalPlayers,
           totalMatches: stat.totalScores,
           totalUbiDonatedG: stat.totalUbiDonatedG,
-          top3: top,
+          top3,
           climb,
         });
       })
