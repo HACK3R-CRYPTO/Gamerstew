@@ -379,7 +379,7 @@ export default function Onboarding({
         <PetHero size={showSwitch ? 84 : 150} />
 
         <div style={{ textAlign: "center" }}>
-          <h2 style={{ fontFamily: T.display, fontSize: showSwitch ? 22 : 28, color: T.ink, margin: 0, letterSpacing: "-0.01em" }}>{showSwitch ? `Hey @${username || "player"}!` : "Name your slime"}</h2>
+          <h2 style={{ fontFamily: T.display, fontSize: showSwitch ? 22 : 28, color: T.ink, margin: 0, letterSpacing: "-0.01em" }}>{showSwitch ? (username ? `Hey @${username}!` : "Hey!") : "Name your slime"}</h2>
           {!showSwitch && (
             <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkDim, margin: "8px auto 0", maxWidth: 290, lineHeight: 1.5 }}>
               This is you in the arena — it&apos;s how you show up on the leaderboard, and it&apos;s yours to keep.
