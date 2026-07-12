@@ -80,7 +80,11 @@ function VerifyInner() {
     args: address ? [address] : undefined,
     query: { enabled: !!address && hasMinted === true },
   });
-  const username = (chainUsername as string | undefined) || "player";
+  // NEVER invent a handle. Minted players get their real @name (the
+  // loading gate below guarantees it's loaded); unminted players get a
+  // plain warm greeting — "@player" made people think the app didn't
+  // know who they were.
+  const username = (chainUsername as string | undefined) || "";
 
   // Direct on-chain whitelist read — the page must KNOW the answer before
   // rendering anything. Without this, verified players saw the full
@@ -185,7 +189,7 @@ function VerifyInner() {
             "You're in → Continue" step. Lands directly on the choice. */}
         <div style={{ textAlign: "center" }}>
           <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>YOU&apos;RE IN 🎉</div>
-          <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>Welcome, @{username}!</h2>
+          <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>{username ? `Welcome, @${username}!` : "Welcome!"}</h2>
         </div>
 
         {/* G$ coin hero — green gradient sphere with soft glow + sparkles */}

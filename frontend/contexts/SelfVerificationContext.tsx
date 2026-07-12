@@ -255,7 +255,10 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
       }
       toast.dismiss(waitId);
       if (!identitySDK || !walletClient) {
-        toast.error('Could not initialize SDK. Try reconnecting your wallet.');
+        const inMiniPay = typeof window !== 'undefined' && (window as any).ethereum?.isMiniPay;
+        toast.error(inMiniPay
+          ? 'Could not start verification. Refresh the page and tap Verify again.'
+          : 'Could not start verification. Refresh the page or reconnect your wallet, then try again.');
         return;
       }
     }
