@@ -16,9 +16,24 @@
 
 ---
 
-## 60-second explainer
+## What is GameArena? (in plain words)
 
-GameArena is where verified humans on Celo come to play. Every player is identity-verified via the GoodDollar Identity SDK before they can score, earn, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush, Simon Memory, Stack Tower), free instant matches against MARKOV (an AI opponent that models your patterns · provably fair via commit-reveal), and weekly + seasonal competitions with real G$ prize pools.
+GameArena is a set of quick games that actually make you sharper. Each game trains a real skill:
+
+- **Simon Memory** · trains your memory
+- **Stack Tower** · trains patience and precision
+- **Rhythm Rush** · trains focus and timing
+- **Challenge AI** · go head-to-head with MARKOV, an AI that learns how you play
+
+Thirty seconds a game, but you feel yourself improve. Everyone playing is a real, verified person, so there are no bots. You climb leaderboards against actual people, and you earn a little real money while you play. It runs on Celo, and it works in your browser or inside MiniPay.
+
+That's it. Come play: **[gamearenahq.xyz](https://gamearenahq.xyz)**
+
+---
+
+## How it works (the technical version)
+
+Every player is identity-verified via the GoodDollar Identity SDK before they can score, earn, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush, Simon Memory, Stack Tower), free instant matches against MARKOV (an AI opponent that models your patterns · provably fair via commit-reveal), and weekly + seasonal competitions with real G$ prize pools.
 
 G$ is the currency. Players earn it from weekly ladder pools and community challenges, and spend it on match refills, habitat upgrades, and perks · every spend routes to the transparent prize-pool wallet, every payout is an on-chain G$ transfer. The chain is the source of truth, the leaderboards are just the UX.
 
@@ -110,7 +125,7 @@ flowchart TB
 
 **🎵 Solo skill games**
 
-Rhythm Rush + Simon Memory today, with more games shipping into this slot. Plays submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards.
+Rhythm Rush, Simon Memory, and Stack Tower today, with more games shipping into this slot. Plays submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards.
 
 **🤖 Instant matches vs MARKOV**
 
@@ -182,10 +197,11 @@ Every player completes a one-time face-scan via GoodDollar's Identity SDK. No bo
 
 ### Solo games
 
-| Game         | Goal                                  |
-| ------------ | ------------------------------------- |
-| Rhythm Rush  | Tap glowing buttons in time           |
-| Simon Memory | Repeat color sequences                |
+| Game         | How you play                          | What it trains          |
+| ------------ | ------------------------------------- | ----------------------- |
+| Rhythm Rush  | Tap in time with the beat             | Focus and timing        |
+| Simon Memory | Repeat the color sequence, going deeper each round | Memory and recall |
+| Stack Tower  | Drop each block at the perfect moment | Patience and precision  |
 
 Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
 
