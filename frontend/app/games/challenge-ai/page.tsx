@@ -18,6 +18,7 @@
 // from seed + observed history, so the match is replayable and verifiable.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -234,6 +235,7 @@ export default function ChallengeAiPage() {
         // Direct-transfer fallback: player sends the G$ themselves (needs a
         // little gas · MiniPay covers it via the fee-currency adapter).
         const txHash = await writeContractAsync({
+          dataSuffix: ATTRIBUTION_SUFFIX,
           address: refillOffer.gToken as `0x${string}`,
           abi: ERC20_TRANSFER_ABI,
           functionName: "transfer",

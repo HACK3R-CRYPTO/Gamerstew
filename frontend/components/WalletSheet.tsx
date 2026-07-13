@@ -12,6 +12,7 @@
 // it reads as a natural extension of profile, not a bolted-on wallet UI.
 
 import { useEffect, useState } from "react";
+import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { createPortal } from "react-dom";
 import { useReadContract, useWriteContract } from "wagmi";
 import { formatUnits, isAddress, parseUnits } from "viem";
@@ -95,6 +96,7 @@ export function WalletSheet({
     setSending(true); setError(null);
     try {
       const hash = await writeContractAsync({
+        dataSuffix: ATTRIBUTION_SUFFIX,
         address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
         abi: ERC20_ABI,
         functionName: "transfer",
