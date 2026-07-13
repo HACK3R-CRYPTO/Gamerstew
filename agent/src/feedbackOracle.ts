@@ -1,5 +1,6 @@
 import { createWalletClient, http, publicActions, keccak256, encodePacked } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { ATTRIBUTION_SUFFIX } from './attribution.js';
 import { celo } from 'viem/chains';
 import chalk from 'chalk';
 
@@ -96,6 +97,7 @@ async function doAttest(att: MatchOutcomeAttestation): Promise<void> {
             abi: FEEDBACK_ABI,
             functionName: 'giveFeedback',
             args: [AGENT_ID, score, 0, 'match_completed', tag2, ENDPOINT, '', fbHash],
+            dataSuffix: ATTRIBUTION_SUFFIX,
         });
         const r = await client.waitForTransactionReceipt({ hash });
         if (r.status === 'success') {

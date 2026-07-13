@@ -1,5 +1,6 @@
 import { createPublicClient, createWalletClient, http, parseAbiItem, formatEther, parseEther, parseAbi, encodeAbiParameters, keccak256, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { ATTRIBUTION_SUFFIX } from './attribution.js';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { randomBytes } from 'node:crypto';
 import * as dotenv from 'dotenv';
@@ -747,7 +748,8 @@ async function startAgent() {
                     functionName: 'register',
                     args: [ipfsUri],
                     chain: CELO_MAINNET,
-                    account
+                    account,
+                    dataSuffix: ATTRIBUTION_SUFFIX,
                 });
                 await publicClient.waitForTransactionReceipt({ hash: h });
                 return h;
@@ -907,7 +909,7 @@ async function handleChallenge(matchId: bigint, challenger: string, wager: bigin
                 address: G_TOKEN_ADDRESS, abi: ERC20_ABI, functionName: 'transferAndCall',
                 args: [ARENA_ADDRESS, wager, encodedArgs], account,
             });
-            const h = await walletClient.writeContract(request);
+            const h = await walletClient.writeContract({ ...request, dataSuffix: ATTRIBUTION_SUFFIX });
             await publicClient.waitForTransactionReceipt({ hash: h });
             return h;
         });
@@ -1000,7 +1002,7 @@ async function tryPlayMove(matchId: bigint, m: any) {
                 address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'playMove',
                 args: [matchId, moveToSend], account
             });
-            const h = await walletClient.writeContract(request);
+            const h = await walletClient.writeContract({ ...request, dataSuffix: ATTRIBUTION_SUFFIX });
             await publicClient.waitForTransactionReceipt({ hash: h });
             return h;
         });
@@ -1093,7 +1095,7 @@ async function tryResolveMatch(matchId: bigint, m: any) {
                 address: ARENA_ADDRESS, abi: ARENA_ABI, functionName: 'resolveMatch',
                 args: [matchId, outcome.winner], account
             });
-            const h = await walletClient.writeContract(request);
+            const h = await walletClient.writeContract({ ...request, dataSuffix: ATTRIBUTION_SUFFIX });
             await publicClient.waitForTransactionReceipt({ hash: h });
         });
         console.log(chalk.green(`✅ Match #${matchId} Resolved! ${outcome.isTie ? `TIE (${outcome.tieReason}) → AI on chain, refund pending` : `Winner: ${outcome.winner === m.challenger ? 'Challenger' : 'Opponent'} (${outcome.winner})`}`));
@@ -1245,7 +1247,7 @@ async function sendTieRefund(matchId: bigint, player: `0x${string}`, amountWei: 
                 args: [player, amountWei],
                 account,
             });
-            const h = await walletClient.writeContract(request);
+            const h = await walletClient.writeContract({ ...request, dataSuffix: ATTRIBUTION_SUFFIX });
             await publicClient.waitForTransactionReceipt({ hash: h });
             return h;
         });
