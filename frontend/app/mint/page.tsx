@@ -16,6 +16,7 @@
 // to /verify preserving the original ?next= target.
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
@@ -151,6 +152,7 @@ function MintInner() {
       // celoFeeSpread returns an empty spread for non-MiniPay callers so
       // wagmi falls back to the native gas token (CELO) on mainnet.
       await writeContractAsync({
+        dataSuffix: ATTRIBUTION_SUFFIX,
         address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
         abi: GAME_PASS_ABI,
         functionName: "mint",

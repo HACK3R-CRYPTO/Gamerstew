@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@celo/attribution-tags": "^0.3.0",
     "@goodsdks/citizen-sdk": "^1.2.3",
     "@goodsdks/identity-sdk": "^1.0.5",
     "@privy-io/react-auth": "^3.21.2",

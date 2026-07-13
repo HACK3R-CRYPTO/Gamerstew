@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useCallback, useEffect, useState } from "react";
+import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { CONTRACT_ADDRESSES, detectFeeSpread } from "@/lib/contracts";
 import { habitatRegistryAbi, erc20Abi } from "@/lib/abis/habitatRegistry";
@@ -197,6 +198,7 @@ export function useHabitats(playerLevel: number = 1) {
     // Step 1: approve if allowance too low. Wait for receipt before moving on.
     if (allowance < tier.costG$) {
       const approveHash = await writeContractAsync({
+        dataSuffix: ATTRIBUTION_SUFFIX,
         address: CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`,
         abi: erc20Abi,
         functionName: "approve",
@@ -209,6 +211,7 @@ export function useHabitats(playerLevel: number = 1) {
 
     // Step 2: call unlockHabitat. Wait for the tx to actually mine.
     const txHash = await writeContractAsync({
+      dataSuffix: ATTRIBUTION_SUFFIX,
       address: CONTRACT_ADDRESSES.HABITAT_REGISTRY as `0x${string}`,
       abi: habitatRegistryAbi,
       functionName: "unlockHabitat",
