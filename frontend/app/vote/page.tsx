@@ -101,7 +101,7 @@ export default function VotePage() {
             <SectionLabel>How to vote</SectionLabel>
             <Step n={1} title="Open Flow State">Tap the green button below.</Step>
             <Step n={2} title="Connect MiniPay">Connect Wallet → MiniPay.</Step>
-            <Step n={3} title="Vote for GameArena">Do it again every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
+            <Step n={3} title="Vote for GameArena">Give us your <strong style={{ color: T.ink }}>full vote</strong>, every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
           </div>
         ) : (
           <div style={{ background: T.surface, border: `1px solid ${T.hairline}`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -109,7 +109,7 @@ export default function VotePage() {
             <Step n={1} title="Export your key">In <strong style={{ color: T.ink }}>Settings → Export wallet key</strong>.</Step>
             <Step n={2} title="Import into a wallet">MetaMask, Rabby or any wallet — app on phone, extension on PC.</Step>
             <Step n={3} title="Open Flow State + connect">Copy the link below, open it in your wallet, connect.</Step>
-            <Step n={4} title="Vote">Every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
+            <Step n={4} title="Vote for GameArena">Give us your <strong style={{ color: T.ink }}>full vote</strong>, every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
 
             {/* Warning · same danger-tint idiom as the Settings gas-block row */}
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", borderRadius: 12, padding: "11px 12px" }}>
