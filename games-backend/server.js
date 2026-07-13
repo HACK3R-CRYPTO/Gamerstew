@@ -192,6 +192,22 @@ if (provider && SOLO_WAGER_ADDR && VALIDATOR_KEY) {
   console.log('ℹ️  SOLO_WAGER_ADDRESS or VALIDATOR_PRIVATE_KEY not set — wager resolution disabled');
 }
 
+// ─── Faucet wallet — dedicated gas-drip signer ───────────────────────────────
+// Funds fresh-wallet CELO drips from its OWN wallet, isolated from the
+// validator (score-voucher signing) wallet so heavy faucet use can never drain
+// the signing gas. Falls back to the validator wallet when FAUCET_PRIVATE_KEY
+// is unset, so existing deployments keep working unchanged.
+const FAUCET_KEY = process.env.FAUCET_PRIVATE_KEY || '';
+let faucetWallet = null;
+if (provider && FAUCET_KEY) {
+  try {
+    faucetWallet = new ethers.Wallet(FAUCET_KEY, provider);
+    console.log(`⛽ Faucet wallet ready — dedicated: ${faucetWallet.address}`);
+  } catch (e) {
+    console.warn('⚠️  FAUCET_PRIVATE_KEY invalid — faucet will fall back to validator:', e.message);
+  }
+}
+
 // ─── Habitat Registry — paid habitat tier ownership ──────────────────────────
 const HABITAT_REGISTRY_ADDR = process.env.HABITAT_REGISTRY_ADDRESS || '';
 const HABITAT_PAID_TIERS    = [6, 7, 8, 9, 10];
@@ -3303,7 +3319,9 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
     return res.status(400).json({ success: false, error: 'Missing or invalid address' });
   }
-  if (!validator) {
+  // Drips come from the dedicated faucet wallet when set, else the validator.
+  const faucetSigner = faucetWallet || validator;
+  if (!faucetSigner) {
     return res.status(500).json({ success: false, error: 'Faucet not configured' });
   }
   const lower = address.toLowerCase();
@@ -3355,7 +3373,7 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
   }
 
   try {
-    const provider = validator.provider;
+    const provider = faucetSigner.provider;
 
     // Layer 5 · balance gate · wallets that already have gas don't get more
     const balance = await provider.getBalance(address);
@@ -3376,7 +3394,7 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
     }
 
     const amountWei = ethers.parseEther(FAUCET_DRIP_CELO);
-    const tx = await validator.sendTransaction({ to: address, value: amountWei });
+    const tx = await faucetSigner.sendTransaction({ to: address, value: amountWei });
     await tx.wait();
 
     // Persist BEFORE returning success so a retry can't double-drip in the
