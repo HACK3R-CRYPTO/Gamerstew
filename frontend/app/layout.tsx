@@ -70,6 +70,7 @@ export const metadata: Metadata = {
   // <head> of every page including the homepage, which is what their
   // verifier scans for.
   verification: {
+    google: "ytf64FcXGgGBR8wqwWkbBZlMo6ACiQbmCUb_1MjF2pA",
     other: {
       "talentapp:project_verification":
         "33629443ae7805f6f5c5b27a14b89553b7e12b36d74d19a7f1a31b9c8051174cc23b1ecf110ec57179a35c0c484bd0c301f2623c33c56af8548aa0fc4bb4f1e2",
