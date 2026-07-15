@@ -92,24 +92,61 @@ export default function VotePage() {
             Vote for GameArena
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13.5, color: T.inkDim, lineHeight: 1.5, margin: "8px auto 0", maxWidth: 320 }}>
-            You&apos;re verified, so your vote counts. It grows the prize pools you play for.
+            You get a <strong style={{ color: T.ink }}>fresh vote every Wednesday</strong>. It grows the prize pools you play for.
           </p>
         </div>
 
-        {isMiniPay ? (
-          <div style={{ background: T.surface, border: `1px solid ${T.hairline}`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-            <SectionLabel>How to vote</SectionLabel>
-            <Step n={1} title="Open Flow State">Tap the green button below.</Step>
-            <Step n={2} title="Connect MiniPay">Connect Wallet → MiniPay.</Step>
-            <Step n={3} title="Vote for GameArena">Give us your <strong style={{ color: T.ink }}>full vote</strong>, every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
+        {/* ── RETURNING / WEEKLY · the fast path for anyone already set up ──
+            Green-accented and placed FIRST so voters who did the one-time
+            setup (imported wallet, or MiniPay) just vote again in seconds
+            without scrolling past onboarding steps. */}
+        <div style={{ background: "linear-gradient(180deg, rgba(34,197,94,0.1), rgba(40,18,100,0.4))", border: "1px solid rgba(52,211,153,0.35)", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: T.good, boxShadow: `0 0 8px ${T.good}` }} />
+            <SectionLabel>Voted before? · 10 seconds</SectionLabel>
           </div>
-        ) : (
+          <Step n={1} title="Open your wallet">The one you imported into last time {isMiniPay ? "(MiniPay)" : "(MetaMask, Rabby...)"}.</Step>
+          <Step n={2} title="Open Flow State in it">Copy the link below, paste it in your wallet&apos;s browser.</Step>
+          <Step n={3} title="Give GameArena your full vote">Do it again every <strong style={{ color: T.ink }}>Wednesday</strong> · fresh allocation each week.</Step>
+
+          <a
+            href={FLOW_STATE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              width: "100%", textAlign: "center", textDecoration: "none",
+              borderRadius: 12, padding: "13px", fontFamily: T.display, fontSize: 15,
+              color: "#04160a", background: "linear-gradient(180deg, #6ee76e 0%, #22c55e 55%, #15803d 100%)",
+              border: "1px solid rgba(255,255,255,0.4)",
+              boxShadow: "0 8px 18px -6px rgba(34,197,94,0.5)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}
+          >
+            Open Flow State to vote →
+          </a>
+          <button
+            onClick={copyLink}
+            style={{
+              width: "100%", cursor: "pointer",
+              borderRadius: 12, padding: "11px", fontFamily: T.body, fontSize: 13, fontWeight: 700,
+              color: copied ? T.good : T.inkDim,
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${copied ? "rgba(34,197,94,0.4)" : T.hairline}`,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            }}
+          >
+            {copied ? "✓ Link copied — paste it in your wallet browser" : "📋 Copy voting link"}
+          </button>
+        </div>
+
+        {/* ── FIRST TIME · the one-time setup, secondary and below. MiniPay
+            users already hold a standalone wallet, so they skip it entirely. ── */}
+        {!isMiniPay && (
           <div style={{ background: T.surface, border: `1px solid ${T.hairline}`, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-            <SectionLabel>One-time setup</SectionLabel>
+            <SectionLabel>First time? · one-time setup</SectionLabel>
             <Step n={1} title="Export your key">In <strong style={{ color: T.ink }}>Settings → Export wallet key</strong>.</Step>
             <Step n={2} title="Import into a wallet">MetaMask, Rabby or any wallet — app on phone, extension on PC.</Step>
-            <Step n={3} title="Open Flow State + connect">Copy the link below, open it in your wallet, connect.</Step>
-            <Step n={4} title="Vote for GameArena">Give us your <strong style={{ color: T.ink }}>full vote</strong>, every <strong style={{ color: T.ink }}>Wednesday</strong>.</Step>
+            <Step n={3} title="Then vote">Come back here and use the steps above. After this, it&apos;s 10 seconds a week.</Step>
 
             {/* Warning · same danger-tint idiom as the Settings gas-block row */}
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", borderRadius: 12, padding: "11px 12px" }}>
@@ -132,45 +169,6 @@ export default function VotePage() {
             </button>
           </div>
         )}
-
-        {/* Flow State CTA */}
-        <a
-          href={FLOW_STATE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            width: "100%", textAlign: "center", textDecoration: "none",
-            borderRadius: 14, padding: "14px", fontFamily: T.display, fontSize: 16,
-            color: "#04160a", background: "linear-gradient(180deg, #6ee76e 0%, #22c55e 55%, #15803d 100%)",
-            border: "1px solid rgba(255,255,255,0.4)",
-            boxShadow: "0 10px 22px -6px rgba(34,197,94,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}
-        >
-          Open Flow State to vote →
-        </a>
-
-        {/* Copy link · the ease win for phone users — after importing to
-            their wallet, they open Flow State inside the wallet's dapp
-            browser, which means pasting the URL. This hands it to them. */}
-        <button
-          onClick={copyLink}
-          style={{
-            width: "100%", marginTop: -6, cursor: "pointer",
-            borderRadius: 12, padding: "11px", fontFamily: T.body, fontSize: 13, fontWeight: 700,
-            color: copied ? T.good : T.inkDim,
-            background: "rgba(255,255,255,0.04)",
-            border: `1px solid ${copied ? "rgba(34,197,94,0.4)" : T.hairline}`,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-          }}
-        >
-          {copied ? "✓ Link copied — paste it in your wallet browser" : "📋 Copy voting link"}
-        </button>
-
-        {/* Safety · one line */}
-        <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkSoft, lineHeight: 1.5, textAlign: "center", padding: "0 8px" }}>
-          🔒 Never share your key. GameArena will never DM you for it.
-        </div>
 
         <button
           onClick={() => router.push("/dashboard")}
