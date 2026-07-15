@@ -92,7 +92,7 @@ export default function VotePage() {
             Vote for GameArena
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13.5, color: T.inkDim, lineHeight: 1.5, margin: "8px auto 0", maxWidth: 320 }}>
-            You get a <strong style={{ color: T.ink }}>fresh vote every Wednesday</strong>. It grows the prize pools you play for.
+            You get a <strong style={{ color: T.ink }}>fresh vote every Wednesday</strong>.
           </p>
         </div>
 
