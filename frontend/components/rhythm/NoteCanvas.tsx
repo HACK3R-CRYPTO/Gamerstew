@@ -79,7 +79,10 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // sprite still renders ONCE here; the per-frame loop stays a single
   // drawImage blit per tile.
   const buildSprites = (tileW: number, tileH: number, dpr: number) => {
-    const pad = 12; // room for the glow halo around the shape
+    // Neon needs a wider box for its bigger glow halo so the sprite doesn't
+    // clip. draw() reads this same pad back from spritesRef, so widening it
+    // here is safe.
+    const pad = neon ? 20 : 12; // room for the glow halo around the shape
     const sw = tileW + pad * 2;
     const sh = tileH + pad * 2 + 4;
 
@@ -126,11 +129,23 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       const shapeW = tileW * 0.82;
       const shapeH = tileH * 1.12;
 
-      // Glow halo (fake, no shadowBlur — software rasterization killer)
-      c.globalAlpha = 0.3;
-      c.fillStyle = theme.glow;
-      tracePath(c, laneIdx, cx, cy + 1, shapeW + 14, shapeH + 14);
-      c.fill();
+      // Glow halo (fake, no shadowBlur — software rasterization killer).
+      // Neon bakes a fat two-layer halo so the tile glows like a lit sign —
+      // the single biggest "I paid for this" signal at a glance.
+      if (neon) {
+        c.globalAlpha = 0.3;
+        c.fillStyle = theme.glow;
+        tracePath(c, laneIdx, cx, cy + 1, shapeW + 30, shapeH + 30);
+        c.fill();
+        c.globalAlpha = 0.45;
+        tracePath(c, laneIdx, cx, cy + 1, shapeW + 16, shapeH + 16);
+        c.fill();
+      } else {
+        c.globalAlpha = 0.3;
+        c.fillStyle = theme.glow;
+        tracePath(c, laneIdx, cx, cy + 1, shapeW + 14, shapeH + 14);
+        c.fill();
+      }
       c.globalAlpha = 1;
 
       // Drop wall (3D depth under the candy)
@@ -159,6 +174,21 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       c.ellipse(cx - shapeW * 0.14, cy - shapeH * 0.14, shapeW * 0.13, shapeH * 0.09, -0.5, 0, Math.PI * 2);
       c.fill();
       c.restore();
+
+      // Neon signature — an electric double rim the stock tile never has:
+      // a hot white inner line wrapped by a saturated accent outline. This
+      // is what makes an equipped tile unmistakably "the neon one".
+      if (neon) {
+        c.lineJoin = "round";
+        c.lineWidth = 4;
+        c.strokeStyle = hexToRgba(theme.accent, 0.9);
+        tracePath(c, laneIdx, cx, cy, shapeW + 3, shapeH + 3);
+        c.stroke();
+        c.lineWidth = 2;
+        c.strokeStyle = "rgba(255,255,255,0.95)";
+        tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
+        c.stroke();
+      }
 
       return off;
     });
