@@ -30,7 +30,11 @@ export function writeEquipped(id: number, on: boolean) {
 // Reactive read + setter. SSR-safe: starts equipped, hydrates from storage on
 // mount, and re-renders when the toggle flips anywhere (shop or another tab).
 export function useEquipped(id: number): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(true);
+  // Read the stored value SYNCHRONOUSLY on the first render (lazy init) so a
+  // remount never flashes the default-on state before an effect corrects it.
+  // On the server window is absent and this returns true; the client's first
+  // paint already has the real value.
+  const [on, setOn] = useState(() => readEquipped(id));
 
   useEffect(() => {
     setOn(readEquipped(id));
