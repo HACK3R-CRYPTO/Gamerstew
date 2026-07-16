@@ -164,15 +164,27 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       c.fill();
       c.stroke();
 
-      // Specular dot — the candy shine, CLIPPED inside the shape so it
-      // never floats outside a triangle/star silhouette
+      // Shine, CLIPPED inside the shape so it never floats outside a
+      // triangle/star silhouette. Neon swaps the small candy dot for a big
+      // white-hot CENTER BLOOM so the tile glows lit-from-within — the same
+      // kind of clear, board-wide color shift that makes the Stack crystal
+      // skin obvious, not a subtle "slightly brighter" tweak.
       c.save();
       tracePath(c, laneIdx, cx, cy, shapeW, shapeH);
       c.clip();
-      c.fillStyle = "rgba(255,255,255,0.85)";
-      c.beginPath();
-      c.ellipse(cx - shapeW * 0.14, cy - shapeH * 0.14, shapeW * 0.13, shapeH * 0.09, -0.5, 0, Math.PI * 2);
-      c.fill();
+      if (neon) {
+        const bloom = c.createRadialGradient(cx, cy, 0, cx, cy, shapeW * 0.62);
+        bloom.addColorStop(0, "rgba(255,255,255,0.98)");
+        bloom.addColorStop(0.45, "rgba(255,255,255,0.4)");
+        bloom.addColorStop(1, "rgba(255,255,255,0)");
+        c.fillStyle = bloom;
+        c.fillRect(cx - shapeW, cy - shapeH, shapeW * 2, shapeH * 2);
+      } else {
+        c.fillStyle = "rgba(255,255,255,0.85)";
+        c.beginPath();
+        c.ellipse(cx - shapeW * 0.14, cy - shapeH * 0.14, shapeW * 0.13, shapeH * 0.09, -0.5, 0, Math.PI * 2);
+        c.fill();
+      }
       c.restore();
 
       // Neon signature — an electric double rim the stock tile never has:
