@@ -30,10 +30,12 @@ const T = {
 const RING_R = 74;
 const RING_C = 2 * Math.PI * RING_R;
 
+// Title EXPLAINS what tapping does (first-timers won't know otherwise);
+// the button is the action verb. Never make the two say the same thing.
 const VERB: Record<Perk["kind"], { title: string; cta: string }> = {
-  save:     { title: "Keep your run alive", cta: "Save my run" },
-  retry:    { title: "Take it again",        cta: "Retry" },
-  cosmetic: { title: "Unlock",               cta: "Unlock" },
+  save:     { title: "Pick up where you fell", cta: "Save my run" },
+  retry:    { title: "Play this round again",  cta: "Retry" },
+  cosmetic: { title: "Unlock it forever",      cta: "Unlock" },
 };
 
 type Props = {
