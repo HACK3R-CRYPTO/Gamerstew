@@ -29,12 +29,22 @@ contract DeployHabitatRegistry is Script {
     // Default UBI pool if env not set (matches the address used elsewhere)
     address constant DEFAULT_UBI_POOL = 0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1;
 
+    // GameArena treasury — the wallet that receives the platform's 15% share.
+    address constant DEFAULT_TREASURY = 0xc1cFA63135eA2fB5AB795cF10e4c79F4DD03c3f6;
+
+    // Foundry's default script sender. Guarding against it stops a repeat of the
+    // bug where an unset GAMEARENA_TREASURY routed funds to an unowned address.
+    address constant FOUNDRY_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
+
     function run() external returns (HabitatRegistry) {
         // GoodCollective UBI Pool — defaults to the public GoodCollective address
         address ubiPool = vm.envOr("GOOD_COLLECTIVE_ADDRESS", DEFAULT_UBI_POOL);
 
-        // Treasury — defaults to deployer for local testing. Set explicitly for mainnet.
-        address treasury = vm.envOr("GAMEARENA_TREASURY", msg.sender);
+        // Treasury — real wallet by default; overridable via env for a multisig.
+        address treasury = vm.envOr("GAMEARENA_TREASURY", DEFAULT_TREASURY);
+
+        require(treasury != address(0), "Treasury zero");
+        require(treasury != FOUNDRY_DEFAULT_SENDER, "Treasury is the Foundry placeholder - set GAMEARENA_TREASURY");
 
         vm.startBroadcast();
 

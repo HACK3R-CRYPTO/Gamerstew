@@ -27,16 +27,21 @@ export async function fetchGlobalStat(): Promise<HomePreload["stat"]> {
     const r = await fetch(SUBGRAPH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG } }` }),
+      // totalUbiDonatedG shown on /home is the WHOLE community pool: habitats
+      // (globalStat) + perks (perkShopStat). Both handlers are disjoint, so we
+      // sum them. Keeps /home and /shop showing the same single UBI figure.
+      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG } perkShopStat(id: "global") { totalUbiG } }` }),
     });
     if (!r.ok) return null;
     const j = await r.json();
     const g = j?.data?.globalStat;
     if (!g) return null;
+    const habitatUbi = BigInt(g.totalUbiDonatedG || "0");
+    const perkUbi    = j?.data?.perkShopStat ? BigInt(j.data.perkShopStat.totalUbiG) : 0n;
     return {
       totalPlayers: Number(g.totalPlayers),
       totalScores: Number(g.totalScores),
-      totalUbiDonatedG: Math.round(Number(g.totalUbiDonatedG) / 1e18),
+      totalUbiDonatedG: Math.round(Number(habitatUbi + perkUbi) / 1e18),
     };
   } catch {
     return null;

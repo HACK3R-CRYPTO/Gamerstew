@@ -25,12 +25,21 @@ contract DeployPerkShop is Script {
     // GoodCollective UBI pool — same one HabitatRegistry routes to.
     address constant DEFAULT_UBI_POOL = 0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1;
 
-    // GameArena treasury — same one HabitatRegistry uses.
-    address constant DEFAULT_TREASURY = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
+    // GameArena treasury — the wallet that receives the platform's share.
+    address constant DEFAULT_TREASURY = 0xc1cFA63135eA2fB5AB795cF10e4c79F4DD03c3f6;
+
+    // Foundry's default script sender. A prior deploy left GAMEARENA_TREASURY
+    // unset and silently routed the treasury cut here — an address nobody holds
+    // a key for, so the funds were unrecoverable. The guard below makes that a
+    // hard revert instead of a silent loss.
+    address constant FOUNDRY_DEFAULT_SENDER = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
 
     function run() external returns (PerkShop) {
         address ubiPool  = vm.envOr("GOOD_COLLECTIVE_ADDRESS", DEFAULT_UBI_POOL);
         address treasury = vm.envOr("GAMEARENA_TREASURY", DEFAULT_TREASURY);
+
+        require(treasury != address(0), "Treasury zero");
+        require(treasury != FOUNDRY_DEFAULT_SENDER, "Treasury is the Foundry placeholder - set GAMEARENA_TREASURY");
 
         vm.startBroadcast();
         PerkShop shop = new PerkShop(G_TOKEN, ubiPool, treasury);

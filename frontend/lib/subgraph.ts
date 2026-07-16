@@ -38,21 +38,31 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
 // aggregate entity without touching callers.
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 
+// `totalUbi` is the WHOLE community pool across both G$ sinks: perks
+// (perkShopStat.totalUbiG) + habitats (globalStat.totalUbiDonatedG). The two
+// are tracked by separate subgraph handlers with no overlap, so summing is
+// exact. Both /home and /shop use this one figure so the app never shows two
+// different "community UBI" numbers. `playerUbi` stays perk-specific (the
+// player's own perk contribution) for the "you gave X" line.
 export async function fetchPerkUbiStats(
   player?: string,
 ): Promise<{ playerUbi: bigint; totalUbi: bigint }> {
   const data = await gql<{
     perkShopStat: { totalUbiG: string } | null;
+    globalStat: { totalUbiDonatedG: string } | null;
     perkPurchases: { ubiAmount: string }[];
   }>(
     `query PerkUbi($player: Bytes!) {
        perkShopStat(id: "global") { totalUbiG }
+       globalStat(id: "global") { totalUbiDonatedG }
        perkPurchases(where: { player: $player }, first: 1000) { ubiAmount }
      }`,
     { player: (player || ZERO_ADDR).toLowerCase() },
   );
-  const totalUbi = data?.perkShopStat ? BigInt(data.perkShopStat.totalUbiG) : 0n;
-  const playerUbi = (data?.perkPurchases ?? []).reduce((s, p) => s + BigInt(p.ubiAmount), 0n);
+  const perkUbi    = data?.perkShopStat ? BigInt(data.perkShopStat.totalUbiG) : 0n;
+  const habitatUbi = data?.globalStat ? BigInt(data.globalStat.totalUbiDonatedG) : 0n;
+  const totalUbi   = perkUbi + habitatUbi;
+  const playerUbi  = (data?.perkPurchases ?? []).reduce((s, p) => s + BigInt(p.ubiAmount), 0n);
   return { playerUbi, totalUbi };
 }
 
