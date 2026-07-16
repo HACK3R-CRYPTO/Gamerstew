@@ -365,7 +365,6 @@ export default function DashboardPage() {
     const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
     return () => clearInterval(t);
   }, [heroList.length, heroBump]);
-  const recommended = heroList[heroIdx % heroList.length]!;
 
   return (
     <div style={{
@@ -407,7 +406,7 @@ export default function DashboardPage() {
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} onPlayGame={onPlayGame} router={router} />
             <DashRight walletReady={walletReady} connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
@@ -417,7 +416,7 @@ export default function DashboardPage() {
             <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
             <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-            <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
+            <GamesGrid onPlayGame={onPlayGame} />
             <SectionLabel>Daily missions</SectionLabel>
             <MissionCard connected={connected} onConnect={onConnect} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
@@ -456,9 +455,8 @@ export default function DashboardPage() {
   );
 }
 
-function DashLeft({ connected, recommended, onPlayGame, router, heroes, heroActive, onHeroDot }: {
+function DashLeft({ connected, onPlayGame, router, heroes, heroActive, onHeroDot }: {
   connected: boolean;
-  recommended: typeof GAMES[number];
   onPlayGame: (id: string) => void;
   router: ReturnType<typeof useRouter>;
   heroes: (typeof GAMES[number])[];
@@ -469,7 +467,7 @@ function DashLeft({ connected, recommended, onPlayGame, router, heroes, heroActi
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <HeroCarousel heroes={heroes} active={heroActive} onPlayGame={onPlayGame} onDot={onHeroDot} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-      <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
+      <GamesGrid onPlayGame={onPlayGame} isDesktop />
       <SectionLabel>Daily missions</SectionLabel>
       <MissionCard connected={connected} onConnect={() => router.push("/home")} />
     </div>
@@ -845,12 +843,13 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
   );
 }
 
-function GamesGrid({ onPlayGame, excludeId }: { onPlayGame: (id: string) => void; excludeId?: string }) {
-  // The hero banner already features `excludeId` so the grid skips it · keeps
-  // the row at 3 cards and avoids showing the same game twice.
-  const cards = GAMES.filter(g => g.id !== excludeId);
+function GamesGrid({ onPlayGame, isDesktop }: { onPlayGame: (id: string) => void; isDesktop?: boolean }) {
+  // Always the full roster in a STABLE grid — decoupled from the hero so it
+  // never reflows or orphans a card as the hero rotates. 4 across on desktop,
+  // 2×2 on mobile: clean for exactly four games either way.
+  const cards = GAMES;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "repeat(2, 1fr)", gap: 10 }}>
       {cards.map(g => (
         <button key={g.id} onClick={() => onPlayGame(g.id)} style={{
           position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
