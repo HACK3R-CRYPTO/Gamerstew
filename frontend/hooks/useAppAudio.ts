@@ -499,7 +499,13 @@ export function useAppAudio() {
   const chordIdxRef = useRef(0);
 
   const settings: AudioSettings & { update: (p: Partial<AudioSettings>) => void } = useAudioSettings();
+  // Live mirror of settings for the first-gesture handler below (deps: []), so
+  // it applies the CURRENT gains — not the unmuted DEFAULTS captured at mount.
+  // Without this, a player who had muted still heard sound on their first tap
+  // until they toggled the switch off and on again.
+  const settingsRef = useRef(settings);
   useEffect(() => {
+    settingsRef.current = settings;
     const g = effectiveGains(settings);
     applyAmbientGain(g.appAudio);
     applySfxGain(g.sfx);
@@ -543,10 +549,12 @@ export function useAppAudio() {
       const ctx = ensureCtx();
       if (!ctx) return;
       if (firstGesture) {
-        const g = effectiveGains(settings);
+        const g = effectiveGains(settingsRef.current); // live value, not the mount-time DEFAULTS
         applyAmbientGain(g.appAudio);
         applySfxGain(g.sfx);
-        playWelcomeChime();
+        if (g.sfx > 0) playWelcomeChime();             // one-shot: stay silent when muted
+        // Loop always starts — gain=0 keeps it silent, so unmuting later is
+        // instant (matches how the nav/visibility handlers start it too).
         if (!isGameplayRoute(pathnameRef.current)) startAmbientLoop();
       }
 
