@@ -412,9 +412,10 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            {/* Hero (with the event) leads; the daily claim stays prominent right after. */}
+            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
             <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
-            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
             <SectionLabel>Daily missions</SectionLabel>
