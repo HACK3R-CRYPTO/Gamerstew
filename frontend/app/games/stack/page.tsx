@@ -45,6 +45,39 @@ import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
+import { usePerks } from "@/hooks/usePerks";
+
+// Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
+// tower in icy glass. Purely visual, zero gameplay effect.
+const CRYSTAL_PERK_ID = 4;
+
+// Draws one tower slab. Default skin shifts hue as you climb; the Crystal
+// Blocks cosmetic swaps in an icy-glass palette — a fixed cyan face with a
+// brighter top gloss and a translucent inner highlight that reads as glass.
+// `hue` is kept for the default skin; crystal ignores it so the whole tower
+// stays a single cohesive material.
+function drawSlab(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, hue: number, crystal: boolean, moving: boolean,
+) {
+  if (crystal) {
+    ctx.fillStyle = "hsl(200 65% 26%)";              // deep ice shadow
+    ctx.fillRect(x, y + 3, w, BLOCK_H);
+    ctx.fillStyle = "hsl(190 80% 58%)";              // cyan glass face
+    ctx.fillRect(x, y, w, BLOCK_H - 3);
+    ctx.fillStyle = "rgba(220,250,255,0.55)";        // bright top edge
+    ctx.fillRect(x, y, w, 4);
+    ctx.fillStyle = "rgba(255,255,255,0.14)";        // inner glass highlight
+    ctx.fillRect(x + 3, y + 6, Math.max(0, w - 6), 5);
+    return;
+  }
+  ctx.fillStyle = `hsl(${hue} 80% 28%)`;
+  ctx.fillRect(x, y + 3, w, BLOCK_H);
+  ctx.fillStyle = `hsl(${hue} 78% 56%)`;
+  ctx.fillRect(x, y, w, BLOCK_H - 3);
+  ctx.fillStyle = `rgba(255,255,255,${moving ? 0.3 : 0.25})`;
+  ctx.fillRect(x, y, w, 4);
+}
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -75,6 +108,12 @@ type Sparkle = { x: number; y: number; born: number; life: number };
 export default function StackTowerPage() {
   const router = useRouter();
   const { address } = useAccount();
+
+  // Crystal Blocks ownership — read once, mirrored into a ref so the RAF
+  // draw loop always sees the live value without re-subscribing.
+  const { ownsCosmetic } = usePerks();
+  const hasCrystalRef = useRef(false);
+  hasCrystalRef.current = ownsCosmetic(CRYSTAL_PERK_ID);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(3);
@@ -745,19 +784,12 @@ export default function StackTowerPage() {
     ctx.translate(0, camYRef.current);
 
     // Stack
+    const crystal = hasCrystalRef.current;
     const stack = stackRef.current;
     for (let i = 0; i < stack.length; i++) {
       const b = stack[i];
       const y = blockCenterY(i + 1) - BLOCK_H / 2;
-      // Side shadow under each slab
-      ctx.fillStyle = `hsl(${b.hue} 80% 28%)`;
-      ctx.fillRect(b.x, y + 3, b.w, BLOCK_H);
-      // Face
-      ctx.fillStyle = `hsl(${b.hue} 78% 56%)`;
-      ctx.fillRect(b.x, y, b.w, BLOCK_H - 3);
-      // Top gloss
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.fillRect(b.x, y, b.w, 4);
+      drawSlab(ctx, b.x, y, b.w, b.hue, crystal, false);
     }
 
     // Moving block (with glow)
@@ -766,15 +798,10 @@ export default function StackTowerPage() {
       const y = blockCenterY(levelRef.current + 1) - BLOCK_H / 2;
       ctx.save();
       ctx.globalAlpha = 0.35;
-      ctx.fillStyle = `hsl(${m.hue} 78% 56%)`;
+      ctx.fillStyle = crystal ? `hsl(188 85% 62%)` : `hsl(${m.hue} 78% 56%)`;
       ctx.fillRect(m.x - 6, y - 4, m.w + 12, BLOCK_H + 8);
       ctx.restore();
-      ctx.fillStyle = `hsl(${m.hue} 80% 28%)`;
-      ctx.fillRect(m.x, y + 3, m.w, BLOCK_H);
-      ctx.fillStyle = `hsl(${m.hue} 78% 56%)`;
-      ctx.fillRect(m.x, y, m.w, BLOCK_H - 3);
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.fillRect(m.x, y, m.w, 4);
+      drawSlab(ctx, m.x, y, m.w, m.hue, crystal, true);
     }
 
     // Falling shards (sliced-off overhangs)

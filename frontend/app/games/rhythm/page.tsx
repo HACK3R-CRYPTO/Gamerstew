@@ -27,6 +27,7 @@ import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
+import { usePerks } from "@/hooks/usePerks";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
@@ -312,6 +313,10 @@ const ENCORE_POOL: [number, number][] = [
 export default function RhythmGamePage() {
   const router = useRouter();
   const { address } = useAccount();
+  // Neon Trail cosmetic (PerkShop perk 2) — owned forever, supercharges the
+  // falling-tile light beams. Purely visual, zero gameplay effect.
+  const { ownsCosmetic } = usePerks();
+  const neonTrail = ownsCosmetic(2);
   // Free-play route: guests can play full runs without connecting.
   // Score submission self-guards (the submit effect bails without an
   // address), and the finish screen shows a sign-in CTA instead of
@@ -1863,6 +1868,7 @@ export default function RhythmGamePage() {
           }}
           startRef={startRef}
           canvasHandleRef={canvasHandleRef}
+          neonTrail={neonTrail}
           pet={pet}
           isEncore={phase === "encore"}
           encoreLives={encoreLives}
@@ -2257,6 +2263,7 @@ function PlayingView({
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
+  neonTrail,
   pet,
   isEncore, encoreLives, encoreLoop,
   fever, perfectStreak, heldLanes,
@@ -2273,6 +2280,7 @@ function PlayingView({
   // PlayingView owns the JSX that mounts the canvas, then stashes the
   // handle into this shared ref so the parent can reach it.
   canvasHandleRef: React.MutableRefObject<NoteCanvasHandle | null>;
+  neonTrail: boolean;
   pet: PetStage;
   isEncore: boolean;
   encoreLives: number;
@@ -2422,6 +2430,7 @@ function PlayingView({
         <NoteCanvas
           ref={canvasHandleRef}
           lanes={LANES}
+          neon={neonTrail}
         />
 
         {/* Particle bursts */}

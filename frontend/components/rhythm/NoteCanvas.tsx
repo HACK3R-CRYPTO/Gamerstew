@@ -53,9 +53,12 @@ export type NoteCanvasHandle = {
 
 type Props = {
   lanes: LaneTheme[];
+  // Neon Trail cosmetic (PerkShop perk 2) — when owned, the falling-tile
+  // light beams are baked far brighter and hotter. Purely visual.
+  neon?: boolean;
 };
 
-const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lanes }, ref) {
+const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lanes, neon = false }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Measured canvas size in CSS pixels + the DPR we scaled the backing
   // store to. Cached here so the per-frame draw doesn't have to query
@@ -182,22 +185,40 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       // has NO hard bottom edge, so narrow shapes (the star) can't expose
       // a visible "start" of the trail around their silhouette.
       const g = c.createLinearGradient(0, 0, 0, trailH);
-      g.addColorStop(0, hexToRgba(theme.accent, 0));
-      g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
-      g.addColorStop(0.78, hexToRgba(theme.accent, 0.34));
-      g.addColorStop(0.9, hexToRgba(theme.accent, 0.55));
-      g.addColorStop(1, hexToRgba(theme.accent, 0));
+      if (neon) {
+        // Neon Trail: the beam ignites — the color builds earlier and
+        // peaks near-opaque, so every tile drags a hot ribbon of light.
+        g.addColorStop(0, hexToRgba(theme.accent, 0));
+        g.addColorStop(0.35, hexToRgba(theme.accent, 0.26));
+        g.addColorStop(0.72, hexToRgba(theme.accent, 0.66));
+        g.addColorStop(0.9, hexToRgba(theme.accent, 0.98));
+        g.addColorStop(1, hexToRgba(theme.accent, 0));
+      } else {
+        g.addColorStop(0, hexToRgba(theme.accent, 0));
+        g.addColorStop(0.45, hexToRgba(theme.accent, 0.1));
+        g.addColorStop(0.78, hexToRgba(theme.accent, 0.34));
+        g.addColorStop(0.9, hexToRgba(theme.accent, 0.55));
+        g.addColorStop(1, hexToRgba(theme.accent, 0));
+      }
       c.fillStyle = g;
       c.fillRect(0, 0, tw, trailH);
       // Bright core column down the middle of the shaft — the hot center
-      // that makes it read as light, not fog. Same soft tail-off.
+      // that makes it read as light, not fog. Same soft tail-off. Neon
+      // burns the core white so the beam reads electric, not just tinted.
       const core = c.createLinearGradient(0, 0, 0, trailH);
-      core.addColorStop(0, "rgba(255,255,255,0)");
-      core.addColorStop(0.72, "rgba(255,255,255,0.06)");
-      core.addColorStop(0.88, "rgba(255,255,255,0.2)");
-      core.addColorStop(1, "rgba(255,255,255,0)");
+      if (neon) {
+        core.addColorStop(0, "rgba(255,255,255,0)");
+        core.addColorStop(0.6, "rgba(255,255,255,0.18)");
+        core.addColorStop(0.86, "rgba(255,255,255,0.6)");
+        core.addColorStop(1, "rgba(255,255,255,0)");
+      } else {
+        core.addColorStop(0, "rgba(255,255,255,0)");
+        core.addColorStop(0.72, "rgba(255,255,255,0.06)");
+        core.addColorStop(0.88, "rgba(255,255,255,0.2)");
+        core.addColorStop(1, "rgba(255,255,255,0)");
+      }
       c.fillStyle = core;
-      c.fillRect(tw * 0.3, 0, tw * 0.4, trailH);
+      c.fillRect(tw * (neon ? 0.24 : 0.3), 0, tw * (neon ? 0.52 : 0.4), trailH);
       return off;
     });
 
@@ -251,6 +272,19 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       else window.removeEventListener("resize", resize);
     };
   }, []);
+
+  // Re-bake sprites when the Neon Trail cosmetic toggles (e.g. it resolves
+  // from chain a beat after mount). Uses the size already measured by the
+  // resize effect; skips until that first measure lands.
+  useEffect(() => {
+    const { w, dpr } = sizeRef.current;
+    if (w === 0) return;
+    const laneW = w / lanes.length;
+    const tileW = Math.max(54, Math.min(90, laneW * 0.78));
+    const tileH = Math.round(tileW * 0.7);
+    buildSprites(tileW, tileH, dpr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [neon]);
 
   useImperativeHandle(ref, () => ({
     draw(notes, nowSec, heldIds) {
