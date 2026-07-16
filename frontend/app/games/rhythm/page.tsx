@@ -954,13 +954,7 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
-    // Casual run (a save was bought) — ranked stays pure skill, so this run
-    // never touches the on-chain ladder. The finish screen shows this message.
-    if (usedPerkRef.current) {
-      submittedRef.current = true;
-      setSubmitError("Casual run · you saved it with G$, so it stays off the ranked ladder.");
-      return;
-    }
+    // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;

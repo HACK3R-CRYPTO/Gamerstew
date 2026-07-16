@@ -125,13 +125,11 @@ export default function StackTowerPage() {
   const gameStartMsRef = useRef(0);
 
   // ═══ Save-your-run (M1 perk) ═════════════════════════════════════════════
-  // A miss opens the SaveRunOverlay (casual mode only). Buying a save keeps
-  // the tower and resumes play — but the run becomes CASUAL and never submits
-  // to the ranked ladder, so ranked stays pure skill. savePausedAtRef marks
-  // when the clock froze so we can hand the paused seconds back on resume.
-  const usedSaveRef = useRef(false);
+  // A miss opens the SaveRunOverlay. Buying/using a save keeps the tower and
+  // resumes play — the run still submits normally (using a save counts on the
+  // weekly board). savePausedAtRef marks when the clock froze so we can hand
+  // the paused seconds back on resume.
   const savePausedAtRef = useRef(0);
-  const [casualRun, setCasualRun] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [signingOnChain, setSigningOnChain] = useState(false);
@@ -346,10 +344,8 @@ export default function StackTowerPage() {
 
   // ─── Resume after a bought save ────────────────────────────────────────────
   // Re-arm a moving block from the current top of the tower and hand back the
-  // seconds the save decision cost. The run is now casual: it won't submit.
+  // seconds the save decision cost. The run continues and still submits.
   const resumeAfterSave = useCallback(() => {
-    usedSaveRef.current = true;
-    setCasualRun(true);
     const stack = stackRef.current;
     const top = stack[stack.length - 1];
     const level = levelRef.current;
@@ -421,9 +417,7 @@ export default function StackTowerPage() {
     setScore(0); setCombo(0);
     juice.reset();
     submittedRef.current = false;
-    usedSaveRef.current = false;
     savePausedAtRef.current = 0;
-    setCasualRun(false);
     sessionTokenRef.current = null;
     setSubmitResult(null);
     setSubmitError(null);
@@ -510,9 +504,7 @@ export default function StackTowerPage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
-    // Casual run (a save was bought) — ranked stays pure skill, so this run
-    // never touches the on-chain ladder. Show the casual finish state instead.
-    if (usedSaveRef.current) { submittedRef.current = true; setSubmitting(false); return; }
+    // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -1047,20 +1039,8 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
-              {/* Submit status · guest CTA · or reward panel for signed-in runs.
-                  Casual runs (a save was bought) never rank — say so plainly. */}
-              {casualRun ? (
-                <div style={{
-                  marginTop: 14, padding: "12px 14px", borderRadius: 12,
-                  background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.35)",
-                  color: "#a7f3d0", fontSize: 12.5, fontWeight: 700, lineHeight: 1.5, textAlign: "center",
-                }}>
-                  Casual run · you saved it with G$, so it stays off the ranked ladder.
-                  <div style={{ color: "rgba(167,243,208,0.7)", fontSize: 11, fontWeight: 600, marginTop: 4 }}>
-                    Ranked runs are pure skill. Play a clean run to climb the board.
-                  </div>
-                </div>
-              ) : !authed ? (
+              {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
+              {!authed ? (
                 <div style={{ marginTop: 14 }}>
                   <GuestScorePrompt nextPath="/games/stack" />
                 </div>

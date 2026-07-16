@@ -11,8 +11,8 @@ import { savePerkFor, type Perk } from "@/lib/perks";
 //     and a plain seconds number, so the countdown is unmistakable
 //   · a clear "Confirming…" state so the wallet wait never looks frozen
 // With stock, a save is free and instant (spends from inventory). At zero
-// stock it's one gasless signature. Casual mode only — using a perk drops the
-// run off the ranked ladder.
+// stock it's one gasless signature. A saved run continues and still submits —
+// using a save counts on the weekly leaderboard.
 
 const T = {
   ink: "#ffffff",

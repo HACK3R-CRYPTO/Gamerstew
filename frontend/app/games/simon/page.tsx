@@ -434,13 +434,7 @@ export default function SimonGamePage() {
     setGameTimeMs(gameTime);
     clearTimeouts();
 
-    // Casual run (a retry was bought) — ranked stays pure skill, so this run
-    // never touches the on-chain ladder. RewardPanel shows this message.
-    if (usedPerkRef.current) {
-      submittedRef.current = true;
-      setSubmitError("Casual run · you used a retry, so it stays off the ranked ladder.");
-      return;
-    }
+    // A retried run submits normally — using a retry counts on the weekly board.
 
     if (submittedRef.current) return;
     // Unminted: nothing to submit — the finish screen shows the mint
