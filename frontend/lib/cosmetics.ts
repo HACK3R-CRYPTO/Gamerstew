@@ -17,6 +17,33 @@ import { getCosmeticEquip, setCosmeticEquip } from "@/app/actions/perks";
 const KEY = (id: number) => `gamearena:cosmetic:equipped:${id}`;
 const EVENT = "gamearena:cosmetic-equip";
 
+// ── Account-map cache + in-flight dedupe ──────────────────────────────────────
+// getCosmeticEquip is a server action (POST to the current route). Without this,
+// every mount of every EquipToggle — and the shop remounts its cards on each
+// wallet/block re-render — fired its own request, flooding the network tab.
+// One shared 30s cache + a single in-flight promise means N toggles across the
+// shop share ONE request, and remounts hit the cache instead of the server.
+type EquipMap = Record<number, boolean>;
+let mapCache: { addr: string; data: EquipMap; at: number } | null = null;
+let mapInflight: { addr: string; p: Promise<EquipMap> } | null = null;
+const CACHE_MS = 30_000;
+
+async function loadEquipMap(address: string): Promise<EquipMap> {
+  const now = Date.now();
+  if (mapCache && mapCache.addr === address && now - mapCache.at < CACHE_MS) return mapCache.data;
+  if (mapInflight && mapInflight.addr === address) return mapInflight.p;
+  const p = getCosmeticEquip(address)
+    .then(({ equipped }) => { mapCache = { addr: address, data: equipped, at: Date.now() }; return equipped; })
+    .finally(() => { if (mapInflight && mapInflight.addr === address) mapInflight = null; });
+  mapInflight = { addr: address, p };
+  return p;
+}
+
+// Keep the cache coherent with a local toggle so other toggles don't re-fetch.
+function patchCache(address: string, id: number, on: boolean) {
+  if (mapCache && mapCache.addr === address) mapCache.data[id] = on;
+}
+
 export function readEquipped(id: number): boolean {
   if (typeof window === "undefined") return true;
   const v = window.localStorage.getItem(KEY(id));
@@ -72,13 +99,14 @@ export function useEquipped(id: number): [boolean, (on: boolean) => void] {
     if (!address) return;
     let cancelled = false;
     (async () => {
-      const { equipped } = await getCosmeticEquip(address);
+      const equipped = await loadEquipMap(address); // shared cache — no per-mount flood
       if (cancelled) return;
       if (id in equipped) {
         const v = equipped[id];
         cacheEquipped(id, v);
         setOn(v);
       } else if (readEquipped(id) === false) {
+        patchCache(address, id, false);
         setCosmeticEquip(address, id, false); // migrate a pre-login local OFF
       }
     })();
@@ -88,7 +116,10 @@ export function useEquipped(id: number): [boolean, (on: boolean) => void] {
   const set = useCallback((v: boolean) => {
     writeEquipped(id, v);
     setOn(v);
-    if (address) setCosmeticEquip(address, id, v); // fire-and-forget account sync
+    if (address) {
+      patchCache(address, id, v);
+      setCosmeticEquip(address, id, v); // fire-and-forget account sync
+    }
   }, [id, address]);
 
   return [on, set];

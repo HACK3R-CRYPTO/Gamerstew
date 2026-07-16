@@ -188,15 +188,15 @@ function Motes({ count, color }: { count: number; color: string }) {
       {Array.from({ length: count }).map((_, i) => {
         const left = rng() * 96 + 2;
         const bottom = rng() * 45;      // start low-to-mid, rise from there
-        const size = rng() * 2.4 + 1.6;
-        const delay = rng() * 7;
-        const dur = 5 + rng() * 5;
+        const size = rng() * 2 + 1.5;
+        const delay = rng() * 9;
+        const dur = 7 + rng() * 6;      // slow, calm drift
         return (
           <div key={i} style={{
             position: "absolute", left: `${left}%`, bottom: `${bottom}%`,
             width: size, height: size, borderRadius: "50%",
-            background: "rgba(255,255,255,0.92)",
-            boxShadow: `0 0 ${size * 3.5}px ${color}, 0 0 ${size * 1.6}px ${color}`,
+            background: "rgba(255,255,255,0.82)",
+            boxShadow: `0 0 ${size * 3}px ${color}, 0 0 ${size * 1.4}px ${color}`,
             animation: `hb-rise ${dur}s ease-in ${delay}s infinite`,
             pointerEvents: "none",
           }} />
