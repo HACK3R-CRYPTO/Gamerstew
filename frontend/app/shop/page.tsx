@@ -129,7 +129,7 @@ export default function ShopPage() {
           <div style={{ fontSize: 56 }}>🏛️</div>
           <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, margin: 0, letterSpacing: "-0.005em" }}>Habitat shop</h1>
           <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkDim, margin: "0 auto", maxWidth: 320, lineHeight: 1.5 }}>
-            Sign in to browse the 10 habitats and unlock premium scenes with G$. 20% of every purchase routes to the GoodCollective UBI pool.
+            Sign in to browse the 10 habitats and unlock premium scenes with G$.
           </p>
           <button onClick={() => router.push("/home")} style={{
             fontFamily: T.display, fontSize: 16, color: "#fff",
@@ -170,7 +170,7 @@ export default function ShopPage() {
           </h1>
           {tab === "habitats" && (
             <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 480 }}>
-              Free tiers unlock with level. Premium tiers cost G$ — 20% routes to the GoodCollective UBI pool.
+              Free tiers unlock with level. Premium tiers cost G$.
             </p>
           )}
         </div>
@@ -244,7 +244,7 @@ export default function ShopPage() {
                 </div>
                 <div style={{ fontFamily: T.display, fontSize: isDesktop ? 26 : 22, color: T.ink, marginTop: 8, lineHeight: 1.1, letterSpacing: "-0.005em", textShadow: "0 2px 12px rgba(0,0,0,0.6)" }}>{nextPaid.name}</div>
                 <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, marginTop: 5, lineHeight: 1.45, maxWidth: 420 }}>
-                  {nextPaid.blurb} <span style={{ color: T.inkSoft }}>· 20% to UBI pool.</span>
+                  {nextPaid.blurb}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: isDesktop ? "flex-end" : "flex-start", gap: 8, flexShrink: 0 }}>
@@ -417,9 +417,6 @@ export default function ShopPage() {
                   <div style={{ fontFamily: T.body, color: T.inkSoft, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase" }}>Your G$</div>
                   <div style={{ fontFamily: T.display, color: T.ink, fontSize: 18, marginTop: 3, lineHeight: 1 }}>{(Number(gBalance) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                 </div>
-              </div>
-              <div style={{ fontFamily: T.body, color: T.inkSoft, fontSize: 11, lineHeight: 1.5, marginTop: 8, padding: "0 4px" }}>
-                20% of every purchase routes to the <strong style={{ color: "#86efac" }}>GoodCollective UBI pool</strong>. 80% supports the platform.
               </div>
 
               {unlockStep === "error" && unlockErr && (
