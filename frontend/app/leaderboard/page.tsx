@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
+import EventTeaser from "@/components/EventTeaser";
 import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
@@ -620,6 +621,9 @@ export default function EventsPage() {
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>EVENTS</div>
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
         </div>
+
+        {/* Upcoming event teaser — 400,000 G$ pool, details soon */}
+        <EventTeaser isDesktop={isDesktop} />
 
         {/* LIVE / PAST / ALL-TIME tab switcher */}
         <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>

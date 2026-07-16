@@ -6,7 +6,7 @@
 
 const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
-  "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn";
+  "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn";
 
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
   try {
@@ -26,6 +26,34 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
     console.warn("subgraph fetch failed:", e);
     return null;
   }
+}
+
+// ─── Perk UBI stats ─────────────────────────────────────────────────────────
+// The shop's "you gave X to UBI" line and the community total. These are pure
+// AGGREGATES the subgraph already indexes (PerkShopStat.totalUbiG, and each
+// PerkPurchase.ubiAmount), so we read them here instead of polling the
+// PerkShop contract over RPC every 30s. Chain stays reserved for live wallet
+// state (balance, ownership). Player buys are few, so summing client-side is
+// cheap; if a player ever amasses 1000+ buys this can move to a per-player
+// aggregate entity without touching callers.
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
+export async function fetchPerkUbiStats(
+  player?: string,
+): Promise<{ playerUbi: bigint; totalUbi: bigint }> {
+  const data = await gql<{
+    perkShopStat: { totalUbiG: string } | null;
+    perkPurchases: { ubiAmount: string }[];
+  }>(
+    `query PerkUbi($player: Bytes!) {
+       perkShopStat(id: "global") { totalUbiG }
+       perkPurchases(where: { player: $player }, first: 1000) { ubiAmount }
+     }`,
+    { player: (player || ZERO_ADDR).toLowerCase() },
+  );
+  const totalUbi = data?.perkShopStat ? BigInt(data.perkShopStat.totalUbiG) : 0n;
+  const playerUbi = (data?.perkPurchases ?? []).reduce((s, p) => s + BigInt(p.ubiAmount), 0n);
+  return { playerUbi, totalUbi };
 }
 
 // ─── Schema feature detection ───────────────────────────────────────────────

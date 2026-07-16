@@ -18,7 +18,6 @@
 // from seed + observed history, so the match is replayable and verifiable.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -33,22 +32,10 @@ import {
   playRoundWin, playRoundLose, playRoundTie,
   playCalledIt, playSuddenDeath, playWhooshIn,
 } from "@/hooks/useAppAudio";
-import { useWriteContract, useSignTypedData } from "wagmi";
-import { parseEther, parseSignature } from "viem";
-import { startArenaMatch, throwArenaMove, getArenaLadder, purchaseArenaRefill, purchaseArenaRefillGasless, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
-
-const ERC20_TRANSFER_ABI = [
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
+import { startArenaMatch, throwArenaMove, getArenaLadder, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
+import { grantPerk } from "@/app/actions/perks";
+import { usePerks } from "@/hooks/usePerks";
+import { getPerk } from "@/lib/perks";
 
 // ─── Player pet (mirrors simon/rhythm pages) ─────────────────────────────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
@@ -124,6 +111,9 @@ function useLocalRecord() {
 export default function ChallengeAiPage() {
   useRequireAuth();
   const { address } = useAccount();
+  // Match tickets now route through PerkShop (perk #6) like every other perk —
+  // gasless-first buy, 20/80 split — then the backend grants +5 matches.
+  const { buyPerk } = usePerks();
 
   const [phase, setPhase] = useState<Phase>("lobby");
   const [pet, setPet] = useState<PetStage>(PET_STAGES[0]!);
@@ -186,64 +176,19 @@ export default function ChallengeAiPage() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [refillOffer, setRefillOffer] = useState<RefillOffer | null>(null);
   const [buying, setBuying] = useState(false);
-  const { writeContractAsync } = useWriteContract();
-
-  const { signTypedDataAsync } = useSignTypedData();
 
   const buyRefill = useCallback(async () => {
-    if (!address || !refillOffer || buying) return;
+    if (!address || buying) return;
+    const ticket = getPerk(6);
+    if (!ticket) return;
     setBuying(true);
     setError(null);
     try {
-      let granted: { ok?: boolean; remaining?: number } = {};
-
-      if (refillOffer.relayer && refillOffer.permitNonce !== null && refillOffer.permitNonce !== undefined) {
-        // Gasless path (preferred): sign an EIP-2612 permit — one signature,
-        // zero gas, zero CELO. The backend relays and pays. Domain verified
-        // on-chain: GoodDollar / 1 / 42220.
-        const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-        const signature = await signTypedDataAsync({
-          domain: {
-            name: "GoodDollar",
-            version: "1",
-            chainId: 42220,
-            verifyingContract: refillOffer.gToken as `0x${string}`,
-          },
-          types: {
-            Permit: [
-              { name: "owner", type: "address" },
-              { name: "spender", type: "address" },
-              { name: "value", type: "uint256" },
-              { name: "nonce", type: "uint256" },
-              { name: "deadline", type: "uint256" },
-            ],
-          },
-          primaryType: "Permit",
-          message: {
-            owner: address,
-            spender: refillOffer.relayer as `0x${string}`,
-            value: parseEther(String(refillOffer.priceGs)),
-            nonce: BigInt(refillOffer.permitNonce),
-            deadline,
-          },
-        });
-        const { v, r, s } = parseSignature(signature);
-        granted = await purchaseArenaRefillGasless(address, {
-          deadline: deadline.toString(), v: Number(v), r, s,
-        });
-      } else {
-        // Direct-transfer fallback: player sends the G$ themselves (needs a
-        // little gas · MiniPay covers it via the fee-currency adapter).
-        const txHash = await writeContractAsync({
-          dataSuffix: ATTRIBUTION_SUFFIX,
-          address: refillOffer.gToken as `0x${string}`,
-          abi: ERC20_TRANSFER_ABI,
-          functionName: "transfer",
-          args: [refillOffer.poolWallet as `0x${string}`, parseEther(String(refillOffer.priceGs))],
-        });
-        granted = await purchaseArenaRefill(address, txHash);
-      }
-
+      // Buy the Match Pack via PerkShop — gasless-first (one signature, zero
+      // CELO), MiniPay pays gas in stablecoin. 20% routes to UBI, 80% treasury.
+      const txHash = await buyPerk(ticket);
+      // Verify the purchase on-chain and grant +5 matches.
+      const granted = await grantPerk(address, txHash);
       if (granted.ok) {
         setRefillOffer(null);
         setRemaining(granted.remaining ?? null);
@@ -252,13 +197,14 @@ export default function ChallengeAiPage() {
           { duration: 4000 },
         );
       } else {
-        setError("Payment sent but not verified yet · try Start again in a few seconds");
+        setError("Bought — matches will land in a few seconds · try Start again");
       }
-    } catch {
-      setError("Purchase cancelled");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(/cancel/i.test(msg) ? "Purchase cancelled" : "Couldn't buy the ticket · try again");
     }
     setBuying(false);
-  }, [address, refillOffer, buying, writeContractAsync, signTypedDataAsync]);
+  }, [address, buying, buyPerk]);
 
   // ─── Start a match ─────────────────────────────────────────────────────────
   const startMatch = useCallback(async () => {

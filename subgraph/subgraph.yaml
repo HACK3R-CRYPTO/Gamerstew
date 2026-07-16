@@ -84,3 +84,26 @@ dataSources:
         - event: WagerResolved(indexed uint256,indexed address,bool,uint256)
           handler: handleWagerResolved
       file: ./src/wager.ts
+
+  # PerkShop — M1 G$ Perk Economy: in-game perks paid in G$ (20% to UBI)
+  - kind: ethereum
+    name: PerkShop
+    network: celo
+    source:
+      address: "0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5"
+      abi: PerkShop
+      startBlock: 72287000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - PerkPurchase
+        - PerkShopStat
+      abis:
+        - name: PerkShop
+          file: ./abis/PerkShop.json
+      eventHandlers:
+        - event: PerkPurchased(indexed address,indexed uint16,bool,uint256,uint256,uint256)
+          handler: handlePerkPurchased
+      file: ./src/perkshop.ts

@@ -1,0 +1,261 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { parseSignature } from "viem";
+import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
+import { useAccount, usePublicClient, useReadContract, useReadContracts, useSignTypedData, useWriteContract } from "wagmi";
+import { CONTRACT_ADDRESSES, detectFeeSpread } from "@/lib/contracts";
+import { perkShopAbi } from "@/lib/abis/perkShop";
+import { erc20Abi } from "@/lib/abis/habitatRegistry";
+import { PERKS, COSMETIC_PERK_IDS, type Perk } from "@/lib/perks";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { buyPerkGasless, grantPerk, getPerkInventory, consumePerkStock } from "@/app/actions/perks";
+import { fetchPerkUbiStats } from "@/lib/subgraph";
+
+// Minimal G$ permit ABI — just the nonce read for EIP-2612 signing.
+const permitNonceAbi = [
+  { type: "function", stateMutability: "view", name: "nonces", inputs: [{ name: "owner", type: "address" }], outputs: [{ type: "uint256" }] },
+] as const;
+
+function isUserRejection(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return /reject|denied|cancell?ed|4001/.test(msg);
+}
+
+const PERK_SHOP = CONTRACT_ADDRESSES.PERK_SHOP as `0x${string}`;
+const G_TOKEN = CONTRACT_ADDRESSES.G_TOKEN as `0x${string}`;
+
+// Single source of truth for PerkShop state on the client. Mirrors
+// useHabitats: reads G$ balance + allowance for the shop, cosmetic ownership,
+// and the player's UBI contribution; exposes buyPerk (approve → buy → confirm).
+export function usePerks() {
+  const { address } = useAccount();
+  const isMiniPay = useIsMiniPay();
+  const { writeContractAsync } = useWriteContract();
+  const { signTypedDataAsync } = useSignTypedData();
+  const publicClient = usePublicClient();
+
+  // ── LIVE WALLET STATE — read from chain, EVENT-DRIVEN not polled ─────────────
+  // These only change when the player acts (a buy) or their wallet changes, so
+  // we don't poll every 15–30s (that hammered forno for nothing and drained
+  // mobile battery). Instead: fetch on mount, refetch when the tab regains
+  // focus (react-query default, made explicit), and refetch after a purchase
+  // via settle(). Aggregates that DON'T need chain live-ness (UBI totals) come
+  // from the subgraph below.
+  const liveQuery = { refetchOnWindowFocus: true, refetchOnReconnect: true } as const;
+
+  // G$ balance — gates "can afford" in the UI.
+  const { data: gBalanceRaw, refetch: refetchBalance } = useReadContract({
+    address: G_TOKEN, abi: erc20Abi, functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address, ...liveQuery },
+  });
+
+  // Allowance granted to the shop — drives whether the buy needs an approve.
+  const { data: allowanceRaw, refetch: refetchAllowance } = useReadContract({
+    address: G_TOKEN, abi: erc20Abi, functionName: "allowance",
+    args: address ? [address, PERK_SHOP] : undefined,
+    query: { enabled: !!address, ...liveQuery },
+  });
+
+  // Cosmetic ownership, batched in one round-trip. Changes only on a buy, so
+  // event-driven: refetched by settle() after a purchase (which also polls the
+  // RPC until it catches up) and on tab focus.
+  const cosmeticContracts = useMemo(() => {
+    if (!address) return [];
+    return COSMETIC_PERK_IDS.map(id => ({
+      address: PERK_SHOP, abi: perkShopAbi, functionName: "ownsCosmetic" as const,
+      args: [address, id] as const,
+    }));
+  }, [address]);
+
+  const { data: cosmeticData, refetch: refetchCosmetics } = useReadContracts({
+    contracts: cosmeticContracts,
+    query: { enabled: !!address && cosmeticContracts.length > 0, ...liveQuery },
+  });
+
+  // ── AGGREGATES — from the SUBGRAPH, not RPC ──────────────────────────────────
+  // Player's total UBI given + the whole-community total. Indexed data, one
+  // GraphQL read on mount / address change / post-purchase. No polling.
+  const [ubiStats, setUbiStats] = useState<{ playerUbi: bigint; totalUbi: bigint }>({ playerUbi: 0n, totalUbi: 0n });
+  const refetchUbiStats = useCallback(async () => {
+    setUbiStats(await fetchPerkUbiStats(address));
+  }, [address]);
+  useEffect(() => { refetchUbiStats(); }, [refetchUbiStats]);
+
+  const ownedCosmeticIds = useMemo<number[]>(() => {
+    if (!cosmeticData) return [];
+    const owned: number[] = [];
+    cosmeticData.forEach((res, i) => {
+      if (res.status === "success" && res.result === true) owned.push(COSMETIC_PERK_IDS[i]);
+    });
+    return owned;
+  }, [cosmeticData]);
+
+  const gBalance = (gBalanceRaw as bigint | undefined) ?? 0n;
+  const allowance = (allowanceRaw as bigint | undefined) ?? 0n;
+  const ubiContributed = ubiStats.playerUbi;
+  const totalCommunity = ubiStats.totalUbi;
+
+  const ownsCosmetic = useCallback(
+    (perkId: number) => ownedCosmeticIds.includes(perkId),
+    [ownedCosmeticIds],
+  );
+
+  // Post-purchase bookkeeping shared by both buy paths: for cosmetics, poll
+  // ownership until the RPC catches up, then refresh all reads.
+  const settle = useCallback(async (perk: Perk) => {
+    if (perk.kind === "cosmetic" && address && publicClient) {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const owned = await publicClient.readContract({
+          address: PERK_SHOP, abi: perkShopAbi, functionName: "ownsCosmetic",
+          args: [address, perk.id],
+        });
+        if (owned === true) break;
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+    await Promise.all([refetchBalance(), refetchAllowance(), refetchUbiStats(), refetchCosmetics()]);
+  }, [address, publicClient, refetchBalance, refetchAllowance, refetchUbiStats, refetchCosmetics]);
+
+  // ── Gasless buy (preferred) ─────────────────────────────────────────────────
+  // One EIP-2612 signature, zero CELO: the player signs a permit for PerkShop,
+  // the backend relayer submits buyPerkWithPermit and pays the gas. Mirrors the
+  // proven Challenge AI gasless refill. Throws USER_REJECTED if the player
+  // cancels the signature, or RELAYER_DOWN so the caller can fall back.
+  const buyPerkViaPermit = useCallback(async (perk: Perk): Promise<`0x${string}`> => {
+    if (!address || !publicClient) throw new Error("RELAYER_DOWN");
+    const nonce = await publicClient.readContract({
+      address: G_TOKEN, abi: permitNonceAbi, functionName: "nonces", args: [address],
+    });
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    let signature: `0x${string}`;
+    try {
+      signature = await signTypedDataAsync({
+        domain: { name: "GoodDollar", version: "1", chainId: 42220, verifyingContract: G_TOKEN },
+        types: {
+          Permit: [
+            { name: "owner", type: "address" },
+            { name: "spender", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+        },
+        primaryType: "Permit",
+        message: { owner: address, spender: PERK_SHOP, value: perk.priceG$, nonce: nonce as bigint, deadline },
+      });
+    } catch (e) {
+      throw new Error(isUserRejection(e) ? "USER_REJECTED" : "RELAYER_DOWN");
+    }
+    const { v, r, s } = parseSignature(signature);
+    const res = await buyPerkGasless(address, {
+      perkId: perk.id, deadline: deadline.toString(), v: Number(v), r, s,
+    });
+    if (!res.ok || !res.txHash) throw new Error("RELAYER_DOWN");
+    await settle(perk);
+    return res.txHash as `0x${string}`;
+  }, [address, publicClient, signTypedDataAsync, settle]);
+
+  // ── Fallback buy: approve + buyPerk (MiniPay, or when the relayer is down) ───
+  const buyPerkDirect = useCallback(async (perk: Perk): Promise<`0x${string}`> => {
+    if (!address || !publicClient) throw new Error("RPC client not ready");
+    if (allowance < perk.priceG$) {
+      const approveHash = await writeContractAsync({
+        dataSuffix: ATTRIBUTION_SUFFIX,
+        address: G_TOKEN, abi: erc20Abi, functionName: "approve",
+        args: [PERK_SHOP, perk.priceG$],
+        ...(await detectFeeSpread(isMiniPay, address)),
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      await refetchAllowance();
+    }
+    const txHash = await writeContractAsync({
+      dataSuffix: ATTRIBUTION_SUFFIX,
+      address: PERK_SHOP, abi: perkShopAbi, functionName: "buyPerk",
+      args: [perk.id],
+      ...(await detectFeeSpread(isMiniPay, address)),
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== "success") throw new Error("Purchase reverted on-chain");
+    await settle(perk);
+    return txHash;
+  }, [address, publicClient, allowance, isMiniPay, writeContractAsync, refetchAllowance, settle]);
+
+  // ── Buy flow ──────────────────────────────────────────────────────────────
+  // Gasless-first for non-MiniPay (one signature, zero CELO); MiniPay pays gas
+  // in stablecoin via approve + buyPerk. If the relayer is unavailable we fall
+  // back to the direct path so a buy always completes; a user-cancelled
+  // signature aborts instead of re-prompting.
+  const buyPerk = useCallback(async (perk: Perk): Promise<`0x${string}`> => {
+    if (!address)      throw new Error("Wallet not connected");
+    if (!publicClient) throw new Error("RPC client not ready");
+    if (gBalance < perk.priceG$) throw new Error("Insufficient G$ balance");
+    if (perk.kind === "cosmetic" && ownsCosmetic(perk.id)) {
+      throw new Error("You already own this");
+    }
+
+    if (!isMiniPay) {
+      try {
+        return await buyPerkViaPermit(perk);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "USER_REJECTED") throw new Error("Purchase cancelled");
+        // RELAYER_DOWN (or anything else) → fall back to the direct path.
+      }
+    }
+    return await buyPerkDirect(perk);
+  }, [address, publicClient, gBalance, isMiniPay, ownsCosmetic, buyPerkViaPermit, buyPerkDirect]);
+
+  // ── Buy-ahead stock (save/retry inventory) ──────────────────────────────────
+  // Backend-held: buying a save/retry stocks it; the game spends from stock.
+  const [stock, setStock] = useState<Record<number, number>>({});
+  // Gates the save prompt so its CTA never renders (and never flips) before we
+  // know the player's stock. Flips to true after the first inventory read.
+  const [stockReady, setStockReady] = useState(false);
+
+  const refetchStock = useCallback(async () => {
+    if (!address) { setStock({}); setStockReady(true); return; }
+    const { balances } = await getPerkInventory(address);
+    setStock(balances || {});
+    setStockReady(true);
+  }, [address]);
+
+  useEffect(() => { refetchStock(); }, [refetchStock]);
+
+  // Shop purchase: buy on-chain, then grant so it stocks up (or credits matches
+  // for the Match Pack). Cosmetics grant nothing — ownership is on-chain.
+  const buyAndStock = useCallback(async (perk: Perk): Promise<`0x${string}`> => {
+    const txHash = await buyPerk(perk);
+    if (address) {
+      await grantPerk(address, txHash);
+      await refetchStock();
+    }
+    return txHash;
+  }, [buyPerk, address, refetchStock]);
+
+  // Spend one save/retry from stock. Returns true if a unit was consumed.
+  const spendStock = useCallback(async (perkId: number): Promise<boolean> => {
+    if (!address) return false;
+    const res = await consumePerkStock(address, perkId);
+    if (res.ok) { setStock(s => ({ ...s, [perkId]: res.balance ?? 0 })); return true; }
+    return false;
+  }, [address]);
+
+  return {
+    perks: PERKS,
+    gBalance,
+    allowance,
+    ubiContributed,
+    totalCommunity,
+    ownedCosmeticIds,
+    ownsCosmetic,
+    stock,
+    stockReady,
+    buyPerk,
+    buyAndStock,
+    spendStock,
+    refetchStock,
+    refetch: () => Promise.all([refetchBalance(), refetchAllowance(), refetchUbiStats(), refetchCosmetics(), refetchStock()]),
+  };
+}

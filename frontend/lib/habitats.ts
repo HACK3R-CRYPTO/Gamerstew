@@ -16,6 +16,9 @@ export type HabitatTier = {
   type: "free" | "paid";
   unlockLevel?: number;  // for free tiers
   costG$?: bigint;       // for paid tiers (18-decimal G$)
+  bgImage?: string;      // premium art (public/habitats/<id>.jpg). When set,
+                         // renders as the scene; the CSS gradient/Scene is the
+                         // fallback. A light animated sparkle layer keeps it alive.
   bg: {
     gradient: string;    // CSS gradient for the background
     accent: string;      // glow / particle color
@@ -36,6 +39,7 @@ export const HABITATS: HabitatTier[] = [
   //   5 King    → Royal Hall     (peak status, ornate marble + gold)
   {
     id: 1, name: "Cozy Nest", type: "free", unlockLevel: 1,
+    bgImage: "/habitats/1.jpg",
     bg: {
       gradient: "linear-gradient(180deg, #4a2c1a 0%, #2e1a0e 100%)",
       accent: "#fcd34d",
@@ -44,6 +48,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 2, name: "Sunny Meadow", type: "free", unlockLevel: 5,
+    bgImage: "/habitats/2.jpg",
     bg: {
       gradient: "linear-gradient(180deg, #93c5fd 0%, #86efac 60%, #166534 100%)",
       accent: "#86efac",
@@ -52,6 +57,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 3, name: "Ancient Forest", type: "free", unlockLevel: 15,
+    bgImage: "/habitats/3.jpg",
     bg: {
       gradient: "linear-gradient(180deg, #14532d 0%, #052e16 100%)",
       accent: "#22c55e",
@@ -60,6 +66,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 4, name: "Crystal Cavern", type: "free", unlockLevel: 30,
+    bgImage: "/habitats/4.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 100%, #0a6594 0%, #04293d 70%, #02141f 100%)",
       accent: "#22d3ee",
@@ -68,6 +75,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 5, name: "Royal Hall", type: "free", unlockLevel: 50,
+    bgImage: "/habitats/5.jpg",
     bg: {
       gradient: "linear-gradient(180deg, #2e1604 0%, #6e3d0a 50%, #92400e 100%)",
       accent: "#fbbf24",
@@ -78,6 +86,7 @@ export const HABITATS: HabitatTier[] = [
   // ── PAID TIERS (G$ donation) ──────────────────────────────────────────────
   {
     id: 6, name: "Celestial Arena", type: "paid", costG$: G$(300),
+    bgImage: "/habitats/6.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(167,139,250,0.5) 0%, transparent 60%), linear-gradient(180deg, #1e0b4d 0%, #4c1d95 100%)",
       accent: "#a78bfa",
@@ -87,6 +96,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 7, name: "Mystic Garden", type: "paid", costG$: G$(1_000),
+    bgImage: "/habitats/7.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(20,184,166,0.55) 0%, transparent 60%), linear-gradient(180deg, #042f2e 0%, #115e59 100%)",
       accent: "#2dd4bf",
@@ -96,6 +106,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 8, name: "Astral Realm", type: "paid", costG$: G$(3_000),
+    bgImage: "/habitats/8.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(232,121,249,0.5) 0%, transparent 60%), linear-gradient(180deg, #1f0a3a 0%, #581c87 100%)",
       accent: "#e879f9",
@@ -105,6 +116,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 9, name: "Cosmic Throne", type: "paid", costG$: G$(10_000),
+    bgImage: "/habitats/9.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(251,146,60,0.55) 0%, transparent 60%), linear-gradient(180deg, #4a1604 0%, #92400e 50%, #fbbf24 130%)",
       accent: "#fb923c",
@@ -114,6 +126,7 @@ export const HABITATS: HabitatTier[] = [
   },
   {
     id: 10, name: "Eternal Sanctuary", type: "paid", costG$: G$(30_000),
+    bgImage: "/habitats/10.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(192,132,252,0.6) 0%, transparent 60%), linear-gradient(135deg, #ec4899 0%, #8b5cf6 35%, #06b6d4 70%, #fbbf24 100%)",
       accent: "#fde68a",

@@ -493,27 +493,33 @@ function xpProgress(xp) {
 }
 
 // ─── Daily Missions ─────────────────────────────────────────────────────────
-// Templates the daily refresh picks 3 from. Each evaluates `progressDelta` from a played-game event.
-// Reward sizes are tuned so a "perfect day" (all 3 done) gives ~150-200 XP — meaningful but not OP.
+// Templates the daily refresh picks 3 from — one per category (count / skill /
+// special) so every day is a balanced mix. Rewards are deliberately SMALL and
+// proportionate to real play: a finished game is worth 10 XP (XP_PLAYED), so a
+// mission is ~2–4 games of value. A "perfect day" (all 3) lands ~75–110 XP —
+// a nice nudge, NOT a level. Leveling should come from PLAYING, not from
+// topping up missions. There is no "win" in these score-based games, so no
+// win missions exist.
 const MISSION_TEMPLATES = [
-  { id: 'play_3_games',     label: 'Play 3 games today',                   target: 3,   reward: 50,  match: () => 1 },
-  { id: 'play_5_games',     label: 'Play 5 games today',                   target: 5,   reward: 80,  match: () => 1 },
-  { id: 'win_1_game',       label: 'Win 1 game today',                     target: 1,   reward: 60,  match: ({ isWin }) => isWin ? 1 : 0 },
-  { id: 'win_3_games',      label: 'Win 3 games today',                    target: 3,   reward: 120, match: ({ isWin }) => isWin ? 1 : 0 },
-  // Daily mission thresholds calibrated to real Rhythm Rush ranges
-  // (clean runs land in 30k–100k+). Dailies should challenge a focused
-  // session without being trivially clearable — the easy "show up"
-  // tier is already covered by play_3_games / win_1_game above.
-  { id: 'rhythm_300',       label: 'Score 30,000+ in Rhythm Rush',         target: 1,   reward: 40,  match: ({ game, score }) => game === 'rhythm' && score >= 30000 ? 1 : 0 },
-  { id: 'rhythm_500',       label: 'Score 80,000+ in Rhythm Rush',         target: 1,   reward: 60,  match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
-  { id: 'simon_5',          label: 'Reach round 5 in Simon Memory',        target: 1,   reward: 60,  match: ({ game, score }) => game === 'simon'  && score >= 5   ? 1 : 0 },
-  { id: 'simon_10',         label: 'Reach round 10 in Simon Memory',       target: 1,   reward: 100, match: ({ game, score }) => game === 'simon'  && score >= 10  ? 1 : 0 },
-  // Stack Tower · score = blocks landed + perfect-stack combo bonus.
-  // 30 blocks is a steady-hand run; 60 is a focused session.
-  { id: 'stack_30',         label: 'Stack 30+ blocks in Stack Tower',      target: 1,   reward: 40,  match: ({ game, score }) => game === 'stack'  && score >= 30  ? 1 : 0 },
-  { id: 'stack_60',         label: 'Stack 60+ blocks in Stack Tower',      target: 1,   reward: 80,  match: ({ game, score }) => game === 'stack'  && score >= 60  ? 1 : 0 },
-  { id: 'beat_personal_best', label: 'Beat your personal best',            target: 1,   reward: 80,  match: ({ isNewPb }) => isNewPb ? 1 : 0 },
-  { id: 'play_both_games',  label: 'Play both games today (1 of each)',    target: 2,   reward: 70,  match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+  // ── COUNT · just show up and play ──────────────────────────────────────────
+  { id: 'play_3_games',  cat: 'count', label: 'Play 3 games today',   target: 3,  reward: 20, match: () => 1 },
+  { id: 'play_5_games',  cat: 'count', label: 'Play 5 games today',   target: 5,  reward: 30, match: () => 1 },
+  { id: 'play_10_games', cat: 'count', label: 'Play 10 games today',  target: 10, reward: 45, match: () => 1 },
+  // ── SKILL · score thresholds spanning casual → focused runs ────────────────
+  // Rhythm points, Simon rounds, Stack blocks. Each tier: easy / mid / hard.
+  { id: 'rhythm_30k', cat: 'skill', label: 'Score 30,000+ in Rhythm Rush', target: 1, reward: 20, match: ({ game, score }) => game === 'rhythm' && score >= 30000 ? 1 : 0 },
+  { id: 'rhythm_50k', cat: 'skill', label: 'Score 50,000+ in Rhythm Rush', target: 1, reward: 28, match: ({ game, score }) => game === 'rhythm' && score >= 50000 ? 1 : 0 },
+  { id: 'rhythm_80k', cat: 'skill', label: 'Score 80,000+ in Rhythm Rush', target: 1, reward: 35, match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
+  { id: 'simon_5',    cat: 'skill', label: 'Reach round 5 in Simon Memory',  target: 1, reward: 20, match: ({ game, score }) => game === 'simon' && score >= 5  ? 1 : 0 },
+  { id: 'simon_8',    cat: 'skill', label: 'Reach round 8 in Simon Memory',  target: 1, reward: 28, match: ({ game, score }) => game === 'simon' && score >= 8  ? 1 : 0 },
+  { id: 'simon_12',   cat: 'skill', label: 'Reach round 12 in Simon Memory', target: 1, reward: 35, match: ({ game, score }) => game === 'simon' && score >= 12 ? 1 : 0 },
+  { id: 'stack_30',   cat: 'skill', label: 'Stack 30+ blocks in Stack Tower', target: 1, reward: 20, match: ({ game, score }) => game === 'stack' && score >= 30 ? 1 : 0 },
+  { id: 'stack_45',   cat: 'skill', label: 'Stack 45+ blocks in Stack Tower', target: 1, reward: 28, match: ({ game, score }) => game === 'stack' && score >= 45 ? 1 : 0 },
+  { id: 'stack_60',   cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: ({ game, score }) => game === 'stack' && score >= 60 ? 1 : 0 },
+  // ── SPECIAL · improve, or explore the arcade ───────────────────────────────
+  { id: 'beat_personal_best', cat: 'special', label: 'Beat a personal best',        target: 1, reward: 35, match: ({ isNewPb }) => isNewPb ? 1 : 0 },
+  { id: 'variety_2',          cat: 'special', label: 'Play 2 different games today', target: 2, reward: 25, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+  { id: 'variety_3',          cat: 'special', label: 'Play 3 different games today', target: 3, reward: 40, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
 ];
 
 // Deterministic 3-mission pick per (wallet, date) so a player gets the SAME 3 missions all day.
@@ -524,12 +530,13 @@ function pickDailyMissions(wallet, date) {
   for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
   const rng = () => { h = Math.imul(48271, h) | 0; return ((h >>> 0) / 0xffffffff); };
 
-  // Always include 1 "easy" play-count mission, 1 "win" mission, 1 random
-  const easy   = MISSION_TEMPLATES.filter(m => m.id.startsWith('play_'));
-  const win    = MISSION_TEMPLATES.filter(m => m.id.startsWith('win_'));
-  const rest   = MISSION_TEMPLATES.filter(m => !m.id.startsWith('play_') && !m.id.startsWith('win_'));
-  const pick   = (arr) => arr[Math.floor(rng() * arr.length)];
-  return [pick(easy), pick(win), pick(rest)];
+  // Balanced daily set: one from each category so every day mixes a show-up
+  // goal, a skill goal, and a special goal (never 3 of the same shape).
+  const count   = MISSION_TEMPLATES.filter(m => m.cat === 'count');
+  const skill   = MISSION_TEMPLATES.filter(m => m.cat === 'skill');
+  const special = MISSION_TEMPLATES.filter(m => m.cat === 'special');
+  const pick    = (arr) => arr[Math.floor(rng() * arr.length)];
+  return [pick(count), pick(skill), pick(special)];
 }
 
 async function ensureTodayMissions(wallet, today) {
@@ -2962,6 +2969,27 @@ const ARENA_GD = provider ? new ethers.Contract(ARENA_G_TOKEN, [
   'function transferFrom(address from, address to, uint256 amount) returns (bool)',
 ], arenaRelayer || provider) : null;
 
+// ─── PerkShop gasless rail (M1 G$ Perk Economy) ─────────────────────────────
+// Same relayer, same permit trick as the arena refill: the player signs a
+// permit for the PerkShop contract (spender = PerkShop), the relayer submits
+// buyPerkWithPermit and pays the gas. The 20/80 split runs inside the contract.
+const PERK_SHOP_ADDRESS = (process.env.PERK_SHOP_ADDRESS || '0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5').toLowerCase();
+const PERK_SHOP = (provider && arenaRelayer) ? new ethers.Contract(PERK_SHOP_ADDRESS, [
+  'function buyPerkWithPermit(address player, uint16 perkId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
+], arenaRelayer) : null;
+
+// PerkShop perk #6 = the Challenge AI match ticket. A verified purchase of it
+// grants +5 matches — the PerkShop-native replacement for the refill_5 SKU,
+// so ticket spend now routes through the same 20/80 split as every perk.
+const PERK_TICKET_ID = 6;
+const PERK_TICKET_GRANT = 5;
+// Consumable save/retry perks that stock as an inventory (owned - used).
+// Cosmetics (2, 4) are on-chain ownership; the Match Pack (6) grants matches.
+const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5]);
+const PERK_PURCHASED_IFACE = new ethers.Interface([
+  'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
+]);
+
 // Shared grant: record the purchase (replay-proof via tx_hash PK) and bump
 // today's extra allowance. Used by both the direct-transfer and gasless paths.
 async function arenaGrantPurchase(wallet, sku, txHash, amountWei) {
@@ -3168,6 +3196,163 @@ app.post('/api/arena/purchase', requireSecret, gameSubmitLimiter, async (req, re
   const out = await arenaVerifyPurchase(txHash, wallet.toLowerCase(), String(sku));
   if (!out.ok) return res.status(400).json({ error: out.reason });
   return res.json({ ok: true, remaining: out.remaining });
+});
+
+// POST /api/perks/buy-gasless — the player signed an EIP-2612 permit for the
+// PerkShop contract; the relayer submits buyPerkWithPermit and pays gas, so
+// the buy costs the player zero CELO and one signature. The G$ split (20% UBI
+// / 80% treasury) happens inside the contract. Body: { wallet, perkId, deadline, v, r, s }.
+// Replay-safe: the permit nonce is single-use on-chain.
+app.post('/api/perks/buy-gasless', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId, deadline, v, r, s } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!Number.isInteger(pid) || pid < 1 || pid > 65535) return res.status(400).json({ error: 'bad_perk' });
+  if (!PERK_SHOP || !arenaRelayer) return res.status(400).json({ error: 'gasless_unavailable' });
+  try {
+    const tx = await PERK_SHOP.buyPerkWithPermit(wallet, pid, BigInt(deadline), Number(v), r, s);
+    const rc = await tx.wait();
+    if (Number(rc.status) !== 1) return res.status(400).json({ error: 'purchase_reverted' });
+    return res.json({ ok: true, txHash: rc.hash });
+  } catch (e) {
+    console.error('perk gasless failed:', e?.shortMessage || e?.message);
+    return res.status(400).json({ error: 'gasless_failed' });
+  }
+});
+
+// POST /api/perks/grant — verify an on-chain PerkShop purchase and grant it.
+// Routes by perk: the Match Pack (#6) grants +5 matches; save/retry perks
+// (1/3/5) stock as inventory (owned - used); cosmetics need no grant (owned
+// on-chain). Works for both gasless and direct buys — the frontend hands us the
+// buy tx hash. Replay-safe: tx hash is the arena_purchases primary key.
+// Body: { wallet, txHash }.
+app.post('/api/perks/grant', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, txHash } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return res.status(400).json({ error: 'txHash required' });
+  if (!provider) return res.status(400).json({ error: 'rpc_unavailable' });
+  const w = wallet.toLowerCase();
+
+  const { data: existing } = await supabase
+    .from('arena_purchases').select('tx_hash').eq('tx_hash', txHash).maybeSingle();
+  if (existing) return res.status(400).json({ error: 'tx_already_used' });
+
+  // Wait for the receipt, then confirm it's a PerkShop PerkPurchased by this wallet.
+  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+  let receipt = null;
+  while (Date.now() < deadline) {
+    try { receipt = await provider.getTransactionReceipt(txHash); if (receipt) break; } catch {}
+    await new Promise(r => setTimeout(r, RECEIPT_POLL_MS));
+  }
+  if (!receipt) return res.status(400).json({ error: 'receipt_not_found' });
+  if (Number(receipt.status) !== 1) return res.status(400).json({ error: 'tx_reverted' });
+
+  let matched = null;
+  for (const log of receipt.logs || []) {
+    if ((log.address || '').toLowerCase() !== PERK_SHOP_ADDRESS) continue;
+    try {
+      const parsed = PERK_PURCHASED_IFACE.parseLog({ topics: log.topics, data: log.data });
+      if (!parsed || parsed.name !== 'PerkPurchased') continue;
+      if (String(parsed.args.player).toLowerCase() !== w) continue;
+      matched = parsed.args; break;
+    } catch {}
+  }
+  if (!matched) return res.status(400).json({ error: 'perk_purchase_not_found' });
+  const pid = Number(matched.perkId);
+
+  // Record the purchase (idempotency guard).
+  const { error: insErr } = await supabase.from('arena_purchases').insert({
+    tx_hash: txHash, wallet: w, sku: 'perk_' + pid, amount_wei: String(matched.totalPaid),
+  });
+  if (insErr) return res.status(400).json({ error: 'tx_already_used' }); // unique violation = replay race
+
+  // Route the grant by perk type.
+  if (pid === PERK_TICKET_ID) {
+    const day = arenaDayKey();
+    const { data: row } = await supabase
+      .from('arena_daily').select('used, extra').eq('wallet', w).eq('day', day).maybeSingle();
+    await supabase.from('arena_daily').upsert({
+      wallet: w, day, used: row?.used ?? 0,
+      extra: (row?.extra ?? 0) + PERK_TICKET_GRANT, updated_at: new Date().toISOString(),
+    });
+    const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
+    return res.json({ ok: true, kind: 'matches', remaining });
+  }
+  if (CONSUMABLE_STOCK_PERKS.has(pid)) {
+    const { data: row } = await supabase
+      .from('perk_inventory').select('balance').eq('wallet', w).eq('perk_id', pid).maybeSingle();
+    const balance = (row?.balance ?? 0) + 1;
+    await supabase.from('perk_inventory').upsert({
+      wallet: w, perk_id: pid, balance, updated_at: new Date().toISOString(),
+    });
+    return res.json({ ok: true, kind: 'stock', perkId: pid, balance });
+  }
+  return res.json({ ok: true, kind: 'cosmetic' }); // ownership is on-chain, nothing to grant
+});
+
+// POST /api/perks/use — spend one save/retry from a player's stock. Called by
+// the game when a player uses a save they bought ahead. Body: { wallet, perkId }.
+app.post('/api/perks/use', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!CONSUMABLE_STOCK_PERKS.has(pid)) return res.status(400).json({ error: 'not_a_stock_perk' });
+  const w = wallet.toLowerCase();
+  const { data: row } = await supabase
+    .from('perk_inventory').select('balance').eq('wallet', w).eq('perk_id', pid).maybeSingle();
+  const bal = row?.balance ?? 0;
+  if (bal <= 0) return res.json({ ok: false, balance: 0 });
+  await supabase.from('perk_inventory').upsert({
+    wallet: w, perk_id: pid, balance: bal - 1, updated_at: new Date().toISOString(),
+  });
+  return res.json({ ok: true, balance: bal - 1 });
+});
+
+// GET /api/perks/inventory?wallet=0x… — a player's save/retry stock counts.
+app.get('/api/perks/inventory', requireSecret, async (req, res) => {
+  const w = (req.query.wallet || '').toString().toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return res.status(400).json({ error: 'wallet required' });
+  try {
+    const { data } = await supabase.from('perk_inventory').select('perk_id, balance').eq('wallet', w);
+    const balances = {};
+    for (const r of data || []) if (r.balance > 0) balances[r.perk_id] = r.balance;
+    return res.json({ balances });
+  } catch {
+    return res.json({ balances: {} });
+  }
+});
+
+// GET /api/cosmetics/equip?wallet=0x… — a player's explicit equip choices.
+// Returns only rows they've set; the client treats any owned cosmetic NOT in
+// this map as equipped (default ON). Keyed by wallet so the choice follows
+// the account across browsers/devices.
+app.get('/api/cosmetics/equip', requireSecret, async (req, res) => {
+  const w = (req.query.wallet || '').toString().toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return res.status(400).json({ error: 'wallet required' });
+  try {
+    const { data } = await supabase.from('cosmetic_equip').select('perk_id, equipped').eq('wallet', w);
+    const equipped = {};
+    for (const r of data || []) equipped[r.perk_id] = r.equipped;
+    return res.json({ equipped });
+  } catch {
+    return res.json({ equipped: {} });
+  }
+});
+
+// POST /api/cosmetics/equip — set one cosmetic's equipped flag for a wallet.
+// Body: { wallet, perkId, equipped }. Pure display preference — no on-chain
+// effect, so no purchase proof required (just the internal secret).
+app.post('/api/cosmetics/equip', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId, equipped } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!Number.isInteger(pid) || pid <= 0) return res.status(400).json({ error: 'perkId required' });
+  const w = wallet.toLowerCase();
+  const { error } = await supabase.from('cosmetic_equip').upsert({
+    wallet: w, perk_id: pid, equipped: !!equipped, updated_at: new Date().toISOString(),
+  });
+  if (error) return res.status(500).json({ error: 'save_failed' });
+  return res.json({ ok: true, perkId: pid, equipped: !!equipped });
 });
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,

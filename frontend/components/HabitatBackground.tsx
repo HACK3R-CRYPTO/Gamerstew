@@ -20,11 +20,18 @@ export function HabitatBackground({
   radius = 16,
   showLabel = false,
   glow = true,
+  animated = true,
 }: {
   habitat: HabitatTier;
   radius?: number;
   showLabel?: boolean;
   glow?: boolean;
+  // Live particle layer (twinkles + drifting fireflies). Costs ~19 animated
+  // DOM nodes per instance, so callers rendering MANY at once (the shop's
+  // 10-card gallery) pass animated={false} — a static frame still looks
+  // premium, and only the big hero/featured/modal surfaces pay for motion.
+  // This is the single biggest low-end-device lever on the shop.
+  animated?: boolean;
 }) {
   const { name, type, bg } = habitat;
 
@@ -37,18 +44,41 @@ export function HabitatBackground({
         overflow: "hidden",
         zIndex: 0,
       }}>
-        <Scene id={habitat.id} />
+        {/* Premium art when present (public/habitats/<id>.jpg); the CSS Scene
+            is the fallback. A light sparkle layer keeps the art alive so the
+            pet's home still breathes instead of being a flat photo. */}
+        {habitat.bgImage ? (
+          <>
+            <div style={{
+              position: "absolute", inset: 0,
+              // Gallery thumbnails (animated=false) load a compressed ~760px
+              // "-sm" version; only the large hero/featured/modal (animated=true)
+              // pull full-res. Cuts the shop's habitat payload ~74%.
+              backgroundImage: `url('${animated ? habitat.bgImage : habitat.bgImage.replace(/\.jpg$/, "-sm.jpg")}')`,
+              backgroundSize: "cover", backgroundPosition: "center",
+            }} />
+            {animated && <><Stars count={10} color={bg.accent} /><Motes count={9} color={bg.accent} /></>}
+          </>
+        ) : (
+          <div style={{
+            position: "absolute", inset: 0,
+            filter: "saturate(1.22) contrast(1.08) brightness(1.06)",
+          }}>
+            <Scene id={habitat.id} />
+          </div>
+        )}
         {/* Stage spotlight — keeps the pet readable on every habitat */}
         <div style={{
           position: "absolute", inset: 0,
-          background: `radial-gradient(ellipse at 50% 75%, ${bg.accent}22 0%, transparent 50%)`,
+          background: `radial-gradient(ellipse at 50% 75%, ${bg.accent}2e 0%, transparent 55%)`,
           mixBlendMode: "screen",
           pointerEvents: "none",
         }} />
-        {/* Vignette */}
+        {/* Vignette — softened (edges no longer crush to near-black, which was
+            the main thing making the scenes look murky at card size). */}
         <div style={{
           position: "absolute", inset: 0,
-          background: "radial-gradient(ellipse at 50% 55%, transparent 35%, rgba(0,0,0,0.55) 100%)",
+          background: "radial-gradient(ellipse at 50% 55%, transparent 48%, rgba(0,0,0,0.34) 100%)",
           pointerEvents: "none",
         }} />
         {/* Accent ring */}
@@ -122,6 +152,7 @@ const ANIMS = `
 @keyframes hb-glitchH  { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
 @keyframes hb-shoot    { 0% { transform: translate(-100%, -50%) rotate(-25deg); opacity: 0; } 10%, 90% { opacity: 1; } 100% { transform: translate(100%, 50%) rotate(-25deg); opacity: 0; } }
 @keyframes hb-orbit    { 0% { transform: rotate(0deg) translateX(28px) rotate(0deg); } 100% { transform: rotate(360deg) translateX(28px) rotate(-360deg); } }
+@keyframes hb-rise     { 0% { transform: translate(0, 8px); opacity: 0; } 12% { opacity: 0.95; } 80% { opacity: 0.9; } 100% { transform: translate(6px, -62px); opacity: 0; } }
 `;
 
 function Anims() {
@@ -148,6 +179,35 @@ function Stars({ count, color = "#fff" }: { count: number; color?: string }) {
             background: color,
             boxShadow: `0 0 ${size * 2.5}px ${color}`,
             animation: `hb-twinkle ${dur}s ease-in-out ${delay}s infinite`,
+          }} />
+        );
+      })}
+    </>
+  );
+}
+
+// Drifting motes — glowing fireflies that visibly RISE and fade, so the
+// habitat art breathes instead of sitting still. White core + accent glow so
+// they read on both bright (meadow) and dark (forest) scenes. Deterministic
+// positions to stay SSR-stable.
+function Motes({ count, color }: { count: number; color: string }) {
+  const rng = mulberry(count * 104729 + 31);
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        const left = rng() * 96 + 2;
+        const bottom = rng() * 45;      // start low-to-mid, rise from there
+        const size = rng() * 2 + 1.5;
+        const delay = rng() * 9;
+        const dur = 7 + rng() * 6;      // slow, calm drift
+        return (
+          <div key={i} style={{
+            position: "absolute", left: `${left}%`, bottom: `${bottom}%`,
+            width: size, height: size, borderRadius: "50%",
+            background: "rgba(255,255,255,0.82)",
+            boxShadow: `0 0 ${size * 3}px ${color}, 0 0 ${size * 1.4}px ${color}`,
+            animation: `hb-rise ${dur}s ease-in ${delay}s infinite`,
+            pointerEvents: "none",
           }} />
         );
       })}

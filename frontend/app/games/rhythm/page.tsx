@@ -9,6 +9,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import {
@@ -26,6 +27,8 @@ import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
+import { usePerks } from "@/hooks/usePerks";
+import { useEquipped } from "@/lib/cosmetics";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
@@ -286,7 +289,7 @@ function gradeFor(accuracy: number) {
 type Burst = { id: number; x: number; y: number; color: string; born: number };
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
-type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
+type Phase = "idle" | "countdown" | "playing" | "encore" | "saving" | "finished";
 
 // Encore pool — one full cycle of the Turkish March theme: turn, echo,
 // cascade, landing. 21 notes per loop, taps only (no holds — the
@@ -311,6 +314,12 @@ const ENCORE_POOL: [number, number][] = [
 export default function RhythmGamePage() {
   const router = useRouter();
   const { address } = useAccount();
+  // Neon Trail cosmetic (PerkShop perk 2) — supercharges the falling-tile
+  // light beams when OWNED and EQUIPPED (owning doesn't force it on; toggle
+  // in the shop). Purely visual, zero gameplay effect.
+  const { ownsCosmetic } = usePerks();
+  const [neonEquipped] = useEquipped(2);
+  const neonTrail = ownsCosmetic(2) && neonEquipped;
   // Free-play route: guests can play full runs without connecting.
   // Score submission self-guards (the submit effect bails without an
   // address), and the finish screen shows a sign-in CTA instead of
@@ -738,6 +747,13 @@ export default function RhythmGamePage() {
   // player (Privy JWT or MiniPay wallet signature) happens server-side.
   const gameStartMsRef = useRef<number>(0);
   const submittedRef = useRef<boolean>(false);  // one-shot guard so we never double-submit
+  // Save perk (M1): running out of lives in the encore opens the save prompt
+  // (casual mode only). Buying restores lives; the run then stays off ranked.
+  const usedPerkRef = useRef(false);
+  // performance.now() when the save prompt opened — used to shift the timeline
+  // anchor on resume so the clock doesn't jump (which would stampede the queued
+  // encore tiles into misses and re-trigger the prompt instantly).
+  const savePausedAtRef = useRef(0);
   type SubmitResult = {
     rank?: number;
     xpEarned?: number;
@@ -857,6 +873,7 @@ export default function RhythmGamePage() {
     reset();
     // Reset submission bookkeeping — a fresh run is a fresh submit
     submittedRef.current = false;
+    usedPerkRef.current = false;
     setSubmitResult(null);
     setSubmitError(null);
 
@@ -945,6 +962,7 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
+    // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -1651,12 +1669,18 @@ export default function RhythmGamePage() {
           // the absence of a note they should have played. Visual cues (MISS
           // text + combo break + red lives in encore) carry the signal instead.
 
-          // Encore: track lives, end on 3 misses
+          // Encore: track lives, end on 3 misses. Offer a save (casual) to
+          // signed-in, minted players before the run ends.
           if (phase === "encore") {
             encoreMissesRef.current++;
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
-              setPhase("finished");
+              if (address && !needsMint) {
+                savePausedAtRef.current = performance.now(); // freeze the clock
+                setPhase("saving");
+              } else {
+                setPhase("finished");
+              }
               return;
             }
           }
@@ -1709,6 +1733,34 @@ export default function RhythmGamePage() {
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, combo, getAudioCtx, scheduleBass, scheduleHihat, scheduleLead, playTone, resolveHold]);
+
+  // ─── Save perk: restore encore lives (casual) or end the run ────────────────
+  const resumeAfterSave = useCallback(() => {
+    usedPerkRef.current = true;
+    encoreMissesRef.current = 0;
+    setEncoreLives(3);
+    // Re-anchor the next note spawn to the SAME timeline the loop reads —
+    // now = (performance.now() - startRef.current) / 1000 — NOT audio-ctx time.
+    // Using the wrong clock is why the encore looked frozen: notes never spawned.
+    getAudioCtx(); // keep the audio context alive for the encore drums
+    // Shift the timeline anchor forward by the paused duration so `now` picks up
+    // where it left off. Without this the clock jumps by however long the save
+    // prompt was open, and every queued encore tile stampedes as a miss —
+    // instantly re-triggering the prompt. This is the fix for "it asks to save
+    // again right after I save."
+    if (savePausedAtRef.current) {
+      startRef.current += performance.now() - savePausedAtRef.current;
+      savePausedAtRef.current = 0;
+    }
+    const now = (performance.now() - startRef.current) / 1000;
+    encoreNextSpawnRef.current = now + 0.8;
+    encoreLoopAtRef.current = 0;
+    setPhase("encore");
+  }, [getAudioCtx]);
+
+  const declineSave = useCallback(() => {
+    setPhase("finished");
+  }, []);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
@@ -1783,6 +1835,18 @@ export default function RhythmGamePage() {
         />
       )}
 
+      {/* SAVE PERK · the M1 in-game prompt (encore, casual mode only) */}
+      {phase === "saving" && (
+        <SaveRunOverlay
+          open
+          score={score}
+          game="rhythm"
+          headline="OUT OF LIVES"
+          onSaved={resumeAfterSave}
+          onDecline={declineSave}
+        />
+      )}
+
       {/* ═══ COUNTDOWN ═══ */}
       {phase === "countdown" && <CountdownView n={countdown} showKeys={hasKeyboard} />}
 
@@ -1807,6 +1871,7 @@ export default function RhythmGamePage() {
           }}
           startRef={startRef}
           canvasHandleRef={canvasHandleRef}
+          neonTrail={neonTrail}
           pet={pet}
           isEncore={phase === "encore"}
           encoreLives={encoreLives}
@@ -2201,6 +2266,7 @@ function PlayingView({
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
+  neonTrail,
   pet,
   isEncore, encoreLives, encoreLoop,
   fever, perfectStreak, heldLanes,
@@ -2217,6 +2283,7 @@ function PlayingView({
   // PlayingView owns the JSX that mounts the canvas, then stashes the
   // handle into this shared ref so the parent can reach it.
   canvasHandleRef: React.MutableRefObject<NoteCanvasHandle | null>;
+  neonTrail: boolean;
   pet: PetStage;
   isEncore: boolean;
   encoreLives: number;
@@ -2366,6 +2433,7 @@ function PlayingView({
         <NoteCanvas
           ref={canvasHandleRef}
           lanes={LANES}
+          neon={neonTrail}
         />
 
         {/* Particle bursts */}

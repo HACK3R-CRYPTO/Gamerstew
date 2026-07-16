@@ -44,6 +44,54 @@ import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
+import { usePerks } from "@/hooks/usePerks";
+import { useEquipped } from "@/lib/cosmetics";
+
+// Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
+// tower in icy glass. Purely visual, zero gameplay effect.
+const CRYSTAL_PERK_ID = 4;
+
+// Draws one tower slab. Default skin shifts hue as you climb; the Crystal
+// Blocks cosmetic swaps in an icy-glass palette — a fixed cyan face with a
+// brighter top gloss and a translucent inner highlight that reads as glass.
+// `hue` is kept for the default skin; crystal ignores it so the whole tower
+// stays a single cohesive material.
+function drawSlab(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, hue: number, crystal: boolean, moving: boolean,
+) {
+  if (crystal) {
+    const fh = BLOCK_H - 3;                           // face height
+    ctx.fillStyle = "hsl(200 65% 24%)";              // deep ice shadow
+    ctx.fillRect(x, y + 3, w, BLOCK_H);
+    ctx.fillStyle = "hsl(190 80% 56%)";              // cyan glass face
+    ctx.fillRect(x, y, w, fh);
+    // Cut-gem facets — a bright upper-left triangle and a darker lower-right
+    // one split the face diagonally, so it reads as a faceted crystal, not a
+    // flat cyan slab. This is the "I clearly paid for this" difference.
+    ctx.fillStyle = "rgba(236,254,255,0.22)";        // lit facet
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x, y + fh); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(8,42,64,0.28)";            // shaded facet
+    ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + fh); ctx.lineTo(x, y + fh); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(230,252,255,0.7)";         // bright top edge
+    ctx.fillRect(x, y, w, 3);
+    // Specular sparkle — a small 4-point glint near the top-left corner
+    const gx = x + Math.min(14, w * 0.22), gy = y + 7, s = 3.2;
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.beginPath();
+    ctx.moveTo(gx, gy - s * 1.8); ctx.lineTo(gx + s * 0.7, gy); ctx.lineTo(gx + s * 1.8, gy);
+    ctx.lineTo(gx + s * 0.7, gy + s * 0.4); ctx.lineTo(gx, gy + s * 1.8); ctx.lineTo(gx - s * 0.7, gy + s * 0.4);
+    ctx.lineTo(gx - s * 1.8, gy); ctx.lineTo(gx - s * 0.7, gy); ctx.closePath(); ctx.fill();
+    return;
+  }
+  ctx.fillStyle = `hsl(${hue} 80% 28%)`;
+  ctx.fillRect(x, y + 3, w, BLOCK_H);
+  ctx.fillStyle = `hsl(${hue} 78% 56%)`;
+  ctx.fillRect(x, y, w, BLOCK_H - 3);
+  ctx.fillStyle = `rgba(255,255,255,${moving ? 0.3 : 0.25})`;
+  ctx.fillRect(x, y, w, 4);
+}
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -65,7 +113,7 @@ const CAM_FOLLOW = 0.08;            // 0..1 — camera ease toward target
 const SHARD_GRAVITY = 0.45;
 const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
 
-type Phase = "idle" | "countdown" | "playing" | "finished";
+type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
 type Block = { x: number; w: number; hue: number };
 type Moving = { x: number; w: number; dir: 1 | -1; speed: number; hue: number };
 type Shard = { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; hue: number };
@@ -74,6 +122,14 @@ type Sparkle = { x: number; y: number; born: number; life: number };
 export default function StackTowerPage() {
   const router = useRouter();
   const { address } = useAccount();
+
+  // Crystal Blocks — applied only when the player OWNS it and has it EQUIPPED
+  // (owning doesn't force the skin on; they can toggle it off in the shop).
+  // Mirrored into a ref so the RAF draw loop always sees the live value.
+  const { ownsCosmetic } = usePerks();
+  const [crystalEquipped] = useEquipped(CRYSTAL_PERK_ID);
+  const hasCrystalRef = useRef(false);
+  hasCrystalRef.current = ownsCosmetic(CRYSTAL_PERK_ID) && crystalEquipped;
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(3);
@@ -122,6 +178,13 @@ export default function StackTowerPage() {
   const startingRef = useRef(false);
   const submittedRef = useRef(false);
   const gameStartMsRef = useRef(0);
+
+  // ═══ Save-your-run (M1 perk) ═════════════════════════════════════════════
+  // A miss opens the SaveRunOverlay. Buying/using a save keeps the tower and
+  // resumes play — the run still submits normally (using a save counts on the
+  // weekly board). savePausedAtRef marks when the clock froze so we can hand
+  // the paused seconds back on resume.
+  const savePausedAtRef = useRef(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [signingOnChain, setSigningOnChain] = useState(false);
@@ -225,6 +288,20 @@ export default function StackTowerPage() {
     return h - 90 - level * BLOCK_H;
   };
 
+  // ─── Finish ───────────────────────────────────────────────────────────────
+  // Declared before drop() so drop can list it as a dependency without a TDZ.
+  const finish = useCallback(() => {
+    blip(140, 0.4, 0.22, "sawtooth");
+    haptic([30, 40, 60]);
+    juice.bump(22);
+    setLocalBest(prev => {
+      const best = Math.max(prev, scoreRef.current);
+      localStorage.setItem("stack_best", String(best));
+      return best;
+    });
+    setPhase("finished");
+  }, [blip, haptic, juice]);
+
   // ─── Drop (the whole game in one function) ───────────────────────────────
   const drop = useCallback(() => {
     if (phase !== "playing" || !movingRef.current) return;
@@ -237,13 +314,21 @@ export default function StackTowerPage() {
     const overlap = overlapR - overlapL;
     const yCenter = blockCenterY(levelRef.current);
 
-    // Complete miss — block falls, run ends.
+    // Complete miss — block falls. Offer a save (casual mode) before ending.
     if (overlap <= 0) {
       shardsRef.current.push({
         x: m.x + m.w / 2, y: yCenter,
         w: m.w, vx: m.dir * 1.5, vy: 0, rot: 0, vr: m.dir * 0.04, hue: m.hue,
       });
-      finish();
+      movingRef.current = null;
+      // Only signed-in, minted players can buy a save on-chain. Guests and
+      // not-yet-minted players fall straight through to the finish screen.
+      if (address && !needsMint) {
+        savePausedAtRef.current = Date.now();
+        setPhase("saving");
+      } else {
+        finish();
+      }
       return;
     }
 
@@ -310,20 +395,39 @@ export default function StackTowerPage() {
     };
     // Camera follows the tower up
     camTargetRef.current = Math.max(0, newLevel * BLOCK_H - sizeRef.current.h * 0.45);
-  }, [phase, blip, haptic, juice]);
+  }, [phase, blip, haptic, juice, address, needsMint, finish]);
 
-  // ─── Finish ───────────────────────────────────────────────────────────────
-  const finish = useCallback(() => {
-    blip(140, 0.4, 0.22, "sawtooth");
-    haptic([30, 40, 60]);
-    juice.bump(22);
-    setLocalBest(prev => {
-      const best = Math.max(prev, scoreRef.current);
-      localStorage.setItem("stack_best", String(best));
-      return best;
-    });
-    setPhase("finished");
-  }, [blip, haptic, juice]);
+  // ─── Resume after a bought save ────────────────────────────────────────────
+  // Re-arm a moving block from the current top of the tower and hand back the
+  // seconds the save decision cost. The run continues and still submits.
+  const resumeAfterSave = useCallback(() => {
+    const stack = stackRef.current;
+    const top = stack[stack.length - 1];
+    const level = levelRef.current;
+    const fromLeft = level % 2 === 0;
+    const speed = BASE_SPEED + level * SPEED_RAMP
+      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const { w: cw } = sizeRef.current;
+    movingRef.current = {
+      x: fromLeft ? -top.w : cw,
+      w: top.w,
+      dir: fromLeft ? 1 : -1,
+      speed,
+      hue: HUES[level % HUES.length],
+    };
+    // Give back the paused decision time so the clock stays fair.
+    if (savePausedAtRef.current) {
+      gameStartMsRef.current += Date.now() - savePausedAtRef.current;
+      savePausedAtRef.current = 0;
+    }
+    setPhase("playing");
+  }, []);
+
+  // Declined / timed out on the save → end the run through the normal path.
+  const declineSave = useCallback(() => {
+    savePausedAtRef.current = 0;
+    finish();
+  }, [finish]);
 
   // ─── Start a fresh run ────────────────────────────────────────────────────
   const startGame = useCallback(async () => {
@@ -368,6 +472,7 @@ export default function StackTowerPage() {
     setScore(0); setCombo(0);
     juice.reset();
     submittedRef.current = false;
+    savePausedAtRef.current = 0;
     sessionTokenRef.current = null;
     setSubmitResult(null);
     setSubmitError(null);
@@ -454,6 +559,7 @@ export default function StackTowerPage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
+    // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -694,19 +800,12 @@ export default function StackTowerPage() {
     ctx.translate(0, camYRef.current);
 
     // Stack
+    const crystal = hasCrystalRef.current;
     const stack = stackRef.current;
     for (let i = 0; i < stack.length; i++) {
       const b = stack[i];
       const y = blockCenterY(i + 1) - BLOCK_H / 2;
-      // Side shadow under each slab
-      ctx.fillStyle = `hsl(${b.hue} 80% 28%)`;
-      ctx.fillRect(b.x, y + 3, b.w, BLOCK_H);
-      // Face
-      ctx.fillStyle = `hsl(${b.hue} 78% 56%)`;
-      ctx.fillRect(b.x, y, b.w, BLOCK_H - 3);
-      // Top gloss
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.fillRect(b.x, y, b.w, 4);
+      drawSlab(ctx, b.x, y, b.w, b.hue, crystal, false);
     }
 
     // Moving block (with glow)
@@ -715,15 +814,10 @@ export default function StackTowerPage() {
       const y = blockCenterY(levelRef.current + 1) - BLOCK_H / 2;
       ctx.save();
       ctx.globalAlpha = 0.35;
-      ctx.fillStyle = `hsl(${m.hue} 78% 56%)`;
+      ctx.fillStyle = crystal ? `hsl(188 85% 62%)` : `hsl(${m.hue} 78% 56%)`;
       ctx.fillRect(m.x - 6, y - 4, m.w + 12, BLOCK_H + 8);
       ctx.restore();
-      ctx.fillStyle = `hsl(${m.hue} 80% 28%)`;
-      ctx.fillRect(m.x, y + 3, m.w, BLOCK_H);
-      ctx.fillStyle = `hsl(${m.hue} 78% 56%)`;
-      ctx.fillRect(m.x, y, m.w, BLOCK_H - 3);
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.fillRect(m.x, y, m.w, 4);
+      drawSlab(ctx, m.x, y, m.w, m.hue, crystal, true);
     }
 
     // Falling shards (sliced-off overhangs)
@@ -925,6 +1019,19 @@ export default function StackTowerPage() {
       )}
 
       {/* FINISHED */}
+      {/* SAVE YOUR RUN · the M1 hero moment (casual mode only). Mounted only
+          while saving so each open is a fresh, clean countdown. */}
+      {phase === "saving" && (
+        <SaveRunOverlay
+          open
+          score={score}
+          game="stack"
+          headline="TOWER TOPPLED"
+          onSaved={resumeAfterSave}
+          onDecline={declineSave}
+        />
+      )}
+
       {phase === "finished" && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 10,
@@ -975,7 +1082,7 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
-              {/* Submit status · guest CTA · or reward panel for signed-in runs */}
+              {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
               {!authed ? (
                 <div style={{ marginTop: 14 }}>
                   <GuestScorePrompt nextPath="/games/stack" />

@@ -31,6 +31,9 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
+// One calm colour for the greeting stat pills — informative, not a rainbow.
+const PILL_MUTED = "#a5b4cf";
+
 // ─── primitives ─────────────────────────────────────────────────────────
 function Pill({ children, color, soft = true }: { children: React.ReactNode; color: string; soft?: boolean }) {
   return (
@@ -82,6 +85,22 @@ type Game = {
   active: boolean;
   href: string;
   isNew?: boolean;
+  kind?: "event";   // "event" → HeroCard renders the gold teaser variant
+};
+
+// Upcoming event — rides in the hero rotation as a gold slide (not a game).
+// Details TBD; teases the 400,000 G$ pool and points to the events page.
+const EVENT_HERO: Game = {
+  id: "event",
+  kind: "event",
+  title: "400,000 G$ Event",
+  subtitle: "Coming soon",
+  desc: "A huge prize pool is on the way. Details soon — keep playing to be ready.",
+  art: "/event-trophy.jpg",
+  bg: "linear-gradient(115deg, #7c3a0d 0%, #2a1266 55%, #170a3e 100%)",
+  glow: "#f59e0b",
+  active: true,
+  href: "/leaderboard",
 };
 
 const STACK_ART = (
@@ -288,6 +307,8 @@ export default function DashboardPage() {
   }, [connected, address]);
 
   const onPlayGame = async (id: string) => {
+    // The event hero isn't a game — it routes to the events page.
+    if (id === "event") { router.push("/leaderboard"); return; }
     // Spam-tap guard · ignore while a load is in flight (the overlay
     // covers the cards anyway, but this stops queued promises racing).
     if (loadingGame) return;
@@ -320,7 +341,8 @@ export default function DashboardPage() {
   // (Stack Tower launch + the Challenge AI rebuild). Crossfades every 6s;
   // falls back to the first game when nothing is flagged.
   const heroes = GAMES.filter(g => g.isNew);
-  const heroList = heroes.length > 0 ? heroes : [GAMES[0]];
+  // Event teaser leads the rotation, then the new-game heroes cycle after it.
+  const heroList = [EVENT_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -343,7 +365,6 @@ export default function DashboardPage() {
     const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
     return () => clearInterval(t);
   }, [heroList.length, heroBump]);
-  const recommended = heroList[heroIdx % heroList.length]!;
 
   return (
     <div style={{
@@ -365,39 +386,37 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 2 }}>
+      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
 
-        {/* Greeting — design pattern: pills appear only for connected players.
-            Guests see "WELCOME / Player" with no chips, just like the design. */}
-        <div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.14em" }}>{connected ? "WELCOME BACK" : "WELCOME"}</div>
-          <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.ink, margin: "3px 0 0", letterSpacing: "-0.01em" }}>{connected ? (username || "Player") : "Player"}</h2>
+        {/* Greeting — one quiet line so the hero (and the event) leads. Pills
+            share a single muted style: informative, not a rainbow. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontFamily: T.display, fontSize: isDesktop ? 18 : 16, color: T.inkDim, lineHeight: 1 }}>
+            {connected ? `Welcome back, ${username || "Player"}` : "Welcome"} <span style={{ fontSize: isDesktop ? 17 : 15 }}>👋</span>
+          </div>
           {connected && (
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {/* Live streak from /api/user · "🔥 New" reads warmer than
-                  "🔥 0-day streak" for a fresh player; once they hit day 1
-                  the real number shows. */}
-              <Pill color="#bae6fd">
-                🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}-day streak` : "New"}
-              </Pill>
-              <Pill color="#a78bfa">LV {userMeta?.level ?? 1}</Pill>
-              {me && me.peak > 0 && <Pill color="#fbbf24">PEAK {me.peak}</Pill>}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {/* Live streak · "🔥 New" reads warmer than "0-day streak". */}
+              <Pill color={PILL_MUTED}>🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}d` : "New"}</Pill>
+              <Pill color={PILL_MUTED}>LV {userMeta?.level ?? 1}</Pill>
+              {me && me.peak > 0 && <Pill color={PILL_MUTED}>PEAK {me.peak}</Pill>}
             </div>
           )}
         </div>
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} recommended={recommended} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} onPlayGame={onPlayGame} router={router} dash={dash} me={me} />
             <DashRight walletReady={walletReady} connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
           <>
+            {/* Hero (with the event) leads; the daily claim stays prominent right after. */}
+            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
             <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
-            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-            <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
+            <GamesGrid onPlayGame={onPlayGame} />
             <SectionLabel>Daily missions</SectionLabel>
             <MissionCard connected={connected} onConnect={onConnect} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
@@ -436,27 +455,33 @@ export default function DashboardPage() {
   );
 }
 
-function DashLeft({ connected, recommended, onPlayGame, router, heroes, heroActive, onHeroDot }: {
+function DashLeft({ connected, onPlayGame, router, heroes, heroActive, onHeroDot, dash, me }: {
   connected: boolean;
-  recommended: typeof GAMES[number];
   onPlayGame: (id: string) => void;
   router: ReturnType<typeof useRouter>;
   heroes: (typeof GAMES[number])[];
   heroActive: number;
   onHeroDot: (i: number) => void;
+  dash: DashData | null;
+  me: { rank: number; peak: number } | null;
 }) {
+  const feed = buildFeed(dash, me, connected);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <HeroCarousel heroes={heroes} active={heroActive} onPlayGame={onPlayGame} onDot={onHeroDot} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-      <GamesGrid onPlayGame={onPlayGame} excludeId={recommended.id} />
-      <SectionLabel>Daily missions</SectionLabel>
-      <MissionCard connected={connected} onConnect={() => router.push("/home")} />
+      <GamesGrid onPlayGame={onPlayGame} />
+      <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {feed.length ? feed.slice(0, 5).map((it, i) => <FeedRow key={i} item={it} />) : (
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "6px 4px" }}>Nothing happening yet — play a game to be first.</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function DashRight({ connected, walletReady, dash, me, address, onConnect, router }: {
+function DashRight({ connected, walletReady, dash, address, onConnect, router }: {
   connected: boolean;
   walletReady: boolean;
   dash: DashData | null;
@@ -465,19 +490,14 @@ function DashRight({ connected, walletReady, dash, me, address, onConnect, route
   onConnect: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
-  const feed = buildFeed(dash, me, connected);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
       <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
       <ClimbCard connected={connected} dash={dash} address={address} onConnect={onConnect} router={router} />
-      <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {feed.length ? feed.slice(0, 5).map((it, i) => <FeedRow key={i} item={it} />) : (
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "6px 4px" }}>Nothing happening yet — play a game to be first.</div>
-        )}
-      </div>
+      <SectionLabel>Daily missions</SectionLabel>
+      <MissionCard connected={connected} onConnect={onConnect} />
     </div>
   );
 }
@@ -557,7 +577,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
     const msLeft = new Date(dash.climb.endsAt).getTime() - Date.now();
     const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
     out.push({
-      icon: "🏆", color: "#fbbf24",
+      icon: "🏆", color: "#a5b4cf",
       title: connected && dash.climb.rank > 0
         ? `You're #${dash.climb.rank} in MARKOV Climb`
         : "MARKOV Climb is live",
@@ -571,7 +591,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
   if (topScorer) {
     const name = topScorer.username || `${topScorer.player.slice(0, 6)}…${topScorer.player.slice(-4)}`;
     out.push({
-      icon: "🥁", color: "#c026d3",
+      icon: "🥁", color: "#a5b4cf",
       title: `@${name.replace(/^@/, "")} leads the boards`,
       sub: `${topScorer.score} pts combined · beat them`,
     });
@@ -579,7 +599,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (dash.totalMatches > 0) {
     out.push({
-      icon: "🌍", color: "#86efac",
+      icon: "🌍", color: "#a5b4cf",
       title: `${dash.totalPlayers} players · ${dash.totalMatches.toLocaleString()} matches`,
       sub: "Live community total · all-time",
     });
@@ -587,7 +607,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (me && me.rank > 0) {
     out.push({
-      icon: "💎", color: "#22d3ee",
+      icon: "💎", color: "#a5b4cf",
       title: `You're #${me.rank} all-time`,
       sub: "Keep playing to climb",
       tag: "YOU", tagColor: "#22d3ee",
@@ -775,12 +795,38 @@ function HeroCarousel({ heroes, active, onPlayGame, onDot }: {
 }
 
 function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void }) {
+  // Event slide — gold teaser variant of the hero.
+  if (game.kind === "event") {
+    return (
+      <button onClick={() => onPlayGame(game.id)} style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(251,191,36,0.4)", cursor: "pointer",
+        borderRadius: 20, textAlign: "left", background: game.bg,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)", pointerEvents: "none" }} />
+        {/* Trophy art — `screen` blend drops its dark background into the card */}
+        <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -14, bottom: -14, width: 172, height: 172, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
+          <Pill color="#fde68a">⚡ EVENT · COMING SOON</Pill>
+        </div>
+        <div style={{ padding: "10px 14px 14px", maxWidth: "68%", position: "relative", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>400,000</span>
+            <span style={{ fontFamily: T.display, fontSize: 17, color: "#fde68a", lineHeight: 1 }}>G$</span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>event prize pool</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 6, lineHeight: 1.4 }}>{game.desc}</div>
+        </div>
+      </button>
+    );
+  }
   return (
     <button onClick={() => onPlayGame(game.id)} style={{
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
       borderRadius: 20, textAlign: "left", background: game.bg,
       boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
-      minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.22), transparent 60%)", pointerEvents: "none" }} />
       {typeof game.art === "string" ? (
@@ -799,10 +845,10 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
   );
 }
 
-function GamesGrid({ onPlayGame, excludeId }: { onPlayGame: (id: string) => void; excludeId?: string }) {
-  // The hero banner already features `excludeId` so the grid skips it · keeps
-  // the row at 3 cards and avoids showing the same game twice.
-  const cards = GAMES.filter(g => g.id !== excludeId);
+function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
+  // Overview PREVIEW — a clean row of 3; the full roster lives behind "View
+  // all". Fixed set so it never reflows or orphans as the hero rotates.
+  const cards = GAMES.slice(0, 3);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
       {cards.map(g => (
@@ -951,26 +997,45 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
             const pct = m.target > 0 ? Math.min(100, Math.round((m.progress / m.target) * 100)) : 0;
             const ready = m.completed && !m.claimed;
             const done = m.claimed;
-            const barColor = done ? "#22c55e" : ready ? "#fbbf24" : T.accent;
+            const barColor = done ? "#22c55e" : ready ? "#c4b5fd" : T.accent;
             const tileBg = done
               ? "linear-gradient(180deg, rgba(34,197,94,0.08) 0%, rgba(0,0,0,0.18) 100%)"
               : ready
-                ? "linear-gradient(180deg, rgba(251,191,36,0.16) 0%, rgba(0,0,0,0.18) 100%)"
+                ? "linear-gradient(180deg, rgba(167,139,250,0.16) 0%, rgba(0,0,0,0.18) 100%)"
                 : "rgba(255,255,255,0.03)";
-            const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(251,191,36,0.6)" : T.hairline}`;
+            const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(167,139,250,0.55)" : T.hairline}`;
             return (
               <div key={m.id} style={{
                 borderRadius: 12,
                 background: tileBg,
                 border,
-                boxShadow: ready ? "0 0 14px rgba(251,191,36,0.32)" : "none",
+                boxShadow: ready ? "0 0 14px rgba(167,139,250,0.32)" : "none",
                 padding: "10px 11px",
                 display: "flex", flexDirection: "column", gap: 6,
                 opacity: done ? 0.7 : 1,
               }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3 }}>{m.label}</div>
-                  <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#fde68a", whiteSpace: "nowrap", flexShrink: 0 }}>+{m.rewardXp} XP</div>
+                {/* Label + action on one row · action is a compact right chip
+                    (not a full-width bar) so each mission stays short. */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+                  {done ? (
+                    <span style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#22c55e", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>✓ Claimed</span>
+                  ) : ready ? (
+                    <button
+                      onClick={() => claim(m.id)}
+                      disabled={claimingId === m.id}
+                      style={{
+                        flexShrink: 0, cursor: claimingId === m.id ? "wait" : "pointer",
+                        borderRadius: 999, padding: "5px 12px", whiteSpace: "nowrap",
+                        background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
+                        border: "1px solid rgba(255,255,255,0.3)",
+                        boxShadow: "0 5px 12px -4px rgba(167,139,250,0.6)",
+                        color: "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.05em",
+                      }}
+                    >{claimingId === m.id ? "Claiming…" : `Claim +${m.rewardXp} XP`}</button>
+                  ) : (
+                    <div style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#c4b5fd", whiteSpace: "nowrap" }}>+{m.rewardXp} XP</div>
+                  )}
                 </div>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -981,30 +1046,11 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                     <div style={{
                       width: `${pct}%`, height: "100%", borderRadius: 999,
                       background: barColor,
-                      boxShadow: ready ? "0 0 6px rgba(251,191,36,0.6)" : "none",
+                      boxShadow: ready ? "0 0 6px rgba(167,139,250,0.6)" : "none",
                       transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
                     }} />
                   </div>
                 </div>
-                {done ? (
-                  <div style={{ textAlign: "center", color: "#22c55e", fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em" }}>✓ CLAIMED</div>
-                ) : ready ? (
-                  <button
-                    onClick={() => claim(m.id)}
-                    disabled={claimingId === m.id}
-                    style={{
-                      cursor: claimingId === m.id ? "wait" : "pointer",
-                      borderRadius: 9,
-                      padding: "6px 10px",
-                      background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
-                      border: "1px solid rgba(255,255,255,0.4)",
-                      boxShadow: "inset 0 2px 4px rgba(255,255,255,0.4), inset 0 -2px 3px rgba(0,0,0,0.3), 0 6px 14px -4px rgba(251,191,36,0.6)",
-                      color: "#fff",
-                      fontFamily: T.body, fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-                      textShadow: "0 1px 2px rgba(0,0,0,0.4)",
-                    }}
-                  >{claimingId === m.id ? "CLAIMING…" : `CLAIM +${m.rewardXp} XP`}</button>
-                ) : null}
               </div>
             );
           })
