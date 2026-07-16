@@ -742,6 +742,10 @@ export default function RhythmGamePage() {
   // Save perk (M1): running out of lives in the encore opens the save prompt
   // (casual mode only). Buying restores lives; the run then stays off ranked.
   const usedPerkRef = useRef(false);
+  // performance.now() when the save prompt opened — used to shift the timeline
+  // anchor on resume so the clock doesn't jump (which would stampede the queued
+  // encore tiles into misses and re-trigger the prompt instantly).
+  const savePausedAtRef = useRef(0);
   type SubmitResult = {
     rank?: number;
     xpEarned?: number;
@@ -1669,7 +1673,12 @@ export default function RhythmGamePage() {
             encoreMissesRef.current++;
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
-              setPhase(address && !needsMint ? "saving" : "finished");
+              if (address && !needsMint) {
+                savePausedAtRef.current = performance.now(); // freeze the clock
+                setPhase("saving");
+              } else {
+                setPhase("finished");
+              }
               return;
             }
           }
@@ -1732,6 +1741,15 @@ export default function RhythmGamePage() {
     // now = (performance.now() - startRef.current) / 1000 — NOT audio-ctx time.
     // Using the wrong clock is why the encore looked frozen: notes never spawned.
     getAudioCtx(); // keep the audio context alive for the encore drums
+    // Shift the timeline anchor forward by the paused duration so `now` picks up
+    // where it left off. Without this the clock jumps by however long the save
+    // prompt was open, and every queued encore tile stampedes as a miss —
+    // instantly re-triggering the prompt. This is the fix for "it asks to save
+    // again right after I save."
+    if (savePausedAtRef.current) {
+      startRef.current += performance.now() - savePausedAtRef.current;
+      savePausedAtRef.current = 0;
+    }
     const now = (performance.now() - startRef.current) / 1000;
     encoreNextSpawnRef.current = now + 0.8;
     encoreLoopAtRef.current = 0;
