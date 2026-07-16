@@ -1728,10 +1728,11 @@ export default function RhythmGamePage() {
     usedPerkRef.current = true;
     encoreMissesRef.current = 0;
     setEncoreLives(3);
-    // Re-anchor encore spawn timing to the current audio clock so notes
-    // resume cleanly after the pause (same shape as entering the encore).
-    const ctx = getAudioCtx();
-    const now = ctx ? ctx.currentTime : 0;
+    // Re-anchor the next note spawn to the SAME timeline the loop reads —
+    // now = (performance.now() - startRef.current) / 1000 — NOT audio-ctx time.
+    // Using the wrong clock is why the encore looked frozen: notes never spawned.
+    getAudioCtx(); // keep the audio context alive for the encore drums
+    const now = (performance.now() - startRef.current) / 1000;
     encoreNextSpawnRef.current = now + 0.8;
     encoreLoopAtRef.current = 0;
     setPhase("encore");
