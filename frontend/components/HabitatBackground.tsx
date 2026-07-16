@@ -37,15 +37,26 @@ export function HabitatBackground({
         overflow: "hidden",
         zIndex: 0,
       }}>
-        {/* Scene, wrapped in a vibrancy pass so every habitat reads crisp and
-            saturated instead of muddy — one lever that lifts all 10 at once
-            (shop cards + the pet-page background) without editing each scene. */}
-        <div style={{
-          position: "absolute", inset: 0,
-          filter: "saturate(1.22) contrast(1.08) brightness(1.06)",
-        }}>
-          <Scene id={habitat.id} />
-        </div>
+        {/* Premium art when present (public/habitats/<id>.jpg); the CSS Scene
+            is the fallback. A light sparkle layer keeps the art alive so the
+            pet's home still breathes instead of being a flat photo. */}
+        {habitat.bgImage ? (
+          <>
+            <div style={{
+              position: "absolute", inset: 0,
+              backgroundImage: `url('${habitat.bgImage}')`,
+              backgroundSize: "cover", backgroundPosition: "center",
+            }} />
+            <Stars count={14} color={bg.accent} />
+          </>
+        ) : (
+          <div style={{
+            position: "absolute", inset: 0,
+            filter: "saturate(1.22) contrast(1.08) brightness(1.06)",
+          }}>
+            <Scene id={habitat.id} />
+          </div>
+        )}
         {/* Stage spotlight — keeps the pet readable on every habitat */}
         <div style={{
           position: "absolute", inset: 0,
