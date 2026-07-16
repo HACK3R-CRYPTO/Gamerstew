@@ -554,7 +554,7 @@ export default function ProfilePage() {
             gap: 10,
           }}>
             {[
-              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#fbbf24" : "#38bdf8", icon: "🔥" },
+              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#fb923c" : "#38bdf8", icon: "🔥" },
               { label: "Games played", value: s.gamesPlayed, sub: `+${s.gamesThisWeek} this week`, color: T.accent, icon: "🎮" },
               { label: "Best score", value: s.bestScore, sub: s.bestRhythm >= s.bestSimon ? "Rhythm Rush" : "Simon Memory", color: "#c026d3", icon: "🥁" },
               // All-time combined rank. Sub-label turns the raw number
