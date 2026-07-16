@@ -467,7 +467,7 @@ function DashLeft({ connected, onPlayGame, router, heroes, heroActive, onHeroDot
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <HeroCarousel heroes={heroes} active={heroActive} onPlayGame={onPlayGame} onDot={onHeroDot} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-      <GamesGrid onPlayGame={onPlayGame} isDesktop />
+      <GamesGrid onPlayGame={onPlayGame} />
       <SectionLabel>Daily missions</SectionLabel>
       <MissionCard connected={connected} onConnect={() => router.push("/home")} />
     </div>
@@ -843,13 +843,12 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
   );
 }
 
-function GamesGrid({ onPlayGame, isDesktop }: { onPlayGame: (id: string) => void; isDesktop?: boolean }) {
-  // Always the full roster in a STABLE grid — decoupled from the hero so it
-  // never reflows or orphans a card as the hero rotates. 4 across on desktop,
-  // 2×2 on mobile: clean for exactly four games either way.
-  const cards = GAMES;
+function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
+  // Overview PREVIEW — a clean row of 3; the full roster lives behind "View
+  // all". Fixed set so it never reflows or orphans as the hero rotates.
+  const cards = GAMES.slice(0, 3);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "repeat(2, 1fr)", gap: 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
       {cards.map(g => (
         <button key={g.id} onClick={() => onPlayGame(g.id)} style={{
           position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
