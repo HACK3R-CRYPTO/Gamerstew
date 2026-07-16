@@ -14,7 +14,6 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSignMessage } from "wagmi";
 import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
-import EventTeaser from "@/components/EventTeaser";
 import AppBottomNav from "@/components/AppBottomNav";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
@@ -83,6 +82,22 @@ type Game = {
   active: boolean;
   href: string;
   isNew?: boolean;
+  kind?: "event";   // "event" → HeroCard renders the gold teaser variant
+};
+
+// Upcoming event — rides in the hero rotation as a gold slide (not a game).
+// Details TBD; teases the 400,000 G$ pool and points to the events page.
+const EVENT_HERO: Game = {
+  id: "event",
+  kind: "event",
+  title: "400,000 G$ Event",
+  subtitle: "Coming soon",
+  desc: "A huge prize pool is on the way. Details soon — keep playing to be ready.",
+  art: "",
+  bg: "linear-gradient(115deg, #7c3a0d 0%, #2a1266 55%, #170a3e 100%)",
+  glow: "#f59e0b",
+  active: true,
+  href: "/leaderboard",
 };
 
 const STACK_ART = (
@@ -289,6 +304,8 @@ export default function DashboardPage() {
   }, [connected, address]);
 
   const onPlayGame = async (id: string) => {
+    // The event hero isn't a game — it routes to the events page.
+    if (id === "event") { router.push("/leaderboard"); return; }
     // Spam-tap guard · ignore while a load is in flight (the overlay
     // covers the cards anyway, but this stops queued promises racing).
     if (loadingGame) return;
@@ -321,7 +338,8 @@ export default function DashboardPage() {
   // (Stack Tower launch + the Challenge AI rebuild). Crossfades every 6s;
   // falls back to the first game when nothing is flagged.
   const heroes = GAMES.filter(g => g.isNew);
-  const heroList = heroes.length > 0 ? heroes : [GAMES[0]];
+  // Event teaser leads the rotation, then the new-game heroes cycle after it.
+  const heroList = [EVENT_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -386,9 +404,6 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-
-        {/* Upcoming event teaser — 400,000 G$ pool, details soon */}
-        <EventTeaser isDesktop={isDesktop} />
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
@@ -779,6 +794,31 @@ function HeroCarousel({ heroes, active, onPlayGame, onDot }: {
 }
 
 function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void }) {
+  // Event slide — gold teaser variant of the hero.
+  if (game.kind === "event") {
+    return (
+      <button onClick={() => onPlayGame(game.id)} style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(251,191,36,0.4)", cursor: "pointer",
+        borderRadius: 20, textAlign: "left", background: game.bg,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", right: 14, bottom: 6, fontSize: 62, lineHeight: 1, pointerEvents: "none", filter: "drop-shadow(0 8px 16px rgba(251,191,36,0.45))" }}>🏆</div>
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
+          <Pill color="#fde68a">⚡ EVENT · COMING SOON</Pill>
+        </div>
+        <div style={{ padding: "10px 14px 14px", maxWidth: "68%", position: "relative", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>400,000</span>
+            <span style={{ fontFamily: T.display, fontSize: 17, color: "#fde68a", lineHeight: 1 }}>G$</span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>event prize pool</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 6, lineHeight: 1.4 }}>{game.desc}</div>
+        </div>
+      </button>
+    );
+  }
   return (
     <button onClick={() => onPlayGame(game.id)} style={{
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
