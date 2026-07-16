@@ -46,8 +46,12 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           </p>
         </div>
 
-        {/* Trophy mark — hidden on the tightest widths */}
-        <div style={{ fontSize: isDesktop ? 56 : 44, lineHeight: 1, flexShrink: 0, filter: "drop-shadow(0 6px 14px rgba(251,191,36,0.4))" }}>🏆</div>
+        {/* Same 3D trophy art as the dashboard hero · `screen` drops its dark bg */}
+        <img
+          src="/event-trophy.jpg"
+          alt=""
+          style={{ width: isDesktop ? 128 : 96, height: isDesktop ? 128 : 96, objectFit: "contain", mixBlendMode: "screen", flexShrink: 0, pointerEvents: "none" }}
+        />
       </div>
     </div>
   );
