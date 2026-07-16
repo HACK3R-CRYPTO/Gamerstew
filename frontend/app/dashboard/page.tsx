@@ -802,7 +802,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(251,191,36,0.4)", cursor: "pointer",
         borderRadius: 20, textAlign: "left", background: game.bg,
         boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
-        minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)", pointerEvents: "none" }} />
         {/* Trophy art — `screen` blend drops its dark background into the card */}
@@ -826,7 +826,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
       borderRadius: 20, textAlign: "left", background: game.bg,
       boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
-      minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.22), transparent 60%)", pointerEvents: "none" }} />
       {typeof game.art === "string" ? (
