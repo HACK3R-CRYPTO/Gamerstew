@@ -47,8 +47,8 @@ export const PERKS: Perk[] = [
   },
   {
     id: 6, game: "challenge-ai", gameLabel: "Challenge AI",
-    name: "Rematch", blurb: "Out of matches? Buy a fresh ticket and run it back vs MARKOV.",
-    priceG$: parseEther("15"), priceLabel: "15 G$", kind: "retry", emoji: "🤖",
+    name: "Match Pack", blurb: "Out of matches? +5 more vs MARKOV, instant.",
+    priceG$: parseEther("2"), priceLabel: "2 G$", kind: "retry", emoji: "🎟",
   },
   {
     id: 2, game: "rhythm", gameLabel: "Rhythm Rush",

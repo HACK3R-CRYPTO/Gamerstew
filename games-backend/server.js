@@ -2971,6 +2971,15 @@ const PERK_SHOP = (provider && arenaRelayer) ? new ethers.Contract(PERK_SHOP_ADD
   'function buyPerkWithPermit(address player, uint16 perkId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
 ], arenaRelayer) : null;
 
+// PerkShop perk #6 = the Challenge AI match ticket. A verified purchase of it
+// grants +5 matches — the PerkShop-native replacement for the refill_5 SKU,
+// so ticket spend now routes through the same 20/80 split as every perk.
+const PERK_TICKET_ID = 6;
+const PERK_TICKET_GRANT = 5;
+const PERK_PURCHASED_IFACE = new ethers.Interface([
+  'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
+]);
+
 // Shared grant: record the purchase (replay-proof via tx_hash PK) and bump
 // today's extra allowance. Used by both the direct-transfer and gasless paths.
 async function arenaGrantPurchase(wallet, sku, txHash, amountWei) {
@@ -3199,6 +3208,62 @@ app.post('/api/perks/buy-gasless', requireSecret, gameSubmitLimiter, async (req,
     console.error('perk gasless failed:', e?.shortMessage || e?.message);
     return res.status(400).json({ error: 'gasless_failed' });
   }
+});
+
+// POST /api/perks/grant-ticket — verify an on-chain PerkShop purchase of the
+// match-ticket perk (#6) and grant +5 matches. Works for both the gasless and
+// direct buy paths: the frontend just hands us the buy tx hash. Replay-safe —
+// the tx hash is the arena_purchases primary key. Body: { wallet, txHash }.
+app.post('/api/perks/grant-ticket', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, txHash } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return res.status(400).json({ error: 'txHash required' });
+  if (!provider) return res.status(400).json({ error: 'rpc_unavailable' });
+  const w = wallet.toLowerCase();
+
+  const { data: existing } = await supabase
+    .from('arena_purchases').select('tx_hash').eq('tx_hash', txHash).maybeSingle();
+  if (existing) return res.status(400).json({ error: 'tx_already_used' });
+
+  // Wait for the receipt, then confirm it's a PerkShop PerkPurchased(#6) by this wallet.
+  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+  let receipt = null;
+  while (Date.now() < deadline) {
+    try { receipt = await provider.getTransactionReceipt(txHash); if (receipt) break; } catch {}
+    await new Promise(r => setTimeout(r, RECEIPT_POLL_MS));
+  }
+  if (!receipt) return res.status(400).json({ error: 'receipt_not_found' });
+  if (Number(receipt.status) !== 1) return res.status(400).json({ error: 'tx_reverted' });
+
+  let matched = null;
+  for (const log of receipt.logs || []) {
+    if ((log.address || '').toLowerCase() !== PERK_SHOP_ADDRESS) continue;
+    try {
+      const parsed = PERK_PURCHASED_IFACE.parseLog({ topics: log.topics, data: log.data });
+      if (!parsed || parsed.name !== 'PerkPurchased') continue;
+      if (String(parsed.args.player).toLowerCase() !== w) continue;
+      if (Number(parsed.args.perkId) !== PERK_TICKET_ID) continue;
+      matched = parsed.args; break;
+    } catch {}
+  }
+  if (!matched) return res.status(400).json({ error: 'perk_purchase_not_found' });
+
+  const { error: insErr } = await supabase.from('arena_purchases').insert({
+    tx_hash: txHash, wallet: w, sku: 'perk_ticket', amount_wei: String(matched.totalPaid),
+  });
+  if (insErr) return res.status(400).json({ error: 'tx_already_used' }); // unique violation = replay race
+
+  const day = arenaDayKey();
+  const { data: row } = await supabase
+    .from('arena_daily').select('used, extra').eq('wallet', w).eq('day', day).maybeSingle();
+  await supabase.from('arena_daily').upsert({
+    wallet: w, day,
+    used: row?.used ?? 0,
+    extra: (row?.extra ?? 0) + PERK_TICKET_GRANT,
+    updated_at: new Date().toISOString(),
+  });
+  const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
+  return res.json({ ok: true, remaining });
 });
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,

@@ -25,3 +25,22 @@ export async function buyPerkGasless(
     return { error: 'backend_unreachable' };
   }
 }
+
+// Verify a PerkShop match-ticket purchase (perk #6) and grant +5 matches.
+// Works for both buy paths — the frontend just passes the buy tx hash.
+export async function grantPerkTicket(
+  wallet: string,
+  txHash: string,
+): Promise<{ ok?: boolean; remaining?: number; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/perks/grant-ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ wallet, txHash }),
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { error: 'backend_unreachable' };
+  }
+}

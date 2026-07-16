@@ -28,7 +28,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  *        3  Stack Tower  · Save          (consumable)     30 G$
  *        4  Stack Tower  · Crystal Blocks (cosmetic)     250 G$
  *        5  Simon Memory · Retry         (consumable)     20 G$
- *        6  Challenge AI · Rematch       (consumable)     15 G$
+ *        6  Challenge AI · Match Pack    (consumable)      2 G$
  *
  *      New perks can be added later via setPerk(); no upgrade needed.
  */
@@ -85,7 +85,7 @@ contract PerkShop is Ownable, ReentrancyGuard, Pausable {
         _setPerk(3,  30 ether, false); // Stack Tower  · Save
         _setPerk(4, 250 ether, true);  // Stack Tower  · Crystal Blocks (cosmetic)
         _setPerk(5,  20 ether, false); // Simon Memory · Retry
-        _setPerk(6,  15 ether, false); // Challenge AI · Rematch
+        _setPerk(6,   2 ether, false); // Challenge AI · Match Pack (+5 matches)
     }
 
     // ── Core ─────────────────────────────────────────────────────────────────
