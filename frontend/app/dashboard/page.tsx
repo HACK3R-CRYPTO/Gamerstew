@@ -575,7 +575,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
     const msLeft = new Date(dash.climb.endsAt).getTime() - Date.now();
     const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
     out.push({
-      icon: "🏆", color: "#fbbf24",
+      icon: "🏆", color: "#a5b4cf",
       title: connected && dash.climb.rank > 0
         ? `You're #${dash.climb.rank} in MARKOV Climb`
         : "MARKOV Climb is live",
@@ -589,7 +589,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
   if (topScorer) {
     const name = topScorer.username || `${topScorer.player.slice(0, 6)}…${topScorer.player.slice(-4)}`;
     out.push({
-      icon: "🥁", color: "#c026d3",
+      icon: "🥁", color: "#a5b4cf",
       title: `@${name.replace(/^@/, "")} leads the boards`,
       sub: `${topScorer.score} pts combined · beat them`,
     });
@@ -597,7 +597,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (dash.totalMatches > 0) {
     out.push({
-      icon: "🌍", color: "#86efac",
+      icon: "🌍", color: "#a5b4cf",
       title: `${dash.totalPlayers} players · ${dash.totalMatches.toLocaleString()} matches`,
       sub: "Live community total · all-time",
     });
@@ -605,7 +605,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (me && me.rank > 0) {
     out.push({
-      icon: "💎", color: "#22d3ee",
+      icon: "💎", color: "#a5b4cf",
       title: `You're #${me.rank} all-time`,
       sub: "Keep playing to climb",
       tag: "YOU", tagColor: "#22d3ee",
@@ -1012,9 +1012,28 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                 display: "flex", flexDirection: "column", gap: 6,
                 opacity: done ? 0.7 : 1,
               }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3 }}>{m.label}</div>
-                  <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#c4b5fd", whiteSpace: "nowrap", flexShrink: 0 }}>+{m.rewardXp} XP</div>
+                {/* Label + action on one row · action is a compact right chip
+                    (not a full-width bar) so each mission stays short. */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+                  {done ? (
+                    <span style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#22c55e", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>✓ Claimed</span>
+                  ) : ready ? (
+                    <button
+                      onClick={() => claim(m.id)}
+                      disabled={claimingId === m.id}
+                      style={{
+                        flexShrink: 0, cursor: claimingId === m.id ? "wait" : "pointer",
+                        borderRadius: 999, padding: "5px 12px", whiteSpace: "nowrap",
+                        background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
+                        border: "1px solid rgba(255,255,255,0.3)",
+                        boxShadow: "0 5px 12px -4px rgba(167,139,250,0.6)",
+                        color: "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.05em",
+                      }}
+                    >{claimingId === m.id ? "Claiming…" : `Claim +${m.rewardXp} XP`}</button>
+                  ) : (
+                    <div style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#c4b5fd", whiteSpace: "nowrap" }}>+{m.rewardXp} XP</div>
+                  )}
                 </div>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -1030,25 +1049,6 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                     }} />
                   </div>
                 </div>
-                {done ? (
-                  <div style={{ textAlign: "center", color: "#22c55e", fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em" }}>✓ CLAIMED</div>
-                ) : ready ? (
-                  <button
-                    onClick={() => claim(m.id)}
-                    disabled={claimingId === m.id}
-                    style={{
-                      cursor: claimingId === m.id ? "wait" : "pointer",
-                      borderRadius: 9,
-                      padding: "6px 10px",
-                      background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
-                      border: "1px solid rgba(255,255,255,0.35)",
-                      boxShadow: "inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -2px 3px rgba(0,0,0,0.3), 0 6px 14px -4px rgba(167,139,250,0.6)",
-                      color: "#fff",
-                      fontFamily: T.body, fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-                      textShadow: "0 1px 2px rgba(0,0,0,0.4)",
-                    }}
-                  >{claimingId === m.id ? "CLAIMING…" : `CLAIM +${m.rewardXp} XP`}</button>
-                ) : null}
               </div>
             );
           })
