@@ -6,7 +6,7 @@
 
 const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
-  "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn";
+  "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn";
 
 async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
   try {
