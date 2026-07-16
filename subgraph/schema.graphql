@@ -93,3 +93,26 @@ type GlobalStat @entity {
   totalWageredG: BigInt!
   lastUpdatedAt: BigInt!
 }
+
+# ── PerkShop (M1 G$ Perk Economy) ──────────────────────────────────────────
+# Self-contained: one row per on-chain PerkPurchased event, plus a singleton
+# aggregate. Trustless read layer for the shop's UBI/purchase analytics.
+type PerkPurchase @entity(immutable: true) {
+  id: ID!                 # `${txHash}-${logIndex}`
+  player: Bytes!          # buyer wallet
+  perkId: Int!            # on-chain perk id
+  cosmetic: Boolean!      # true = one-time cosmetic unlock
+  totalPaid: BigInt!      # G$ paid (18 decimals)
+  ubiAmount: BigInt!      # portion routed to the GoodCollective UBI pool
+  treasuryAmount: BigInt! # portion routed to treasury
+  timestamp: BigInt!      # block timestamp
+  txHash: Bytes!
+}
+
+type PerkShopStat @entity {
+  id: ID!                 # always "global"
+  totalPurchases: BigInt! # count of all perk buys
+  totalUbiG: BigInt!      # cumulative G$ routed to UBI through perks
+  totalTreasuryG: BigInt! # cumulative G$ routed to treasury
+  lastUpdatedAt: BigInt!
+}

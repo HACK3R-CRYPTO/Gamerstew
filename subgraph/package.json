@@ -6,7 +6,7 @@
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "deploy:goldsky": "goldsky subgraph deploy gamearena/1.0.1 --path ."
+    "deploy:goldsky": "goldsky subgraph deploy gamearena/1.0.2 --path ."
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "0.74.0",
