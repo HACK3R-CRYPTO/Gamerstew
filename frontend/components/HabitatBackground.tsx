@@ -37,18 +37,27 @@ export function HabitatBackground({
         overflow: "hidden",
         zIndex: 0,
       }}>
-        <Scene id={habitat.id} />
+        {/* Scene, wrapped in a vibrancy pass so every habitat reads crisp and
+            saturated instead of muddy — one lever that lifts all 10 at once
+            (shop cards + the pet-page background) without editing each scene. */}
+        <div style={{
+          position: "absolute", inset: 0,
+          filter: "saturate(1.22) contrast(1.08) brightness(1.06)",
+        }}>
+          <Scene id={habitat.id} />
+        </div>
         {/* Stage spotlight — keeps the pet readable on every habitat */}
         <div style={{
           position: "absolute", inset: 0,
-          background: `radial-gradient(ellipse at 50% 75%, ${bg.accent}22 0%, transparent 50%)`,
+          background: `radial-gradient(ellipse at 50% 75%, ${bg.accent}2e 0%, transparent 55%)`,
           mixBlendMode: "screen",
           pointerEvents: "none",
         }} />
-        {/* Vignette */}
+        {/* Vignette — softened (edges no longer crush to near-black, which was
+            the main thing making the scenes look murky at card size). */}
         <div style={{
           position: "absolute", inset: 0,
-          background: "radial-gradient(ellipse at 50% 55%, transparent 35%, rgba(0,0,0,0.55) 100%)",
+          background: "radial-gradient(ellipse at 50% 55%, transparent 48%, rgba(0,0,0,0.34) 100%)",
           pointerEvents: "none",
         }} />
         {/* Accent ring */}
