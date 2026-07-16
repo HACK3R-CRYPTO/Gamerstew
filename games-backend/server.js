@@ -2966,7 +2966,7 @@ const ARENA_GD = provider ? new ethers.Contract(ARENA_G_TOKEN, [
 // Same relayer, same permit trick as the arena refill: the player signs a
 // permit for the PerkShop contract (spender = PerkShop), the relayer submits
 // buyPerkWithPermit and pays the gas. The 20/80 split runs inside the contract.
-const PERK_SHOP_ADDRESS = (process.env.PERK_SHOP_ADDRESS || '0xbccCa01A253C25dC2cd60ee4640a4Bfea695eddb').toLowerCase();
+const PERK_SHOP_ADDRESS = (process.env.PERK_SHOP_ADDRESS || '0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5').toLowerCase();
 const PERK_SHOP = (provider && arenaRelayer) ? new ethers.Contract(PERK_SHOP_ADDRESS, [
   'function buyPerkWithPermit(address player, uint16 perkId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
 ], arenaRelayer) : null;
