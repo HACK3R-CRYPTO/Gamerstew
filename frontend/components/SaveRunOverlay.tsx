@@ -217,19 +217,18 @@ export default function SaveRunOverlay({
         }}>Get {perk.priceLabel} in shop →</a>
       )}
 
-      {/* Trust line — only when a purchase (not a free stock spend) is involved */}
-      {stockReady && !usingStock && (
-        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
-          one signature, zero CELO · 20% to the community UBI pool
-        </div>
-      )}
+      {errMsg && <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.danger, textAlign: "center", marginTop: 2 }}>{errMsg}</div>}
 
-      {errMsg && <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.danger, textAlign: "center" }}>{errMsg}</div>}
-
+      {/* Decline — quiet (no accent, so it never competes with the CTA) but
+          clearly a tappable choice, sitting right under the button. */}
       <button
         onClick={handleDecline}
         disabled={busy}
-        style={{ background: "none", border: "none", color: "rgba(224,215,255,0.5)", fontFamily: T.body, fontSize: 13.5, cursor: busy ? "default" : "pointer", padding: 6 }}
+        style={{
+          background: "none", border: "none",
+          color: "rgba(224,215,255,0.62)", fontFamily: T.body, fontSize: 14, fontWeight: 600,
+          cursor: busy ? "default" : "pointer", padding: "8px 18px", marginTop: -6,
+        }}
       >
         {status === "error" ? "Give up run" : "No thanks →"}
       </button>
