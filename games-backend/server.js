@@ -493,27 +493,33 @@ function xpProgress(xp) {
 }
 
 // ─── Daily Missions ─────────────────────────────────────────────────────────
-// Templates the daily refresh picks 3 from. Each evaluates `progressDelta` from a played-game event.
-// Reward sizes are tuned so a "perfect day" (all 3 done) gives ~150-200 XP — meaningful but not OP.
+// Templates the daily refresh picks 3 from — one per category (count / skill /
+// special) so every day is a balanced mix. Rewards are deliberately SMALL and
+// proportionate to real play: a finished game is worth 10 XP (XP_PLAYED), so a
+// mission is ~2–4 games of value. A "perfect day" (all 3) lands ~75–110 XP —
+// a nice nudge, NOT a level. Leveling should come from PLAYING, not from
+// topping up missions. There is no "win" in these score-based games, so no
+// win missions exist.
 const MISSION_TEMPLATES = [
-  { id: 'play_3_games',     label: 'Play 3 games today',                   target: 3,   reward: 50,  match: () => 1 },
-  { id: 'play_5_games',     label: 'Play 5 games today',                   target: 5,   reward: 80,  match: () => 1 },
-  { id: 'win_1_game',       label: 'Win 1 game today',                     target: 1,   reward: 60,  match: ({ isWin }) => isWin ? 1 : 0 },
-  { id: 'win_3_games',      label: 'Win 3 games today',                    target: 3,   reward: 120, match: ({ isWin }) => isWin ? 1 : 0 },
-  // Daily mission thresholds calibrated to real Rhythm Rush ranges
-  // (clean runs land in 30k–100k+). Dailies should challenge a focused
-  // session without being trivially clearable — the easy "show up"
-  // tier is already covered by play_3_games / win_1_game above.
-  { id: 'rhythm_300',       label: 'Score 30,000+ in Rhythm Rush',         target: 1,   reward: 40,  match: ({ game, score }) => game === 'rhythm' && score >= 30000 ? 1 : 0 },
-  { id: 'rhythm_500',       label: 'Score 80,000+ in Rhythm Rush',         target: 1,   reward: 60,  match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
-  { id: 'simon_5',          label: 'Reach round 5 in Simon Memory',        target: 1,   reward: 60,  match: ({ game, score }) => game === 'simon'  && score >= 5   ? 1 : 0 },
-  { id: 'simon_10',         label: 'Reach round 10 in Simon Memory',       target: 1,   reward: 100, match: ({ game, score }) => game === 'simon'  && score >= 10  ? 1 : 0 },
-  // Stack Tower · score = blocks landed + perfect-stack combo bonus.
-  // 30 blocks is a steady-hand run; 60 is a focused session.
-  { id: 'stack_30',         label: 'Stack 30+ blocks in Stack Tower',      target: 1,   reward: 40,  match: ({ game, score }) => game === 'stack'  && score >= 30  ? 1 : 0 },
-  { id: 'stack_60',         label: 'Stack 60+ blocks in Stack Tower',      target: 1,   reward: 80,  match: ({ game, score }) => game === 'stack'  && score >= 60  ? 1 : 0 },
-  { id: 'beat_personal_best', label: 'Beat your personal best',            target: 1,   reward: 80,  match: ({ isNewPb }) => isNewPb ? 1 : 0 },
-  { id: 'play_both_games',  label: 'Play both games today (1 of each)',    target: 2,   reward: 70,  match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+  // ── COUNT · just show up and play ──────────────────────────────────────────
+  { id: 'play_3_games',  cat: 'count', label: 'Play 3 games today',   target: 3,  reward: 20, match: () => 1 },
+  { id: 'play_5_games',  cat: 'count', label: 'Play 5 games today',   target: 5,  reward: 30, match: () => 1 },
+  { id: 'play_10_games', cat: 'count', label: 'Play 10 games today',  target: 10, reward: 45, match: () => 1 },
+  // ── SKILL · score thresholds spanning casual → focused runs ────────────────
+  // Rhythm points, Simon rounds, Stack blocks. Each tier: easy / mid / hard.
+  { id: 'rhythm_30k', cat: 'skill', label: 'Score 30,000+ in Rhythm Rush', target: 1, reward: 20, match: ({ game, score }) => game === 'rhythm' && score >= 30000 ? 1 : 0 },
+  { id: 'rhythm_50k', cat: 'skill', label: 'Score 50,000+ in Rhythm Rush', target: 1, reward: 28, match: ({ game, score }) => game === 'rhythm' && score >= 50000 ? 1 : 0 },
+  { id: 'rhythm_80k', cat: 'skill', label: 'Score 80,000+ in Rhythm Rush', target: 1, reward: 35, match: ({ game, score }) => game === 'rhythm' && score >= 80000 ? 1 : 0 },
+  { id: 'simon_5',    cat: 'skill', label: 'Reach round 5 in Simon Memory',  target: 1, reward: 20, match: ({ game, score }) => game === 'simon' && score >= 5  ? 1 : 0 },
+  { id: 'simon_8',    cat: 'skill', label: 'Reach round 8 in Simon Memory',  target: 1, reward: 28, match: ({ game, score }) => game === 'simon' && score >= 8  ? 1 : 0 },
+  { id: 'simon_12',   cat: 'skill', label: 'Reach round 12 in Simon Memory', target: 1, reward: 35, match: ({ game, score }) => game === 'simon' && score >= 12 ? 1 : 0 },
+  { id: 'stack_30',   cat: 'skill', label: 'Stack 30+ blocks in Stack Tower', target: 1, reward: 20, match: ({ game, score }) => game === 'stack' && score >= 30 ? 1 : 0 },
+  { id: 'stack_45',   cat: 'skill', label: 'Stack 45+ blocks in Stack Tower', target: 1, reward: 28, match: ({ game, score }) => game === 'stack' && score >= 45 ? 1 : 0 },
+  { id: 'stack_60',   cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: ({ game, score }) => game === 'stack' && score >= 60 ? 1 : 0 },
+  // ── SPECIAL · improve, or explore the arcade ───────────────────────────────
+  { id: 'beat_personal_best', cat: 'special', label: 'Beat a personal best',        target: 1, reward: 35, match: ({ isNewPb }) => isNewPb ? 1 : 0 },
+  { id: 'variety_2',          cat: 'special', label: 'Play 2 different games today', target: 2, reward: 25, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+  { id: 'variety_3',          cat: 'special', label: 'Play 3 different games today', target: 3, reward: 40, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
 ];
 
 // Deterministic 3-mission pick per (wallet, date) so a player gets the SAME 3 missions all day.
@@ -524,12 +530,13 @@ function pickDailyMissions(wallet, date) {
   for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
   const rng = () => { h = Math.imul(48271, h) | 0; return ((h >>> 0) / 0xffffffff); };
 
-  // Always include 1 "easy" play-count mission, 1 "win" mission, 1 random
-  const easy   = MISSION_TEMPLATES.filter(m => m.id.startsWith('play_'));
-  const win    = MISSION_TEMPLATES.filter(m => m.id.startsWith('win_'));
-  const rest   = MISSION_TEMPLATES.filter(m => !m.id.startsWith('play_') && !m.id.startsWith('win_'));
-  const pick   = (arr) => arr[Math.floor(rng() * arr.length)];
-  return [pick(easy), pick(win), pick(rest)];
+  // Balanced daily set: one from each category so every day mixes a show-up
+  // goal, a skill goal, and a special goal (never 3 of the same shape).
+  const count   = MISSION_TEMPLATES.filter(m => m.cat === 'count');
+  const skill   = MISSION_TEMPLATES.filter(m => m.cat === 'skill');
+  const special = MISSION_TEMPLATES.filter(m => m.cat === 'special');
+  const pick    = (arr) => arr[Math.floor(rng() * arr.length)];
+  return [pick(count), pick(skill), pick(special)];
 }
 
 async function ensureTodayMissions(wallet, today) {
