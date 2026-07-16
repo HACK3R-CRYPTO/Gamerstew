@@ -93,7 +93,7 @@ const EVENT_HERO: Game = {
   title: "400,000 G$ Event",
   subtitle: "Coming soon",
   desc: "A huge prize pool is on the way. Details soon — keep playing to be ready.",
-  art: "",
+  art: "/event-trophy.jpg",
   bg: "linear-gradient(115deg, #7c3a0d 0%, #2a1266 55%, #170a3e 100%)",
   glow: "#f59e0b",
   active: true,
@@ -804,7 +804,8 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", right: 14, bottom: 6, fontSize: 62, lineHeight: 1, pointerEvents: "none", filter: "drop-shadow(0 8px 16px rgba(251,191,36,0.45))" }}>🏆</div>
+        {/* Trophy art — `screen` blend drops its dark background into the card */}
+        <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -14, bottom: -14, width: 172, height: 172, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
           <Pill color="#fde68a">⚡ EVENT · COMING SOON</Pill>
         </div>
