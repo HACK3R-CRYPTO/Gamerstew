@@ -8,7 +8,7 @@ import { savePerkFor, type Perk } from "@/lib/perks";
 // The in-game perk prompt, shared by every game and styled like the shop:
 // the perk's own generated art sits under a shrinking countdown ring, with the
 // price on the art and a single accent CTA. One tap = one on-chain G$ purchase
-// (85% to the UBI pool) and the run continues. Ignore = ring empties, run ends.
+// (20% to the UBI pool) and the run continues. Ignore = ring empties, run ends.
 // Casual mode only — using a perk drops the run off the ranked ladder.
 //
 // Works for save / retry / rematch: the parent passes the perk (or lets it
@@ -212,7 +212,7 @@ export default function SaveRunOverlay({
 
       {/* Trust line */}
       <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
-        85% to the community UBI pool · casual mode only
+        20% to the community UBI pool · casual mode only
       </div>
 
       {errMsg && <div style={{ fontFamily: T.body, fontSize: 12, color: T.danger, textAlign: "center" }}>{errMsg}</div>}

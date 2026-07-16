@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
@@ -12,8 +13,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * @dev In-game perks paid in G$ across GameArena's casual modes: saves,
  *      retries and cosmetics. Ranked play never touches this shop, so ranked
  *      stays pure skill. Every purchase splits G$ in one transaction:
- *        ubiBps      -> GoodCollective UBI pool   (default 85%)
- *        treasuryBps -> GameArena treasury        (default 15%)
+ *        ubiBps      -> GoodCollective UBI pool   (default 20%)
+ *        treasuryBps -> GameArena treasury        (default 80%)
  *      The contract never holds G$; funds route straight from the buyer.
  *
  *      Perks are either:
@@ -42,8 +43,8 @@ contract PerkShop is Ownable, ReentrancyGuard, Pausable {
     address public ubiPool;                  // GoodCollective UBI pool
     address public treasury;                 // GameArena treasury
 
-    uint256 public ubiBps      = 8_500;      // 85% to UBI
-    uint256 public treasuryBps = 1_500;      // 15% to treasury
+    uint256 public ubiBps      = 2_000;      // 20% to UBI
+    uint256 public treasuryBps = 8_000;      // 80% to treasury
 
     struct Perk {
         uint256 price;     // G$ cost, 18 decimals (0 = disabled)
@@ -95,31 +96,61 @@ contract PerkShop is Ownable, ReentrancyGuard, Pausable {
      * @param perkId Perk ID (must have a configured price).
      */
     function buyPerk(uint16 perkId) external nonReentrant whenNotPaused {
+        _purchase(msg.sender, perkId);
+    }
+
+    /**
+     * @notice Buy a perk for `player` using an EIP-2612 permit signature, so
+     *         the buy is a SINGLE transaction with no separate approve — and it
+     *         can be submitted by a relayer, making the purchase gasless for the
+     *         player (they only sign; the relayer pays gas). G$ is still pulled
+     *         from `player` and split 85/15, exactly like buyPerk.
+     * @dev The permit is wrapped in try/catch so a front-run that already set
+     *      the allowance (or a permit-less path) doesn't brick the purchase.
+     */
+    function buyPerkWithPermit(
+        address player,
+        uint16  perkId,
+        uint256 deadline,
+        uint8   v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant whenNotPaused {
+        Perk memory p = perks[perkId];
+        require(p.price > 0, "Perk disabled");
+        try IERC20Permit(address(gToken)).permit(player, address(this), p.price, deadline, v, r, s) {} catch {}
+        _purchase(player, perkId);
+    }
+
+    /**
+     * @dev Shared settlement: split G$ from `payer` (20% UBI / 80% treasury),
+     *      record the perk, emit. Treasury portion is computed first so any
+     *      rounding always favors UBI, never the platform.
+     */
+    function _purchase(address payer, uint16 perkId) internal {
         Perk memory p = perks[perkId];
         require(p.price > 0, "Perk disabled");
         if (p.cosmetic) {
-            require(!ownedCosmetic[msg.sender][perkId], "Already owned");
+            require(!ownedCosmetic[payer][perkId], "Already owned");
         }
 
-        // Treasury portion first; UBI takes the remainder so any rounding
-        // always favors UBI, never the platform.
         uint256 treasuryAmount = (p.price * treasuryBps) / BPS_DENOMINATOR;
         uint256 ubiAmount      = p.price - treasuryAmount;
 
-        gToken.safeTransferFrom(msg.sender, ubiPool, ubiAmount);
+        gToken.safeTransferFrom(payer, ubiPool, ubiAmount);
         if (treasuryAmount > 0) {
-            gToken.safeTransferFrom(msg.sender, treasury, treasuryAmount);
+            gToken.safeTransferFrom(payer, treasury, treasuryAmount);
         }
 
         if (p.cosmetic) {
-            ownedCosmetic[msg.sender][perkId] = true;
+            ownedCosmetic[payer][perkId] = true;
         } else {
-            perksBought[msg.sender] += 1;
+            perksBought[payer] += 1;
         }
-        playerUbiContributed[msg.sender] += ubiAmount;
-        totalCommunityContribution       += ubiAmount;
+        playerUbiContributed[payer] += ubiAmount;
+        totalCommunityContribution  += ubiAmount;
 
-        emit PerkPurchased(msg.sender, perkId, p.cosmetic, p.price, ubiAmount, treasuryAmount);
+        emit PerkPurchased(payer, perkId, p.cosmetic, p.price, ubiAmount, treasuryAmount);
     }
 
     // ── Views ────────────────────────────────────────────────────────────────

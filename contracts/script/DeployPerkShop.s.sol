@@ -15,8 +15,8 @@ import {PerkShop} from "../src/PerkShop.sol";
  *     --private-key $PRIVATE_KEY
  *
  * Constructor recipients (same as HabitatRegistry):
- *   ubiPool  — GoodCollective UBI pool (85% of every perk sale)
- *   treasury — GameArena treasury      (15%)
+ *   ubiPool  — GoodCollective UBI pool (20% of every perk sale)
+ *   treasury — GameArena treasury      (80%)
  */
 contract DeployPerkShop is Script {
     // GoodDollar G$ on Celo Mainnet
@@ -38,8 +38,8 @@ contract DeployPerkShop is Script {
 
         console.log("PerkShop deployed at:", address(shop));
         console.log("G$ Token:            ", G_TOKEN);
-        console.log("UBI Pool (85%):      ", ubiPool);
-        console.log("Treasury (15%):      ", treasury);
+        console.log("UBI Pool (20%):      ", ubiPool);
+        console.log("Treasury (80%):      ", treasury);
         console.log("");
         console.log("Default perks:");
         console.log("  1 Rhythm Rush  Save          30 G$  (consumable)");

@@ -598,7 +598,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>The arena is live.</strong> Challenge MARKOV free in instant best-of-5 RPS · it learns your patterns, matches are provably fair, wins climb the weekly ladder. G$ powers refills and perks; the pool pays climbers. Free G$ claims every 24h from GoodDollar.
           </Bullet>
           <Bullet accent="#f472b6">
-            <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 90% G$ to the GoodCollective UBI pool, 10% to platform sustainability. G$ activity recycles into the economy that gates entry.
+            <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 20% G$ to the GoodCollective UBI pool, 80% to platform sustainability. G$ activity recycles into the economy that gates entry.
           </Bullet>
         </BulletList>
       </SlideFrame>

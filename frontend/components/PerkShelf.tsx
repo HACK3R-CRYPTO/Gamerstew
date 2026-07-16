@@ -8,7 +8,7 @@ import { type Perk } from "@/lib/perks";
 // The shop-side surface for the M1 "G$ Perk Economy". Each perk is a shop card
 // with its own generated art (public/perks/<id>.jpg), grouped into three sets:
 // Save your run · Keep playing · Collectibles. Every purchase pays in G$;
-// 85% streams to the GoodCollective UBI pool. Casual mode only.
+// 20% streams to the GoodCollective UBI pool. Casual mode only.
 
 const T = {
   ink: "#ffffff",

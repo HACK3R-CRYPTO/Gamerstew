@@ -4,7 +4,7 @@
 // the contract holds the canonical on-chain price in 18-decimal G$.
 //
 // Every perk is CASUAL-MODE ONLY. Ranked play stays pure skill and never
-// touches this shop. 85% of every purchase streams to the GoodCollective
+// touches this shop. 20% of every purchase streams to the GoodCollective
 // UBI pool; the split is enforced on-chain.
 
 import { parseEther } from "viem";
@@ -47,7 +47,7 @@ export const PERKS: Perk[] = [
   },
   {
     id: 6, game: "challenge-ai", gameLabel: "Challenge AI",
-    name: "Rematch", blurb: "Lost to MARKOV? Line up an instant rematch.",
+    name: "Rematch", blurb: "Out of matches? Buy a fresh ticket and run it back vs MARKOV.",
     priceG$: parseEther("15"), priceLabel: "15 G$", kind: "retry", emoji: "🤖",
   },
   {

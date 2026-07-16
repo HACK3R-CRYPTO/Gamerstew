@@ -1,6 +1,6 @@
 // Minimal ABI for PerkShop — only the entries the frontend calls.
 // PerkShop is the M1 "G$ Perk Economy" contract: casual-mode saves, retries
-// and cosmetics paid in G$, with 85% of every sale routed to the GoodCollective
+// and cosmetics paid in G$, with 20% of every sale routed to the GoodCollective
 // UBI pool (visible on Celoscan). Ranked play never touches this shop.
 // Deployed on Celo mainnet: 0x0fc6C5593B205b1c617CF33A236362B2c5c67650
 
