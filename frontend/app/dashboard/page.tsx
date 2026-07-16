@@ -995,26 +995,26 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
             const pct = m.target > 0 ? Math.min(100, Math.round((m.progress / m.target) * 100)) : 0;
             const ready = m.completed && !m.claimed;
             const done = m.claimed;
-            const barColor = done ? "#22c55e" : ready ? "#fbbf24" : T.accent;
+            const barColor = done ? "#22c55e" : ready ? "#c4b5fd" : T.accent;
             const tileBg = done
               ? "linear-gradient(180deg, rgba(34,197,94,0.08) 0%, rgba(0,0,0,0.18) 100%)"
               : ready
-                ? "linear-gradient(180deg, rgba(251,191,36,0.16) 0%, rgba(0,0,0,0.18) 100%)"
+                ? "linear-gradient(180deg, rgba(167,139,250,0.16) 0%, rgba(0,0,0,0.18) 100%)"
                 : "rgba(255,255,255,0.03)";
-            const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(251,191,36,0.6)" : T.hairline}`;
+            const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(167,139,250,0.55)" : T.hairline}`;
             return (
               <div key={m.id} style={{
                 borderRadius: 12,
                 background: tileBg,
                 border,
-                boxShadow: ready ? "0 0 14px rgba(251,191,36,0.32)" : "none",
+                boxShadow: ready ? "0 0 14px rgba(167,139,250,0.32)" : "none",
                 padding: "10px 11px",
                 display: "flex", flexDirection: "column", gap: 6,
                 opacity: done ? 0.7 : 1,
               }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3 }}>{m.label}</div>
-                  <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#fde68a", whiteSpace: "nowrap", flexShrink: 0 }}>+{m.rewardXp} XP</div>
+                  <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#c4b5fd", whiteSpace: "nowrap", flexShrink: 0 }}>+{m.rewardXp} XP</div>
                 </div>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
@@ -1025,7 +1025,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                     <div style={{
                       width: `${pct}%`, height: "100%", borderRadius: 999,
                       background: barColor,
-                      boxShadow: ready ? "0 0 6px rgba(251,191,36,0.6)" : "none",
+                      boxShadow: ready ? "0 0 6px rgba(167,139,250,0.6)" : "none",
                       transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
                     }} />
                   </div>
@@ -1040,9 +1040,9 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                       cursor: claimingId === m.id ? "wait" : "pointer",
                       borderRadius: 9,
                       padding: "6px 10px",
-                      background: "linear-gradient(180deg, #fbbf24 0%, #b45309 100%)",
-                      border: "1px solid rgba(255,255,255,0.4)",
-                      boxShadow: "inset 0 2px 4px rgba(255,255,255,0.4), inset 0 -2px 3px rgba(0,0,0,0.3), 0 6px 14px -4px rgba(251,191,36,0.6)",
+                      background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
+                      border: "1px solid rgba(255,255,255,0.35)",
+                      boxShadow: "inset 0 2px 4px rgba(255,255,255,0.35), inset 0 -2px 3px rgba(0,0,0,0.3), 0 6px 14px -4px rgba(167,139,250,0.6)",
                       color: "#fff",
                       fontFamily: T.body, fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
                       textShadow: "0 1px 2px rgba(0,0,0,0.4)",
