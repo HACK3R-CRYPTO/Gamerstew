@@ -2962,6 +2962,15 @@ const ARENA_GD = provider ? new ethers.Contract(ARENA_G_TOKEN, [
   'function transferFrom(address from, address to, uint256 amount) returns (bool)',
 ], arenaRelayer || provider) : null;
 
+// ─── PerkShop gasless rail (M1 G$ Perk Economy) ─────────────────────────────
+// Same relayer, same permit trick as the arena refill: the player signs a
+// permit for the PerkShop contract (spender = PerkShop), the relayer submits
+// buyPerkWithPermit and pays the gas. The 20/80 split runs inside the contract.
+const PERK_SHOP_ADDRESS = (process.env.PERK_SHOP_ADDRESS || '0xbccCa01A253C25dC2cd60ee4640a4Bfea695eddb').toLowerCase();
+const PERK_SHOP = (provider && arenaRelayer) ? new ethers.Contract(PERK_SHOP_ADDRESS, [
+  'function buyPerkWithPermit(address player, uint16 perkId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)',
+], arenaRelayer) : null;
+
 // Shared grant: record the purchase (replay-proof via tx_hash PK) and bump
 // today's extra allowance. Used by both the direct-transfer and gasless paths.
 async function arenaGrantPurchase(wallet, sku, txHash, amountWei) {
@@ -3168,6 +3177,28 @@ app.post('/api/arena/purchase', requireSecret, gameSubmitLimiter, async (req, re
   const out = await arenaVerifyPurchase(txHash, wallet.toLowerCase(), String(sku));
   if (!out.ok) return res.status(400).json({ error: out.reason });
   return res.json({ ok: true, remaining: out.remaining });
+});
+
+// POST /api/perks/buy-gasless — the player signed an EIP-2612 permit for the
+// PerkShop contract; the relayer submits buyPerkWithPermit and pays gas, so
+// the buy costs the player zero CELO and one signature. The G$ split (20% UBI
+// / 80% treasury) happens inside the contract. Body: { wallet, perkId, deadline, v, r, s }.
+// Replay-safe: the permit nonce is single-use on-chain.
+app.post('/api/perks/buy-gasless', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId, deadline, v, r, s } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!Number.isInteger(pid) || pid < 1 || pid > 65535) return res.status(400).json({ error: 'bad_perk' });
+  if (!PERK_SHOP || !arenaRelayer) return res.status(400).json({ error: 'gasless_unavailable' });
+  try {
+    const tx = await PERK_SHOP.buyPerkWithPermit(wallet, pid, BigInt(deadline), Number(v), r, s);
+    const rc = await tx.wait();
+    if (Number(rc.status) !== 1) return res.status(400).json({ error: 'purchase_reverted' });
+    return res.json({ ok: true, txHash: rc.hash });
+  } catch (e) {
+    console.error('perk gasless failed:', e?.shortMessage || e?.message);
+    return res.status(400).json({ error: 'gasless_failed' });
+  }
 });
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,
