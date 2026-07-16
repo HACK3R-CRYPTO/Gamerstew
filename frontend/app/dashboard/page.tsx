@@ -14,6 +14,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSignMessage } from "wagmi";
 import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
+import EventTeaser from "@/components/EventTeaser";
 import AppBottomNav from "@/components/AppBottomNav";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
@@ -385,6 +386,9 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* Upcoming event teaser — 400,000 G$ pool, details soon */}
+        <EventTeaser isDesktop={isDesktop} />
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
