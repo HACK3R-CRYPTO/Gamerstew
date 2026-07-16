@@ -387,7 +387,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 2 }}>
+      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
 
         {/* Greeting — one quiet line so the hero (and the event) leads. Pills
             share a single muted style: informative, not a rainbow. */}
