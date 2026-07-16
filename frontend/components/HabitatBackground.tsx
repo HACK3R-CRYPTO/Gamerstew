@@ -51,7 +51,10 @@ export function HabitatBackground({
           <>
             <div style={{
               position: "absolute", inset: 0,
-              backgroundImage: `url('${habitat.bgImage}')`,
+              // Gallery thumbnails (animated=false) load a compressed ~760px
+              // "-sm" version; only the large hero/featured/modal (animated=true)
+              // pull full-res. Cuts the shop's habitat payload ~74%.
+              backgroundImage: `url('${animated ? habitat.bgImage : habitat.bgImage.replace(/\.jpg$/, "-sm.jpg")}')`,
               backgroundSize: "cover", backgroundPosition: "center",
             }} />
             {animated && <><Stars count={10} color={bg.accent} /><Motes count={9} color={bg.accent} /></>}
