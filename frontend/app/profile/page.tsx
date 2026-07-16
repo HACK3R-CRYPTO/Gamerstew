@@ -447,14 +447,15 @@ export default function ProfilePage() {
                 positions absolute inset:0 so we don't need a wrapper here. */}
             <HabitatBackground habitat={equippedHabitat} radius={24} glow={true} showLabel={true} />
 
-            {/* Readability veil — gradient from transparent top to dark
-                bottom so the slime stays bright but the text strip below
-                doesn't fight the habitat color. */}
+            {/* Readability veil — ramps dark across the exact zone the text
+                sits in (center→right on desktop, bottom on mobile) so copy
+                stays legible on ANY habitat, bright nest or dark forest,
+                while the slime side stays bright. */}
             <div style={{
               position: "absolute", inset: 0,
               background: isDesktop
-                ? "linear-gradient(90deg, transparent 0%, transparent 40%, rgba(8,2,28,0.78) 100%)"
-                : "linear-gradient(180deg, transparent 0%, transparent 45%, rgba(8,2,28,0.78) 100%)",
+                ? "linear-gradient(90deg, transparent 0%, transparent 24%, rgba(8,2,28,0.58) 52%, rgba(8,2,28,0.88) 100%)"
+                : "linear-gradient(180deg, transparent 0%, transparent 36%, rgba(8,2,28,0.62) 62%, rgba(8,2,28,0.92) 100%)",
               pointerEvents: "none", zIndex: 1,
             }} />
 
@@ -477,19 +478,19 @@ export default function ProfilePage() {
               display: "flex", flexDirection: "column", justifyContent: "center",
               textAlign: isDesktop ? "left" : "center",
             }}>
-              <div style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, lineHeight: 1, letterSpacing: "-0.005em", textShadow: "0 2px 12px rgba(0,0,0,0.55)" }}>{s.petName}</div>
+              <div style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, lineHeight: 1, letterSpacing: "-0.005em", textShadow: "0 2px 14px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.6)" }}>{s.petName}</div>
               <div style={{ display: "flex", gap: 6, justifyContent: isDesktop ? "flex-start" : "center", flexWrap: "wrap", marginTop: 9 }}>
                 <Pill color={stage.tierColor}>{stage.tierLabel}</Pill>
                 <Pill color={T.accent} soft>{stage.label}</Pill>
                 <Pill color={equippedHabitat.bg.accent} soft>{equippedHabitat.name}</Pill>
               </div>
-              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 9 }}>
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 9, textShadow: "0 1px 8px rgba(0,0,0,0.75)" }}>
                 {stage.nextAt < 999
                   ? <>Next evolution at <strong style={{ color: T.accent }}>LV {stage.nextAt}</strong></>
                   : <>Max evolution unlocked 👑</>}
               </div>
               <div style={{ marginTop: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em", textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>
                   <span>LV {s.level} · {s.xp}/{s.xpNext} XP</span>
                   <span>{s.xpPct}%</span>
                 </div>
