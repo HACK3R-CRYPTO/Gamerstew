@@ -2976,6 +2976,9 @@ const PERK_SHOP = (provider && arenaRelayer) ? new ethers.Contract(PERK_SHOP_ADD
 // so ticket spend now routes through the same 20/80 split as every perk.
 const PERK_TICKET_ID = 6;
 const PERK_TICKET_GRANT = 5;
+// Consumable save/retry perks that stock as an inventory (owned - used).
+// Cosmetics (2, 4) are on-chain ownership; the Match Pack (6) grants matches.
+const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5]);
 const PERK_PURCHASED_IFACE = new ethers.Interface([
   'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
 ]);
@@ -3210,11 +3213,13 @@ app.post('/api/perks/buy-gasless', requireSecret, gameSubmitLimiter, async (req,
   }
 });
 
-// POST /api/perks/grant-ticket — verify an on-chain PerkShop purchase of the
-// match-ticket perk (#6) and grant +5 matches. Works for both the gasless and
-// direct buy paths: the frontend just hands us the buy tx hash. Replay-safe —
-// the tx hash is the arena_purchases primary key. Body: { wallet, txHash }.
-app.post('/api/perks/grant-ticket', requireSecret, gameSubmitLimiter, async (req, res) => {
+// POST /api/perks/grant — verify an on-chain PerkShop purchase and grant it.
+// Routes by perk: the Match Pack (#6) grants +5 matches; save/retry perks
+// (1/3/5) stock as inventory (owned - used); cosmetics need no grant (owned
+// on-chain). Works for both gasless and direct buys — the frontend hands us the
+// buy tx hash. Replay-safe: tx hash is the arena_purchases primary key.
+// Body: { wallet, txHash }.
+app.post('/api/perks/grant', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { wallet, txHash } = req.body || {};
   if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
   if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return res.status(400).json({ error: 'txHash required' });
@@ -3225,7 +3230,7 @@ app.post('/api/perks/grant-ticket', requireSecret, gameSubmitLimiter, async (req
     .from('arena_purchases').select('tx_hash').eq('tx_hash', txHash).maybeSingle();
   if (existing) return res.status(400).json({ error: 'tx_already_used' });
 
-  // Wait for the receipt, then confirm it's a PerkShop PerkPurchased(#6) by this wallet.
+  // Wait for the receipt, then confirm it's a PerkShop PerkPurchased by this wallet.
   const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
   let receipt = null;
   while (Date.now() < deadline) {
@@ -3242,28 +3247,72 @@ app.post('/api/perks/grant-ticket', requireSecret, gameSubmitLimiter, async (req
       const parsed = PERK_PURCHASED_IFACE.parseLog({ topics: log.topics, data: log.data });
       if (!parsed || parsed.name !== 'PerkPurchased') continue;
       if (String(parsed.args.player).toLowerCase() !== w) continue;
-      if (Number(parsed.args.perkId) !== PERK_TICKET_ID) continue;
       matched = parsed.args; break;
     } catch {}
   }
   if (!matched) return res.status(400).json({ error: 'perk_purchase_not_found' });
+  const pid = Number(matched.perkId);
 
+  // Record the purchase (idempotency guard).
   const { error: insErr } = await supabase.from('arena_purchases').insert({
-    tx_hash: txHash, wallet: w, sku: 'perk_ticket', amount_wei: String(matched.totalPaid),
+    tx_hash: txHash, wallet: w, sku: 'perk_' + pid, amount_wei: String(matched.totalPaid),
   });
   if (insErr) return res.status(400).json({ error: 'tx_already_used' }); // unique violation = replay race
 
-  const day = arenaDayKey();
+  // Route the grant by perk type.
+  if (pid === PERK_TICKET_ID) {
+    const day = arenaDayKey();
+    const { data: row } = await supabase
+      .from('arena_daily').select('used, extra').eq('wallet', w).eq('day', day).maybeSingle();
+    await supabase.from('arena_daily').upsert({
+      wallet: w, day, used: row?.used ?? 0,
+      extra: (row?.extra ?? 0) + PERK_TICKET_GRANT, updated_at: new Date().toISOString(),
+    });
+    const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
+    return res.json({ ok: true, kind: 'matches', remaining });
+  }
+  if (CONSUMABLE_STOCK_PERKS.has(pid)) {
+    const { data: row } = await supabase
+      .from('perk_inventory').select('balance').eq('wallet', w).eq('perk_id', pid).maybeSingle();
+    const balance = (row?.balance ?? 0) + 1;
+    await supabase.from('perk_inventory').upsert({
+      wallet: w, perk_id: pid, balance, updated_at: new Date().toISOString(),
+    });
+    return res.json({ ok: true, kind: 'stock', perkId: pid, balance });
+  }
+  return res.json({ ok: true, kind: 'cosmetic' }); // ownership is on-chain, nothing to grant
+});
+
+// POST /api/perks/use — spend one save/retry from a player's stock. Called by
+// the game when a player uses a save they bought ahead. Body: { wallet, perkId }.
+app.post('/api/perks/use', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!CONSUMABLE_STOCK_PERKS.has(pid)) return res.status(400).json({ error: 'not_a_stock_perk' });
+  const w = wallet.toLowerCase();
   const { data: row } = await supabase
-    .from('arena_daily').select('used, extra').eq('wallet', w).eq('day', day).maybeSingle();
-  await supabase.from('arena_daily').upsert({
-    wallet: w, day,
-    used: row?.used ?? 0,
-    extra: (row?.extra ?? 0) + PERK_TICKET_GRANT,
-    updated_at: new Date().toISOString(),
+    .from('perk_inventory').select('balance').eq('wallet', w).eq('perk_id', pid).maybeSingle();
+  const bal = row?.balance ?? 0;
+  if (bal <= 0) return res.json({ ok: false, balance: 0 });
+  await supabase.from('perk_inventory').upsert({
+    wallet: w, perk_id: pid, balance: bal - 1, updated_at: new Date().toISOString(),
   });
-  const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
-  return res.json({ ok: true, remaining });
+  return res.json({ ok: true, balance: bal - 1 });
+});
+
+// GET /api/perks/inventory?wallet=0x… — a player's save/retry stock counts.
+app.get('/api/perks/inventory', requireSecret, async (req, res) => {
+  const w = (req.query.wallet || '').toString().toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return res.status(400).json({ error: 'wallet required' });
+  try {
+    const { data } = await supabase.from('perk_inventory').select('perk_id, balance').eq('wallet', w);
+    const balances = {};
+    for (const r of data || []) if (r.balance > 0) balances[r.perk_id] = r.balance;
+    return res.json({ balances });
+  } catch {
+    return res.json({ balances: {} });
+  }
 });
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,

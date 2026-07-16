@@ -33,7 +33,7 @@ const GAME_ACCENT: Record<Perk["game"], string> = {
 const fmtG = (v: bigint) => (Number(v) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
-  const { perks, gBalance, ubiContributed, ownsCosmetic, buyPerk } = usePerks();
+  const { perks, gBalance, ubiContributed, ownsCosmetic, stock, buyAndStock } = usePerks();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [errId, setErrId] = useState<number | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
     setErrId(null);
     setErrMsg(null);
     try {
-      await buyPerk(perk);
+      await buyAndStock(perk);
       setJustBought(perk.id);
       setTimeout(() => setJustBought(cur => (cur === perk.id ? null : cur)), 2400);
     } catch (e) {
@@ -95,6 +95,11 @@ export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
           {perk.kind === "cosmetic" && (
             <div style={{ position: "absolute", top: 7, right: 7 }}>
               <span style={{ fontFamily: T.body, fontSize: 7.5, fontWeight: 900, letterSpacing: "0.1em", color: T.gold, padding: "2px 6px", borderRadius: 999, background: "rgba(251,191,36,0.16)", backdropFilter: "blur(4px)" }}>FOREVER</span>
+            </div>
+          )}
+          {(stock[perk.id] ?? 0) > 0 && (
+            <div style={{ position: "absolute", top: 7, right: 7 }}>
+              <span style={{ fontFamily: T.display, fontSize: 11, color: "#03130b", padding: "2px 8px", borderRadius: 999, background: T.good, boxShadow: "0 2px 8px -2px rgba(52,211,153,0.7)" }}>×{stock[perk.id]} in stock</span>
             </div>
           )}
         </div>

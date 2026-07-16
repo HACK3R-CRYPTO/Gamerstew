@@ -33,7 +33,7 @@ import {
   playCalledIt, playSuddenDeath, playWhooshIn,
 } from "@/hooks/useAppAudio";
 import { startArenaMatch, throwArenaMove, getArenaLadder, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
-import { grantPerkTicket } from "@/app/actions/perks";
+import { grantPerk } from "@/app/actions/perks";
 import { usePerks } from "@/hooks/usePerks";
 import { getPerk } from "@/lib/perks";
 
@@ -188,7 +188,7 @@ export default function ChallengeAiPage() {
       // CELO), MiniPay pays gas in stablecoin. 20% routes to UBI, 80% treasury.
       const txHash = await buyPerk(ticket);
       // Verify the purchase on-chain and grant +5 matches.
-      const granted = await grantPerkTicket(address, txHash);
+      const granted = await grantPerk(address, txHash);
       if (granted.ok) {
         setRefillOffer(null);
         setRemaining(granted.remaining ?? null);

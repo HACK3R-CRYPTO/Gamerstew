@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseSignature } from "viem";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useSignTypedData, useWriteContract } from "wagmi";
@@ -9,7 +9,7 @@ import { perkShopAbi } from "@/lib/abis/perkShop";
 import { erc20Abi } from "@/lib/abis/habitatRegistry";
 import { PERKS, COSMETIC_PERK_IDS, type Perk } from "@/lib/perks";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { buyPerkGasless } from "@/app/actions/perks";
+import { buyPerkGasless, grantPerk, getPerkInventory, consumePerkStock } from "@/app/actions/perks";
 
 // Minimal G$ permit ABI — just the nonce read for EIP-2612 signing.
 const permitNonceAbi = [
@@ -200,6 +200,37 @@ export function usePerks() {
     return await buyPerkDirect(perk);
   }, [address, publicClient, gBalance, isMiniPay, ownsCosmetic, buyPerkViaPermit, buyPerkDirect]);
 
+  // ── Buy-ahead stock (save/retry inventory) ──────────────────────────────────
+  // Backend-held: buying a save/retry stocks it; the game spends from stock.
+  const [stock, setStock] = useState<Record<number, number>>({});
+
+  const refetchStock = useCallback(async () => {
+    if (!address) { setStock({}); return; }
+    const { balances } = await getPerkInventory(address);
+    setStock(balances || {});
+  }, [address]);
+
+  useEffect(() => { refetchStock(); }, [refetchStock]);
+
+  // Shop purchase: buy on-chain, then grant so it stocks up (or credits matches
+  // for the Match Pack). Cosmetics grant nothing — ownership is on-chain.
+  const buyAndStock = useCallback(async (perk: Perk): Promise<`0x${string}`> => {
+    const txHash = await buyPerk(perk);
+    if (address) {
+      await grantPerk(address, txHash);
+      await refetchStock();
+    }
+    return txHash;
+  }, [buyPerk, address, refetchStock]);
+
+  // Spend one save/retry from stock. Returns true if a unit was consumed.
+  const spendStock = useCallback(async (perkId: number): Promise<boolean> => {
+    if (!address) return false;
+    const res = await consumePerkStock(address, perkId);
+    if (res.ok) { setStock(s => ({ ...s, [perkId]: res.balance ?? 0 })); return true; }
+    return false;
+  }, [address]);
+
   return {
     perks: PERKS,
     gBalance,
@@ -208,7 +239,11 @@ export function usePerks() {
     totalCommunity,
     ownedCosmeticIds,
     ownsCosmetic,
+    stock,
     buyPerk,
-    refetch: () => Promise.all([refetchBalance(), refetchAllowance(), refetchUbi(), refetchTotal(), refetchCosmetics()]),
+    buyAndStock,
+    spendStock,
+    refetchStock,
+    refetch: () => Promise.all([refetchBalance(), refetchAllowance(), refetchUbi(), refetchTotal(), refetchCosmetics(), refetchStock()]),
   };
 }

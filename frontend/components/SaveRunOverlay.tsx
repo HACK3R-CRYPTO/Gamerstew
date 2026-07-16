@@ -55,7 +55,8 @@ export default function SaveRunOverlay({
   titleOverride, ctaOverride,
 }: Props) {
   const perk = perkOverride ?? savePerkFor(game);
-  const { gBalance, buyPerk } = usePerks();
+  const { gBalance, buyPerk, stock, spendStock } = usePerks();
+  const inStock = perk ? (stock[perk.id] ?? 0) : 0;
 
   const [progress, setProgress] = useState(1);       // 1 → 0 over decideMs
   const [status, setStatus] = useState<"idle" | "buying" | "error">("idle");
@@ -115,6 +116,25 @@ export default function SaveRunOverlay({
     }
   }, [perk, status, buyPerk, onSaved, pauseCountdown]);
 
+  // Spend one from stock (free, instant). Falls back to buying if the stock
+  // turns out empty (stale count).
+  const handleUse = useCallback(async () => {
+    if (!perk || status === "buying") return;
+    pauseCountdown();
+    setStatus("buying");
+    setErrMsg(null);
+    try {
+      const ok = await spendStock(perk.id);
+      if (ok) { onSaved(); return; }
+      // Stock empty — buy one instead.
+      await buyPerk(perk);
+      onSaved();
+    } catch {
+      setErrMsg("Couldn't use your save. Try again.");
+      setStatus("error");
+    }
+  }, [perk, status, spendStock, buyPerk, onSaved, pauseCountdown]);
+
   const handleDecline = useCallback(() => {
     if (declinedRef.current) return;
     declinedRef.current = true;
@@ -171,20 +191,40 @@ export default function SaveRunOverlay({
           width: 140, height: 140, borderRadius: 26, overflow: "hidden",
           border: `1px solid ${ringColor}66`, boxShadow: `0 0 30px -6px ${ringColor}aa`,
           backgroundImage: `url('/perks/${perk.id}.jpg')`, backgroundSize: "cover", backgroundPosition: "center",
-          animation: canAfford && !busy ? "savePulse 1.6s ease-in-out infinite" : "none",
+          animation: (canAfford || inStock > 0) && !busy ? "savePulse 1.6s ease-in-out infinite" : "none",
         }} />
-        {/* Price pill on the art */}
-        <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", display: "inline-flex", alignItems: "baseline", gap: 3, padding: "3px 11px", borderRadius: 999, background: "rgba(6,2,22,0.82)", border: `1px solid ${T.gold}55` }}>
-          <span style={{ fontFamily: T.display, fontSize: 15, color: T.gold, lineHeight: 1 }}>{(Number(perk.priceG$) / 1e18).toLocaleString()}</span>
-          <span style={{ fontFamily: T.body, fontSize: 9, color: T.gold, fontWeight: 900, letterSpacing: "0.08em" }}>G$</span>
-        </div>
+        {/* Pill on the art — stock count if you have any, else the G$ price */}
+        {inStock > 0 ? (
+          <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", padding: "3px 12px", borderRadius: 999, background: T.good }}>
+            <span style={{ fontFamily: T.display, fontSize: 14, color: "#03130b", lineHeight: 1 }}>×{inStock} in stock</span>
+          </div>
+        ) : (
+          <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", display: "inline-flex", alignItems: "baseline", gap: 3, padding: "3px 11px", borderRadius: 999, background: "rgba(6,2,22,0.82)", border: `1px solid ${T.gold}55` }}>
+            <span style={{ fontFamily: T.display, fontSize: 15, color: T.gold, lineHeight: 1 }}>{(Number(perk.priceG$) / 1e18).toLocaleString()}</span>
+            <span style={{ fontFamily: T.body, fontSize: 9, color: T.gold, fontWeight: 900, letterSpacing: "0.08em" }}>G$</span>
+          </div>
+        )}
       </div>
 
       {/* Title */}
       <div style={{ fontFamily: T.display, fontSize: 19, color: T.ink, lineHeight: 1 }}>{verb.title}</div>
 
-      {/* CTA — the single accent */}
-      {canAfford ? (
+      {/* CTA — spend from stock (free) if you have it, else buy, else shop */}
+      {inStock > 0 ? (
+        <button
+          onClick={handleUse}
+          disabled={busy}
+          style={{
+            cursor: busy ? "default" : "pointer",
+            padding: "13px 30px", borderRadius: 14, minWidth: 200,
+            fontFamily: T.display, fontSize: 16, letterSpacing: "0.01em", color: "#03130b",
+            background: "linear-gradient(180deg, #6ee7b7 0%, #34d399 55%, #059669 100%)",
+            border: "1px solid rgba(255,255,255,0.4)", boxShadow: "0 10px 26px -8px rgba(52,211,153,0.6)",
+          }}
+        >
+          {busy ? "Saving…" : `${verb.cta} · ${inStock} left`}
+        </button>
+      ) : canAfford ? (
         <button
           onClick={handleBuy}
           disabled={busy}
@@ -212,7 +252,7 @@ export default function SaveRunOverlay({
 
       {/* Trust line */}
       <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
-        20% to the community UBI pool · casual mode only
+        {inStock > 0 ? "casual mode only · your run stays off the ranked ladder" : "20% to the community UBI pool · casual mode only"}
       </div>
 
       {errMsg && <div style={{ fontFamily: T.body, fontSize: 12, color: T.danger, textAlign: "center" }}>{errMsg}</div>}

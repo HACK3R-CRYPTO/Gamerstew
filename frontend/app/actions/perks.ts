@@ -26,14 +26,15 @@ export async function buyPerkGasless(
   }
 }
 
-// Verify a PerkShop match-ticket purchase (perk #6) and grant +5 matches.
-// Works for both buy paths — the frontend just passes the buy tx hash.
-export async function grantPerkTicket(
+// Verify a PerkShop purchase and grant it: Match Pack (#6) → +5 matches,
+// save/retry (1/3/5) → +1 stock, cosmetics → nothing (owned on-chain). The
+// frontend just passes the buy tx hash.
+export async function grantPerk(
   wallet: string,
   txHash: string,
-): Promise<{ ok?: boolean; remaining?: number; error?: string }> {
+): Promise<{ ok?: boolean; kind?: string; remaining?: number; perkId?: number; balance?: number; error?: string }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/perks/grant-ticket`, {
+    const res = await fetch(`${BACKEND_URL}/api/perks/grant`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
       body: JSON.stringify({ wallet, txHash }),
@@ -42,5 +43,41 @@ export async function grantPerkTicket(
     return await res.json();
   } catch {
     return { error: 'backend_unreachable' };
+  }
+}
+
+// Spend one save/retry from a player's stock. Returns the new balance, or
+// ok:false when the stock is empty.
+export async function consumePerkStock(
+  wallet: string,
+  perkId: number,
+): Promise<{ ok?: boolean; balance?: number; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/perks/use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ wallet, perkId }),
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { error: 'backend_unreachable' };
+  }
+}
+
+// Read a player's save/retry stock counts, keyed by perk id.
+export async function getPerkInventory(
+  wallet: string,
+): Promise<{ balances: Record<number, number>; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/perks/inventory?wallet=${wallet}`, {
+      method: 'GET',
+      headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      cache: 'no-store',
+    });
+    const j = await res.json();
+    return { balances: j.balances ?? {} };
+  } catch {
+    return { balances: {} };
   }
 }
