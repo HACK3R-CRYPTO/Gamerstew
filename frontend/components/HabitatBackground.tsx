@@ -47,7 +47,8 @@ export function HabitatBackground({
               backgroundImage: `url('${habitat.bgImage}')`,
               backgroundSize: "cover", backgroundPosition: "center",
             }} />
-            <Stars count={14} color={bg.accent} />
+            <Stars count={10} color={bg.accent} />
+            <Motes count={9} color={bg.accent} />
           </>
         ) : (
           <div style={{
@@ -142,6 +143,7 @@ const ANIMS = `
 @keyframes hb-glitchH  { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
 @keyframes hb-shoot    { 0% { transform: translate(-100%, -50%) rotate(-25deg); opacity: 0; } 10%, 90% { opacity: 1; } 100% { transform: translate(100%, 50%) rotate(-25deg); opacity: 0; } }
 @keyframes hb-orbit    { 0% { transform: rotate(0deg) translateX(28px) rotate(0deg); } 100% { transform: rotate(360deg) translateX(28px) rotate(-360deg); } }
+@keyframes hb-rise     { 0% { transform: translate(0, 8px); opacity: 0; } 12% { opacity: 0.95; } 80% { opacity: 0.9; } 100% { transform: translate(6px, -62px); opacity: 0; } }
 `;
 
 function Anims() {
@@ -168,6 +170,35 @@ function Stars({ count, color = "#fff" }: { count: number; color?: string }) {
             background: color,
             boxShadow: `0 0 ${size * 2.5}px ${color}`,
             animation: `hb-twinkle ${dur}s ease-in-out ${delay}s infinite`,
+          }} />
+        );
+      })}
+    </>
+  );
+}
+
+// Drifting motes — glowing fireflies that visibly RISE and fade, so the
+// habitat art breathes instead of sitting still. White core + accent glow so
+// they read on both bright (meadow) and dark (forest) scenes. Deterministic
+// positions to stay SSR-stable.
+function Motes({ count, color }: { count: number; color: string }) {
+  const rng = mulberry(count * 104729 + 31);
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        const left = rng() * 96 + 2;
+        const bottom = rng() * 45;      // start low-to-mid, rise from there
+        const size = rng() * 2.4 + 1.6;
+        const delay = rng() * 7;
+        const dur = 5 + rng() * 5;
+        return (
+          <div key={i} style={{
+            position: "absolute", left: `${left}%`, bottom: `${bottom}%`,
+            width: size, height: size, borderRadius: "50%",
+            background: "rgba(255,255,255,0.92)",
+            boxShadow: `0 0 ${size * 3.5}px ${color}, 0 0 ${size * 1.6}px ${color}`,
+            animation: `hb-rise ${dur}s ease-in ${delay}s infinite`,
+            pointerEvents: "none",
           }} />
         );
       })}
