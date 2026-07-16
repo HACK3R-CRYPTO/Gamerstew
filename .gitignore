@@ -10,3 +10,6 @@ LAUNCH_COMMS.md
 # Local planning + prototypes (keep off GitHub)
 S4_MILESTONE_PLAN.md
 frontend/design-prototype/
+
+# never commit env secrets (any dir)
+**/.env
