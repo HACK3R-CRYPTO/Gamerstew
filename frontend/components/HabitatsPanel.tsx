@@ -114,7 +114,7 @@ export function HabitatsPanel({ playerLevel = 1 }: { playerLevel?: number }) {
               onMouseEnter={handleClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"; } : undefined}
               onMouseLeave={handleClick ? e => { (e.currentTarget as HTMLDivElement).style.transform = ""; } : undefined}
             >
-              <HabitatBackground habitat={tier} radius={14} glow={unlocked} />
+              <HabitatBackground habitat={tier} radius={14} glow={unlocked} animated={false} />
               {/* Tier number badge */}
               <div style={{
                 position: "absolute", top: 6, right: 6,

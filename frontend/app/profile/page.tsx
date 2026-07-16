@@ -658,7 +658,7 @@ export default function ProfilePage() {
                         position: "absolute", inset: 0,
                         filter: unlocked ? "none" : isBuyable ? "saturate(0.85) brightness(0.85)" : "grayscale(0.7) brightness(0.55)",
                       }}>
-                        <HabitatBackground habitat={h} radius={14} glow={unlocked || isBuyable} />
+                        <HabitatBackground habitat={h} radius={14} glow={unlocked || isBuyable} animated={false} />
                       </div>
                       <div style={{
                         position: "relative", zIndex: 2,

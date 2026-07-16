@@ -20,11 +20,18 @@ export function HabitatBackground({
   radius = 16,
   showLabel = false,
   glow = true,
+  animated = true,
 }: {
   habitat: HabitatTier;
   radius?: number;
   showLabel?: boolean;
   glow?: boolean;
+  // Live particle layer (twinkles + drifting fireflies). Costs ~19 animated
+  // DOM nodes per instance, so callers rendering MANY at once (the shop's
+  // 10-card gallery) pass animated={false} — a static frame still looks
+  // premium, and only the big hero/featured/modal surfaces pay for motion.
+  // This is the single biggest low-end-device lever on the shop.
+  animated?: boolean;
 }) {
   const { name, type, bg } = habitat;
 
@@ -47,8 +54,7 @@ export function HabitatBackground({
               backgroundImage: `url('${habitat.bgImage}')`,
               backgroundSize: "cover", backgroundPosition: "center",
             }} />
-            <Stars count={10} color={bg.accent} />
-            <Motes count={9} color={bg.accent} />
+            {animated && <><Stars count={10} color={bg.accent} /><Motes count={9} color={bg.accent} /></>}
           </>
         ) : (
           <div style={{
