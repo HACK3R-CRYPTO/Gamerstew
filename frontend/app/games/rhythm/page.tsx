@@ -9,6 +9,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import {
@@ -286,7 +287,7 @@ function gradeFor(accuracy: number) {
 type Burst = { id: number; x: number; y: number; color: string; born: number };
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
-type Phase = "idle" | "countdown" | "playing" | "encore" | "finished";
+type Phase = "idle" | "countdown" | "playing" | "encore" | "saving" | "finished";
 
 // Encore pool — one full cycle of the Turkish March theme: turn, echo,
 // cascade, landing. 21 notes per loop, taps only (no holds — the
@@ -738,6 +739,9 @@ export default function RhythmGamePage() {
   // player (Privy JWT or MiniPay wallet signature) happens server-side.
   const gameStartMsRef = useRef<number>(0);
   const submittedRef = useRef<boolean>(false);  // one-shot guard so we never double-submit
+  // Save perk (M1): running out of lives in the encore opens the save prompt
+  // (casual mode only). Buying restores lives; the run then stays off ranked.
+  const usedPerkRef = useRef(false);
   type SubmitResult = {
     rank?: number;
     xpEarned?: number;
@@ -857,6 +861,7 @@ export default function RhythmGamePage() {
     reset();
     // Reset submission bookkeeping — a fresh run is a fresh submit
     submittedRef.current = false;
+    usedPerkRef.current = false;
     setSubmitResult(null);
     setSubmitError(null);
 
@@ -945,6 +950,13 @@ export default function RhythmGamePage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
+    // Casual run (a save was bought) — ranked stays pure skill, so this run
+    // never touches the on-chain ladder. The finish screen shows this message.
+    if (usedPerkRef.current) {
+      submittedRef.current = true;
+      setSubmitError("Casual run · you saved it with G$, so it stays off the ranked ladder.");
+      return;
+    }
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -1651,12 +1663,13 @@ export default function RhythmGamePage() {
           // the absence of a note they should have played. Visual cues (MISS
           // text + combo break + red lives in encore) carry the signal instead.
 
-          // Encore: track lives, end on 3 misses
+          // Encore: track lives, end on 3 misses. Offer a save (casual) to
+          // signed-in, minted players before the run ends.
           if (phase === "encore") {
             encoreMissesRef.current++;
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
-              setPhase("finished");
+              setPhase(address && !needsMint ? "saving" : "finished");
               return;
             }
           }
@@ -1709,6 +1722,24 @@ export default function RhythmGamePage() {
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, combo, getAudioCtx, scheduleBass, scheduleHihat, scheduleLead, playTone, resolveHold]);
+
+  // ─── Save perk: restore encore lives (casual) or end the run ────────────────
+  const resumeAfterSave = useCallback(() => {
+    usedPerkRef.current = true;
+    encoreMissesRef.current = 0;
+    setEncoreLives(3);
+    // Re-anchor encore spawn timing to the current audio clock so notes
+    // resume cleanly after the pause (same shape as entering the encore).
+    const ctx = getAudioCtx();
+    const now = ctx ? ctx.currentTime : 0;
+    encoreNextSpawnRef.current = now + 0.8;
+    encoreLoopAtRef.current = 0;
+    setPhase("encore");
+  }, [getAudioCtx]);
+
+  const declineSave = useCallback(() => {
+    setPhase("finished");
+  }, []);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
@@ -1780,6 +1811,18 @@ export default function RhythmGamePage() {
               />
             )
           }
+        />
+      )}
+
+      {/* SAVE PERK · the M1 in-game prompt (encore, casual mode only) */}
+      {phase === "saving" && (
+        <SaveRunOverlay
+          open
+          score={score}
+          game="rhythm"
+          headline="OUT OF LIVES"
+          onSaved={resumeAfterSave}
+          onDecline={declineSave}
         />
       )}
 

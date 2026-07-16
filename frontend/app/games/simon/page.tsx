@@ -9,6 +9,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
+import { getPerk } from "@/lib/perks";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
@@ -158,7 +160,7 @@ function gradeFor(rounds: number) {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
-type Phase = "idle" | "countdown" | "showing" | "playing" | "finished";
+type Phase = "idle" | "countdown" | "showing" | "playing" | "saving" | "finished";
 
 // ─── Pet reaction event — shared by the page state + PetCompanion ─────────
 // Correct = green bounce, Wrong = red wilt, Clear = gold sparkle, Bonus =
@@ -343,6 +345,10 @@ export default function SimonGamePage() {
 
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
+  // Retry perk (M1): a wrong tap opens the retry prompt (casual mode only).
+  // Buying replays the round; the run then stays off the ranked ladder.
+  const usedPerkRef = useRef(false);
+  const pendingEndRef = useRef<{ score: number; time: number } | null>(null);
   // Anti-cheat: server-issued session ticket. Required by /api/sign-score.
   // Lives in a ref (not localStorage) so it dies with the component.
   const sessionTokenRef = useRef<string | null>(null);
@@ -427,6 +433,14 @@ export default function SimonGamePage() {
     setActiveBtn(null);
     setGameTimeMs(gameTime);
     clearTimeouts();
+
+    // Casual run (a retry was bought) — ranked stays pure skill, so this run
+    // never touches the on-chain ladder. RewardPanel shows this message.
+    if (usedPerkRef.current) {
+      submittedRef.current = true;
+      setSubmitError("Casual run · you used a retry, so it stays off the ranked ladder.");
+      return;
+    }
 
     if (submittedRef.current) return;
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -624,7 +638,16 @@ export default function SimonGamePage() {
     if (patternRef.current[idx] !== colorId) {
       juice.bump(22);
       juice.lossPopup(50, 60, "WRONG");
-      handleGameOver(scoreRef.current, Date.now() - startTimeRef.current);
+      // Offer a retry (casual) before ending — signed-in, minted players only.
+      if (address && !needsMint) {
+        pendingEndRef.current = { score: scoreRef.current, time: Date.now() - startTimeRef.current };
+        setActiveBtn(null);
+        setIsShowingSequence(false);
+        clearTimeouts();
+        setPhase("saving");
+      } else {
+        handleGameOver(scoreRef.current, Date.now() - startTimeRef.current);
+      }
       return;
     }
 
@@ -677,7 +700,24 @@ export default function SimonGamePage() {
       const t = setTimeout(() => addNext(patternRef.current), 700);
       timeoutsRef.current.push(t);
     }
-  }, [phase, isShowingSequence, playBell, haptic, handleGameOver, addNext, bonusUnlocked, firePetEvent, juice]);
+  }, [phase, isShowingSequence, playBell, haptic, handleGameOver, addNext, bonusUnlocked, firePetEvent, juice, address, needsMint, clearTimeouts]);
+
+  // ─── Retry perk: replay the current round (casual) or end the run ───────────
+  const resumeAfterRetry = useCallback(() => {
+    usedPerkRef.current = true;
+    pendingEndRef.current = null;
+    userPatternRef.current = [];
+    setTappedCount(0);
+    setPhase("playing");
+    // Re-show the same sequence so the player can attempt this round again.
+    showSequence(patternRef.current, patternRef.current.length);
+  }, [showSequence]);
+
+  const declineRetry = useCallback(() => {
+    const end = pendingEndRef.current ?? { score: scoreRef.current, time: Date.now() - startTimeRef.current };
+    pendingEndRef.current = null;
+    handleGameOver(end.score, end.time);
+  }, [handleGameOver]);
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
   const startGame = useCallback(async () => {
@@ -710,6 +750,8 @@ export default function SimonGamePage() {
     sequencesRef.current = 0;
     colorsRef.current = BASE_COLORS;
     submittedRef.current = false;
+    usedPerkRef.current = false;
+    pendingEndRef.current = null;
     sessionTokenRef.current = null;
     juice.reset();
     setScore(0);
@@ -856,6 +898,19 @@ export default function SimonGamePage() {
               />
             )
           }
+        />
+      )}
+
+      {/* RETRY PERK · the M1 in-game prompt (casual mode only) */}
+      {phase === "saving" && (
+        <SaveRunOverlay
+          open
+          score={score}
+          game="simon"
+          perk={getPerk(5)}
+          headline="WRONG!"
+          onSaved={resumeAfterRetry}
+          onDecline={declineRetry}
         />
       )}
 

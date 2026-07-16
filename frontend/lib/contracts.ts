@@ -8,6 +8,9 @@ export const CONTRACT_ADDRESSES = {
   G_TOKEN: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A',
   GAME_PASS: '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE',
   HABITAT_REGISTRY: process.env.NEXT_PUBLIC_HABITAT_REGISTRY || '0x8888FEb43ac1833c683D0474204aa55A55BD010F',
+  // PerkShop — M1 "G$ Perk Economy". Casual-mode saves/retries/cosmetics in G$,
+  // 85% of every sale to the GoodCollective UBI pool.
+  PERK_SHOP: process.env.NEXT_PUBLIC_PERK_SHOP || '0x0fc6C5593B205b1c617CF33A236362B2c5c67650',
 };
 
 // MiniPay deeplink targets (celopedia minipay-requirements §"Deeplinks"

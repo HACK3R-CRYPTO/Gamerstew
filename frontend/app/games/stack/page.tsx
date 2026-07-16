@@ -44,6 +44,7 @@ import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -65,7 +66,7 @@ const CAM_FOLLOW = 0.08;            // 0..1 — camera ease toward target
 const SHARD_GRAVITY = 0.45;
 const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
 
-type Phase = "idle" | "countdown" | "playing" | "finished";
+type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
 type Block = { x: number; w: number; hue: number };
 type Moving = { x: number; w: number; dir: 1 | -1; speed: number; hue: number };
 type Shard = { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; hue: number };
@@ -122,6 +123,15 @@ export default function StackTowerPage() {
   const startingRef = useRef(false);
   const submittedRef = useRef(false);
   const gameStartMsRef = useRef(0);
+
+  // ═══ Save-your-run (M1 perk) ═════════════════════════════════════════════
+  // A miss opens the SaveRunOverlay (casual mode only). Buying a save keeps
+  // the tower and resumes play — but the run becomes CASUAL and never submits
+  // to the ranked ladder, so ranked stays pure skill. savePausedAtRef marks
+  // when the clock froze so we can hand the paused seconds back on resume.
+  const usedSaveRef = useRef(false);
+  const savePausedAtRef = useRef(0);
+  const [casualRun, setCasualRun] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [signingOnChain, setSigningOnChain] = useState(false);
@@ -225,6 +235,20 @@ export default function StackTowerPage() {
     return h - 90 - level * BLOCK_H;
   };
 
+  // ─── Finish ───────────────────────────────────────────────────────────────
+  // Declared before drop() so drop can list it as a dependency without a TDZ.
+  const finish = useCallback(() => {
+    blip(140, 0.4, 0.22, "sawtooth");
+    haptic([30, 40, 60]);
+    juice.bump(22);
+    setLocalBest(prev => {
+      const best = Math.max(prev, scoreRef.current);
+      localStorage.setItem("stack_best", String(best));
+      return best;
+    });
+    setPhase("finished");
+  }, [blip, haptic, juice]);
+
   // ─── Drop (the whole game in one function) ───────────────────────────────
   const drop = useCallback(() => {
     if (phase !== "playing" || !movingRef.current) return;
@@ -237,13 +261,21 @@ export default function StackTowerPage() {
     const overlap = overlapR - overlapL;
     const yCenter = blockCenterY(levelRef.current);
 
-    // Complete miss — block falls, run ends.
+    // Complete miss — block falls. Offer a save (casual mode) before ending.
     if (overlap <= 0) {
       shardsRef.current.push({
         x: m.x + m.w / 2, y: yCenter,
         w: m.w, vx: m.dir * 1.5, vy: 0, rot: 0, vr: m.dir * 0.04, hue: m.hue,
       });
-      finish();
+      movingRef.current = null;
+      // Only signed-in, minted players can buy a save on-chain. Guests and
+      // not-yet-minted players fall straight through to the finish screen.
+      if (address && !needsMint) {
+        savePausedAtRef.current = Date.now();
+        setPhase("saving");
+      } else {
+        finish();
+      }
       return;
     }
 
@@ -310,20 +342,41 @@ export default function StackTowerPage() {
     };
     // Camera follows the tower up
     camTargetRef.current = Math.max(0, newLevel * BLOCK_H - sizeRef.current.h * 0.45);
-  }, [phase, blip, haptic, juice]);
+  }, [phase, blip, haptic, juice, address, needsMint, finish]);
 
-  // ─── Finish ───────────────────────────────────────────────────────────────
-  const finish = useCallback(() => {
-    blip(140, 0.4, 0.22, "sawtooth");
-    haptic([30, 40, 60]);
-    juice.bump(22);
-    setLocalBest(prev => {
-      const best = Math.max(prev, scoreRef.current);
-      localStorage.setItem("stack_best", String(best));
-      return best;
-    });
-    setPhase("finished");
-  }, [blip, haptic, juice]);
+  // ─── Resume after a bought save ────────────────────────────────────────────
+  // Re-arm a moving block from the current top of the tower and hand back the
+  // seconds the save decision cost. The run is now casual: it won't submit.
+  const resumeAfterSave = useCallback(() => {
+    usedSaveRef.current = true;
+    setCasualRun(true);
+    const stack = stackRef.current;
+    const top = stack[stack.length - 1];
+    const level = levelRef.current;
+    const fromLeft = level % 2 === 0;
+    const speed = BASE_SPEED + level * SPEED_RAMP
+      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const { w: cw } = sizeRef.current;
+    movingRef.current = {
+      x: fromLeft ? -top.w : cw,
+      w: top.w,
+      dir: fromLeft ? 1 : -1,
+      speed,
+      hue: HUES[level % HUES.length],
+    };
+    // Give back the paused decision time so the clock stays fair.
+    if (savePausedAtRef.current) {
+      gameStartMsRef.current += Date.now() - savePausedAtRef.current;
+      savePausedAtRef.current = 0;
+    }
+    setPhase("playing");
+  }, []);
+
+  // Declined / timed out on the save → end the run through the normal path.
+  const declineSave = useCallback(() => {
+    savePausedAtRef.current = 0;
+    finish();
+  }, [finish]);
 
   // ─── Start a fresh run ────────────────────────────────────────────────────
   const startGame = useCallback(async () => {
@@ -368,6 +421,9 @@ export default function StackTowerPage() {
     setScore(0); setCombo(0);
     juice.reset();
     submittedRef.current = false;
+    usedSaveRef.current = false;
+    savePausedAtRef.current = 0;
+    setCasualRun(false);
     sessionTokenRef.current = null;
     setSubmitResult(null);
     setSubmitError(null);
@@ -454,6 +510,9 @@ export default function StackTowerPage() {
   useEffect(() => {
     if (phase !== "finished") return;
     if (submittedRef.current) return;
+    // Casual run (a save was bought) — ranked stays pure skill, so this run
+    // never touches the on-chain ladder. Show the casual finish state instead.
+    if (usedSaveRef.current) { submittedRef.current = true; setSubmitting(false); return; }
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -925,6 +984,19 @@ export default function StackTowerPage() {
       )}
 
       {/* FINISHED */}
+      {/* SAVE YOUR RUN · the M1 hero moment (casual mode only). Mounted only
+          while saving so each open is a fresh, clean countdown. */}
+      {phase === "saving" && (
+        <SaveRunOverlay
+          open
+          score={score}
+          game="stack"
+          headline="TOWER TOPPLED"
+          onSaved={resumeAfterSave}
+          onDecline={declineSave}
+        />
+      )}
+
       {phase === "finished" && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 10,
@@ -975,8 +1047,20 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
-              {/* Submit status · guest CTA · or reward panel for signed-in runs */}
-              {!authed ? (
+              {/* Submit status · guest CTA · or reward panel for signed-in runs.
+                  Casual runs (a save was bought) never rank — say so plainly. */}
+              {casualRun ? (
+                <div style={{
+                  marginTop: 14, padding: "12px 14px", borderRadius: 12,
+                  background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.35)",
+                  color: "#a7f3d0", fontSize: 12.5, fontWeight: 700, lineHeight: 1.5, textAlign: "center",
+                }}>
+                  Casual run · you saved it with G$, so it stays off the ranked ladder.
+                  <div style={{ color: "rgba(167,243,208,0.7)", fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                    Ranked runs are pure skill. Play a clean run to climb the board.
+                  </div>
+                </div>
+              ) : !authed ? (
                 <div style={{ marginTop: 14 }}>
                   <GuestScorePrompt nextPath="/games/stack" />
                 </div>

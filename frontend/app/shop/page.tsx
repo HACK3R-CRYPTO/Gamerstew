@@ -11,6 +11,8 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { HabitatBackground } from "@/components/HabitatBackground";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
+import PerkShelf from "@/components/PerkShelf";
+import PerkHeroBanner from "@/components/PerkHeroBanner";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -81,6 +83,11 @@ export default function ShopPage() {
       ? playerLevel >= (h.unlockLevel ?? 1)
       : ownedPaidIds.includes(h.id)
   ).length;
+
+  // Shop is two economies under one roof: Perks (the M1 G$ perk economy —
+  // saves/retries/cosmetics that touch gameplay) and Habitats (cosmetic pet
+  // homes). Perks lead because that's what the shop is really about now.
+  const [tab, setTab] = useState<"perks" | "habitats">("perks");
 
   // Unlock modal state machine — mirrors the legacy HabitatsPanel flow.
   const [unlockTarget, setUnlockTarget] = useState<HabitatTier | null>(null);
@@ -157,12 +164,44 @@ export default function ShopPage() {
 
         {/* TITLE */}
         <div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>Shop · Habitats</div>
-          <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, margin: "4px 0 0", lineHeight: 1.1, letterSpacing: "-0.005em" }}>Your pet&apos;s home</h1>
-          <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 480 }}>
-            Free tiers unlock with level. Premium tiers cost G$ — 85% routes to the GoodCollective UBI pool.
-          </p>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>Arena Shop</div>
+          <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, margin: "4px 0 0", lineHeight: 1.1, letterSpacing: "-0.005em" }}>
+            {tab === "perks" ? "Power up your run" : "Your pet's home"}
+          </h1>
+          {tab === "habitats" && (
+            <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 480 }}>
+              Free tiers unlock with level. Premium tiers cost G$ — 85% routes to the GoodCollective UBI pool.
+            </p>
+          )}
         </div>
+
+        {/* SEGMENTED CONTROL · Perks | Habitats */}
+        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, width: "100%", maxWidth: 380 }}>
+          {([["perks", "Perks"], ["habitats", "Habitats"]] as const).map(([key, label]) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                style={{
+                  cursor: "pointer", padding: "10px 8px", borderRadius: 999, border: "none",
+                  fontFamily: T.display, fontSize: 14, letterSpacing: "0.01em",
+                  color: active ? "#12043a" : T.inkDim,
+                  background: active
+                    ? "linear-gradient(180deg, #d6c8ff, #a78bfa)"
+                    : "transparent",
+                  boxShadow: active ? "0 6px 16px -6px rgba(167,139,250,0.7)" : "none",
+                  transition: "color 0.15s",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ══ HABITATS TAB ══ */}
+        {tab === "habitats" && (<>
 
         {/* FEATURED · only when something paid is left to buy */}
         {nextPaid && (
@@ -315,6 +354,18 @@ export default function ShopPage() {
             );
           })}
         </div>
+
+        </>)}
+
+        {/* ══ PERKS TAB · M1 G$ Perk Economy ══
+            Full shell width, same as the Habitats tab. Cards stay moderate by
+            packing 4 across (matching the habitat tile size). */}
+        {tab === "perks" && (
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+            <PerkHeroBanner isDesktop={isDesktop} />
+            <PerkShelf isDesktop={isDesktop} />
+          </div>
+        )}
       </div>
 
       {/* UNLOCK MODAL */}
