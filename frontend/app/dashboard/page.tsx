@@ -406,7 +406,7 @@ export default function DashboardPage() {
 
         {isDesktop ? (
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} onPlayGame={onPlayGame} router={router} />
+            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} onPlayGame={onPlayGame} router={router} dash={dash} me={me} />
             <DashRight walletReady={walletReady} connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
           </div>
         ) : (
@@ -455,26 +455,33 @@ export default function DashboardPage() {
   );
 }
 
-function DashLeft({ connected, onPlayGame, router, heroes, heroActive, onHeroDot }: {
+function DashLeft({ connected, onPlayGame, router, heroes, heroActive, onHeroDot, dash, me }: {
   connected: boolean;
   onPlayGame: (id: string) => void;
   router: ReturnType<typeof useRouter>;
   heroes: (typeof GAMES[number])[];
   heroActive: number;
   onHeroDot: (i: number) => void;
+  dash: DashData | null;
+  me: { rank: number; peak: number } | null;
 }) {
+  const feed = buildFeed(dash, me, connected);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <HeroCarousel heroes={heroes} active={heroActive} onPlayGame={onPlayGame} onDot={onHeroDot} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
       <GamesGrid onPlayGame={onPlayGame} />
-      <SectionLabel>Daily missions</SectionLabel>
-      <MissionCard connected={connected} onConnect={() => router.push("/home")} />
+      <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {feed.length ? feed.slice(0, 5).map((it, i) => <FeedRow key={i} item={it} />) : (
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "6px 4px" }}>Nothing happening yet — play a game to be first.</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function DashRight({ connected, walletReady, dash, me, address, onConnect, router }: {
+function DashRight({ connected, walletReady, dash, address, onConnect, router }: {
   connected: boolean;
   walletReady: boolean;
   dash: DashData | null;
@@ -483,19 +490,14 @@ function DashRight({ connected, walletReady, dash, me, address, onConnect, route
   onConnect: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
-  const feed = buildFeed(dash, me, connected);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
       <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
       <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
       <ClimbCard connected={connected} dash={dash} address={address} onConnect={onConnect} router={router} />
-      <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {feed.length ? feed.slice(0, 5).map((it, i) => <FeedRow key={i} item={it} />) : (
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "6px 4px" }}>Nothing happening yet — play a game to be first.</div>
-        )}
-      </div>
+      <SectionLabel>Daily missions</SectionLabel>
+      <MissionCard connected={connected} onConnect={onConnect} />
     </div>
   );
 }
