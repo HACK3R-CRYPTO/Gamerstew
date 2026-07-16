@@ -10,6 +10,7 @@ import { erc20Abi } from "@/lib/abis/habitatRegistry";
 import { PERKS, COSMETIC_PERK_IDS, type Perk } from "@/lib/perks";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { buyPerkGasless, grantPerk, getPerkInventory, consumePerkStock } from "@/app/actions/perks";
+import { fetchPerkUbiStats } from "@/lib/subgraph";
 
 // Minimal G$ permit ABI — just the nonce read for EIP-2612 signing.
 const permitNonceAbi = [
@@ -34,35 +35,32 @@ export function usePerks() {
   const { signTypedDataAsync } = useSignTypedData();
   const publicClient = usePublicClient();
 
+  // ── LIVE WALLET STATE — read from chain, EVENT-DRIVEN not polled ─────────────
+  // These only change when the player acts (a buy) or their wallet changes, so
+  // we don't poll every 15–30s (that hammered forno for nothing and drained
+  // mobile battery). Instead: fetch on mount, refetch when the tab regains
+  // focus (react-query default, made explicit), and refetch after a purchase
+  // via settle(). Aggregates that DON'T need chain live-ness (UBI totals) come
+  // from the subgraph below.
+  const liveQuery = { refetchOnWindowFocus: true, refetchOnReconnect: true } as const;
+
   // G$ balance — gates "can afford" in the UI.
   const { data: gBalanceRaw, refetch: refetchBalance } = useReadContract({
     address: G_TOKEN, abi: erc20Abi, functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address, refetchInterval: 15_000 },
+    query: { enabled: !!address, ...liveQuery },
   });
 
   // Allowance granted to the shop — drives whether the buy needs an approve.
   const { data: allowanceRaw, refetch: refetchAllowance } = useReadContract({
     address: G_TOKEN, abi: erc20Abi, functionName: "allowance",
     args: address ? [address, PERK_SHOP] : undefined,
-    query: { enabled: !!address, refetchInterval: 30_000 },
+    query: { enabled: !!address, ...liveQuery },
   });
 
-  // Per-player UBI contributed through perks (for the "you gave X to UBI" line).
-  const { data: ubiContributedRaw, refetch: refetchUbi } = useReadContract({
-    address: PERK_SHOP, abi: perkShopAbi, functionName: "playerUbiContributed",
-    args: address ? [address] : undefined,
-    query: { enabled: !!address, refetchInterval: 30_000 },
-  });
-
-  // Whole-community UBI pool contributed through perks — the judge-facing
-  // number, and the proof the split is real (matches Celoscan).
-  const { data: totalCommunityRaw, refetch: refetchTotal } = useReadContract({
-    address: PERK_SHOP, abi: perkShopAbi, functionName: "totalCommunityContribution",
-    query: { refetchInterval: 30_000 },
-  });
-
-  // Cosmetic ownership, batched in one round-trip.
+  // Cosmetic ownership, batched in one round-trip. Changes only on a buy, so
+  // event-driven: refetched by settle() after a purchase (which also polls the
+  // RPC until it catches up) and on tab focus.
   const cosmeticContracts = useMemo(() => {
     if (!address) return [];
     return COSMETIC_PERK_IDS.map(id => ({
@@ -73,8 +71,17 @@ export function usePerks() {
 
   const { data: cosmeticData, refetch: refetchCosmetics } = useReadContracts({
     contracts: cosmeticContracts,
-    query: { enabled: !!address && cosmeticContracts.length > 0, refetchInterval: 30_000 },
+    query: { enabled: !!address && cosmeticContracts.length > 0, ...liveQuery },
   });
+
+  // ── AGGREGATES — from the SUBGRAPH, not RPC ──────────────────────────────────
+  // Player's total UBI given + the whole-community total. Indexed data, one
+  // GraphQL read on mount / address change / post-purchase. No polling.
+  const [ubiStats, setUbiStats] = useState<{ playerUbi: bigint; totalUbi: bigint }>({ playerUbi: 0n, totalUbi: 0n });
+  const refetchUbiStats = useCallback(async () => {
+    setUbiStats(await fetchPerkUbiStats(address));
+  }, [address]);
+  useEffect(() => { refetchUbiStats(); }, [refetchUbiStats]);
 
   const ownedCosmeticIds = useMemo<number[]>(() => {
     if (!cosmeticData) return [];
@@ -87,8 +94,8 @@ export function usePerks() {
 
   const gBalance = (gBalanceRaw as bigint | undefined) ?? 0n;
   const allowance = (allowanceRaw as bigint | undefined) ?? 0n;
-  const ubiContributed = (ubiContributedRaw as bigint | undefined) ?? 0n;
-  const totalCommunity = (totalCommunityRaw as bigint | undefined) ?? 0n;
+  const ubiContributed = ubiStats.playerUbi;
+  const totalCommunity = ubiStats.totalUbi;
 
   const ownsCosmetic = useCallback(
     (perkId: number) => ownedCosmeticIds.includes(perkId),
@@ -108,8 +115,8 @@ export function usePerks() {
         await new Promise(r => setTimeout(r, 800));
       }
     }
-    await Promise.all([refetchBalance(), refetchAllowance(), refetchUbi(), refetchTotal(), refetchCosmetics()]);
-  }, [address, publicClient, refetchBalance, refetchAllowance, refetchUbi, refetchTotal, refetchCosmetics]);
+    await Promise.all([refetchBalance(), refetchAllowance(), refetchUbiStats(), refetchCosmetics()]);
+  }, [address, publicClient, refetchBalance, refetchAllowance, refetchUbiStats, refetchCosmetics]);
 
   // ── Gasless buy (preferred) ─────────────────────────────────────────────────
   // One EIP-2612 signature, zero CELO: the player signs a permit for PerkShop,
@@ -249,6 +256,6 @@ export function usePerks() {
     buyAndStock,
     spendStock,
     refetchStock,
-    refetch: () => Promise.all([refetchBalance(), refetchAllowance(), refetchUbi(), refetchTotal(), refetchCosmetics(), refetchStock()]),
+    refetch: () => Promise.all([refetchBalance(), refetchAllowance(), refetchUbiStats(), refetchCosmetics(), refetchStock()]),
   };
 }
