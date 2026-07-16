@@ -31,6 +31,9 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
+// One calm colour for the greeting stat pills — informative, not a rainbow.
+const PILL_MUTED = "#a5b4cf";
+
 // ─── primitives ─────────────────────────────────────────────────────────
 function Pill({ children, color, soft = true }: { children: React.ReactNode; color: string; soft?: boolean }) {
   return (
@@ -386,21 +389,18 @@ export default function DashboardPage() {
 
       <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 2 }}>
 
-        {/* Greeting — design pattern: pills appear only for connected players.
-            Guests see "WELCOME / Player" with no chips, just like the design. */}
-        <div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.14em" }}>{connected ? "WELCOME BACK" : "WELCOME"}</div>
-          <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.ink, margin: "3px 0 0", letterSpacing: "-0.01em" }}>{connected ? (username || "Player") : "Player"}</h2>
+        {/* Greeting — one quiet line so the hero (and the event) leads. Pills
+            share a single muted style: informative, not a rainbow. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontFamily: T.display, fontSize: isDesktop ? 18 : 16, color: T.inkDim, lineHeight: 1 }}>
+            {connected ? `Welcome back, ${username || "Player"}` : "Welcome"} <span style={{ fontSize: isDesktop ? 17 : 15 }}>👋</span>
+          </div>
           {connected && (
-            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {/* Live streak from /api/user · "🔥 New" reads warmer than
-                  "🔥 0-day streak" for a fresh player; once they hit day 1
-                  the real number shows. */}
-              <Pill color="#bae6fd">
-                🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}-day streak` : "New"}
-              </Pill>
-              <Pill color="#a78bfa">LV {userMeta?.level ?? 1}</Pill>
-              {me && me.peak > 0 && <Pill color="#fbbf24">PEAK {me.peak}</Pill>}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {/* Live streak · "🔥 New" reads warmer than "0-day streak". */}
+              <Pill color={PILL_MUTED}>🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}d` : "New"}</Pill>
+              <Pill color={PILL_MUTED}>LV {userMeta?.level ?? 1}</Pill>
+              {me && me.peak > 0 && <Pill color={PILL_MUTED}>PEAK {me.peak}</Pill>}
             </div>
           )}
         </div>
