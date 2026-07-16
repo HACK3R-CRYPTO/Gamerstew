@@ -3315,6 +3315,39 @@ app.get('/api/perks/inventory', requireSecret, async (req, res) => {
   }
 });
 
+// GET /api/cosmetics/equip?wallet=0x… — a player's explicit equip choices.
+// Returns only rows they've set; the client treats any owned cosmetic NOT in
+// this map as equipped (default ON). Keyed by wallet so the choice follows
+// the account across browsers/devices.
+app.get('/api/cosmetics/equip', requireSecret, async (req, res) => {
+  const w = (req.query.wallet || '').toString().toLowerCase();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(w)) return res.status(400).json({ error: 'wallet required' });
+  try {
+    const { data } = await supabase.from('cosmetic_equip').select('perk_id, equipped').eq('wallet', w);
+    const equipped = {};
+    for (const r of data || []) equipped[r.perk_id] = r.equipped;
+    return res.json({ equipped });
+  } catch {
+    return res.json({ equipped: {} });
+  }
+});
+
+// POST /api/cosmetics/equip — set one cosmetic's equipped flag for a wallet.
+// Body: { wallet, perkId, equipped }. Pure display preference — no on-chain
+// effect, so no purchase proof required (just the internal secret).
+app.post('/api/cosmetics/equip', requireSecret, gameSubmitLimiter, async (req, res) => {
+  const { wallet, perkId, equipped } = req.body || {};
+  if (!wallet || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+  const pid = Number(perkId);
+  if (!Number.isInteger(pid) || pid <= 0) return res.status(400).json({ error: 'perkId required' });
+  const w = wallet.toLowerCase();
+  const { error } = await supabase.from('cosmetic_equip').upsert({
+    wallet: w, perk_id: pid, equipped: !!equipped, updated_at: new Date().toISOString(),
+  });
+  if (error) return res.status(500).json({ error: 'save_failed' });
+  return res.json({ ok: true, perkId: pid, equipped: !!equipped });
+});
+
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,
 // round result, persona line, and (on match end) the seed reveal + model stats.
 app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {

@@ -11,6 +11,8 @@
 // and any open game tab via a window event.
 
 import { useCallback, useEffect, useState } from "react";
+import { useAccount } from "wagmi";
+import { getCosmeticEquip, setCosmeticEquip } from "@/app/actions/perks";
 
 const KEY = (id: number) => `gamearena:cosmetic:equipped:${id}`;
 const EVENT = "gamearena:cosmetic-equip";
@@ -21,19 +23,28 @@ export function readEquipped(id: number): boolean {
   return v === null ? true : v === "1"; // default ON
 }
 
-export function writeEquipped(id: number, on: boolean) {
+// Write to the local cache only (no event) — used when reconciling from the
+// account so we don't echo a change back out to other listeners.
+function cacheEquipped(id: number, on: boolean) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(KEY(id), on ? "1" : "0");
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: { id, on } }));
+}
+
+export function writeEquipped(id: number, on: boolean) {
+  cacheEquipped(id, on);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: { id, on } }));
+  }
 }
 
 // Reactive read + setter. SSR-safe: starts equipped, hydrates from storage on
 // mount, and re-renders when the toggle flips anywhere (shop or another tab).
 export function useEquipped(id: number): [boolean, (on: boolean) => void] {
-  // Read the stored value SYNCHRONOUSLY on the first render (lazy init) so a
+  const { address } = useAccount();
+
+  // Read the local value SYNCHRONOUSLY on the first render (lazy init) so a
   // remount never flashes the default-on state before an effect corrects it.
-  // On the server window is absent and this returns true; the client's first
-  // paint already has the real value.
+  // The account value (below) then reconciles once the wallet is known.
   const [on, setOn] = useState(() => readEquipped(id));
 
   useEffect(() => {
@@ -53,6 +64,32 @@ export function useEquipped(id: number): [boolean, (on: boolean) => void] {
     };
   }, [id]);
 
-  const set = useCallback((v: boolean) => { writeEquipped(id, v); setOn(v); }, [id]);
+  // Reconcile with the account. The wallet-keyed backend is the source of
+  // truth across browsers/devices: if it has a choice, adopt it; if it has
+  // none but this device holds an explicit OFF, migrate that choice up so it
+  // isn't lost. Absence everywhere = default ON.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    (async () => {
+      const { equipped } = await getCosmeticEquip(address);
+      if (cancelled) return;
+      if (id in equipped) {
+        const v = equipped[id];
+        cacheEquipped(id, v);
+        setOn(v);
+      } else if (readEquipped(id) === false) {
+        setCosmeticEquip(address, id, false); // migrate a pre-login local OFF
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [address, id]);
+
+  const set = useCallback((v: boolean) => {
+    writeEquipped(id, v);
+    setOn(v);
+    if (address) setCosmeticEquip(address, id, v); // fire-and-forget account sync
+  }, [id, address]);
+
   return [on, set];
 }

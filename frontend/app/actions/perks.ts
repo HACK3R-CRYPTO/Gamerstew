@@ -65,6 +65,43 @@ export async function consumePerkStock(
   }
 }
 
+// Read a player's explicit cosmetic equip choices, keyed by perk id. Any
+// owned cosmetic missing from this map is treated as equipped (default ON).
+export async function getCosmeticEquip(
+  wallet: string,
+): Promise<{ equipped: Record<number, boolean>; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/cosmetics/equip?wallet=${wallet}`, {
+      method: 'GET',
+      headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      cache: 'no-store',
+    });
+    const j = await res.json();
+    return { equipped: j.equipped ?? {} };
+  } catch {
+    return { equipped: {} };
+  }
+}
+
+// Persist one cosmetic's equipped flag for a wallet so it follows the account.
+export async function setCosmeticEquip(
+  wallet: string,
+  perkId: number,
+  equipped: boolean,
+): Promise<{ ok?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/cosmetics/equip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ wallet, perkId, equipped }),
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { error: 'backend_unreachable' };
+  }
+}
+
 // Read a player's save/retry stock counts, keyed by perk id.
 export async function getPerkInventory(
   wallet: string,
