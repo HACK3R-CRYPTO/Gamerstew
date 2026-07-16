@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePerks } from "@/hooks/usePerks";
 import { type Perk } from "@/lib/perks";
+import { useEquipped } from "@/lib/cosmetics";
 
 // ─── PerkShelf ──────────────────────────────────────────────────────────────
 // The shop-side surface for the M1 "G$ Perk Economy". Each perk is a shop card
@@ -31,6 +32,33 @@ const GAME_ACCENT: Record<Perk["game"], string> = {
 };
 
 const fmtG = (v: bigint) => (Number(v) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+// Equip switch for an OWNED cosmetic. It's already theirs forever — this only
+// controls whether the skin is currently applied in-game. A pill toggle reads
+// as a state you own and flip, not a Buy action.
+function EquipToggle({ perkId }: { perkId: number }) {
+  const [equipped, setEquipped] = useEquipped(perkId);
+  return (
+    <button
+      onClick={() => setEquipped(!equipped)}
+      aria-pressed={equipped}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+        padding: "5px 10px 5px 8px", borderRadius: 999, border: "none",
+        fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.02em",
+        color: equipped ? "#03130b" : T.inkSoft,
+        background: equipped ? T.good : "rgba(255,255,255,0.06)",
+        transition: "background 0.15s, color 0.15s",
+      }}
+    >
+      <span style={{
+        width: 8, height: 8, borderRadius: 999,
+        background: equipped ? "#03130b" : "rgba(220,210,255,0.4)",
+      }} />
+      {equipped ? "Equipped" : "Equip"}
+    </button>
+  );
+}
 
 export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
   const { perks, gBalance, ubiContributed, ownsCosmetic, stock, buyAndStock } = usePerks();
@@ -115,7 +143,7 @@ export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
             </span>
 
             {owned ? (
-              <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: T.good }}>✓ Owned</span>
+              <EquipToggle perkId={perk.id} />
             ) : (
               <button
                 onClick={() => handleBuy(perk)}

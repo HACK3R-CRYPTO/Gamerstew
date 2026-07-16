@@ -28,6 +28,7 @@ import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
 import NoteCanvas, { type NoteCanvasHandle } from "@/components/rhythm/NoteCanvas";
 import { usePerks } from "@/hooks/usePerks";
+import { useEquipped } from "@/lib/cosmetics";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
@@ -313,10 +314,12 @@ const ENCORE_POOL: [number, number][] = [
 export default function RhythmGamePage() {
   const router = useRouter();
   const { address } = useAccount();
-  // Neon Trail cosmetic (PerkShop perk 2) — owned forever, supercharges the
-  // falling-tile light beams. Purely visual, zero gameplay effect.
+  // Neon Trail cosmetic (PerkShop perk 2) — supercharges the falling-tile
+  // light beams when OWNED and EQUIPPED (owning doesn't force it on; toggle
+  // in the shop). Purely visual, zero gameplay effect.
   const { ownsCosmetic } = usePerks();
-  const neonTrail = ownsCosmetic(2);
+  const [neonEquipped] = useEquipped(2);
+  const neonTrail = ownsCosmetic(2) && neonEquipped;
   // Free-play route: guests can play full runs without connecting.
   // Score submission self-guards (the submit effect bails without an
   // address), and the finish screen shows a sign-in CTA instead of

@@ -46,6 +46,7 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
+import { useEquipped } from "@/lib/cosmetics";
 
 // Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
 // tower in icy glass. Purely visual, zero gameplay effect.
@@ -109,11 +110,13 @@ export default function StackTowerPage() {
   const router = useRouter();
   const { address } = useAccount();
 
-  // Crystal Blocks ownership — read once, mirrored into a ref so the RAF
-  // draw loop always sees the live value without re-subscribing.
+  // Crystal Blocks — applied only when the player OWNS it and has it EQUIPPED
+  // (owning doesn't force the skin on; they can toggle it off in the shop).
+  // Mirrored into a ref so the RAF draw loop always sees the live value.
   const { ownsCosmetic } = usePerks();
+  const [crystalEquipped] = useEquipped(CRYSTAL_PERK_ID);
   const hasCrystalRef = useRef(false);
-  hasCrystalRef.current = ownsCosmetic(CRYSTAL_PERK_ID);
+  hasCrystalRef.current = ownsCosmetic(CRYSTAL_PERK_ID) && crystalEquipped;
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(3);
