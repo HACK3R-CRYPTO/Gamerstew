@@ -203,11 +203,15 @@ export function usePerks() {
   // ── Buy-ahead stock (save/retry inventory) ──────────────────────────────────
   // Backend-held: buying a save/retry stocks it; the game spends from stock.
   const [stock, setStock] = useState<Record<number, number>>({});
+  // Gates the save prompt so its CTA never renders (and never flips) before we
+  // know the player's stock. Flips to true after the first inventory read.
+  const [stockReady, setStockReady] = useState(false);
 
   const refetchStock = useCallback(async () => {
-    if (!address) { setStock({}); return; }
+    if (!address) { setStock({}); setStockReady(true); return; }
     const { balances } = await getPerkInventory(address);
     setStock(balances || {});
+    setStockReady(true);
   }, [address]);
 
   useEffect(() => { refetchStock(); }, [refetchStock]);
@@ -240,6 +244,7 @@ export function usePerks() {
     ownedCosmeticIds,
     ownsCosmetic,
     stock,
+    stockReady,
     buyPerk,
     buyAndStock,
     spendStock,

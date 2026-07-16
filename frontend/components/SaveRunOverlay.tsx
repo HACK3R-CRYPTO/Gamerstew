@@ -5,20 +5,21 @@ import { usePerks } from "@/hooks/usePerks";
 import { savePerkFor, type Perk } from "@/lib/perks";
 
 // ─── SaveRunOverlay ─────────────────────────────────────────────────────────
-// The in-game perk prompt, shared by every game and styled like the shop:
-// the perk's own generated art sits under a shrinking countdown ring, with the
-// price on the art and a single accent CTA. One tap = one on-chain G$ purchase
-// (20% to the UBI pool) and the run continues. Ignore = ring empties, run ends.
-// Casual mode only — using a perk drops the run off the ranked ladder.
-//
-// Works for save / retry / rematch: the parent passes the perk (or lets it
-// default to the game's save perk) and the copy adapts to perk.kind.
+// The in-game "continue?" moment, rebuilt for clarity:
+//   · one CTA that never flips — it waits for stock to resolve before showing
+//   · the perk art as a clean circular medallion with a depleting timer ring
+//     and a plain seconds number, so the countdown is unmistakable
+//   · a clear "Confirming…" state so the wallet wait never looks frozen
+// With stock, a save is free and instant (spends from inventory). At zero
+// stock it's one gasless signature. Casual mode only — using a perk drops the
+// run off the ranked ladder.
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(224,215,255,0.8)",
+  inkDim: "rgba(224,215,255,0.82)",
   inkSoft: "rgba(224,215,255,0.5)",
   good: "#34d399",
+  goodDeep: "#059669",
   purple: "#a78bfa",
   gold: "#fde68a",
   danger: "#fb7185",
@@ -26,28 +27,26 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
-const RING_R = 82;
+const RING_R = 74;
 const RING_C = 2 * Math.PI * RING_R;
 
-// Copy per perk kind — keeps the one component usable across all games.
-// The parent can override the wording (e.g. "Rematch") via titleOverride/ctaOverride.
 const VERB: Record<Perk["kind"], { title: string; cta: string }> = {
-  save:     { title: "Save your run",   cta: "Save my run" },
-  retry:    { title: "Retry the round", cta: "Retry" },
-  cosmetic: { title: "Unlock",          cta: "Unlock" },
+  save:     { title: "Keep your run alive", cta: "Save my run" },
+  retry:    { title: "Take it again",        cta: "Retry" },
+  cosmetic: { title: "Unlock",               cta: "Unlock" },
 };
 
 type Props = {
   open: boolean;
   score: number;
   game: Perk["game"];
-  onSaved: () => void;      // purchase confirmed on-chain → resume/restart
-  onDecline: () => void;    // countdown ran out, or player tapped "no thanks"
-  perk?: Perk;              // explicit perk; defaults to the game's save perk
-  decideMs?: number;        // window before auto-decline (default 6s)
-  headline?: string;        // e.g. "YOU FELL" / "TOWER TOPPLED" / "MARKOV WINS"
-  titleOverride?: string;   // override the kind-derived title
-  ctaOverride?: string;     // override the kind-derived CTA label
+  onSaved: () => void;
+  onDecline: () => void;
+  perk?: Perk;
+  decideMs?: number;
+  headline?: string;
+  titleOverride?: string;
+  ctaOverride?: string;
 };
 
 export default function SaveRunOverlay({
@@ -55,10 +54,10 @@ export default function SaveRunOverlay({
   titleOverride, ctaOverride,
 }: Props) {
   const perk = perkOverride ?? savePerkFor(game);
-  const { gBalance, buyPerk, stock, spendStock } = usePerks();
+  const { gBalance, buyPerk, stock, stockReady, spendStock } = usePerks();
   const inStock = perk ? (stock[perk.id] ?? 0) : 0;
 
-  const [progress, setProgress] = useState(1);       // 1 → 0 over decideMs
+  const [progress, setProgress] = useState(1);
   const [status, setStatus] = useState<"idle" | "buying" | "error">("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -66,24 +65,17 @@ export default function SaveRunOverlay({
   const declinedRef = useRef(false);
 
   const canAfford = !!perk && gBalance >= perk.priceG$;
+  const busy = status === "buying";
 
-  // Run the countdown for the life of the overlay. The parent mounts this
-  // fresh each time, so initial state is clean — the effect just drives the
-  // ring via requestAnimationFrame (setState inside rAF, never sync here).
   useEffect(() => {
     if (!open) return;
     declinedRef.current = false;
     startRef.current = performance.now();
-
     const tick = (now: number) => {
-      const elapsed = now - startRef.current;
-      const p = Math.max(0, 1 - elapsed / decideMs);
+      const p = Math.max(0, 1 - (now - startRef.current) / decideMs);
       setProgress(p);
       if (p <= 0) {
-        if (!declinedRef.current) {
-          declinedRef.current = true;
-          onDecline();
-        }
+        if (!declinedRef.current) { declinedRef.current = true; onDecline(); }
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -92,48 +84,33 @@ export default function SaveRunOverlay({
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [open, decideMs, onDecline]);
 
-  const pauseCountdown = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-  }, []);
+  const pauseCountdown = useCallback(() => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  const finishError = (raw: string) => {
+    setErrMsg(
+      /insufficient|balance/i.test(raw) ? "Not enough G$."
+        : /reject|denied|cancell?ed/i.test(raw) ? "Cancelled."
+          : "Couldn't complete. Try again.",
+    );
+    setStatus("error");
+  };
 
   const handleBuy = useCallback(async () => {
-    if (!perk || status === "buying") return;
-    pauseCountdown();
-    setStatus("buying");
-    setErrMsg(null);
-    try {
-      await buyPerk(perk);
-      onSaved();
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      const msg = /insufficient|balance/i.test(raw)
-        ? "Not enough G$. Top up and try again."
-        : /reject|denied|cancell?ed/i.test(raw)
-          ? "Purchase cancelled."
-          : "Couldn't complete. Try again.";
-      setErrMsg(msg);
-      setStatus("error");
-    }
-  }, [perk, status, buyPerk, onSaved, pauseCountdown]);
+    if (!perk || busy) return;
+    pauseCountdown(); setStatus("buying"); setErrMsg(null);
+    try { await buyPerk(perk); onSaved(); }
+    catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
+  }, [perk, busy, buyPerk, onSaved, pauseCountdown]);
 
-  // Spend one from stock (free, instant). Falls back to buying if the stock
-  // turns out empty (stale count).
   const handleUse = useCallback(async () => {
-    if (!perk || status === "buying") return;
-    pauseCountdown();
-    setStatus("buying");
-    setErrMsg(null);
+    if (!perk || busy) return;
+    pauseCountdown(); setStatus("buying"); setErrMsg(null);
     try {
       const ok = await spendStock(perk.id);
       if (ok) { onSaved(); return; }
-      // Stock empty — buy one instead.
-      await buyPerk(perk);
-      onSaved();
-    } catch {
-      setErrMsg("Couldn't use your save. Try again.");
-      setStatus("error");
-    }
-  }, [perk, status, spendStock, buyPerk, onSaved, pauseCountdown]);
+      await buyPerk(perk); onSaved();
+    } catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
+  }, [perk, busy, spendStock, buyPerk, onSaved, pauseCountdown]);
 
   const handleDecline = useCallback(() => {
     if (declinedRef.current) return;
@@ -144,123 +121,115 @@ export default function SaveRunOverlay({
 
   if (!open || !perk) return null;
 
-  const busy = status === "buying";
   const base = VERB[perk.kind];
   const verb = { title: titleOverride ?? base.title, cta: ctaOverride ?? base.cta };
+  const secondsLeft = Math.max(1, Math.ceil((progress * decideMs) / 1000));
   const ringColor = busy ? T.purple : progress < 0.34 ? T.danger : T.good;
+  const usingStock = stockReady && inStock > 0;
+  const canAct = usingStock || canAfford;
+  // The single CTA's label — resolved once, never flips between buy/stock.
+  const ctaLabel = !stockReady ? "" : busy ? "Confirming…" : usingStock ? verb.cta : canAfford ? verb.cta : `Get ${perk.priceLabel}`;
+  const ctaSub = !stockReady ? "" : usingStock ? `${inStock} in stock · free` : `${perk.priceLabel} · one tap`;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed", inset: 0, zIndex: 120,
-        background: "radial-gradient(120% 90% at 50% 30%, rgba(20,4,60,0.88), rgba(5,1,20,0.96))",
-        backdropFilter: "blur(8px)",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        padding: 24, gap: 16, animation: "saveOverlayIn 220ms ease-out",
-      }}
-    >
+    <div role="dialog" aria-modal="true" style={{
+      position: "fixed", inset: 0, zIndex: 120,
+      background: "radial-gradient(120% 90% at 50% 32%, rgba(24,6,66,0.9), rgba(4,1,16,0.97))",
+      backdropFilter: "blur(10px)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: 24, gap: 18, animation: "svIn 200ms ease-out",
+    }}>
       <style>{`
-        @keyframes saveOverlayIn { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes savePulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.02) } }
+        @keyframes svIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes svPulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.035) } }
+        @keyframes svSpin { to { transform: rotate(360deg) } }
       `}</style>
 
       {/* Headline + score */}
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontFamily: T.display, fontSize: 14, letterSpacing: "0.22em", color: T.danger }}>{headline}</div>
-        <div style={{ fontFamily: T.display, fontSize: 40, color: T.ink, marginTop: 2, lineHeight: 1 }}>
-          {score.toLocaleString()}
-        </div>
-        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, marginTop: 2 }}>your score</div>
+        <div style={{ fontFamily: T.display, fontSize: 13, letterSpacing: "0.24em", color: T.danger }}>{headline}</div>
+        <div style={{ fontFamily: T.display, fontSize: 44, color: T.ink, marginTop: 2, lineHeight: 1 }}>{score.toLocaleString()}</div>
+        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, marginTop: 2, letterSpacing: "0.02em" }}>your score</div>
       </div>
 
-      {/* Perk art under the countdown ring — the shop item, made urgent */}
-      <div style={{ position: "relative", width: 196, height: 196, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg width="196" height="196" viewBox="0 0 196 196" style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
-          <circle cx="98" cy="98" r={RING_R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+      {/* Circular medallion + depleting timer ring + seconds badge */}
+      <div style={{ position: "relative", width: 172, height: 172, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <svg width="172" height="172" viewBox="0 0 172 172" style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+          <circle cx="86" cy="86" r={RING_R} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="7" />
           <circle
-            cx="98" cy="98" r={RING_R} fill="none"
-            stroke={ringColor} strokeWidth="6" strokeLinecap="round"
+            cx="86" cy="86" r={RING_R} fill="none"
+            stroke={ringColor} strokeWidth="7" strokeLinecap="round"
             strokeDasharray={RING_C} strokeDashoffset={RING_C * (1 - progress)}
-            style={{ transition: busy ? "none" : "stroke 200ms linear" }}
+            style={{ transition: busy ? "none" : "stroke 200ms linear", filter: `drop-shadow(0 0 6px ${ringColor}aa)` }}
           />
         </svg>
-        {/* The perk's generated art */}
+        {/* Clean circular art */}
         <div style={{
-          width: 140, height: 140, borderRadius: 26, overflow: "hidden",
-          border: `1px solid ${ringColor}66`, boxShadow: `0 0 30px -6px ${ringColor}aa`,
+          width: 122, height: 122, borderRadius: "50%",
           backgroundImage: `url('/perks/${perk.id}.jpg')`, backgroundSize: "cover", backgroundPosition: "center",
-          animation: (canAfford || inStock > 0) && !busy ? "savePulse 1.6s ease-in-out infinite" : "none",
+          boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.08), 0 0 34px -6px ${ringColor}cc`,
+          animation: canAct && !busy && stockReady ? "svPulse 1.5s ease-in-out infinite" : "none",
         }} />
-        {/* Pill on the art — stock count if you have any, else the G$ price */}
-        {inStock > 0 ? (
-          <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", padding: "3px 12px", borderRadius: 999, background: T.good }}>
-            <span style={{ fontFamily: T.display, fontSize: 14, color: "#03130b", lineHeight: 1 }}>×{inStock} in stock</span>
-          </div>
-        ) : (
-          <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", display: "inline-flex", alignItems: "baseline", gap: 3, padding: "3px 11px", borderRadius: 999, background: "rgba(6,2,22,0.82)", border: `1px solid ${T.gold}55` }}>
-            <span style={{ fontFamily: T.display, fontSize: 15, color: T.gold, lineHeight: 1 }}>{(Number(perk.priceG$) / 1e18).toLocaleString()}</span>
-            <span style={{ fontFamily: T.body, fontSize: 9, color: T.gold, fontWeight: 900, letterSpacing: "0.08em" }}>G$</span>
-          </div>
+        {/* Seconds number — unmistakable timer */}
+        {!busy && (
+          <div style={{
+            position: "absolute", bottom: -4, left: "50%", transform: "translateX(-50%)",
+            minWidth: 30, height: 30, padding: "0 9px", borderRadius: 999,
+            background: "#0b0320", border: `2px solid ${ringColor}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: T.display, fontSize: 15, color: ringColor, lineHeight: 1,
+          }}>{secondsLeft}</div>
         )}
       </div>
 
       {/* Title */}
-      <div style={{ fontFamily: T.display, fontSize: 19, color: T.ink, lineHeight: 1 }}>{verb.title}</div>
+      <div style={{ fontFamily: T.display, fontSize: 20, color: T.ink, lineHeight: 1, marginTop: 4 }}>{verb.title}</div>
 
-      {/* CTA — spend from stock (free) if you have it, else buy, else shop */}
-      {inStock > 0 ? (
+      {/* Single state-aware CTA — never flips; blocks until stock is known */}
+      {!stockReady ? (
+        <div style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 230 }}>
+          <span style={{ width: 22, height: 22, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.2)", borderTopColor: T.good, animation: "svSpin 0.7s linear infinite" }} />
+        </div>
+      ) : canAct ? (
         <button
-          onClick={handleUse}
+          onClick={usingStock ? handleUse : handleBuy}
           disabled={busy}
           style={{
-            cursor: busy ? "default" : "pointer",
-            padding: "13px 30px", borderRadius: 14, minWidth: 200,
-            fontFamily: T.display, fontSize: 16, letterSpacing: "0.01em", color: "#03130b",
-            background: "linear-gradient(180deg, #6ee7b7 0%, #34d399 55%, #059669 100%)",
-            border: "1px solid rgba(255,255,255,0.4)", boxShadow: "0 10px 26px -8px rgba(52,211,153,0.6)",
+            cursor: busy ? "default" : "pointer", minWidth: 230,
+            padding: "12px 30px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.4)",
+            background: `linear-gradient(180deg, #6ee7b7 0%, ${T.good} 55%, ${T.goodDeep} 100%)`,
+            boxShadow: "0 12px 28px -8px rgba(52,211,153,0.65)",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
           }}
         >
-          {busy ? "Saving…" : `${verb.cta} · ${inStock} left`}
-        </button>
-      ) : canAfford ? (
-        <button
-          onClick={handleBuy}
-          disabled={busy}
-          style={{
-            cursor: busy ? "default" : "pointer",
-            padding: "13px 30px", borderRadius: 14, minWidth: 200,
-            fontFamily: T.display, fontSize: 16, letterSpacing: "0.01em",
-            color: "#03130b",
-            background: "linear-gradient(180deg, #6ee7b7 0%, #34d399 55%, #059669 100%)",
-            border: "1px solid rgba(255,255,255,0.4)",
-            boxShadow: "0 10px 26px -8px rgba(52,211,153,0.6)",
-          }}
-        >
-          {busy ? "Confirm in wallet…" : verb.cta}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: T.display, fontSize: 17, color: "#03130b", lineHeight: 1 }}>
+            {busy && <span style={{ width: 15, height: 15, borderRadius: "50%", border: "2.5px solid rgba(3,19,11,0.35)", borderTopColor: "#03130b", animation: "svSpin 0.7s linear infinite" }} />}
+            {ctaLabel}
+          </span>
+          {!busy && <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: "rgba(3,19,11,0.72)" }}>{ctaSub}</span>}
         </button>
       ) : (
         <a href="/shop" style={{
-          padding: "13px 30px", borderRadius: 14, minWidth: 200, textAlign: "center", textDecoration: "none",
+          minWidth: 230, textAlign: "center", textDecoration: "none",
+          padding: "13px 30px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.35)",
           fontFamily: T.display, fontSize: 15, color: "#12043a",
-          background: `linear-gradient(180deg, #d6c8ff, ${T.purple})`, border: "1px solid rgba(255,255,255,0.35)",
-        }}>
-          Get {perk.priceLabel} in shop →
-        </a>
+          background: `linear-gradient(180deg, #d6c8ff, ${T.purple})`,
+        }}>Get {perk.priceLabel} in shop →</a>
       )}
 
-      {/* Trust line */}
-      <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
-        {inStock > 0 ? "casual mode only · your run stays off the ranked ladder" : "20% to the community UBI pool · casual mode only"}
-      </div>
+      {/* Trust line — only when a purchase (not a free stock spend) is involved */}
+      {stockReady && !usingStock && (
+        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
+          one signature, zero CELO · 20% to the community UBI pool
+        </div>
+      )}
 
-      {errMsg && <div style={{ fontFamily: T.body, fontSize: 12, color: T.danger, textAlign: "center" }}>{errMsg}</div>}
+      {errMsg && <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.danger, textAlign: "center" }}>{errMsg}</div>}
 
       <button
         onClick={handleDecline}
         disabled={busy}
-        style={{ background: "none", border: "none", color: "rgba(224,215,255,0.55)", fontFamily: T.body, fontSize: 13.5, cursor: busy ? "default" : "pointer", padding: 6 }}
+        style={{ background: "none", border: "none", color: "rgba(224,215,255,0.5)", fontFamily: T.body, fontSize: 13.5, cursor: busy ? "default" : "pointer", padding: 6 }}
       >
         {status === "error" ? "Give up run" : "No thanks →"}
       </button>
