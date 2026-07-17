@@ -20,7 +20,7 @@ Public (bundled into the browser):
 
 - `NEXT_PUBLIC_PRIVY_APP_ID` · Privy auth
 - `NEXT_PUBLIC_BACKEND_URL` · client-side backend base for a few direct reads
-- Optional overrides for contract addresses (`NEXT_PUBLIC_AI_AGENT_ADDRESS`, `NEXT_PUBLIC_ERC8004_*`, `NEXT_PUBLIC_HABITAT_REGISTRY`, `NEXT_PUBLIC_SOLO_WAGER_ADDRESS`, `NEXT_PUBLIC_AGENT_TOKEN_ID`)
+- Optional overrides for contract addresses (`NEXT_PUBLIC_AI_AGENT_ADDRESS`, `NEXT_PUBLIC_ERC8004_*`, `NEXT_PUBLIC_HABITAT_REGISTRY`, `NEXT_PUBLIC_PERK_SHOP`, `NEXT_PUBLIC_SOLO_WAGER_ADDRESS`, `NEXT_PUBLIC_AGENT_TOKEN_ID`)
 
 Server-only (never prefixed with `NEXT_PUBLIC_`, so they never reach the browser):
 
@@ -59,13 +59,17 @@ Pages live under `app/`. Key routes:
 - `/settings` · settings
 - `/pitch`, `/privacy`, `/terms` · static content
 
-Server actions live in `app/actions/` (`game.ts`, `arena.ts`, `missions.ts`, `gas.ts`). Route handlers live in `app/api/` (season join/leaderboard/intent, markov-climb, pvp-leaderboard, match-outcome, a2a).
+Server actions live in `app/actions/` (`game.ts`, `arena.ts`, `missions.ts`, `perks.ts`, `gas.ts`). Route handlers live in `app/api/` (season join/leaderboard/intent, markov-climb, pvp-leaderboard, match-outcome, a2a).
 
 ## The games
 
 Solo games (three): Rhythm Rush, Simon Memory, Stack Tower. Each is a single canvas game loop driven by `requestAnimationFrame`, with React handling only HUD and screens. All three are free to play without a wallet, and connected players can submit scores on-chain.
 
 Challenge AI is MARKOV v3, the "Instant Arena". It is free, best-of-5 rounds, first to 3 wins. MARKOV plays Rock-Paper-Scissors and Coin Flip only. It runs entirely through server actions in `app/actions/arena.ts` against the backend `/api/arena/*` endpoints, using a commit-reveal scheme for fairness: the match starts with a `commitHash`, each throw returns the round outcome and MARKOV's read on the player, and the final payload reveals the seed and the model. There is a daily match limit with an optional G$ refill, including a gasless EIP-2612 permit path so a player with zero CELO can still buy more.
+
+## Perks and cosmetics
+
+The `/shop` sells in-game perks paid in G$ through the `PERK_SHOP` contract: saves and retries, Challenge AI match tickets, and cosmetics. Buys support a gasless EIP-2612 permit path (`app/actions/perks.ts`, `lib/perks.ts`) so a player with zero CELO signs once and a relayer submits. Cosmetics are owned forever on-chain: Crystal Blocks (a Stack Tower skin) and Neon Trail (a Rhythm Rush skin) apply in-game, gated by an equip toggle whose state syncs to the backend keyed by wallet, so an owned skin can be turned on or off across devices.
 
 ## Score submission (voucher flow)
 
@@ -91,6 +95,7 @@ Addresses and ABIs are in `lib/contracts.ts` (and `lib/abis/`). Celo mainnet:
 - `G_TOKEN` · GoodDollar (G$)
 - `SOLO_WAGER` · optional G$ ranked entry for solo runs
 - `HABITAT_REGISTRY` · habitats
+- `PERK_SHOP` · in-game perks paid in G$ (saves, retries, cosmetics, Challenge AI match tickets); gasless buys via EIP-2612 permit
 - `ERC8004_REGISTRY` / `ERC8004_REPUTATION` · MARKOV's on-chain agent identity and reputation
 
 ## Layout

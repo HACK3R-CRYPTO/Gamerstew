@@ -4,13 +4,14 @@ Turns GameArena's on-chain events into a clean GraphQL API. Instead of the Expre
 
 ## Indexed contracts
 
-Three data sources on Celo Mainnet (network `celo`):
+Four data sources on Celo Mainnet (network `celo`):
 
 | Contract | Address | Start block | Events indexed |
 |---|---|---|---|
 | GamePass | `0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE` | 63000000 | `PassMinted`, `UsernameChanged`, `ScoreRecorded` |
 | HabitatRegistry | `0x8888FEb43ac1833c683D0474204aa55A55BD010F` | 65552895 | `HabitatUnlocked` |
 | SoloWager | `0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb` | 63222929 | `WagerCreated`, `WagerResolved` |
+| PerkShop | `0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5` | 72287000 | `PerkPurchased` |
 
 An `ArenaPlatform.json` ABI also sits in `abis/`, but ArenaPlatform is not wired as a data source · it is kept for reference only.
 
@@ -24,6 +25,8 @@ Defined in `schema.graphql`, written by the AssemblyScript handlers in `src/`:
 - **`Wager`** · one row per on-chain wager (id = the contract wager id). Created on `WagerCreated` with `status: 0` (pending), then mutated by `WagerResolved` to won (`1`) or lost (`2`) with the payout.
 - **`DailyStat`** · one row per UTC day (id = day-start timestamp). Buckets new players, scores, per-game plays, habitat unlocks, UBI donated, and wagers created. Charts read this directly, no client-side aggregation.
 - **`GlobalStat`** · a single row (id = `"global"`) with running platform totals, updated by every handler.
+- **`PerkPurchase`** · immutable row per `PerkPurchased` event (id = `${txHash}-${logIndex}`). Records the buyer `player`, `perkId`, whether it was a `cosmetic`, `totalPaid`, the `ubiAmount` / `treasuryAmount` split, `timestamp`, and `txHash`.
+- **`PerkShopStat`** · a single row (id = `"global"`) with PerkShop totals: `totalPurchases`, `totalUbiG` (cumulative G$ routed to UBI through perks), `totalTreasuryG`, and `lastUpdatedAt`.
 
 `gameType` is an integer across the schema · `0` = rhythm, `1` = simon, `2` = stack.
 
@@ -42,14 +45,14 @@ npm run build     # compiles the AssemblyScript handlers
 # One-time login (uses GOLDSKY_API_KEY env var or interactive)
 npx goldsky login
 
-# Deploy. Slug is `gamearena/1.0.1` in package.json · bump the version on schema changes.
+# Deploy. Slug is `gamearena/1.0.2` in package.json · bump the version on schema changes.
 npm run deploy:goldsky
 ```
 
 After deploy Goldsky returns a GraphQL endpoint like:
 
 ```
-https://api.goldsky.com/api/public/<PROJECT_ID>/subgraphs/gamearena/1.0.1/gn
+https://api.goldsky.com/api/public/<PROJECT_ID>/subgraphs/gamearena/1.0.2/gn
 ```
 
 Drop that into the frontend as `NEXT_PUBLIC_SUBGRAPH_URL` and start querying.
@@ -116,6 +119,19 @@ Global totals (one row, id = `"global"`):
 }
 ```
 
+PerkShop UBI + purchase totals (one row, id = `"global"`):
+
+```graphql
+{
+  perkShopStat(id: "global") {
+    totalPurchases
+    totalUbiG
+    totalTreasuryG
+    lastUpdatedAt
+  }
+}
+```
+
 ## Adding a new contract
 
 1. Drop the ABI into `abis/`
@@ -130,4 +146,5 @@ Global totals (one row, id = `"global"`):
 - `Player.username` is set on `PassMinted` and updated on `UsernameChanged` · the latest value always wins.
 - `Player.totalUbiDonated` and `GlobalStat.totalUbiDonatedG` sum the UBI portion of every habitat unlock. `GlobalStat.totalTreasuryG` tracks the treasury portion separately.
 - Only paid habitat tiers surface as `PlayerHabitat` rows. Free tiers are level-derived and live off-chain.
+- The PerkShop data source is self-contained · `PerkPurchase` and `PerkShopStat` don't touch `Player` or `GlobalStat`, so perk UBI totals (`PerkShopStat.totalUbiG`) are read separately from habitat UBI (`GlobalStat.totalUbiDonatedG`). The app sums the two for a unified community-UBI figure.
 - A `Wager` row mutates on `WagerResolved`. If the create event was somehow missed, `handleWagerResolved` skips rather than fabricate a row with no amount data.

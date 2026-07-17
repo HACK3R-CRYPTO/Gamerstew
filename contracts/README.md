@@ -10,6 +10,7 @@ These contracts cover three jobs: proving who a player is on-chain (GamePass), r
 |---|---|---|
 | `GamePass.sol` | Soulbound identity NFT: username, tiers, on-chain scores | [`0xBB044d67...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) |
 | `HabitatRegistry.sol` | G$ cosmetic sink: unlock paid habitat tiers, split to UBI + treasury | [`0x8888FEb4...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F) |
+| `PerkShop.sol` | G$ perk sink: saves, retries, cosmetics, match tickets, split to treasury + UBI | [`0xe451Ab21...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5) |
 | `ArenaPlatform.sol` | 1v1 G$ match escrow, used by A2A agent counterparties, legacy for human players | [`0x5C0eafE7...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) |
 | `SoloWager.sol` | Solo score wager escrow (legacy) | [`0xc78A8A02...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) |
 
@@ -43,6 +44,29 @@ Records which paid habitat tiers a player owns. The art is frontend-only, this c
 - Default tiers (18-decimal G$): 6 = 300, 7 = 1,000, 8 = 3,000, 9 = 10,000, 10 = 30,000.
 - View `ownsHabitat(player, tier)`. Aggregates: `playerUbiDonated`, `totalCommunityContribution`.
 - Admin: `setTierCost` (add or disable tiers), `setSplit` (must sum to 10000 bps), `setUbiPool`, `setTreasury`, `pause` / `unpause`, and `recoverToken` (G$ excluded so UBI flow can never be drained).
+
+Constructor takes `(gToken, ubiPool, treasury)`.
+
+### PerkShop.sol · G$ perk sink
+
+In-game perks paid in G$ across GameArena's casual modes: saves ("continue your run"), retries, cosmetics, and Challenge AI match tickets. Ranked play never touches this shop, so ranked stays pure skill. Like HabitatRegistry, the contract never holds G$ · every purchase splits it in one tx.
+
+- Perks are either **consumable** (saves/retries/tickets: one purchase = one use, granted off-chain by the game backend, re-buyable) or **cosmetic** (a one-time on-chain unlock, owned forever).
+- Six default perks configured in the constructor (18-decimal G$, all tunable via `setPerk`):
+
+  | Perk id | Perk | Type | Price |
+  |---|---|---|---|
+  | 1 | Rhythm Rush · Save | consumable | 30 G$ |
+  | 2 | Rhythm Rush · Neon Trail | cosmetic | 300 G$ |
+  | 3 | Stack Tower · Save | consumable | 30 G$ |
+  | 4 | Stack Tower · Crystal Blocks | cosmetic | 250 G$ |
+  | 5 | Simon Memory · Retry | consumable | 20 G$ |
+  | 6 | Challenge AI · Match Pack (+5 matches) | consumable | 2 G$ |
+
+- `buyPerk(perkId)` pulls the price in G$ from the caller and splits it in one tx: treasury portion first (`treasuryBps`, default 80%), UBI pool takes the remainder (`ubiBps`, default 20%), so rounding always favors UBI. Cosmetics mark `ownedCosmetic[player][perkId]`; consumables just emit `PerkPurchased` for the backend to grant.
+- `buyPerkWithPermit(player, perkId, deadline, v, r, s)` is the gasless path: the player signs one EIP-2612 permit and a relayer submits + pays CELO, so the buy is a single transaction with zero CELO from the player. The permit is wrapped in try/catch so a pre-set allowance can't brick the purchase.
+- Views: `ownsCosmetic(player, perkId)`, `perkPrice(perkId)`. Aggregates: `playerUbiContributed`, `totalCommunityContribution`, `perksBought`.
+- Admin: `setPerk` (price > 0 enables, 0 disables), `setSplit` (must sum to 10000 bps), `setUbiPool`, `setTreasury`, `pause` / `unpause`, and `recoverToken` (G$ excluded so UBI flow can never be drained).
 
 Constructor takes `(gToken, ubiPool, treasury)`.
 
@@ -90,7 +114,9 @@ forge script script/DeployGamePass.s.sol \
   --broadcast --account deployer
 ```
 
-Deploy scripts live in `script/` (one per contract, e.g. `DeployGamePass.s.sol`, `DeployHabitatRegistry.s.sol`, `DeployArenaOnly.s.sol`, `DeploySoloWager.s.sol`).
+Deploy scripts live in `script/` (one per contract, e.g. `DeployGamePass.s.sol`, `DeployHabitatRegistry.s.sol`, `DeployPerkShop.s.sol`, `DeployArenaOnly.s.sol`, `DeploySoloWager.s.sol`).
+
+Both `DeployPerkShop.s.sol` and `DeployHabitatRegistry.s.sol` default the treasury to the real GameArena wallet `0xc1cFA63135eA2fB5AB795cF10e4c79F4DD03c3f6` (overridable via `GAMEARENA_TREASURY`) and hard-revert if the treasury resolves to the Foundry placeholder sender `0x1804c8AB...` · a guard against the earlier bug where an unset treasury silently routed funds to an unowned address. The live PerkShop and HabitatRegistry `treasury()` both point to that wallet, set via `setTreasury`.
 
 ## Configuration
 
@@ -114,7 +140,7 @@ forge verify-contract <address> src/GamePass.sol:GamePass \
 ## Security
 
 - **ReentrancyGuard** on state-changing wager and unlock functions.
-- **Ownable** for admin operations, **Pausable** on HabitatRegistry.
+- **Ownable** for admin operations, **Pausable** on HabitatRegistry and PerkShop.
 - **SafeERC20** for all token transfers.
 - **EIP-712 signatures** for GamePass score recording, with single-use nonces to block replays.
 - Backend-validator pattern: only an authorized wallet can resolve wagers or act as `scoreValidator`.
@@ -126,6 +152,7 @@ contracts/
 ├── src/
 │   ├── GamePass.sol           Soulbound identity NFT + on-chain scores
 │   ├── HabitatRegistry.sol    Paid habitat tiers, G$ split to UBI + treasury
+│   ├── PerkShop.sol           G$ perks (saves/retries/cosmetics/tickets), split to treasury + UBI
 │   ├── ArenaPlatform.sol      1v1 G$ match escrow
 │   ├── SoloWager.sol          Solo score wager escrow (legacy)
 │   └── ...                    earlier / experimental contracts

@@ -52,7 +52,7 @@ BackendApproval = { player: address, gameType: uint8, score: uint256, nonce: uin
 - **Competition** · a multi-week cumulative cup over `COMPETITION_WEEKS = [10,11,12,13]`, id `gamearena-comp-s10-13`. `GET /api/competition` computes live standings and self-freezes past the deadline via `freezeCompetitionIfNeeded` · a cold-started process still freezes correctly on the first GET after the cutoff. `POST /api/competition/freeze` (internal-secret) forces it.
 - **72-hour Arena Cup** · a fixed-window challenge (`CHALLENGE_*` constants, min plays + top-N + USDC prize). `GET /api/challenge` and `/api/challenges/past`.
 - **Weekly community challenge** · a games-played milestone pool shared among everyone who hits the threshold (not placement-based). `GET /api/weekly-challenge`, payout list at `/api/weekly-challenge/payout-list` (internal-secret).
-- **Daily missions** · `DAILY_MISSIONS` defined inline, calibrated to real score ranges. `GET /api/missions/today/:address` returns today's set + claim state · `POST /api/missions/claim` (internal-secret) claims a reward.
+- **Daily missions** · `MISSION_TEMPLATES` defined inline, calibrated to real score ranges. Each day picks one mission per category (`count` / `skill` / `special`) so every set is balanced. Rewards are small (20-45 XP). Games are score-based so there are no "win" missions. `GET /api/missions/today/:address` returns today's set + claim state · `POST /api/missions/claim` (internal-secret) claims a reward.
 - **Achievements** · milestone list checked on each score submit. `GET /api/achievements/:address`.
 
 ---
@@ -76,6 +76,18 @@ Finished matches are best-effort persisted to `arena_free_matches` (history, lad
 - **`POST /api/arena/purchase-gasless`** · player signs an EIP-2612 permit for the relayer; the backend submits `permit` + `transferFrom(player → pool)` paying gas itself, then grants. Zero CELO needed from the player.
 
 **`GET /api/arena/ladder`** (internal-secret) aggregates a given ISO week (`arena_free_matches`): points desc then wins desc, top 20 + own standing, remaining matches today, and the live pool (`ARENA_WEEKLY_POOL_GS` base, default 500 G$, plus this week's player purchases). Past weeks stay viewable. Fails soft to an empty board if the migration hasn't run.
+
+---
+
+## Perks & cosmetics (PerkShop)
+
+Perks are bought on-chain via the `PerkShop` contract (`0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5`, 80% treasury / 20% GoodCollective UBI split inside the contract). This service grants and tracks the off-chain half.
+
+- **`POST /api/perks/buy-gasless`** (internal-secret) · the player signed an EIP-2612 permit for PerkShop; the relayer submits `buyPerkWithPermit` and pays gas, so the buy costs the player zero CELO and one signature. Body `{ wallet, perkId, deadline, v, r, s }`.
+- **`POST /api/perks/grant`** (internal-secret) · verifies an on-chain `PerkPurchased` for the wallet from the buy tx receipt, then routes the grant: the Match Pack (perk `6`, `PERK_TICKET_ID`) adds +5 arena matches (`arena_daily.extra`), save/retry perks (`1`, `3`, `5`, `CONSUMABLE_STOCK_PERKS`) stock one unit into `perk_inventory`, and cosmetics need no grant (ownership is on-chain). Replay-safe: the buy tx hash is the `arena_purchases` primary key. Works for both gasless and direct buys.
+- **`POST /api/perks/use`** (internal-secret) · spends one save/retry from a wallet's `perk_inventory` stock when the game uses it.
+- **`GET /api/perks/inventory?wallet=`** (internal-secret) · a wallet's save/retry stock counts.
+- **`GET /api/cosmetics/equip?wallet=`** · **`POST /api/cosmetics/equip`** (internal-secret) · the equip toggle for owned cosmetics (Crystal Blocks, Neon Trail). Cosmetic ownership is on-chain; this is a pure display preference keyed by wallet in the `cosmetic_equip` table, so the choice follows the account across browsers/devices. GET returns only explicitly-set rows; the client treats any owned cosmetic not in the map as equipped (default on). POST takes `{ wallet, perkId, equipped }`.
 
 ---
 
@@ -129,6 +141,10 @@ Internal-secret routes require the `x-internal-secret` header · the Next.js fro
 | `POST /api/arena/start` · `/api/arena/throw` | secret | Instant match: open · play a round |
 | `POST /api/arena/purchase` · `/api/arena/purchase-gasless` | secret | Refill via direct transfer or gasless permit |
 | `GET /api/arena/ladder` | secret | Weekly MARKOV ladder + pool |
+| `POST /api/perks/buy-gasless` | secret | Buy a PerkShop perk via gasless EIP-2612 permit |
+| `POST /api/perks/grant` | secret | Verify an on-chain perk buy and grant it off-chain |
+| `POST /api/perks/use` · `GET /api/perks/inventory` | secret | Spend / read save-retry stock |
+| `GET` · `POST /api/cosmetics/equip` | secret | Read / set the equip toggle for owned cosmetics |
 | `POST /api/faucet` | secret | One-time CELO gas drip |
 | `GET /api/push/vapid-key` | — | VAPID public key |
 | `POST /api/push/subscribe` · `/unsubscribe` · `/prefs` | — | Manage push endpoints + prefs |
@@ -147,7 +163,9 @@ Selected tables:
 - `activity` · score submissions mirrored from chain
 - `arena_free_matches` · finished Instant Arena matches (ladder, history, oracle)
 - `arena_daily` · per-wallet daily match slot accounting
-- `arena_purchases` · refill purchases, `tx_hash` PK (replay-proof)
+- `arena_purchases` · refill + perk purchases, `tx_hash` PK (replay-proof)
+- `perk_inventory` · per-wallet save/retry stock counts (owned minus used)
+- `cosmetic_equip` · per-wallet equip toggle for owned cosmetics (display preference only)
 - `season_v1_meta` / `_players` / `_points` / `_results` · season window, joins, points ledger, sealed past seasons
 - `faucet_claims` · one-drip-per-wallet ledger (unique on `wallet`)
 - `push_subscriptions` · VAPID endpoints + opt-out state
@@ -170,6 +188,7 @@ Selected tables:
 | `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `VAPID_CONTACT_EMAIL` | Web push |
 | `FORNO_RPC_URL` | Celo RPC (defaults to public Forno) |
 | `GAME_PASS_ADDR` | GamePass NFT · voucher `verifyingContract` + username resolution |
+| `PERK_SHOP_ADDRESS` | PerkShop contract · gasless perk buys + on-chain purchase verification |
 | `FAUCET_*` | Drip amount + sybil thresholds (see Gas faucet) |
 
 ---
