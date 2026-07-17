@@ -3034,7 +3034,14 @@ async function arenaConsumeSlot(wallet) {
     });
     return { ok: true, remaining: allowance - used - 1 };
   } catch (e) {
-    return { ok: true, remaining: null }; // table absent → unlimited local play
+    // Fail CLOSED on a real error. This used to return ok:true on ANY error,
+    // so a transient DB blip silently handed out UNLIMITED free matches. The
+    // one legitimate exception is a genuinely absent table (local dev before
+    // the migration), which we detect explicitly rather than assuming.
+    const missingTable = /PGRST205|does not exist|schema cache/i.test(e?.message || '');
+    if (missingTable) return { ok: true, remaining: null }; // local dev only
+    console.error('arenaConsumeSlot failed · denying slot:', e?.message);
+    return { ok: false, remaining: 0 };
   }
 }
 
@@ -3093,12 +3100,55 @@ async function arenaVerifyPurchase(txHash, wallet, sku) {
   return { ok: true, remaining };
 }
 
+// ─── GamePass gate · ladder integrity ───────────────────────────────────────
+// Anyone can PLAY the arena free · that is the funnel and we keep it open.
+// But a match only COUNTS on the ladder if the wallet actually minted a
+// GamePass on-chain, exactly like the other games (play free, mint to save
+// your score). Minting costs a real signature and gas, so throwaway wallets
+// stop being free.
+//
+// Why this exists: the ladder previously recorded any address the caller
+// passed. The daily cap is per-wallet, so one operator with N wallets got N x
+// the free allowance. That is exactly what happened · 11 wallets first seen
+// inside a 107-second window, each burning precisely the 10/day cap for two
+// days, none of them holding a pass.
+//
+// Cached with a TTL so a real player costs one RPC read, not one per match.
+// Fails CLOSED: if we cannot prove a pass, the match is not recorded. A real
+// player loses one row during an RPC blip; a sybil farm gets nothing. That is
+// the right trade for a ladder that pays G$.
+const PASS_CACHE_TTL_MS = 10 * 60 * 1000;
+const passCache = new Map(); // wallet -> { has: boolean, at: number }
+
+async function hasGamePass(wallet) {
+  const w = (wallet || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(w)) return false;
+  const hit = passCache.get(w);
+  if (hit && Date.now() - hit.at < PASS_CACHE_TTL_MS) return hit.has;
+  if (!passContract) return false; // no RPC configured · cannot prove · fail closed
+  try {
+    const has = await passContract.hasMinted(w);
+    passCache.set(w, { has: !!has, at: Date.now() });
+    return !!has;
+  } catch (e) {
+    console.warn(`⚠️  GamePass check failed for ${w.slice(0, 10)}…:`, e?.message);
+    if (hit) return hit.has; // a stale answer beats guessing
+    return false;            // fail closed
+  }
+}
+
 const arenaEngine = new ArenaMatchEngine({
   onMatchComplete: async (session) => {
     // Receipt layer: persist completed matches for history, ladder, and the
     // async Oracle attestation. Table may not exist yet in local setups —
     // persistence is best-effort, gameplay never depends on it.
     try {
+      if (!(await hasGamePass(session.wallet))) {
+        // Played fine, just not ranked. The finish screen prompts the mint.
+        console.log(`⛔ arena match not recorded · no GamePass: ${String(session.wallet).slice(0, 10)}…`);
+        attestInstantMatch(session);
+        return;
+      }
       await supabase.from('arena_free_matches').insert({
         match_id: session.matchId,
         wallet: session.wallet,
