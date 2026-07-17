@@ -3821,7 +3821,13 @@ app.get('/api/push/vapid-key', (_, res) => {
 // On the wallet's FIRST subscription ever, fires a one-time welcome ping so
 // they get an instant payoff for granting permission. Re-subscribes on new
 // devices stay silent (zero existing rows = first; any rows = returning).
-app.post('/api/push/subscribe', async (req, res) => {
+// SECURITY (2026-07-17 audit): these three had NO auth. The CORS origin check
+// is not authentication · any script can forge an Origin header, so they were
+// world-writable: register a subscription against any wallet, kill any player's
+// subscription by endpoint, or flip any player's notification prefs. They now
+// go through server actions (frontend/app/actions/push.ts) and demand the
+// secret like every other write.
+app.post('/api/push/subscribe', requireSecret, async (req, res) => {
   const { walletAddress, subscription } = req.body || {};
   if (!walletAddress || !subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
     return res.status(400).json({ error: 'Missing fields' });
@@ -3861,7 +3867,7 @@ app.post('/api/push/subscribe', async (req, res) => {
 });
 
 // Player unsubscribes a specific endpoint.
-app.post('/api/push/unsubscribe', async (req, res) => {
+app.post('/api/push/unsubscribe', requireSecret, async (req, res) => {
   const { endpoint } = req.body || {};
   if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
   await push.deleteSubscription(supabase, endpoint);
@@ -3881,7 +3887,7 @@ app.get('/api/push/prefs/:address', async (req, res) => {
   });
 });
 
-app.post('/api/push/prefs', async (req, res) => {
+app.post('/api/push/prefs', requireSecret, async (req, res) => {
   const { walletAddress, streak_warnings, cup_deadlines, rank_changes, reengagement } = req.body || {};
   if (!walletAddress) return res.status(400).json({ error: 'Missing walletAddress' });
   await supabase.from('notification_prefs').upsert({
