@@ -11,7 +11,23 @@ import { useRouter } from "next/navigation";
 // the Sign in flow lives. nextPath is kept on the type to stay
 // backwards-compatible with callers, but it's no longer used since the
 // auth entry now sits on /home, not on a separate /connect screen.
-export default function GuestScorePrompt({ nextPath: _nextPath }: { nextPath: string }) {
+// Copy is overridable because not every game has a "run" or a "score".
+// Challenge AI has a MATCH and a LADDER, and telling a player to "save your
+// run" there reads as boilerplate. Defaults keep every existing caller
+// byte-identical.
+export default function GuestScorePrompt({
+  nextPath: _nextPath,
+  eyebrow = "Free play · run not saved",
+  headline = "Sign in to save your next run.",
+  sub = "Land on the leaderboard, earn XP, hatch your pet.",
+  cta = "SIGN IN & COMPETE",
+}: {
+  nextPath: string;
+  eyebrow?: string;
+  headline?: string;
+  sub?: string;
+  cta?: string;
+}) {
   const router = useRouter();
   return (
     <div style={{
@@ -43,7 +59,7 @@ export default function GuestScorePrompt({ nextPath: _nextPath }: { nextPath: st
           fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
           color: "#fde68a", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
           textTransform: "uppercase",
-        }}>Free play · run not saved</span>
+        }}>{eyebrow}</span>
       </div>
 
       <div style={{
@@ -52,14 +68,14 @@ export default function GuestScorePrompt({ nextPath: _nextPath }: { nextPath: st
         lineHeight: 1.35, marginTop: 8,
         letterSpacing: "-0.005em",
       }}>
-        Sign in to save your next run.
+        {headline}
       </div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
         color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
         lineHeight: 1.5, marginTop: 4,
       }}>
-        Land on the leaderboard, earn XP, hatch your pet.
+        {sub}
       </div>
 
       {/* Sign-in CTA · matches the FinishedView's primary button shape */}
@@ -76,7 +92,7 @@ export default function GuestScorePrompt({ nextPath: _nextPath }: { nextPath: st
           boxShadow: "0 10px 22px -6px rgba(251,191,36,0.5), inset 0 1px 0 rgba(255,255,255,0.55)",
         }}
       >
-        SIGN IN &amp; COMPETE
+        {cta}
       </button>
     </div>
   );

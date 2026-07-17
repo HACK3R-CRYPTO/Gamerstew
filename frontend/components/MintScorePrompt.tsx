@@ -13,7 +13,21 @@ import { useRouter } from "next/navigation";
 // This is a conversion moment, not an error. Play and UBI stay free; the
 // mint is the one-tap upgrade that unlocks saving + the leaderboard. The
 // GamePass mint self-funds its gas, so it's genuinely free to the player.
-export default function MintScorePrompt({ score }: { score?: number }) {
+// Copy is overridable · not every game has a "score". Challenge AI has a
+// MATCH and a LADDER. Defaults keep every existing caller byte-identical.
+export default function MintScorePrompt({
+  score,
+  eyebrow = "Score not saved yet",
+  headline,
+  sub = "One tap. Gas is on us.",
+  cta = "GET FREE PASS & SAVE",
+}: {
+  score?: number;
+  eyebrow?: string;
+  headline?: string;
+  sub?: string;
+  cta?: string;
+}) {
   const router = useRouter();
   return (
     <div style={{
@@ -39,7 +53,7 @@ export default function MintScorePrompt({ score }: { score?: number }) {
           fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
           color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.2em",
           textTransform: "uppercase",
-        }}>Score not saved yet</span>
+        }}>{eyebrow}</span>
       </div>
 
       <div style={{
@@ -47,16 +61,17 @@ export default function MintScorePrompt({ score }: { score?: number }) {
         color: "rgba(255,255,255,0.92)", fontSize: 14, fontWeight: 700,
         lineHeight: 1.35, marginTop: 8, letterSpacing: "-0.005em",
       }}>
-        {typeof score === "number" && score > 0
-          ? `${score.toLocaleString()} points · get your free pass to save it.`
-          : "Get your free pass to save your score."}
+        {headline
+          ?? (typeof score === "number" && score > 0
+            ? `${score.toLocaleString()} points · get your free pass to save it.`
+            : "Get your free pass to save your score.")}
       </div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
         color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
         lineHeight: 1.5, marginTop: 4,
       }}>
-        One tap. Gas is on us.
+        {sub}
       </div>
 
       <button
@@ -75,7 +90,7 @@ export default function MintScorePrompt({ score }: { score?: number }) {
           boxShadow: "0 10px 22px -6px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.5)",
         }}
       >
-        GET FREE PASS &amp; SAVE
+        {cta}
       </button>
     </div>
   );

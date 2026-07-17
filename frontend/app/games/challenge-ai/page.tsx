@@ -1325,9 +1325,23 @@ function ResultStage({
           Guest → sign in. Signed in + verified but no pass → mint.
           Without this the match just ended in silence and nothing saved. */}
       {isGuest ? (
-        <GuestScorePrompt nextPath="/games/challenge-ai" />
+        // Never signed in · the ask is the account.
+        <GuestScorePrompt
+          nextPath="/games/challenge-ai"
+          eyebrow="Demo match · not ranked"
+          headline="Sign in to play MARKOV for real."
+          sub="Ranked matches, the weekly ladder, and G$ on the line."
+          cta="SIGN IN & CLIMB"
+        />
       ) : needsMint ? (
-        <MintScorePrompt />
+        // Already verified and signed in · do NOT tell them to sign in, they
+        // are in. The only thing between them and the ladder is the pass.
+        <MintScorePrompt
+          eyebrow="Match not ranked yet"
+          headline="Get your free pass to rank on the ladder."
+          sub="You are verified already. One tap, gas is on us."
+          cta="GET FREE PASS & RANK"
+        />
       ) : null}
 
       {/* CTAs · a guest with no demo matches left has nothing to rematch into,
