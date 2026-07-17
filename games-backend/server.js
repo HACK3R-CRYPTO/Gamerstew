@@ -1128,8 +1128,23 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
 
     serverScore = replay.score;
   } else {
-    // Simon — same session-ticket protection, score still client-claimed
-    if (typeof score !== 'number' || score < 0 || score > 1_000_000) {
+    // Simon / Stack — session-ticket protected, but the score is still the
+    // CLIENT'S claim. This is the real remaining "don't trust the client" hole:
+    // a tampered browser can send any number up to the bound and we sign it.
+    //
+    // DELIBERATELY NOT TIGHTENING THE BOUND. A lower ceiling looks like a fix
+    // and isn't: it cannot tell a cheat from a great run, so it only punishes
+    // real players the day someone plays out of their skin. Rhythm proves the
+    // point · the client clamps at 1,000,000 (Math.min in the game page) and
+    // rhythmScoring has NO internal cap, so genuine monster runs land on
+    // exactly 1,000,000. Read naively, those look like fraud. They are not.
+    //
+    // The only honest fix is what rhythm already does: replay the run
+    // server-side and sign the COMPUTED score, ignoring the client entirely.
+    // See rhythmComputeScore + rhythmPhysicsCheck + rhythmJitterCheck for the
+    // pattern simon and stack still need. Until then this bound stays a sanity
+    // check, not a pretence of security.
+    if (typeof score !== 'number' || !Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 1_000_000) {
       return res.status(400).json({ error: 'Score out of range (max 1000000)' });
     }
     serverScore = score;
