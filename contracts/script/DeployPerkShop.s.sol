@@ -54,9 +54,9 @@ contract DeployPerkShop is Script {
         console.log("  1 Rhythm Rush  Save          30 G$  (consumable)");
         console.log("  2 Rhythm Rush  Neon Trail   300 G$  (cosmetic)");
         console.log("  3 Stack Tower  Save          30 G$  (consumable)");
-        console.log("  4 Stack Tower  Retry         20 G$  (consumable)");
+        console.log("  4 Stack Tower  Crystal Blocks 250 G$ (cosmetic)");
         console.log("  5 Simon Memory Retry         20 G$  (consumable)");
-        console.log("  6 Challenge AI Rematch       15 G$  (consumable)");
+        console.log("  6 Challenge AI Match Pack      2 G$  (consumable)");
         console.log("");
         console.log("Next: set NEXT_PUBLIC_PERK_SHOP in frontend/.env + PERK_SHOP_ADDRESS in games-backend/.env");
 

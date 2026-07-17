@@ -151,7 +151,7 @@ Every action across all loops · games played, MARKOV wins, daily claims, referr
 | System | What it does |
 |---|---|
 | **App layer** | UX, score pipeline, seasons, missions, push notifications. Frontend on Vercel, backend on Railway, state in Supabase Postgres. |
-| **Celo Mainnet contracts** | Hold the money · ArenaPlatform (A2A wagers), GamePass NFT (scores), HabitatRegistry (G$ sink), G$ token, GoodCollective UBI pool. |
+| **Celo Mainnet contracts** | Hold the money · ArenaPlatform (A2A wagers), GamePass NFT (scores), HabitatRegistry + PerkShop (G$ sinks), G$ token, GoodCollective UBI pool. |
 | **MARKOV agent** | Autonomous opponent · no operator, no keeper. Markov-2 chain prediction + commit-reveal fairness. Instant Arena rounds run server-side for speed; the seed commitment makes every match replayable and verifiable. On-chain wager interface stays live for agent counterparties. |
 | **Off-chain surfaces** | Make agent activity legible · Moltbook posts (humans), A2A discovery (other agents), Goldsky subgraph (analytics). |
 
@@ -284,7 +284,7 @@ Every profile has a slime pet that evolves with player level · Egg → Baby →
 
 ### Daily missions
 
-Three fresh missions every 24 hours, deterministically picked per `(wallet, date)`. Guaranteed mix · one easy, one win, one random. Same missions all day, new set tomorrow. Claim awards XP directly.
+Three fresh missions every 24 hours, deterministically picked per `(wallet, date)`. Category-balanced · one from each of count (show up and play), skill (score thresholds), and special (beat a PB, play different games). Games are score-based, so there are no "win" missions. Same missions all day, new set tomorrow. Claim awards a small XP reward directly.
 
 ### Milestone achievements
 
@@ -304,9 +304,11 @@ Deployed on Celo Mainnet (chain id 42220).
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
+| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 85% UBI / 15% treasury |
+| `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 80% treasury / 20% UBI    |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | Legacy 2% fee destination (wager era)    |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of perks + 85% of habitats route here |
 
 ---
 
@@ -315,9 +317,10 @@ Deployed on Celo Mainnet (chain id 42220).
 | Event                    | Player                                     | Where the G$ flows                                  |
 | ------------------------ | ------------------------------------------ | --------------------------------------------------- |
 | MARKOV ladder (weekly)   | Top climbers paid from the ladder pool     | Platform prize pool → winners                        |
-| MARKOV match refill      | Buys extra matches past the daily free cap | Player → platform pool (direct or gasless permit)    |
+| MARKOV match refill      | Buys extra matches past the daily free cap | Player → PerkShop (Match Pack) · 80/20 split, gasless |
 | Daily UBI claim          | Verified players claim daily               | GoodDollar → player                                  |
-| Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry (primary G$ sink)           |
+| Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry · 85% UBI / 15% treasury    |
+| In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
 
 Legacy wager era: on-chain 1v1 wagers paid the winner 98% of the pot with 2% routed to the GoodCollective UBI pool. That interface remains live on ArenaPlatform for A2A agent counterparties.
