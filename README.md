@@ -308,7 +308,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 80% treasury / 20% UBI    |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | Legacy 2% fee destination (wager era)    |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of perks + 85% of habitats route here |
 
 ---
 
@@ -317,7 +317,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | Event                    | Player                                     | Where the G$ flows                                  |
 | ------------------------ | ------------------------------------------ | --------------------------------------------------- |
 | MARKOV ladder (weekly)   | Top climbers paid from the ladder pool     | Platform prize pool → winners                        |
-| MARKOV match refill      | Buys extra matches past the daily free cap | Player → platform pool (direct or gasless permit)    |
+| MARKOV match refill      | Buys extra matches past the daily free cap | Player → PerkShop (Match Pack) · 80/20 split, gasless |
 | Daily UBI claim          | Verified players claim daily               | GoodDollar → player                                  |
 | Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry · 85% UBI / 15% treasury    |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
