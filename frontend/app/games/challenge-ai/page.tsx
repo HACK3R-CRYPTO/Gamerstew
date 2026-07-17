@@ -21,7 +21,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
+import GuestScorePrompt from "@/components/GuestScorePrompt";
+import MintScorePrompt from "@/components/MintScorePrompt";
 import toast from "react-hot-toast";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import { startDemoMatch, throwDemoMove, demoMatchesLeft, DEMO_MATCH_LIMIT } from "@/lib/markovDemo";
@@ -121,6 +124,18 @@ export default function ChallengeAiPage() {
   const [demoMatch, setDemoMatch] = useState(false);
   const [demoLeft, setDemoLeft] = useState(DEMO_MATCH_LIMIT);
   useEffect(() => { if (!authed) setDemoLeft(demoMatchesLeft()); }, [authed]);
+
+  // Signed in but no GamePass · they are GoodDollar-verified and can play, but
+  // nothing saves or ranks without a pass. Same rule as every other game, so
+  // the result screen invites the mint instead of silently dropping the match.
+  const { data: hasMinted } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+    abi: GAME_PASS_ABI,
+    functionName: "hasMinted",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const needsMint = authed && hasMinted === false;
   // Match tickets now route through PerkShop (perk #6) like every other perk —
   // gasless-first buy, 20/80 split — then the backend grants +5 matches.
   const { buyPerk } = usePerks();
@@ -307,6 +322,10 @@ export default function ChallengeAiPage() {
           later(() => {
             setFinalData(fin);
             updateRecord(fin.outcome);
+            // The demo engine burns the allowance as the match ends, so pull
+            // the fresh count here · otherwise the counter only corrected on
+            // a page refresh.
+            if (demoMatch) setDemoLeft(demoMatchesLeft());
             setPhase("result");
             // Match-end fanfare — the big stingers stay reserved for this.
             if (fin.outcome === "player_won") playWin();
@@ -423,6 +442,9 @@ export default function ChallengeAiPage() {
             onRematch={startMatch}
             onLobby={() => setPhase("lobby")}
             busy={busy}
+            isGuest={!authed && !authPending}
+            needsMint={!!needsMint}
+            demoLeft={demoLeft}
           />
         )}
       </div>
@@ -658,7 +680,7 @@ function Lobby({
           /* Demo spent · this is the ask. Ranked play, a genuinely provable
              match, the ladder and G$ all live behind sign-in. The demo proved
              MARKOV reads you; this is where they come get the real one. */
-          <Link href="/connect" style={{ textDecoration: "none" }}>
+          <Link href="/home" style={{ textDecoration: "none" }}>
             <div style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}>
               <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
                 <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
@@ -1152,7 +1174,7 @@ function Confetti() {
 }
 
 function ResultStage({
-  pet, final, score, record, onRematch, onLobby, busy,
+  pet, final, score, record, onRematch, onLobby, busy, isGuest, needsMint, demoLeft,
 }: {
   pet: PetStage;
   final: NonNullable<RoundResult["final"]>;
@@ -1161,6 +1183,9 @@ function ResultStage({
   onRematch: () => void;
   onLobby: () => void;
   busy: boolean;
+  isGuest: boolean;    // played the demo · nothing saved, invite the sign-in
+  needsMint: boolean;  // signed in, verified, but no GamePass · invite the mint
+  demoLeft: number;    // demo matches left, drives rematch vs sign-in
 }) {
   const won = final.outcome === "player_won";
   const tied = final.outcome === "tie";
@@ -1268,7 +1293,11 @@ function ResultStage({
         </div>
       )}
 
-      {/* fairness proof */}
+      {/* Fairness proof · signed-in matches ONLY. A demo runs in the browser,
+          which means it generated its own seed and the commitment proves
+          nothing. Showing this block on a demo would be a lie, so it is gated.
+          The real, verifiable match is one of the reasons to sign in. */}
+      {!isGuest && (
       <details
         style={{
           borderRadius: 14,
@@ -1290,27 +1319,41 @@ function ResultStage({
           deterministically from this seed, so the whole match is replayable.
         </div>
       </details>
+      )}
 
-      {/* CTAs */}
+      {/* The ask · mirrors every other game's finish screen.
+          Guest → sign in. Signed in + verified but no pass → mint.
+          Without this the match just ended in silence and nothing saved. */}
+      {isGuest ? (
+        <GuestScorePrompt nextPath="/games/challenge-ai" />
+      ) : needsMint ? (
+        <MintScorePrompt />
+      ) : null}
+
+      {/* CTAs · a guest with no demo matches left has nothing to rematch into,
+          so the button goes quiet instead of firing a request that fails. */}
+      {(() => {
+        const demoSpent = isGuest && demoLeft === 0;
+        return (
       <div style={{ display: "flex", gap: 10, animation: "riseIn 0.45s 0.4s ease both" }}>
         <button
-          onClick={onRematch}
-          disabled={busy}
+          onClick={demoSpent ? undefined : onRematch}
+          disabled={busy || demoSpent}
           style={{
             flex: 2,
-            background: `linear-gradient(180deg, ${RIM}, #f59e0b)`,
-            color: "#04001a",
+            background: demoSpent ? "rgba(255,255,255,0.08)" : `linear-gradient(180deg, ${RIM}, #f59e0b)`,
+            color: demoSpent ? "rgba(255,255,255,0.45)" : "#04001a",
             border: "none",
             borderRadius: 16,
             padding: "15px 0",
             fontSize: 15,
             fontWeight: 900,
             letterSpacing: "0.05em",
-            cursor: "pointer",
-            animation: "glowPulse 2.2s ease-in-out infinite",
+            cursor: demoSpent ? "default" : "pointer",
+            animation: demoSpent ? "none" : "glowPulse 2.2s ease-in-out infinite",
           }}
         >
-          ⚔️ REMATCH
+          {demoSpent ? "DEMO OVER" : "⚔️ REMATCH"}
         </button>
         <button
           onClick={onLobby}
@@ -1329,6 +1372,8 @@ function ResultStage({
           Lobby
         </button>
       </div>
+        );
+      })()}
 
       {/* Share card · free forever — every shared win is an ad. Most
           prominent after a victory (that's the shareable moment); still
