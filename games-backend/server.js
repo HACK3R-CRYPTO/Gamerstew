@@ -9,6 +9,7 @@ const {
   jitterCheck:   rhythmJitterCheck,
   computeScore:  rhythmComputeScore,
 } = require('./lib/rhythmScoring');
+const { computeStackScore } = require('./lib/stackScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -1055,7 +1056,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     return res.status(503).json({ error: 'Validator not configured' });
   }
 
-  const { playerAddress, game, score, sessionToken, tapLog } = req.body;
+  const { playerAddress, game, score, sessionToken, tapLog, dropLog } = req.body;
   if (!playerAddress || !game) {
     return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
@@ -1148,6 +1149,20 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       return res.status(400).json({ error: 'Score out of range (max 1000000)' });
     }
     serverScore = score;
+
+    // ── Stack · SHADOW MODE (ANTICHEAT.md Step 1) ─────────────────────────────
+    // Recompute the score from the client's per-drop log and LOG the comparison.
+    // We do NOT touch serverScore here · the CLIENT'S claimed score is still what
+    // gets signed (serverScore was set to `score` just above and stays that way).
+    // This is deliberately non-enforcing so an imperfect port cannot affect any
+    // player · deltas should be ~0 for honest runs, and any drift gets fixed
+    // while nobody is impacted. See ANTICHEAT.md "How to ship it without hurting
+    // anyone" step 1. Absent dropLog = behave exactly as before (no log line).
+    if (game === 'stack' && Array.isArray(dropLog)) {
+      const shadow = computeStackScore(dropLog);
+      const delta = shadow.score - score;
+      console.log(`[stack:shadow] player=${playerAddress.slice(0, 10)} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${delta} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) · SIGNING CLIENT SCORE`);
+    }
   }
 
   const gameType = GAME_TYPE[game];
