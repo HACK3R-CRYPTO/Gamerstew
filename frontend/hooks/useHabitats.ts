@@ -7,6 +7,7 @@ import { CONTRACT_ADDRESSES, detectFeeSpread } from "@/lib/contracts";
 import { habitatRegistryAbi, erc20Abi } from "@/lib/abis/habitatRegistry";
 import { HABITATS, FIRST_PAID_TIER, getHabitat, defaultEquipped, freeTierForLevel, type HabitatTier } from "@/lib/habitats";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { setHabitatEquip } from "@/app/actions/habitat";
 
 // Equipped tier preference is per-wallet. localStorage acts as a fast cache
 // for instant UI; backend `/api/habitat` is the source of truth so the
@@ -166,12 +167,11 @@ export function useHabitats(playerLevel: number = 1) {
     window.dispatchEvent(new Event(EQUIP_EVENT));
     // Persist to backend (fire-and-forget). Failures are non-fatal —
     // localStorage still has the choice for this device.
+    // Goes through a server action so the endpoint can require the internal
+    // secret · a browser fetch cannot carry it, which is exactly why this used
+    // to be world-writable (see app/actions/habitat.ts).
     if (address) {
-      fetch(`${BACKEND_URL}/api/habitat/equip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, tier: tierId }),
-      }).catch(() => { /* offline / backend down */ });
+      setHabitatEquip(address, tierId).catch(() => { /* offline / backend down */ });
     }
     return true;
   }, [address, ownedPaidTierIds, playerLevel]);

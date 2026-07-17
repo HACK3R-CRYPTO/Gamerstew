@@ -966,7 +966,19 @@ function validateScore({ score, gameTime, game }) {
 }
 
 // ─── POST /api/start-session ───────────────────────────────────────────────
-app.post('/api/start-session', gameSubmitLimiter, async (req, res) => {
+// SECURITY (2026-07-17 audit): this had NO requireSecret, so any script could
+// forge an Origin header and ask the VALIDATOR KEY to sign a payload for any
+// address it liked · an unauthenticated signing oracle on the same key that
+// owns PerkShop and HabitatRegistry. The payload shape (`addr:ts:nonce`) meant
+// it could not forge a score voucher or a tx, so impact was limited, but an
+// open signing endpoint is never acceptable. Now secret-gated.
+//
+// NOTE: this endpoint is currently DEAD. The live score flow is
+// start-game → sign-score → on-chain tx → verifyScoreTx. The "silent session"
+// it issues is only read by the unreachable branch in /api/submit-score (see
+// the comment there). Kept, gated, and documented rather than deleted so the
+// speed-hack layer can be revived deliberately instead of by accident.
+app.post('/api/start-session', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { playerAddress } = req.body;
   if (!playerAddress) return res.status(400).json({ error: 'Missing playerAddress' });
   if (!validator) return res.status(500).json({ error: 'Validator not ready' });
@@ -1229,6 +1241,17 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
   }
 
   // 1. Verify "Silent" Session Integrity (skipped for trusted server-action calls)
+  //
+  // ⚠️ AUDIT NOTE (2026-07-17): this branch is UNREACHABLE. `requireSecret`
+  // above already rejects every request without the secret, so isInternalCall
+  // is always true and the speed-hack detection below has never actually run.
+  // Do not read this block as active protection. The real anti-cheat is the
+  // on-chain path: start-game → sign-score → tx → verifyScoreTx (receipt must
+  // target GamePass), which is what genuinely gates scores today.
+  //
+  // Left in place, not deleted, because reviving speed-hack detection should be
+  // a deliberate decision (it would need to move ABOVE requireSecret, or the
+  // session would need threading through the server action).
   if (!isInternalCall) {
     if (!session) return res.status(400).json({ error: 'Missing session token' });
     try {
@@ -1996,7 +2019,16 @@ app.get('/api/user/:address', async (req, res) => {
 // beyond origin check — worst case a player calls it without claiming and
 // gets a streak count; the G$ entitlement gate on GoodDollar's end is the
 // real guard.
-app.post('/api/record-claim', async (req, res) => {
+// SECURITY (2026-07-17 audit): this had NO auth at all. The CORS origin check
+// is not authentication · any script can forge an Origin header, so this was
+// world-writable. It takes a wallet from the body and writes a claim streak
+// with ZERO proof the wallet ever claimed G$, meaning anyone could fabricate
+// streaks for themselves or for any other player. Now secret-gated.
+//
+// NOTE: currently DEAD (no caller anywhere in the repo). If the claim-streak
+// feature is revived, it must verify the claim on-chain rather than trust the
+// caller's word · a signed streak is only worth what it is checked against.
+app.post('/api/record-claim', requireSecret, async (req, res) => {
   const { walletAddress } = req.body || {};
   if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
     return res.status(400).json({ error: 'Missing or invalid walletAddress' });
@@ -2203,7 +2235,14 @@ app.get('/api/season/sync-habitats', async (req, res) => {
 // ─── POST /api/habitat/equip — persist player's equipped tier choice ────────
 // Stored in users.equipped_habitat so the choice travels with the wallet
 // across devices. Validates ownership before writing.
-app.post('/api/habitat/equip', async (req, res) => {
+// SECURITY (2026-07-17 audit): this had no requireSecret because useHabitats
+// POSTed it straight from the browser, and a browser cannot hold the secret.
+// The CORS origin check is NOT authentication · any script can forge an Origin
+// header, so this was world-writable: anyone could change any player's equipped
+// habitat. It now goes through the setHabitatEquip server action (see
+// frontend/app/actions/habitat.ts), so it can demand the secret like every
+// other write path.
+app.post('/api/habitat/equip', requireSecret, async (req, res) => {
   const { address, tier } = req.body || {};
   if (!address || typeof tier !== 'number') {
     return res.status(400).json({ error: 'address and tier required' });
