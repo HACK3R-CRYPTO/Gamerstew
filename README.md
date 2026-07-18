@@ -304,11 +304,11 @@ Deployed on Celo Mainnet (chain id 42220).
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
-| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 85% UBI / 15% treasury |
+| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 80% treasury / 20% UBI |
 | `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 80% treasury / 20% UBI    |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of perks + 85% of habitats route here |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of every perk and habitat spend routes here |
 
 ---
 
@@ -319,7 +319,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | MARKOV ladder (weekly)   | Top climbers paid from the ladder pool     | Platform prize pool → winners                        |
 | MARKOV match refill      | Buys extra matches past the daily free cap | Player → PerkShop (Match Pack) · 80/20 split, gasless |
 | Daily UBI claim          | Verified players claim daily               | GoodDollar → player                                  |
-| Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry · 85% UBI / 15% treasury    |
+| Habitat unlock           | Paid cosmetic tiers (free tiers are level-gated) | Player → HabitatRegistry · 80% treasury / 20% UBI |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
 
