@@ -118,6 +118,9 @@ type Block = { x: number; w: number; hue: number };
 type Moving = { x: number; w: number; dir: 1 | -1; speed: number; hue: number };
 type Shard = { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; hue: number };
 type Sparkle = { x: number; y: number; born: number; life: number };
+// One entry per drop · fed to the backend shadow re-scorer (ANTICHEAT.md).
+// `t` is a coarse timestamp for a FUTURE humanness check · NOT used for scoring.
+type DropLogEntry = { dropIndex: number; level: number; landed: boolean; perfect: boolean; offset: number; t: number };
 
 export default function StackTowerPage() {
   const router = useRouter();
@@ -232,6 +235,14 @@ export default function StackTowerPage() {
   const comboRef = useRef(0);
   const levelRef = useRef(1);   // how many blocks are on the tower
 
+  // ─── Anti-cheat: per-drop log (SHADOW MODE) ───────────────────────────────
+  // Accumulate one entry per drop so the backend can recompute the score from
+  // discrete drop events (NOT from timestamps · see games-backend/ANTICHEAT.md
+  // Trap 2). `t` is a coarse timestamp reserved for a FUTURE humanness check
+  // and does not feed scoring. Additive + optional · an empty log changes
+  // nothing about what score the client submits.
+  const dropLogRef = useRef<DropLogEntry[]>([]);
+
   const juice = useGameJuice();
 
   // ─── Audio — same shape as Survivor's blip() ─────────────────────────────
@@ -316,6 +327,11 @@ export default function StackTowerPage() {
 
     // Complete miss — block falls. Offer a save (casual mode) before ending.
     if (overlap <= 0) {
+      // Shadow-mode drop log · record the miss (landed=false ends the run).
+      dropLogRef.current.push({
+        dropIndex: dropLogRef.current.length, level: levelRef.current,
+        landed: false, perfect: false, offset: Math.abs(m.x - below.x), t: Date.now(),
+      });
       shardsRef.current.push({
         x: m.x + m.w / 2, y: yCenter,
         w: m.w, vx: m.dir * 1.5, vy: 0, rot: 0, vr: m.dir * 0.04, hue: m.hue,
@@ -334,6 +350,12 @@ export default function StackTowerPage() {
 
     const offset = Math.abs(m.x - below.x);
     const newLevel = levelRef.current + 1;
+
+    // Shadow-mode drop log · one landed entry per drop (ANTICHEAT.md Step 1).
+    dropLogRef.current.push({
+      dropIndex: dropLogRef.current.length, level: levelRef.current,
+      landed: true, perfect: offset <= PERFECT_TOL, offset, t: Date.now(),
+    });
 
     if (offset <= PERFECT_TOL) {
       // PERFECT — snap aligned, no slice, combo + bonus
@@ -469,6 +491,7 @@ export default function StackTowerPage() {
     scoreRef.current = 0;
     comboRef.current = 0;
     levelRef.current = 1;
+    dropLogRef.current = [];
     setScore(0); setCombo(0);
     juice.reset();
     submittedRef.current = false;
@@ -602,6 +625,10 @@ export default function StackTowerPage() {
             address, "", "",
             { game: "stack", score: scoreToSubmit },
             sessionToken,
+            undefined, // tapLog · unused by stack
+            // Optional + additive · shadow re-scoring only, does not change the
+            // signed score (see games-backend/ANTICHEAT.md).
+            dropLogRef.current,
           );
         } else {
           authToken = await getAccessToken();
@@ -613,6 +640,10 @@ export default function StackTowerPage() {
             authToken, address,
             { game: "stack", score: scoreToSubmit },
             sessionToken,
+            undefined, // tapLog · unused by stack
+            // Optional + additive · shadow re-scoring only, does not change the
+            // signed score (see games-backend/ANTICHEAT.md).
+            dropLogRef.current,
           );
         }
 

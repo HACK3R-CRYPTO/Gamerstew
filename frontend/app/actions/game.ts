@@ -116,6 +116,17 @@ type SignScoreResult =
 // server judges hits from presses and pairs each hold-note press with the
 // next same-lane release to credit sustain ticks.
 export type RhythmTap = { lane: number; time: number; up?: 1 };
+// Stack per-drop log · SHADOW MODE only (see games-backend/ANTICHEAT.md).
+// Optional + additive · the server recomputes a shadow score from it but STILL
+// signs the client's claimed score. `t` is a coarse timestamp for a future
+// humanness check and does NOT feed scoring.
+export type StackDrop = { dropIndex: number; level: number; landed: boolean; perfect: boolean; offset: number; t: number };
+// Simon shadow-mode payload · SHADOW MODE only (see games-backend/ANTICHEAT.md).
+// Optional + additive · the server recomputes a shadow score from the seeded
+// pattern + these taps but STILL signs the client's claimed score. `tapLog` is
+// the ordered color ids the player tapped across the run; `rounds`/`elapsedMs`
+// are informational for the shadow log.
+export type SimonShadow = { tapLog: string[]; rounds: number; elapsedMs: number };
 
 type StartGameResult =
   | { success: true;  sessionToken: string }
@@ -211,6 +222,8 @@ export async function signScore(
   scoreData:     { game: GameId; score: number },
   sessionToken:  string,
   tapLog?:       RhythmTap[],
+  dropLog?:      StackDrop[],
+  simon?:        SimonShadow,
 ): Promise<SignScoreResult> {
   if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -222,6 +235,12 @@ export async function signScore(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      // Stack shadow-mode drop log · optional, does not change the signed score.
+      dropLog: dropLog ?? null,
+      // Simon shadow-mode tap log · optional, does not change the signed score.
+      simonTapLog:   simon?.tapLog ?? null,
+      simonRounds:   simon?.rounds ?? null,
+      simonElapsedMs: simon?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     return {
@@ -251,6 +270,8 @@ export async function signScoreMiniPay(
   scoreData:      { game: GameId; score: number },
   sessionToken:   string,
   tapLog?:        RhythmTap[],
+  dropLog?:       StackDrop[],
+  simon?:         SimonShadow,
 ): Promise<SignScoreResult> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
     return { success: false, error: 'Invalid wallet address' };
@@ -262,6 +283,12 @@ export async function signScoreMiniPay(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      // Stack shadow-mode drop log · optional, does not change the signed score.
+      dropLog: dropLog ?? null,
+      // Simon shadow-mode tap log · optional, does not change the signed score.
+      simonTapLog:   simon?.tapLog ?? null,
+      simonRounds:   simon?.rounds ?? null,
+      simonElapsedMs: simon?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     return {

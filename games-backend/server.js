@@ -9,6 +9,8 @@ const {
   jitterCheck:   rhythmJitterCheck,
   computeScore:  rhythmComputeScore,
 } = require('./lib/rhythmScoring');
+const { computeStackScore, computeStackHumanness } = require('./lib/stackScoring');
+const { computeSimonScore } = require('./lib/simonScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -966,7 +968,19 @@ function validateScore({ score, gameTime, game }) {
 }
 
 // ─── POST /api/start-session ───────────────────────────────────────────────
-app.post('/api/start-session', gameSubmitLimiter, async (req, res) => {
+// SECURITY (2026-07-17 audit): this had NO requireSecret, so any script could
+// forge an Origin header and ask the VALIDATOR KEY to sign a payload for any
+// address it liked · an unauthenticated signing oracle on the same key that
+// owns PerkShop and HabitatRegistry. The payload shape (`addr:ts:nonce`) meant
+// it could not forge a score voucher or a tx, so impact was limited, but an
+// open signing endpoint is never acceptable. Now secret-gated.
+//
+// NOTE: this endpoint is currently DEAD. The live score flow is
+// start-game → sign-score → on-chain tx → verifyScoreTx. The "silent session"
+// it issues is only read by the unreachable branch in /api/submit-score (see
+// the comment there). Kept, gated, and documented rather than deleted so the
+// speed-hack layer can be revived deliberately instead of by accident.
+app.post('/api/start-session', requireSecret, gameSubmitLimiter, async (req, res) => {
   const { playerAddress } = req.body;
   if (!playerAddress) return res.status(400).json({ error: 'Missing playerAddress' });
   if (!validator) return res.status(500).json({ error: 'Validator not ready' });
@@ -1043,7 +1057,8 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     return res.status(503).json({ error: 'Validator not configured' });
   }
 
-  const { playerAddress, game, score, sessionToken, tapLog } = req.body;
+  const { playerAddress, game, score, sessionToken, tapLog, dropLog,
+          simonTapLog, simonRounds, simonElapsedMs } = req.body;
   if (!playerAddress || !game) {
     return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
@@ -1116,11 +1131,60 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
 
     serverScore = replay.score;
   } else {
-    // Simon — same session-ticket protection, score still client-claimed
-    if (typeof score !== 'number' || score < 0 || score > 1_000_000) {
+    // Simon / Stack — session-ticket protected, but the score is still the
+    // CLIENT'S claim. This is the real remaining "don't trust the client" hole:
+    // a tampered browser can send any number up to the bound and we sign it.
+    //
+    // DELIBERATELY NOT TIGHTENING THE BOUND. A lower ceiling looks like a fix
+    // and isn't: it cannot tell a cheat from a great run, so it only punishes
+    // real players the day someone plays out of their skin. Rhythm proves the
+    // point · the client clamps at 1,000,000 (Math.min in the game page) and
+    // rhythmScoring has NO internal cap, so genuine monster runs land on
+    // exactly 1,000,000. Read naively, those look like fraud. They are not.
+    //
+    // The only honest fix is what rhythm already does: replay the run
+    // server-side and sign the COMPUTED score, ignoring the client entirely.
+    // See rhythmComputeScore + rhythmPhysicsCheck + rhythmJitterCheck for the
+    // pattern simon and stack still need. Until then this bound stays a sanity
+    // check, not a pretence of security.
+    if (typeof score !== 'number' || !Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 1_000_000) {
       return res.status(400).json({ error: 'Score out of range (max 1000000)' });
     }
     serverScore = score;
+
+    // ── Stack · SHADOW MODE (ANTICHEAT.md Step 1) ─────────────────────────────
+    // Recompute the score from the client's per-drop log and LOG the comparison.
+    // We do NOT touch serverScore here · the CLIENT'S claimed score is still what
+    // gets signed (serverScore was set to `score` just above and stays that way).
+    // This is deliberately non-enforcing so an imperfect port cannot affect any
+    // player · deltas should be ~0 for honest runs, and any drift gets fixed
+    // while nobody is impacted. See ANTICHEAT.md "How to ship it without hurting
+    // anyone" step 1. Absent dropLog = behave exactly as before (no log line).
+    if (game === 'stack' && Array.isArray(dropLog)) {
+      const shadow = computeStackScore(dropLog);
+      const human = computeStackHumanness(dropLog);
+      const delta = shadow.score - score;
+      const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
+      console.log(`[stack:shadow] player=${playerAddress.slice(0, 10)} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${delta} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) rate=${human.stats.dropsPerSec}/s ${flag} · SIGNING CLIENT SCORE`);
+    }
+
+    // ── Simon · SHADOW MODE (ANTICHEAT.md Steps 1 + 3) ────────────────────────
+    // The pattern is now seeded from the session token (client derives it with
+    // the SAME keccak PRNG as simonScoring.derivePattern), so the server finally
+    // has ground truth to check the taps against. Recompute the score from the
+    // tap log and LOG the comparison. We do NOT touch serverScore · the CLIENT'S
+    // claimed score is still what gets signed (set to `score` above). Non-enforcing
+    // so an imperfect port cannot affect a player; deltas should be ~0 for honest
+    // runs. Absent simonTapLog (older client, or guest/unminted with no token and
+    // thus no seed) = behave exactly as before (no log line).
+    if (game === 'simon' && Array.isArray(simonTapLog)) {
+      const clientElapsed = typeof simonElapsedMs === 'number' ? simonElapsedMs : sessionElapsedMs;
+      const sim = computeSimonScore({ sessionToken, tapLog: simonTapLog, clientElapsedMs: clientElapsed });
+      const delta = sim.score - score;
+      const flag = sim.tapsOk ? 'tapsOk' : 'FLAG(tap mismatch)';
+      const claimed = typeof simonRounds === 'number' ? simonRounds : sim.roundsClaimed;
+      console.log(`[simon:shadow] player=${playerAddress.slice(0, 10)} taps=${simonTapLog.length} serverScore=${sim.score} clientScore=${score} delta=${delta} roundsVerified=${sim.roundsVerified} roundsClaimed=${claimed} ${flag} · SIGNING CLIENT SCORE`);
+    }
   }
 
   const gameType = GAME_TYPE[game];
@@ -1229,6 +1293,17 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
   }
 
   // 1. Verify "Silent" Session Integrity (skipped for trusted server-action calls)
+  //
+  // ⚠️ AUDIT NOTE (2026-07-17): this branch is UNREACHABLE. `requireSecret`
+  // above already rejects every request without the secret, so isInternalCall
+  // is always true and the speed-hack detection below has never actually run.
+  // Do not read this block as active protection. The real anti-cheat is the
+  // on-chain path: start-game → sign-score → tx → verifyScoreTx (receipt must
+  // target GamePass), which is what genuinely gates scores today.
+  //
+  // Left in place, not deleted, because reviving speed-hack detection should be
+  // a deliberate decision (it would need to move ABOVE requireSecret, or the
+  // session would need threading through the server action).
   if (!isInternalCall) {
     if (!session) return res.status(400).json({ error: 'Missing session token' });
     try {
@@ -1996,7 +2071,16 @@ app.get('/api/user/:address', async (req, res) => {
 // beyond origin check — worst case a player calls it without claiming and
 // gets a streak count; the G$ entitlement gate on GoodDollar's end is the
 // real guard.
-app.post('/api/record-claim', async (req, res) => {
+// SECURITY (2026-07-17 audit): this had NO auth at all. The CORS origin check
+// is not authentication · any script can forge an Origin header, so this was
+// world-writable. It takes a wallet from the body and writes a claim streak
+// with ZERO proof the wallet ever claimed G$, meaning anyone could fabricate
+// streaks for themselves or for any other player. Now secret-gated.
+//
+// NOTE: currently DEAD (no caller anywhere in the repo). If the claim-streak
+// feature is revived, it must verify the claim on-chain rather than trust the
+// caller's word · a signed streak is only worth what it is checked against.
+app.post('/api/record-claim', requireSecret, async (req, res) => {
   const { walletAddress } = req.body || {};
   if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
     return res.status(400).json({ error: 'Missing or invalid walletAddress' });
@@ -2203,7 +2287,14 @@ app.get('/api/season/sync-habitats', async (req, res) => {
 // ─── POST /api/habitat/equip — persist player's equipped tier choice ────────
 // Stored in users.equipped_habitat so the choice travels with the wallet
 // across devices. Validates ownership before writing.
-app.post('/api/habitat/equip', async (req, res) => {
+// SECURITY (2026-07-17 audit): this had no requireSecret because useHabitats
+// POSTed it straight from the browser, and a browser cannot hold the secret.
+// The CORS origin check is NOT authentication · any script can forge an Origin
+// header, so this was world-writable: anyone could change any player's equipped
+// habitat. It now goes through the setHabitatEquip server action (see
+// frontend/app/actions/habitat.ts), so it can demand the secret like every
+// other write path.
+app.post('/api/habitat/equip', requireSecret, async (req, res) => {
   const { address, tier } = req.body || {};
   if (!address || typeof tier !== 'number') {
     return res.status(400).json({ error: 'address and tier required' });
@@ -3034,7 +3125,14 @@ async function arenaConsumeSlot(wallet) {
     });
     return { ok: true, remaining: allowance - used - 1 };
   } catch (e) {
-    return { ok: true, remaining: null }; // table absent → unlimited local play
+    // Fail CLOSED on a real error. This used to return ok:true on ANY error,
+    // so a transient DB blip silently handed out UNLIMITED free matches. The
+    // one legitimate exception is a genuinely absent table (local dev before
+    // the migration), which we detect explicitly rather than assuming.
+    const missingTable = /PGRST205|does not exist|schema cache/i.test(e?.message || '');
+    if (missingTable) return { ok: true, remaining: null }; // local dev only
+    console.error('arenaConsumeSlot failed · denying slot:', e?.message);
+    return { ok: false, remaining: 0 };
   }
 }
 
@@ -3093,12 +3191,55 @@ async function arenaVerifyPurchase(txHash, wallet, sku) {
   return { ok: true, remaining };
 }
 
+// ─── GamePass gate · ladder integrity ───────────────────────────────────────
+// Anyone can PLAY the arena free · that is the funnel and we keep it open.
+// But a match only COUNTS on the ladder if the wallet actually minted a
+// GamePass on-chain, exactly like the other games (play free, mint to save
+// your score). Minting costs a real signature and gas, so throwaway wallets
+// stop being free.
+//
+// Why this exists: the ladder previously recorded any address the caller
+// passed. The daily cap is per-wallet, so one operator with N wallets got N x
+// the free allowance. That is exactly what happened · 11 wallets first seen
+// inside a 107-second window, each burning precisely the 10/day cap for two
+// days, none of them holding a pass.
+//
+// Cached with a TTL so a real player costs one RPC read, not one per match.
+// Fails CLOSED: if we cannot prove a pass, the match is not recorded. A real
+// player loses one row during an RPC blip; a sybil farm gets nothing. That is
+// the right trade for a ladder that pays G$.
+const PASS_CACHE_TTL_MS = 10 * 60 * 1000;
+const passCache = new Map(); // wallet -> { has: boolean, at: number }
+
+async function hasGamePass(wallet) {
+  const w = (wallet || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(w)) return false;
+  const hit = passCache.get(w);
+  if (hit && Date.now() - hit.at < PASS_CACHE_TTL_MS) return hit.has;
+  if (!passContract) return false; // no RPC configured · cannot prove · fail closed
+  try {
+    const has = await passContract.hasMinted(w);
+    passCache.set(w, { has: !!has, at: Date.now() });
+    return !!has;
+  } catch (e) {
+    console.warn(`⚠️  GamePass check failed for ${w.slice(0, 10)}…:`, e?.message);
+    if (hit) return hit.has; // a stale answer beats guessing
+    return false;            // fail closed
+  }
+}
+
 const arenaEngine = new ArenaMatchEngine({
   onMatchComplete: async (session) => {
     // Receipt layer: persist completed matches for history, ladder, and the
     // async Oracle attestation. Table may not exist yet in local setups —
     // persistence is best-effort, gameplay never depends on it.
     try {
+      if (!(await hasGamePass(session.wallet))) {
+        // Played fine, just not ranked. The finish screen prompts the mint.
+        console.log(`⛔ arena match not recorded · no GamePass: ${String(session.wallet).slice(0, 10)}…`);
+        attestInstantMatch(session);
+        return;
+      }
       await supabase.from('arena_free_matches').insert({
         match_id: session.matchId,
         wallet: session.wallet,
@@ -3732,7 +3873,13 @@ app.get('/api/push/vapid-key', (_, res) => {
 // On the wallet's FIRST subscription ever, fires a one-time welcome ping so
 // they get an instant payoff for granting permission. Re-subscribes on new
 // devices stay silent (zero existing rows = first; any rows = returning).
-app.post('/api/push/subscribe', async (req, res) => {
+// SECURITY (2026-07-17 audit): these three had NO auth. The CORS origin check
+// is not authentication · any script can forge an Origin header, so they were
+// world-writable: register a subscription against any wallet, kill any player's
+// subscription by endpoint, or flip any player's notification prefs. They now
+// go through server actions (frontend/app/actions/push.ts) and demand the
+// secret like every other write.
+app.post('/api/push/subscribe', requireSecret, async (req, res) => {
   const { walletAddress, subscription } = req.body || {};
   if (!walletAddress || !subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
     return res.status(400).json({ error: 'Missing fields' });
@@ -3772,7 +3919,7 @@ app.post('/api/push/subscribe', async (req, res) => {
 });
 
 // Player unsubscribes a specific endpoint.
-app.post('/api/push/unsubscribe', async (req, res) => {
+app.post('/api/push/unsubscribe', requireSecret, async (req, res) => {
   const { endpoint } = req.body || {};
   if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
   await push.deleteSubscription(supabase, endpoint);
@@ -3792,7 +3939,7 @@ app.get('/api/push/prefs/:address', async (req, res) => {
   });
 });
 
-app.post('/api/push/prefs', async (req, res) => {
+app.post('/api/push/prefs', requireSecret, async (req, res) => {
   const { walletAddress, streak_warnings, cup_deadlines, rank_changes, reengagement } = req.body || {};
   if (!walletAddress) return res.status(400).json({ error: 'Missing walletAddress' });
   await supabase.from('notification_prefs').upsert({

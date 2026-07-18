@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+// Push writes go through server actions so the backend can require the internal
+// secret · a browser fetch cannot carry it, which is why these routes used to
+// be world-writable (see app/actions/push.ts).
+import { pushSubscribe, pushUnsubscribe, type PushSubscriptionPayload } from "@/app/actions/push";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
@@ -55,11 +59,7 @@ async function silentlyResubscribeIfPossible(walletAddress: string): Promise<boo
         applicationServerKey: key as unknown as BufferSource,
       });
     }
-    await fetch(`${BACKEND_URL}/api/push/subscribe`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ walletAddress, subscription: sub.toJSON() }),
-    });
+    await pushSubscribe(walletAddress, sub.toJSON() as PushSubscriptionPayload);
     return true;
   } catch {
     return false;
@@ -135,12 +135,8 @@ export function usePushNotifications(walletAddress?: string) {
         });
       }
 
-      const r = await fetch(`${BACKEND_URL}/api/push/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, subscription: sub.toJSON() }),
-      });
-      if (!r.ok) { setState("granted"); return false; }
+      const r = await pushSubscribe(walletAddress, sub.toJSON() as PushSubscriptionPayload);
+      if (r?.error) { setState("granted"); return false; }
 
       // Subscribed by explicit user action — clear the opt-out sticky bit
       // so future page loads with permission still granted will re-attach
@@ -170,11 +166,7 @@ export function usePushNotifications(walletAddress?: string) {
     const sub = await reg.pushManager.getSubscription();
     if (!sub) { setState("granted"); return; }
     try {
-      await fetch(`${BACKEND_URL}/api/push/unsubscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      });
+      await pushUnsubscribe(sub.endpoint);
     } catch { /* still attempt local unsubscribe */ }
     await sub.unsubscribe();
     setState("granted");
