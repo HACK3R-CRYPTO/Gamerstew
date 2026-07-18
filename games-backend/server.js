@@ -10,6 +10,7 @@ const {
   computeScore:  rhythmComputeScore,
 } = require('./lib/rhythmScoring');
 const { computeStackScore, computeStackHumanness } = require('./lib/stackScoring');
+const { computeSimonScore } = require('./lib/simonScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -1056,7 +1057,8 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     return res.status(503).json({ error: 'Validator not configured' });
   }
 
-  const { playerAddress, game, score, sessionToken, tapLog, dropLog } = req.body;
+  const { playerAddress, game, score, sessionToken, tapLog, dropLog,
+          simonTapLog, simonRounds, simonElapsedMs } = req.body;
   if (!playerAddress || !game) {
     return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
@@ -1164,6 +1166,24 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       const delta = shadow.score - score;
       const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
       console.log(`[stack:shadow] player=${playerAddress.slice(0, 10)} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${delta} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) rate=${human.stats.dropsPerSec}/s ${flag} · SIGNING CLIENT SCORE`);
+    }
+
+    // ── Simon · SHADOW MODE (ANTICHEAT.md Steps 1 + 3) ────────────────────────
+    // The pattern is now seeded from the session token (client derives it with
+    // the SAME keccak PRNG as simonScoring.derivePattern), so the server finally
+    // has ground truth to check the taps against. Recompute the score from the
+    // tap log and LOG the comparison. We do NOT touch serverScore · the CLIENT'S
+    // claimed score is still what gets signed (set to `score` above). Non-enforcing
+    // so an imperfect port cannot affect a player; deltas should be ~0 for honest
+    // runs. Absent simonTapLog (older client, or guest/unminted with no token and
+    // thus no seed) = behave exactly as before (no log line).
+    if (game === 'simon' && Array.isArray(simonTapLog)) {
+      const clientElapsed = typeof simonElapsedMs === 'number' ? simonElapsedMs : sessionElapsedMs;
+      const sim = computeSimonScore({ sessionToken, tapLog: simonTapLog, clientElapsedMs: clientElapsed });
+      const delta = sim.score - score;
+      const flag = sim.tapsOk ? 'tapsOk' : 'FLAG(tap mismatch)';
+      const claimed = typeof simonRounds === 'number' ? simonRounds : sim.roundsClaimed;
+      console.log(`[simon:shadow] player=${playerAddress.slice(0, 10)} taps=${simonTapLog.length} serverScore=${sim.score} clientScore=${score} delta=${delta} roundsVerified=${sim.roundsVerified} roundsClaimed=${claimed} ${flag} · SIGNING CLIENT SCORE`);
     }
   }
 

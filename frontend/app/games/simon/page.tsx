@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount, useSignMessage, useWriteContract, useReadContract } from "wagmi";
+import { keccak256, toBytes } from "viem";
 import MintScorePrompt from "@/components/MintScorePrompt";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
@@ -149,6 +150,29 @@ const BONUS_COLOR: BtnTheme = {
   glow: "rgba(168,85,247,0.9)", accent: "#a855f7", freq: 659.25, // E5
 };
 const ALL_COLORS: BtnTheme[] = [...BASE_COLORS, BONUS_COLOR];
+
+// ─── Server-seeded pattern PRNG ──────────────────────────────────────────────
+// GAMEPLAY TRANSPARENCY (games-backend/ANTICHEAT.md): to make the taps
+// verifiable server-side, the pattern is derived from the session token with a
+// keccak PRNG (mirror of games-backend/lib/arenaMatch.js makeRand) instead of
+// Math.random. The server derives the SAME sequence from the SAME token via
+// simonScoring.derivePattern, so this MUST stay byte-for-byte identical to it:
+//   seed = keccak256(utf8(token)); element i = colors[floor(r*count)] where
+//   r = first-4-bytes(keccak256(utf8(`${seed}|${i}`)))/2^32, count = 4 if i<5
+//   else 5 (BASE_COLORS ids then BONUS_COLOR id). It still feels random to the
+//   player. GUESTS/UNMINTED players have no token and keep Math.random (below).
+const SIMON_SEED_BASE_IDS = ["red", "cyan", "yellow", "green"];
+const SIMON_SEED_ALL_IDS  = [...SIMON_SEED_BASE_IDS, "purple"];
+const SIMON_BONUS_UNLOCK_INDEX = 5;
+function simonSeedFromToken(token: string): string {
+  return keccak256(toBytes(token));
+}
+function simonDrawColorId(seedHex: string, i: number): string {
+  const ids = i >= SIMON_BONUS_UNLOCK_INDEX ? SIMON_SEED_ALL_IDS : SIMON_SEED_BASE_IDS;
+  const h = keccak256(toBytes(`${seedHex}|${i}`));
+  const r = parseInt(h.slice(2, 10), 16) / 0x100000000; // first 4 bytes → [0,1)
+  return ids[Math.floor(r * ids.length)];
+}
 
 // ─── Grades — same bands as rhythm for UI consistency ────────────────────────
 function gradeFor(rounds: number) {
@@ -326,6 +350,11 @@ export default function SimonGamePage() {
 
   const patternRef     = useRef<string[]>([]);       // sequence the player must match
   const userPatternRef = useRef<string[]>([]);       // what they've tapped so far this round
+  // Shadow anti-cheat: every color id the player taps, in order, across the run.
+  // Threaded to the backend at submit time so the server can replay the taps
+  // against the seeded pattern and log serverScore vs clientScore. Additive and
+  // optional — nothing breaks when it's absent (guests/unminted never submit).
+  const tapLogRef      = useRef<string[]>([]);
   const scoreRef       = useRef(0);
   const sequencesRef   = useRef(0);
   const colorsRef      = useRef<BtnTheme[]>(BASE_COLORS);
@@ -416,7 +445,15 @@ export default function SimonGamePage() {
   // ─── Append a new random color to the sequence, then show it ─────────────────
   const addNext = useCallback((current: string[]) => {
     const colors = colorsRef.current;
-    const next   = colors[Math.floor(Math.random() * colors.length)].id;
+    // Signed-in minted players have a session token → derive the next color
+    // deterministically from (token, index) so the server can verify the taps
+    // (same PRNG/rules as simonScoring.derivePattern). The index is the current
+    // pattern length (0-based position of the element being appended). Guests /
+    // unminted players have no token → keep Math.random exactly as before.
+    const token = sessionTokenRef.current;
+    const next  = token
+      ? simonDrawColorId(simonSeedFromToken(token), current.length)
+      : colors[Math.floor(Math.random() * colors.length)].id;
     const newPat = [...current, next];
     patternRef.current = newPat;
     setTappedCount(0);  // reset progress dots for the new round
@@ -479,6 +516,9 @@ export default function SimonGamePage() {
           address, "", "",
           { game: "simon", score: scoreToSubmit },
           sessionTokenRef.current ?? "",
+          undefined, undefined,
+          // Simon shadow payload · additive, does not change the signed score.
+          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
         );
       } else {
         authToken = await getAccessToken();
@@ -490,6 +530,9 @@ export default function SimonGamePage() {
           authToken, address,
           { game: "simon", score: scoreToSubmit },
           sessionTokenRef.current ?? "",
+          undefined, undefined,
+          // Simon shadow payload · additive, does not change the signed score.
+          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
         );
       }
 
@@ -617,6 +660,9 @@ export default function SimonGamePage() {
     if (phase !== "playing" || isShowingSequence) return;
     const btn = ALL_COLORS.find(b => b.id === colorId);
     if (!btn) return;
+    // Shadow anti-cheat: record every real tap (including the run-ending wrong
+    // one) so the server can replay them against the seeded pattern.
+    tapLogRef.current.push(colorId);
     playBell(btn.freq, 0.24);
     haptic(8);
     setActiveBtn(colorId);
@@ -740,6 +786,7 @@ export default function SimonGamePage() {
     // Reset everything for a fresh run
     patternRef.current = [];
     userPatternRef.current = [];
+    tapLogRef.current = [];
     scoreRef.current = 0;
     sequencesRef.current = 0;
     colorsRef.current = BASE_COLORS;
