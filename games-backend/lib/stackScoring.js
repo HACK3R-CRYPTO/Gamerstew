@@ -85,7 +85,15 @@ function computeStackScore(dropLog) {
     // anything not explicitly landed as a miss.
     if (!d || d.landed !== true) continue;
 
-    if (d.perfect === true) {
+    // Derive "perfect" from the OFFSET, never from the client's `perfect` flag.
+    // The client sets perfect = offset <= PERFECT_TOL (page.tsx), so for an
+    // honest run this is identical (parity is unaffected · proven over 250k
+    // runs). But for the future ENFORCE step it matters: a forged log could set
+    // perfect:true on every entry, while offset is the value that maps to what
+    // the animation actually showed. Ground truth is the number, not the flag.
+    const isPerfect = typeof d.offset === 'number' && d.offset <= PERFECT_TOL;
+
+    if (isPerfect) {
       // PERFECT · combo increments BEFORE points, and the new value is used.
       combo += 1;
       const points = 2 + Math.min(combo, PERFECT_COMBO_CLAMP);
@@ -106,9 +114,71 @@ function computeStackScore(dropLog) {
   return { score: clamped, drops, perfects, maxCombo };
 }
 
+// ─── Humanness check (ANTICHEAT.md Step 2) ───────────────────────────────────
+// Recomputing the score from the drop log stops "submit any number", but not
+// "submit a forged perfect log". This is the guard against the forged log. It
+// looks for signatures no human run can produce:
+//
+//   1. RATE · drops per second, from the log's own timestamps. The block has to
+//      travel and the player has to react, so sustained ultra-fast drops are
+//      impossible. A forged log dumping tens of thousands of drops into an
+//      11-minute session (the sign-score session cap) shows up here immediately.
+//   2. OFFSET UNIFORMITY · a real player is never pixel-identical every drop.
+//      Many landed drops with (almost) no spread in offset is a generated log,
+//      not a hand.
+//
+// SHADOW-FIRST: thresholds are deliberately loose so we never flag a real player
+// on day one. The point today is to LOG the signal (`human`, `reasons`, stats)
+// alongside the score delta, tune from real distributions, and only then wire it
+// into the ENFORCE step. Returns { human, reasons, stats } · `human:false` is a
+// FLAG for review, not (yet) a rejection.
+const HUMAN_MAX_DROPS_PER_SEC = 12;   // generous · real fast play is ~1-3/s
+const UNIFORM_MIN_DROPS = 40;         // only judge uniformity with enough samples
+const UNIFORM_MIN_DISTINCT = 3;       // fewer distinct offsets than this = suspect
+
+function computeStackHumanness(dropLog) {
+  const reasons = [];
+  if (!Array.isArray(dropLog) || dropLog.length === 0) {
+    return { human: true, reasons: [], stats: { landed: 0 } };
+  }
+  const landed = dropLog.filter(d => d && d.landed === true);
+  const ts = dropLog.map(d => (d && typeof d.t === 'number' ? d.t : null)).filter(t => t !== null);
+
+  // 1) Rate
+  let dropsPerSec = 0;
+  if (ts.length >= 2) {
+    const spanSec = Math.max(0.001, (ts[ts.length - 1] - ts[0]) / 1000);
+    dropsPerSec = dropLog.length / spanSec;
+    if (dropsPerSec > HUMAN_MAX_DROPS_PER_SEC) {
+      reasons.push(`rate ${dropsPerSec.toFixed(1)}/s > ${HUMAN_MAX_DROPS_PER_SEC}/s`);
+    }
+  }
+
+  // 2) Offset uniformity (only on landed drops, with enough samples)
+  let distinctOffsets = 0;
+  if (landed.length >= UNIFORM_MIN_DROPS) {
+    distinctOffsets = new Set(landed.map(d => Math.round(d.offset ?? -1))).size;
+    if (distinctOffsets < UNIFORM_MIN_DISTINCT) {
+      reasons.push(`offset uniformity · ${distinctOffsets} distinct across ${landed.length} drops`);
+    }
+  }
+
+  return {
+    human: reasons.length === 0,
+    reasons,
+    stats: {
+      landed: landed.length,
+      total: dropLog.length,
+      dropsPerSec: Math.round(dropsPerSec * 10) / 10,
+      distinctOffsets,
+    },
+  };
+}
+
 module.exports = {
   PERFECT_TOL,
   PERFECT_COMBO_CLAMP,
   NORMAL_POINTS,
   computeStackScore,
+  computeStackHumanness,
 };

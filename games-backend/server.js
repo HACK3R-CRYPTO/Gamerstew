@@ -9,7 +9,7 @@ const {
   jitterCheck:   rhythmJitterCheck,
   computeScore:  rhythmComputeScore,
 } = require('./lib/rhythmScoring');
-const { computeStackScore } = require('./lib/stackScoring');
+const { computeStackScore, computeStackHumanness } = require('./lib/stackScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -1160,8 +1160,10 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     // anyone" step 1. Absent dropLog = behave exactly as before (no log line).
     if (game === 'stack' && Array.isArray(dropLog)) {
       const shadow = computeStackScore(dropLog);
+      const human = computeStackHumanness(dropLog);
       const delta = shadow.score - score;
-      console.log(`[stack:shadow] player=${playerAddress.slice(0, 10)} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${delta} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) · SIGNING CLIENT SCORE`);
+      const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
+      console.log(`[stack:shadow] player=${playerAddress.slice(0, 10)} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${delta} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) rate=${human.stats.dropsPerSec}/s ${flag} · SIGNING CLIENT SCORE`);
     }
   }
 
