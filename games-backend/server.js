@@ -212,6 +212,31 @@ if (provider && VALIDATOR_KEY) {
   }
 }
 
+// Gasless skill games: when on, the backend SUBMITS the skill-game score itself
+// (recordScore, backend pays gas) instead of returning a voucher for the player
+// to submit. The legacy player-pays path (recordScoreWithBackendSig) stays fully
+// intact and is used whenever this is off — flip GASLESS_SKILL_GAMES=false to
+// roll back instantly with no redeploy of logic. Default ON.
+const GASLESS_SKILL_GAMES =
+  passScoreWriter != null && String(process.env.GASLESS_SKILL_GAMES ?? 'true').toLowerCase() !== 'false';
+
+// ─── Shared on-chain write queue (one signer nonce space) ────────────────────
+// EVERY backend-submitted recordScore — gasless skill games AND Challenge AI —
+// goes through this one serialized chain. They all send from the same signer
+// (0xc1cF), so without a single queue two concurrent writes would grab the same
+// nonce and all but one would revert. Serializing the SUBMIT (not the mine) keeps
+// each step ~1-2s; returns the tx hash to the caller. Best-effort: the chain
+// survives a failed write so the next one still goes.
+let _signerWriteChain = Promise.resolve();
+function enqueueScoreWrite(player, gameType, score) {
+  const run = _signerWriteChain.then(async () => {
+    const tx = await passScoreWriter.recordScore(player, gameType, score);
+    return tx.hash;
+  });
+  _signerWriteChain = run.catch(() => {});
+  return run;
+}
+
 // ─── Faucet wallet — dedicated gas-drip signer ───────────────────────────────
 // Funds fresh-wallet CELO drips from its OWN wallet, isolated from the
 // validator (score-voucher signing) wallet so heavy faucet use can never drain
@@ -1218,22 +1243,8 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
   const gameType = GAME_TYPE[game];
 
   try {
-    const nonce = await passContract.scoreNonces(playerAddress);
-
-    const signature = await validator.signTypedData(
-      BACKEND_APPROVAL_DOMAIN,
-      BACKEND_APPROVAL_TYPES,
-      {
-        player: playerAddress,
-        gameType,
-        score: BigInt(serverScore),
-        nonce,
-      },
-    );
-
     // Mark session used + record forensic data. Best-effort; failure here
-    // shouldn't block the signing response (the signature is already
-    // committed cryptographically).
+    // shouldn't block the response — the score is already validated/computed.
     await supabase
       .from('game_sessions')
       .update({
@@ -1297,6 +1308,36 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       console.log(`Season 1 pts skipped: ${playerAddress.slice(0, 8)}.. game=${game} score=${serverScore} elapsed=${sessionElapsedMs}ms`);
     }
 
+    // ── GASLESS path ─────────────────────────────────────────────────────────
+    // Backend submits the validated score itself (recordScore, pays gas from the
+    // signer) and returns the tx hash. The player does NOTHING on-chain — no
+    // wallet prompt, no CELO. Serialized with all other signer writes. If the
+    // submit fails, fall through to the legacy voucher so the score still saves.
+    if (GASLESS_SKILL_GAMES) {
+      try {
+        const txHash = await enqueueScoreWrite(playerAddress, gameType, serverScore);
+        console.log(`⛽ Gasless ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${txHash}`);
+        return res.json({
+          success: true,
+          gasless: true,
+          txHash,
+          gameType,
+          score:   serverScore, // ← client uses this number, not their claim
+        });
+      } catch (gErr) {
+        console.warn(`⚠️  Gasless ${game} write failed, falling back to voucher · ${playerAddress.slice(0, 10)}…:`, gErr?.message);
+        // fall through to the legacy voucher below
+      }
+    }
+
+    // ── LEGACY path · player pays gas (recordScoreWithBackendSig) ─────────────
+    // The backend only SIGNS an EIP-712 voucher; the player submits it and pays.
+    const nonce = await passContract.scoreNonces(playerAddress);
+    const signature = await validator.signTypedData(
+      BACKEND_APPROVAL_DOMAIN,
+      BACKEND_APPROVAL_TYPES,
+      { player: playerAddress, gameType, score: BigInt(serverScore), nonce },
+    );
     return res.json({
       success:   true,
       signature,
@@ -3128,7 +3169,6 @@ if (provider && passScoreWriter) {
   _checkSignerGas(); // one check at boot so a wallet that starts low is flagged now
 }
 
-let _challengeWriteChain = Promise.resolve();
 async function _doRecordChallengeMatch(session) {
   if (!passScoreWriter) return; // no validator key configured — silently skip
   try {
@@ -3145,19 +3185,20 @@ async function _doRecordChallengeMatch(session) {
     let total = 0;
     for (const r of data || []) total += r.points || 0;
     if (total <= 0) return; // nothing to record yet
-    const tx = await passScoreWriter.recordScore(session.wallet, CHALLENGE_AI_GAME_TYPE, total);
-    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… ${weekKey} total ${total} · ${tx.hash}`);
+    // Shared queue: serialized with the gasless skill-game writes on the same signer.
+    const txHash = await enqueueScoreWrite(session.wallet, CHALLENGE_AI_GAME_TYPE, total);
+    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… ${weekKey} total ${total} · ${txHash}`);
     if (session.matchId) {
       _pruneChallengeReceipts();
-      challengeReceipts.set(String(session.matchId), { txHash: tx.hash, at: Date.now() });
+      challengeReceipts.set(String(session.matchId), { txHash, at: Date.now() });
     }
   } catch (e) {
     console.warn(`⚠️  Challenge AI recordScore failed · ${String(session.wallet).slice(0, 10)}…:`, e?.message);
   }
 }
 function recordChallengeMatchOnChain(session) {
-  _challengeWriteChain = _challengeWriteChain.then(() => _doRecordChallengeMatch(session)).catch(() => {});
-  return _challengeWriteChain;
+  // Fire-and-forget; the on-chain submit is serialized inside enqueueScoreWrite.
+  _doRecordChallengeMatch(session).catch(() => {});
 }
 
 const ARENA_WEEKLY_POOL_GS = Number(process.env.ARENA_WEEKLY_POOL_GS || 500);
