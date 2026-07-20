@@ -229,12 +229,28 @@ const GASLESS_SKILL_GAMES =
 // survives a failed write so the next one still goes.
 let _signerWriteChain = Promise.resolve();
 function enqueueScoreWrite(player, gameType, score) {
-  const run = _signerWriteChain.then(async () => {
-    const tx = await passScoreWriter.recordScore(player, gameType, score);
-    return tx.hash;
-  });
-  _signerWriteChain = run.catch(() => {});
+  // Resolves to the ethers TransactionResponse (has .hash and .wait()) once the
+  // tx is SUBMITTED. The chain advances on submission, not mining, so callers
+  // that want a mined receipt wait OUTSIDE the queue (never blocking others).
+  const run = _signerWriteChain.then(() => passScoreWriter.recordScore(player, gameType, score));
+  _signerWriteChain = run.then(() => {}, () => {});
   return run;
+}
+
+// Hashes of txs the BACKEND submitted for gasless skill-game saves. /api/submit-score
+// trusts these (skips on-chain re-verification): the backend created the tx and
+// already validated the score, so re-verifying would only add a fragile wait on a
+// Celo mine. TTL-pruned; tiny.
+const gaslessTxHashes = new Map(); // hash(lowercased) -> insertedAtMs
+const GASLESS_TX_TTL_MS = 15 * 60 * 1000;
+function _rememberGaslessTx(hash) {
+  if (!hash) return;
+  const now = Date.now();
+  for (const [h, at] of gaslessTxHashes) if (now - at > GASLESS_TX_TTL_MS) gaslessTxHashes.delete(h);
+  gaslessTxHashes.set(String(hash).toLowerCase(), now);
+}
+function _isGaslessTx(hash) {
+  return !!hash && gaslessTxHashes.has(String(hash).toLowerCase());
 }
 
 // ─── Faucet wallet — dedicated gas-drip signer ───────────────────────────────
@@ -1315,17 +1331,24 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     // submit fails, fall through to the legacy voucher so the score still saves.
     if (GASLESS_SKILL_GAMES) {
       try {
-        const txHash = await enqueueScoreWrite(playerAddress, gameType, serverScore);
-        console.log(`⛽ Gasless ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${txHash}`);
+        const tx = await enqueueScoreWrite(playerAddress, gameType, serverScore);
+        // The BACKEND submitted this tx, so it's trusted: remember the hash so
+        // /api/submit-score credits the score without re-verifying it on-chain
+        // (that avoids waiting for a Celo mine, which varies and would either
+        // stall the save or false-fail). The on-chain write is best-effort, same
+        // as Challenge AI — the score always saves off-chain regardless. A failed
+        // submit throws here and falls through to the legacy player-pays voucher.
+        _rememberGaslessTx(tx.hash);
+        console.log(`⛽ Gasless ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${tx.hash}`);
         return res.json({
           success: true,
           gasless: true,
-          txHash,
+          txHash:  tx.hash,
           gameType,
           score:   serverScore, // ← client uses this number, not their claim
         });
       } catch (gErr) {
-        console.warn(`⚠️  Gasless ${game} write failed, falling back to voucher · ${playerAddress.slice(0, 10)}…:`, gErr?.message);
+        console.warn(`⚠️  Gasless ${game} submit failed, falling back to voucher · ${playerAddress.slice(0, 10)}…:`, gErr?.message);
         // fall through to the legacy voucher below
       }
     }
@@ -1449,7 +1472,10 @@ app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res)
   // log for THIS player + game exists. Only applied to player-submitted
   // score txs (scoreTxHash); wager-resolution txs (wagerTxHash) come from
   // resolveOnChain which already awaits the receipt before returning.
-  if (scoreTxHash) {
+  // Gasless saves skip this: the tx was submitted by the BACKEND (score already
+  // validated in sign-score), so we trust its hash instead of waiting on a Celo
+  // mine to re-verify it. Player-submitted (legacy) txs are still fully verified.
+  if (scoreTxHash && !_isGaslessTx(scoreTxHash)) {
     const gameTypeNum = GAME_TYPE[game];
     if (gameTypeNum === undefined) {
       return res.status(400).json({ error: 'Unknown game · cannot verify on-chain proof' });
@@ -3186,11 +3212,12 @@ async function _doRecordChallengeMatch(session) {
     for (const r of data || []) total += r.points || 0;
     if (total <= 0) return; // nothing to record yet
     // Shared queue: serialized with the gasless skill-game writes on the same signer.
-    const txHash = await enqueueScoreWrite(session.wallet, CHALLENGE_AI_GAME_TYPE, total);
-    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… ${weekKey} total ${total} · ${txHash}`);
+    // Fire-and-forget (best-effort), so we don't wait for the receipt here.
+    const tx = await enqueueScoreWrite(session.wallet, CHALLENGE_AI_GAME_TYPE, total);
+    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… ${weekKey} total ${total} · ${tx.hash}`);
     if (session.matchId) {
       _pruneChallengeReceipts();
-      challengeReceipts.set(String(session.matchId), { txHash, at: Date.now() });
+      challengeReceipts.set(String(session.matchId), { txHash: tx.hash, at: Date.now() });
     }
   } catch (e) {
     console.warn(`⚠️  Challenge AI recordScore failed · ${String(session.wallet).slice(0, 10)}…:`, e?.message);
