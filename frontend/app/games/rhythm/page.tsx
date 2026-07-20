@@ -1023,7 +1023,8 @@ export default function RhythmGamePage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; signature: string; nonce: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
 
@@ -1072,8 +1073,13 @@ export default function RhythmGamePage() {
         // the leaderboard, not the locally-counted display value.
         const officialScore = typeof sig.score === "number" ? sig.score : scoreToSubmit;
 
-        // ── STEP 2: on-chain tx — THE SIGNATURE GATE ──
+        // ── STEP 2: on-chain tx ──
         let txHash: string | null = null;
+        if (sig.gasless) {
+          // Gasless: backend already recorded the score on-chain — no wallet
+          // prompt, no CELO. Just take the tx hash it submitted.
+          txHash = sig.txHash;
+        } else {
         setSigningOnChain(true);
         try {
           txHash = await writeContractAsync({
@@ -1144,6 +1150,7 @@ export default function RhythmGamePage() {
         } finally {
           setSigningOnChain(false);
         }
+        } // end legacy (player-pays) on-chain path
 
         // ── STEP 3: save off-chain (Supabase + XP + achievements + rank) ──
         // Replace the locally-claimed score with the server-authoritative

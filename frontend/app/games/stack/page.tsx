@@ -610,7 +610,8 @@ export default function StackTowerPage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; signature: string; nonce: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
 
@@ -652,8 +653,13 @@ export default function StackTowerPage() {
           return;
         }
 
-        // ── STEP 2: on-chain tx · THE SIGNATURE GATE ──
+        // ── STEP 2: on-chain tx ──
         let txHash: string | null = null;
+        if (sig.gasless) {
+          // Gasless: backend already recorded the score on-chain — no wallet
+          // prompt, no CELO. Just take the tx hash it submitted.
+          txHash = sig.txHash;
+        } else {
         setSigningOnChain(true);
         try {
           txHash = await writeContractAsync({
@@ -708,6 +714,7 @@ export default function StackTowerPage() {
         } finally {
           setSigningOnChain(false);
         }
+        } // end legacy (player-pays) on-chain path
 
         // ── STEP 3: save off-chain ──
         let result;

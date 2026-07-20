@@ -99,7 +99,19 @@ export type ScoreData = {
 
 type SignScoreResult =
   | {
+      // GASLESS path: the backend already submitted the score on-chain. The
+      // client does NOTHING on-chain — no wallet prompt, no CELO.
+      success:  true;
+      gasless:  true;
+      txHash:   string;
+      gameType: number;
+      score?:   number;
+    }
+  | {
+      // LEGACY path: player pays gas. Backend returns an EIP-712 voucher the
+      // player submits to recordScoreWithBackendSig.
       success:    true;
+      gasless?:   false;
       signature:  string;
       nonce:      string;
       gameType:   number;
@@ -243,6 +255,16 @@ export async function signScore(
       simonElapsedMs: simon?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
+    if (data.gasless) {
+      // Backend already recorded the score on-chain — nothing for the client to do.
+      return {
+        success:  true,
+        gasless:  true,
+        txHash:   data.txHash,
+        gameType: data.gameType,
+        score:    typeof data.score === 'number' ? data.score : scoreData.score,
+      };
+    }
     return {
       success:   true,
       signature: data.signature,
@@ -291,6 +313,16 @@ export async function signScoreMiniPay(
       simonElapsedMs: simon?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
+    if (data.gasless) {
+      // Backend already recorded the score on-chain — nothing for the client to do.
+      return {
+        success:  true,
+        gasless:  true,
+        txHash:   data.txHash,
+        gameType: data.gameType,
+        score:    typeof data.score === 'number' ? data.score : scoreData.score,
+      };
+    }
     return {
       success:   true,
       signature: data.signature,
