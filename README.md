@@ -1,6 +1,6 @@
 # GameArena
 
-> The arena for verified humans. Free skill games, an AI opponent that learns your patterns, weekly ladders paying real G$ · on Celo Mainnet, all auditable, no bots, no stakes.
+> Quick skill games that make you sharper. Verified humans with no bots, an AI that learns how you play, and real GoodDollar (G$) you earn every day · on Celo Mainnet, all on-chain and auditable.
 
 [![GameArena](./frontend/public/hero.png)](https://gamearenahq.xyz)
 
@@ -25,9 +25,19 @@ GameArena is a set of quick games that actually make you sharper. Each game trai
 - **Rhythm Rush** · trains focus and timing
 - **Challenge AI** · go head-to-head with MARKOV, an AI that learns how you play
 
-Thirty seconds a game, but you feel yourself improve. Everyone playing is a real, verified person, so there are no bots. You climb leaderboards against actual people, and you earn a little real money while you play. It runs on Celo, and it works in your browser or inside MiniPay.
+Thirty seconds a game, but you feel yourself improve. Everyone playing is a real, verified person, so there are no bots. Play is free · sign in with Google to rank, verify once and earn G$ every single day. You climb leaderboards against actual people, and the value is a bonus, not the bait. Built mobile-first for MiniPay, so anyone with just a phone in Nigeria and across Africa can play.
 
 That's it. Come play: **[gamearenahq.xyz](https://gamearenahq.xyz)**
+
+---
+
+## Why we built this
+
+Two problems.
+
+When we're tired we reach for the phone, scroll, and feel worse. GameArena is a short break that gives something back: quick games that leave you sharper. A reset, not an escape.
+
+And web3 gaming chased tokens instead of fun, filling leaderboards with bots. We built the opposite: games that are genuinely fun, verified humans only, and real value as a bonus rather than the bait. Through GoodDollar, verified players earn a daily basic income, which matters most for players in emerging markets.
 
 ---
 
@@ -35,7 +45,7 @@ That's it. Come play: **[gamearenahq.xyz](https://gamearenahq.xyz)**
 
 Every player is identity-verified via the GoodDollar Identity SDK before they can score, earn, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush, Simon Memory, Stack Tower), free instant matches against MARKOV (an AI opponent that models your patterns · provably fair via commit-reveal), and weekly + seasonal competitions with real G$ prize pools.
 
-G$ is the currency. Players earn it from weekly ladder pools and community challenges, and spend it on match refills, habitat upgrades, and perks · every spend routes to the transparent prize-pool wallet, every payout is an on-chain G$ transfer. The chain is the source of truth, the leaderboards are just the UX.
+G$ is the currency. Players earn it from the daily GoodDollar claim, weekly ladder pools, and community challenges, and spend it on perks, cosmetics, and pet habitat tiers. Every spend splits on-chain in one transaction · 20% streams to the GoodCollective UBI pool, 80% to treasury · and every payout is an on-chain G$ transfer. The chain is the source of truth, the leaderboards are just the UX.
 
 Built community-first · auto-balanced team races, weekly + all-time skill ladders, daily missions, milestone achievements, tier badges, play streaks, and a habitat economy where players spend G$ on cosmetic upgrades that compound into season standings. Daily and seasonal action is announced through the [Telegram community](https://t.me/gamearenaHQ).
 
@@ -304,11 +314,11 @@ Deployed on Celo Mainnet (chain id 42220).
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
-| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 85% UBI / 15% treasury |
+| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 80% treasury / 20% UBI |
 | `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 80% treasury / 20% UBI    |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
 | ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of perks + 85% of habitats route here |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of every perk and habitat spend routes here |
 
 ---
 
@@ -319,7 +329,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | MARKOV ladder (weekly)   | Top climbers paid from the ladder pool     | Platform prize pool → winners                        |
 | MARKOV match refill      | Buys extra matches past the daily free cap | Player → PerkShop (Match Pack) · 80/20 split, gasless |
 | Daily UBI claim          | Verified players claim daily               | GoodDollar → player                                  |
-| Habitat unlock           | Cosmetic + progression tiers               | Player → HabitatRegistry · 85% UBI / 15% treasury    |
+| Habitat unlock           | Paid cosmetic tiers (free tiers are level-gated) | Player → HabitatRegistry · 80% treasury / 20% UBI |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
 

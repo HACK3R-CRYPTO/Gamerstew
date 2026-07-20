@@ -194,6 +194,24 @@ if (provider && SOLO_WAGER_ADDR && VALIDATOR_KEY) {
   console.log('ℹ️  SOLO_WAGER_ADDRESS or VALIDATOR_PRIVATE_KEY not set — wager resolution disabled');
 }
 
+// ─── Validator-signed GamePass writer ────────────────────────────────────────
+// A GamePass contract bound to the validator wallet, for backend-SUBMITTED score
+// writes (recordScore, which requires msg.sender == scoreValidator). The skill
+// games use recordScoreWithBackendSig (player submits, backend only signs), but
+// Challenge AI match receipts are written by the backend directly so the free
+// instant loop never asks the player to sign or pay gas. This is deliberately
+// INDEPENDENT of SOLO_WAGER_ADDR — it works whenever a validator key exists,
+// unlike `passContract` above which is read-only when the wager address is unset.
+let passScoreWriter = null;
+if (provider && VALIDATOR_KEY) {
+  try {
+    const scoreSigner = validator || new ethers.Wallet(VALIDATOR_KEY, provider);
+    passScoreWriter = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_ABI, scoreSigner);
+  } catch (e) {
+    console.warn('⚠️  GamePass score writer not configured:', e?.message);
+  }
+}
+
 // ─── Faucet wallet — dedicated gas-drip signer ───────────────────────────────
 // Funds fresh-wallet CELO drips from its OWN wallet, isolated from the
 // validator (score-voucher signing) wallet so heavy faucet use can never drain
@@ -467,6 +485,16 @@ const WIN_THRESHOLD = { rhythm: 350, simon: 7, stack: 50 };
 // also drive the subgraph mapping. Add a new game by appending here.
 const GAME_TYPE = { rhythm: 0, simon: 1, stack: 2 };
 const VALID_GAMES = Object.keys(GAME_TYPE);
+
+// Challenge AI (MARKOV) records an on-chain GamePass score per completed match,
+// exactly like the skill games emit one ScoreRecorded event per run. It is a
+// STANDALONE gameType, deliberately NOT added to GAME_TYPE / VALID_GAMES: those
+// drive the /api/leaderboard + /api/stats score paths and the DB `scores` mirror,
+// and Challenge AI already has its own sum-based weekly ladder (arena_free_matches
+// → /api/arena/ladder). Adding it there would spawn a duplicate, misleading
+// max-per-wallet leaderboard. The uint8 gameType is open on GamePass.sol, so no
+// contract change is needed — see onMatchComplete + recordChallengeMatchOnChain.
+const CHALLENGE_AI_GAME_TYPE = 3;
 const GAME_LABEL = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower' };
 
 // Cumulative XP required to reach a given level (LV 1 = 0).
@@ -3032,6 +3060,54 @@ function arenaPoints(session) {
   return pts;
 }
 
+// ─── On-chain match receipt · Challenge AI → GamePass ────────────────────────
+// Writes this match's points to GamePass as gameType 3, so every completed
+// Challenge AI match leaves a ScoreRecorded event — the same on-chain history
+// trail the skill games produce, one event per match. The score is the SAME
+// per-match `arenaPoints` used by the DB ladder, so the on-chain history mirrors
+// the ladder unit exactly (GamePass keeps the max per gameType; the weekly TOTAL
+// ladder stays owned by arena_free_matches → /api/arena/ladder).
+//
+// Backend-submitted via recordScore (validator == on-chain scoreValidator), so
+// the player never signs or pays gas — the free instant loop is untouched.
+//
+// Writes are SERIALIZED through one promise chain so ethers assigns sequential
+// nonces: concurrent matches would otherwise race on the validator wallet's
+// nonce and all but one would revert. Best-effort throughout — a failed or
+// disabled write never affects gameplay, the DB receipt, or the ladder.
+// matchId → { txHash, at } for the just-written on-chain receipt. Lets the
+// finish screen show a Celoscan link for THIS match without a DB column: the
+// player is on the finish screen when the tx lands seconds later, so a short-
+// lived in-memory entry is enough. Pruned on write past CHALLENGE_RECEIPT_TTL.
+const challengeReceipts = new Map();
+const CHALLENGE_RECEIPT_TTL_MS = 10 * 60 * 1000;
+function _pruneChallengeReceipts() {
+  const cutoff = Date.now() - CHALLENGE_RECEIPT_TTL_MS;
+  for (const [id, r] of challengeReceipts) {
+    if (r.at < cutoff) challengeReceipts.delete(id);
+  }
+}
+
+let _challengeWriteChain = Promise.resolve();
+async function _doRecordChallengeMatch(session) {
+  if (!passScoreWriter) return; // no validator key configured — silently skip
+  const points = arenaPoints(session);
+  try {
+    const tx = await passScoreWriter.recordScore(session.wallet, CHALLENGE_AI_GAME_TYPE, points);
+    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… +${points} · ${tx.hash}`);
+    if (session.matchId) {
+      _pruneChallengeReceipts();
+      challengeReceipts.set(String(session.matchId), { txHash: tx.hash, at: Date.now() });
+    }
+  } catch (e) {
+    console.warn(`⚠️  Challenge AI recordScore failed · ${String(session.wallet).slice(0, 10)}…:`, e?.message);
+  }
+}
+function recordChallengeMatchOnChain(session) {
+  _challengeWriteChain = _challengeWriteChain.then(() => _doRecordChallengeMatch(session)).catch(() => {});
+  return _challengeWriteChain;
+}
+
 const ARENA_WEEKLY_POOL_GS = Number(process.env.ARENA_WEEKLY_POOL_GS || 500);
 
 // ─── Arena G$ perks: daily limit + purchase rail ────────────────────────────
@@ -3258,6 +3334,11 @@ const arenaEngine = new ArenaMatchEngine({
     } catch (e) {
       console.error('arena match persist failed:', e?.message);
     }
+    // On-chain receipt: one ScoreRecorded event per match (gameType 3), the same
+    // history trail the skill games leave. Fire-and-forget + serialized inside —
+    // never blocks or breaks the match flow. Reached only past the hasGamePass
+    // gate above, so the player is guaranteed minted (recordScore requires it).
+    recordChallengeMatchOnChain(session);
     // ERC-8004 reputation: emit one match_completed feedback per finished
     // match (throttled inside the oracle · min-interval, fire-and-forget).
     // Replaces the wager-era hook that fired after resolveMatch, which v3
@@ -3504,6 +3585,19 @@ app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
   const out = arenaEngine.throw(matchId, Number(move));
   if (out.error) return res.status(400).json(out);
   return res.json(out);
+});
+
+// GET /api/arena/receipt?matchId=… — the on-chain GamePass tx for a finished
+// match, once written. The write fires fire-and-forget in onMatchComplete, so
+// the finish screen polls this a few times: { pending: true } until the tx
+// lands, then { txHash }. Absent entry = not written yet (or the player had no
+// GamePass / validator key unset) — the finish screen just shows nothing.
+app.get('/api/arena/receipt', requireSecret, (req, res) => {
+  const matchId = (req.query.matchId || '').toString();
+  if (!matchId) return res.status(400).json({ error: 'matchId required' });
+  const r = challengeReceipts.get(matchId);
+  if (r && r.txHash) return res.json({ txHash: r.txHash });
+  return res.json({ pending: true });
 });
 
 // GET /api/arena/ladder?wallet=0x…&week=2026-W27 — the weekly MARKOV ladder.
@@ -3806,6 +3900,13 @@ async function indexOnChainScores() {
       const player = parsed.args[0].toLowerCase();
       const gameType = Number(parsed.args[1]);
       const score = Number(parsed.args[2]);
+      // gameType 3 = Challenge AI (MARKOV). Its ScoreRecorded events are the
+      // on-chain history trail, but its authoritative weekly ranking lives in
+      // arena_free_matches → /api/arena/ladder (sum-based), NOT the `scores`
+      // table (which is max-per-wallet and feeds the skill-game leaderboards).
+      // So we intentionally do NOT mirror gameType 3 into `scores` — skip it
+      // quietly, without the unknown-gameType warning below.
+      if (gameType === CHALLENGE_AI_GAME_TYPE) continue;
       // Reverse of GAME_TYPE · uint8 from on-chain back to the player-key
       // string we use in the activity table. Adding a new game means
       // appending one row here, not a wider ternary chain.

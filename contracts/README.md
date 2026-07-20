@@ -39,7 +39,7 @@ Admin: `setScoreValidator`, `adminSetScore` (correct an inflated score for a sea
 
 Records which paid habitat tiers a player owns. The art is frontend-only, this contract just gates it behind a G$ donation and never holds G$.
 
-- `unlockHabitat(tier)` pulls the tier cost in G$ from the player and splits it in one tx: treasury portion first (`treasuryBps`, default 15%), UBI pool takes the remainder (default 85%), so rounding always favors UBI. Marks `ownedTiers[player][tier]`.
+- `unlockHabitat(tier)` pulls the tier cost in G$ from the player and splits it in one tx: treasury portion first (`treasuryBps`), UBI pool takes the remainder (`ubiBps`), so rounding always favors UBI. The live split is **80% treasury / 20% UBI** (`treasuryBps = 8000`, set via `setSplit`; the source default is 85% UBI but the deployed contract runs 20%). Marks `ownedTiers[player][tier]`.
 - Free tiers 1-5 are level-based and tracked off-chain. Only paid tiers `>= FIRST_PAID_TIER` (6) are recorded here.
 - Default tiers (18-decimal G$): 6 = 300, 7 = 1,000, 8 = 3,000, 9 = 10,000, 10 = 30,000.
 - View `ownsHabitat(player, tier)`. Aggregates: `playerUbiDonated`, `totalCommunityContribution`.

@@ -36,7 +36,7 @@ import {
   playRoundWin, playRoundLose, playRoundTie,
   playCalledIt, playSuddenDeath, playWhooshIn,
 } from "@/hooks/useAppAudio";
-import { startArenaMatch, throwArenaMove, getArenaLadder, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
+import { startArenaMatch, throwArenaMove, getArenaLadder, getArenaMatchReceipt, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
 import { grantPerk } from "@/app/actions/perks";
 import { usePerks } from "@/hooks/usePerks";
 import { getPerk } from "@/lib/perks";
@@ -151,6 +151,10 @@ export default function ChallengeAiPage() {
   const [chantIdx, setChantIdx] = useState(0);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
   const [finalData, setFinalData] = useState<NonNullable<RoundResult["final"]> | null>(null);
+  // On-chain GamePass receipt for the finished match (real matches only). The
+  // backend writes it fire-and-forget after the match ends, so we poll for it
+  // on the result screen and reveal a Celoscan link once the tx lands.
+  const [onchainTx, setOnchainTx] = useState<string | null>(null);
   const [score, setScore] = useState({ player: 0, ai: 0, ties: 0 });
   const [matchStreak, setMatchStreak] = useState(0); // consecutive round wins inside this match
   const [busy, setBusy] = useState(false);
@@ -186,6 +190,27 @@ export default function ChallengeAiPage() {
       if (typeof l.remainingToday === "number") setRemaining(l.remainingToday);
     }).catch(() => {});
   }, [phase, address]);
+
+  // On-chain receipt polling — once a REAL match ends (result screen, not the
+  // guest demo), poll the backend for the GamePass tx it wrote fire-and-forget.
+  // Stops on the first hash, on unmount, or after ~30s (the write is best-effort
+  // and may be off if the validator key is unset — we just show nothing then).
+  useEffect(() => {
+    if (phase !== "result" || demoMatch || !matchId || onchainTx) return;
+    let cancelled = false;
+    let tries = 0;
+    const tick = async () => {
+      if (cancelled) return;
+      tries += 1;
+      try {
+        const r = await getArenaMatchReceipt(matchId);
+        if (!cancelled && r.txHash) { setOnchainTx(r.txHash); return; }
+      } catch { /* keep polling */ }
+      if (!cancelled && tries < 15) setTimeout(tick, 2000);
+    };
+    tick();
+    return () => { cancelled = true; };
+  }, [phase, demoMatch, matchId, onchainTx]);
 
   // Desktop breakpoint · same 900px rule as /games and the leaderboards,
   // so AppBottomNav renders its wide (docked-rail) variant on web.
@@ -265,6 +290,7 @@ export default function ChallengeAiPage() {
     setMatchId(res.matchId);
     setLastRound(null);
     setFinalData(null);
+    setOnchainTx(null);
     setScore({ player: 0, ai: 0, ties: 0 });
     setMatchStreak(0);
     setRoundNum(1);
@@ -445,6 +471,7 @@ export default function ChallengeAiPage() {
             isGuest={!authed && !authPending}
             needsMint={!!needsMint}
             demoLeft={demoLeft}
+            onchainTx={onchainTx}
           />
         )}
       </div>
@@ -1174,7 +1201,7 @@ function Confetti() {
 }
 
 function ResultStage({
-  pet, final, score, record, onRematch, onLobby, busy, isGuest, needsMint, demoLeft,
+  pet, final, score, record, onRematch, onLobby, busy, isGuest, needsMint, demoLeft, onchainTx,
 }: {
   pet: PetStage;
   final: NonNullable<RoundResult["final"]>;
@@ -1186,6 +1213,7 @@ function ResultStage({
   isGuest: boolean;    // played the demo · nothing saved, invite the sign-in
   needsMint: boolean;  // signed in, verified, but no GamePass · invite the mint
   demoLeft: number;    // demo matches left, drives rematch vs sign-in
+  onchainTx: string | null; // GamePass tx for this match, once written (real matches)
 }) {
   const won = final.outcome === "player_won";
   const tied = final.outcome === "tie";
@@ -1255,6 +1283,34 @@ function ResultStage({
           MARKOV: “{final.matchLine}”
         </div>
       </div>
+
+      {/* on-chain receipt · this match wrote a GamePass score on Celo, same as
+          the skill games. Guests never see it (nothing was written); real
+          players see a Celoscan link once the tx lands (polled after the match). */}
+      {!isGuest && onchainTx && (
+        <a
+          href={`https://celoscan.io/tx/${onchainTx}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            borderRadius: 12,
+            border: "1px solid rgba(52,211,153,0.35)",
+            background: "rgba(6,20,16,0.6)",
+            padding: "9px 14px",
+            textDecoration: "none",
+            fontSize: 11.5, fontWeight: 800, letterSpacing: "0.04em",
+            color: "rgba(167,243,208,0.95)",
+            animation: "riseIn 0.4s 0.3s ease both",
+          }}
+        >
+          <span aria-hidden style={{ fontSize: 13 }}>⛓️</span>
+          Recorded on-chain · view on Celoscan
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </a>
+      )}
 
       {/* how MARKOV read you */}
       {reveal && (

@@ -134,6 +134,22 @@ export async function purchaseArenaRefill(
   }
 }
 
+// On-chain receipt for a finished match. The backend writes the GamePass
+// ScoreRecorded tx fire-and-forget after the match ends, so the finish screen
+// polls this: { pending: true } until the tx lands, then { txHash }. Best-effort
+// — an absent/unwritten receipt just resolves to pending forever, no error.
+export async function getArenaMatchReceipt(matchId: string): Promise<{ txHash?: string; pending?: boolean }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/arena/receipt?matchId=${encodeURIComponent(matchId)}`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { pending: true };
+  }
+}
+
 export async function throwArenaMove(matchId: string, move: number): Promise<RoundResult> {
   try {
     return await backend('/api/arena/throw', { matchId, move });
