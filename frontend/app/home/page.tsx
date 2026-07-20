@@ -64,11 +64,11 @@ function Stat({ label, value, size = "md" }: { label: string; value: string; siz
   );
 }
 
-// Telegram community entry point · shown in the home top bar (mobile + desktop)
-// so the first thing after the splash includes a one-tap route into the
-// community, where daily action + announcements live. Telegram blue, subtle
-// glow, secondary to the Play/Sign-in CTAs by design.
-function TelegramChip() {
+// Telegram community entry point · styled to match the top-bar ABOUT link
+// (same body font, size, weight, tracking, inkSoft colour) so it reads as a
+// sibling secondary link, not a foreign pill. Small monochrome Telegram glyph
+// (currentColor) for recognition. Opens the community in a new tab.
+function TelegramLink() {
   return (
     <a
       href="https://t.me/gamearenaHQ"
@@ -76,21 +76,125 @@ function TelegramChip() {
       rel="noopener noreferrer"
       aria-label="Join the GameArena community on Telegram"
       style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        padding: "6px 11px", borderRadius: 999,
-        background: "rgba(42,165,224,0.12)",
-        border: "1px solid rgba(42,165,224,0.4)",
-        color: "#7fd3ff", textDecoration: "none",
-        fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em",
-        boxShadow: "0 0 14px rgba(42,165,224,0.18)",
-        whiteSpace: "nowrap",
+        fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700,
+        letterSpacing: "0.12em", textDecoration: "none",
+        display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 0",
       }}
     >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="#2ca5e0" aria-hidden="true">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
       </svg>
-      Community
+      COMMUNITY
     </a>
+  );
+}
+
+// About sheet · the real "what is GameArena" surface behind the ABOUT link
+// (previously a dead route to /games). Matches the app's modal aesthetic:
+// backdrop blur, surface gradient, T tokens. Bottom sheet on mobile, centred
+// card on desktop. Closes on backdrop tap, ESC, or the X.
+const ABOUT_GAMES: { name: string; trains: string; color: string }[] = [
+  { name: "Simon Memory", trains: "recall",             color: "#06b6d4" },
+  { name: "Stack Tower",  trains: "precision",          color: "#fb923c" },
+  { name: "Rhythm Rush",  trains: "focus & timing",     color: "#e879f9" },
+  { name: "Challenge AI", trains: "outsmarting MARKOV",  color: "#34d399" },
+];
+function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; onPlayFree: () => void; isDesktop: boolean }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(6,2,26,0.72)",
+        backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+        display: "flex", alignItems: isDesktop ? "center" : "flex-end", justifyContent: "center",
+        animation: "about-fade 0.22s ease both",
+        padding: isDesktop ? 24 : 0,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="About GameArena"
+        style={{
+          width: "100%", maxWidth: 460,
+          maxHeight: isDesktop ? "86vh" : "88dvh", overflowY: "auto",
+          background: "linear-gradient(180deg, rgba(42,18,100,0.98) 0%, rgba(20,6,60,0.99) 55%, rgba(10,2,38,1) 100%)",
+          border: `1px solid ${T.hairlineHi}`,
+          borderRadius: isDesktop ? 22 : "24px 24px 0 0",
+          boxShadow: `0 0 60px ${T.accent}26, 0 -12px 44px rgba(0,0,0,0.6)`,
+          padding: "22px 20px calc(env(safe-area-inset-bottom, 0px) + 22px)",
+          animation: "about-up 0.32s cubic-bezier(0.16,1,0.3,1) both",
+        }}
+      >
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: T.accent, textTransform: "uppercase" }}>What is</div>
+            <div style={{ fontFamily: T.display, fontSize: 26, color: T.ink, lineHeight: 1.05, marginTop: 2 }}>Game Arena</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{
+            width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+            background: "rgba(255,255,255,0.06)", border: `1px solid ${T.hairlineHi}`,
+            color: T.inkDim, fontSize: 15, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>✕</button>
+        </div>
+
+        <p style={{ fontFamily: T.body, fontSize: 14, lineHeight: 1.55, color: T.inkDim, margin: "14px 0 0" }}>
+          Quick skill games that actually make you sharper, and pay you to play. Thirty seconds a game, but you feel yourself improve.
+        </p>
+
+        {/* the games */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "16px 0" }}>
+          {ABOUT_GAMES.map(g => (
+            <div key={g.name} style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px", borderRadius: 12,
+              background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: g.color, boxShadow: `0 0 8px ${g.color}`, flexShrink: 0 }} />
+              <span style={{ fontFamily: T.body, fontSize: 13, fontWeight: 800, color: T.ink }}>{g.name}</span>
+              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft }}>· trains {g.trains}</span>
+            </div>
+          ))}
+        </div>
+
+        <p style={{ fontFamily: T.body, fontSize: 13, lineHeight: 1.6, color: T.inkDim, margin: "0 0 6px" }}>
+          Everyone here is a <strong style={{ color: T.ink }}>verified human</strong>, so there are no bots. You climb the leaderboards against real people.
+        </p>
+        <p style={{ fontFamily: T.body, fontSize: 13, lineHeight: 1.6, color: T.inkDim, margin: 0 }}>
+          Play free. Sign in to rank, verify once, and earn real <strong style={{ color: T.ink }}>G$ every day</strong>. It runs on Celo and works in your browser or inside MiniPay.
+        </p>
+
+        {/* actions */}
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={() => { onClose(); onPlayFree(); }} style={{
+            flex: 1, fontFamily: T.display, fontSize: 16, color: "#fff",
+            minHeight: 50, borderRadius: 14,
+            background: `linear-gradient(180deg, ${T.accent} 0%, ${T.accent}cc 100%)`,
+            border: `1.5px solid ${T.accent}`, cursor: "pointer",
+            boxShadow: `0 10px 26px -8px ${T.accent}88`,
+          }}>Play free</button>
+          <a href="https://t.me/gamearenaHQ" target="_blank" rel="noopener noreferrer" style={{
+            flex: 1, fontFamily: T.body, fontSize: 13, fontWeight: 800, color: T.ink,
+            minHeight: 50, borderRadius: 14, textDecoration: "none",
+            background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairlineHi}`,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#2ca5e0" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
+            Community
+          </a>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -137,6 +241,8 @@ const KEYFRAMES = `
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-8px); }
   }
+  @keyframes about-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes about-up   { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 `;
 
 // ─── HomeScreen · mobile ─────────────────────────────────────────────────
@@ -172,8 +278,8 @@ function HomeScreenMobile({
       {/* Top row — mute (left) + About (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", zIndex: 2 }}>
         <SoundToggle muted={muted} onToggle={onMute} size={36} />
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <TelegramChip />
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <TelegramLink />
           <button onClick={onAbout} style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.12em", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}>ABOUT</button>
         </div>
       </div>
@@ -247,10 +353,10 @@ function HomeScreenDesktop({
     <div style={{ display: "flex", overflow: "hidden", padding: "32px 40px", gap: 48, alignItems: "center", justifyContent: "center", minHeight: "100vh", maxWidth: 1180, margin: "0 auto", width: "100%" }}>
       {/* left — copy */}
       <div style={{ flex: 1, maxWidth: 540, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Pill color="#a78bfa">{climbPillLabel(live?.climb ?? null)}</Pill>
           <SoundToggle muted={muted} onToggle={onMute} size={34} />
-          <TelegramChip />
+          <TelegramLink />
         </div>
         <img src="/logo-full.png" alt="Game Arena" style={{ width: "clamp(280px, 32vw, 440px)", height: "auto", filter: "drop-shadow(0 4px 32px rgba(167,139,250,0.55))" }} />
         <h1 style={{ fontFamily: T.display, fontSize: 56, lineHeight: 1.02, color: T.ink, margin: 0, letterSpacing: "-0.015em" }}>
@@ -416,6 +522,7 @@ export default function HomePage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [live, setLive] = useState<LiveData | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   // Lock html + body overflow while /home is mounted so iOS Safari can't
   // drag-scroll the page when its address bar collapses (which changes the
@@ -567,7 +674,7 @@ export default function HomePage() {
     login();
   };
 
-  const onAbout = () => { playClick(); router.push("/games"); };
+  const onAbout = () => { playClick(); setShowAbout(true); };
 
   // Half-dead session banner · shown right here on home, where the player
   // actually is. Privy still signed in, wallet disconnected from the
@@ -641,6 +748,13 @@ export default function HomePage() {
           onComplete={completeOnboarding}
           onClose={dismissOnboarding}
           onPlayFree={() => { dismissOnboarding(); router.push("/dashboard"); }}
+        />
+      )}
+      {showAbout && (
+        <AboutSheet
+          onClose={() => setShowAbout(false)}
+          onPlayFree={onPlayFree}
+          isDesktop={isDesktop}
         />
       )}
     </>
