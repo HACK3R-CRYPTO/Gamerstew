@@ -63,6 +63,7 @@ type WeeklyChallengeData = {
   capPerPlayer: number;
   perGameG?: number;
   myProjectedG?: number | null;
+  youVerified?: boolean;
   myContribution: number | null;
   windowEnd: string;
   contributors?: Array<{ wallet: string; username: string | null; games: number }>;
@@ -668,7 +669,7 @@ export default function EventsPage() {
                 color="#22c55e"
                 tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
-                sub={`Earn ${(community.perGameG ?? 0).toLocaleString()} G$ every game, up to ${(community.capPerPlayer * (community.perGameG ?? 0)).toLocaleString()} G$${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You've earned ${community.myProjectedG.toLocaleString()} G$` : ` · Play to earn`}`}
+                sub={`Verified players earn ${(community.perGameG ?? 0).toLocaleString()} G$ every game, up to ${(community.capPerPlayer * (community.perGameG ?? 0)).toLocaleString()} G$${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You've earned ${community.myProjectedG.toLocaleString()} G$` : community.myContribution && community.youVerified === false ? ` · Verify to earn your games` : ` · Play to earn`}`}
                 progress={{ value: community.progress, total: community.target }}
                 onClick={() => setSelectedEvent({ type: "live-community", data: community })}
               />
