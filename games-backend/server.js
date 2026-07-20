@@ -3061,12 +3061,22 @@ function arenaPoints(session) {
 }
 
 // ─── On-chain match receipt · Challenge AI → GamePass ────────────────────────
-// Writes this match's points to GamePass as gameType 3, so every completed
-// Challenge AI match leaves a ScoreRecorded event — the same on-chain history
-// trail the skill games produce, one event per match. The score is the SAME
-// per-match `arenaPoints` used by the DB ladder, so the on-chain history mirrors
-// the ladder unit exactly (GamePass keeps the max per gameType; the weekly TOTAL
-// ladder stays owned by arena_free_matches → /api/arena/ladder).
+// Every completed Challenge AI match writes ONE transaction to GamePass as
+// gameType 3, carrying the player's RUNNING SEASON TOTAL (the sum of their
+// points for the current season bucket — the same window the ladder uses). So
+// each match is its own tx, and the value climbs: 10 → 23 → 25 …
+//
+// Why the running total instead of the per-match points:
+//   · The on-chain number then EQUALS the ladder total, and because the total
+//     only climbs within a season, GamePass's weeklyBest[season][3] naturally
+//     ends the season holding that total — directly rankable on-chain. (The
+//     GamePass season boundary (block.timestamp / 7 days) is aligned with our
+//     SEASON_EPOCH, which is an exact multiple of 7 days, so both reset together
+//     and bestScore[3] becomes "best season ever".)
+//   · SELF-HEALING: each write re-reads the sum from the DB, so if one match's
+//     write fails (best-effort), the NEXT match's write catches the total back
+//     up. Per-match writes would lose a failed match's contribution forever.
+// Per-match detail still lives in arena_free_matches, so no history is lost.
 //
 // Backend-submitted via recordScore (validator == on-chain scoreValidator), so
 // the player never signs or pays gas — the free instant loop is untouched.
@@ -3091,10 +3101,22 @@ function _pruneChallengeReceipts() {
 let _challengeWriteChain = Promise.resolve();
 async function _doRecordChallengeMatch(session) {
   if (!passScoreWriter) return; // no validator key configured — silently skip
-  const points = arenaPoints(session);
   try {
-    const tx = await passScoreWriter.recordScore(session.wallet, CHALLENGE_AI_GAME_TYPE, points);
-    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… +${points} · ${tx.hash}`);
+    // Running season total = sum of this wallet's points for the current season
+    // bucket. The match was already inserted into arena_free_matches before this
+    // runs (onMatchComplete awaits the insert first), so the sum includes it.
+    const weekKey = arenaWeekKey();
+    const { data, error } = await supabase
+      .from('arena_free_matches')
+      .select('points')
+      .eq('wallet', session.wallet)
+      .eq('week_key', weekKey);
+    if (error) throw error;
+    let total = 0;
+    for (const r of data || []) total += r.points || 0;
+    if (total <= 0) return; // nothing to record yet
+    const tx = await passScoreWriter.recordScore(session.wallet, CHALLENGE_AI_GAME_TYPE, total);
+    console.log(`🏆 Challenge AI on-chain · ${String(session.wallet).slice(0, 10)}… ${weekKey} total ${total} · ${tx.hash}`);
     if (session.matchId) {
       _pruneChallengeReceipts();
       challengeReceipts.set(String(session.matchId), { txHash: tx.hash, at: Date.now() });
