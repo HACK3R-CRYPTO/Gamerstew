@@ -37,11 +37,17 @@ function fmtCelo(wei?: bigint) {
   return n.toFixed(4);
 }
 
-// Round-down G$ to whole units (token is 18 decimals).
+// Round-down G$ to whole units (token is 18 decimals), then abbreviate with the
+// right unit: B (billions), M (millions), k (thousands). Trailing zeros trimmed
+// so 3.00M -> 3M, 2.50M -> 2.5M. Millions were previously shown as thousands
+// (e.g. 2,571,400 -> "2571.4k"); now they read "2.57M".
 function fmtG(rawWei?: bigint) {
   if (!rawWei) return "0";
   const whole = Number(rawWei / BigInt(1e18));
-  if (whole >= 1000) return `${(whole / 1000).toFixed(1)}k`;
+  const trim = (s: string) => s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
+  if (whole >= 1e9) return `${trim((whole / 1e9).toFixed(2))}B`;
+  if (whole >= 1e6) return `${trim((whole / 1e6).toFixed(2))}M`;
+  if (whole >= 1e3) return `${trim((whole / 1e3).toFixed(1))}k`;
   return String(whole);
 }
 
