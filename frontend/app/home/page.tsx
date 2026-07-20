@@ -168,7 +168,7 @@ function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; o
         </div>
 
         <p style={{ fontFamily: T.body, fontSize: 13, lineHeight: 1.6, color: T.inkDim, margin: "0 0 6px" }}>
-          Everyone here is a <strong style={{ color: T.ink }}>verified human</strong>, so there are no bots. You climb the leaderboards against real people.
+          The leaderboards are <strong style={{ color: T.ink }}>verified humans only</strong>, so you compete against real people, never bots.
         </p>
         <p style={{ fontFamily: T.body, fontSize: 13, lineHeight: 1.6, color: T.inkDim, margin: 0 }}>
           Play free. Sign in to rank, verify once, and earn real <strong style={{ color: T.ink }}>G$ every day</strong>. It runs on Celo and works in your browser or inside MiniPay.
