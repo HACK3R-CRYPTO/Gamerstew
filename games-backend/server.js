@@ -3038,15 +3038,15 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
 const { ArenaMatchEngine } = require('./lib/arenaMatch');
 const { attestInstantMatch } = require('./lib/feedbackOracle');
 
-// ISO week bucket ('2026-W27') — the ladder resets on this key. Weeks run
-// Mon-Sun; the Sunday payout script pays the closing week's standings.
+// Ladder bucket, SEASON-ALIGNED. The ladder now resets on the SAME clock as the
+// skill games (Rhythm/Simon/Stack): the fixed SEASON_EPOCH, 7-day windows, so
+// Challenge AI and the skill leaderboards roll over together. Key form 'S<n>'
+// (e.g. 'S24'). Older rows use the legacy ISO 'YYYY-Www' form and stay viewable
+// as past weeks. The payout runs on the season boundary, not Sunday.
 function arenaWeekKey(d = new Date()) {
-  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  const t = Math.floor(d.getTime() / 1000);
+  const season = Math.floor((t - SEASON_EPOCH) / (SEASON_DAYS * 86400)) + 1;
+  return `S${season}`;
 }
 
 // Ladder points per match. Wins pay, participation trickles, sweeps bonus.
@@ -3608,7 +3608,9 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
   try {
     const currentWeek = arenaWeekKey();
     const reqWeek = (req.query.week || '').toString();
-    const week = /^\d{4}-W\d{2}$/.test(reqWeek) ? reqWeek : currentWeek;
+    // Accept the new season key (S<n>) and the legacy ISO form (YYYY-Www) so
+    // past weeks stay viewable through the transition.
+    const week = /^(S\d+|\d{4}-W\d{2})$/.test(reqWeek) ? reqWeek : currentWeek;
     const wallet = (req.query.wallet || '').toString().toLowerCase();
     const { data, error } = await supabase
       .from('arena_free_matches')
@@ -3626,7 +3628,16 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
         .limit(2000);
       const seen = new Set([currentWeek]);
       for (const r of wk || []) seen.add(r.week_key);
-      weeks = [...seen].sort().reverse().slice(0, 12);
+      // Newest first. Season keys ('S<n>') sort by number so S100 > S24; any
+      // legacy ISO keys fall back to string order below the season keys.
+      const seasonNum = k => (/^S(\d+)$/.test(k) ? parseInt(k.slice(1), 10) : -1);
+      weeks = [...seen].sort((a, b) => {
+        const an = seasonNum(a), bn = seasonNum(b);
+        if (an >= 0 && bn >= 0) return bn - an;
+        if (an >= 0) return -1;
+        if (bn >= 0) return 1;
+        return a < b ? 1 : -1;
+      }).slice(0, 12);
     } catch { /* keep current-only */ }
 
     const agg = new Map();
@@ -3666,16 +3677,16 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     // Live pool = seeded base + this week's player purchases. Keeps the
     // "your G$ goes into the pool" promise visibly true: every refill
     // bought this week grows the number players are competing for.
+    // Pool = this SEASON's player purchases (aligned to the ladder window, not
+    // an ISO Mon-Sun week) + the seeded base.
+    const season = currentSeasonNumber();
+    const { start: seasonStart, end: seasonEnd } = seasonBounds(season);
     let purchasedGs = 0;
     try {
-      const weekStart = new Date();
-      const day = weekStart.getUTCDay() || 7;
-      weekStart.setUTCDate(weekStart.getUTCDate() - day + 1);
-      weekStart.setUTCHours(0, 0, 0, 0);
       const { data: buys } = await supabase
         .from('arena_purchases')
         .select('amount_wei')
-        .gte('created_at', weekStart.toISOString());
+        .gte('created_at', new Date(seasonStart * 1000).toISOString());
       for (const b of buys || []) purchasedGs += Number(b.amount_wei) / 1e18;
     } catch { /* purchases table absent → base pool only */ }
 
@@ -3684,6 +3695,9 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
       currentWeek,
       weeks,
       remainingToday,
+      currentSeason: season,
+      currentEndsAt: seasonEnd,      // unix seconds · same boundary as skill seasons
+      currentStartsAt: seasonStart,
       poolGs: Math.round(ARENA_WEEKLY_POOL_GS + purchasedGs),
       poolBaseGs: ARENA_WEEKLY_POOL_GS,
       poolFromPlayersGs: Math.round(purchasedGs * 100) / 100,
