@@ -3100,25 +3100,32 @@ function _pruneChallengeReceipts() {
 
 // ─── Signer gas guard ────────────────────────────────────────────────────────
 // The score-signer wallet (0xc1cF, == on-chain scoreValidator) pays gas for
-// every backend-submitted write. If it runs dry, writes revert (caught as
-// best-effort, so gameplay is fine) but scores silently stop reaching the chain.
-// This warns LOUDLY in the logs before that happens. Throttled: checks at most
-// once per interval, and only from the write path — no activity, no polling.
+// every backend-submitted write AND funds the faucet drips (~0.7 CELO each, the
+// biggest drain). If it runs dry, writes revert (caught as best-effort, so
+// gameplay is fine) but scores silently stop reaching the chain and drips fail.
+//
+// This runs as a DECOUPLED periodic check, NOT hung off any one traffic path:
+// the wallet drains from faucet drips, Challenge AI writes, and (soon) gasless
+// skill-game writes, so a check that only fired on Challenge AI matches would
+// miss a faucet-driven drain on a quiet-match night. One cheap getBalance every
+// interval covers every drain source. Warns each interval while low so it stays
+// visible until topped up. `.unref()` so it never keeps the process alive.
 const SIGNER_MIN_CELO = Number(process.env.SIGNER_MIN_CELO || 5);
 const SIGNER_GAS_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-let _lastSignerGasCheck = 0;
 async function _checkSignerGas() {
   if (!provider || !passScoreWriter?.runner?.address) return;
-  const nowMs = Date.now();
-  if (nowMs - _lastSignerGasCheck < SIGNER_GAS_CHECK_INTERVAL_MS) return;
-  _lastSignerGasCheck = nowMs;
   try {
     const addr = passScoreWriter.runner.address;
     const bal = Number(ethers.formatEther(await provider.getBalance(addr)));
     if (bal < SIGNER_MIN_CELO) {
-      console.warn(`🔴 SIGNER LOW GAS · ${addr} has ${bal.toFixed(3)} CELO (< ${SIGNER_MIN_CELO}) · top it up or on-chain score writes will start failing`);
+      console.warn(`🔴 SIGNER LOW GAS · ${addr} has ${bal.toFixed(3)} CELO (< ${SIGNER_MIN_CELO}) · top it up or on-chain score writes + faucet drips will start failing`);
     }
   } catch { /* balance check is best-effort */ }
+}
+if (provider && passScoreWriter) {
+  const _gasTimer = setInterval(_checkSignerGas, SIGNER_GAS_CHECK_INTERVAL_MS);
+  if (_gasTimer.unref) _gasTimer.unref();
+  _checkSignerGas(); // one check at boot so a wallet that starts low is flagged now
 }
 
 let _challengeWriteChain = Promise.resolve();
@@ -3147,7 +3154,6 @@ async function _doRecordChallengeMatch(session) {
   } catch (e) {
     console.warn(`⚠️  Challenge AI recordScore failed · ${String(session.wallet).slice(0, 10)}…:`, e?.message);
   }
-  _checkSignerGas(); // throttled inside · warns before the signer runs dry
 }
 function recordChallengeMatchOnChain(session) {
   _challengeWriteChain = _challengeWriteChain.then(() => _doRecordChallengeMatch(session)).catch(() => {});
