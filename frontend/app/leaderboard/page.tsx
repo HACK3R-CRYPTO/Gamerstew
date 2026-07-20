@@ -668,7 +668,7 @@ export default function EventsPage() {
                 color="#22c55e"
                 tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
-                sub={`Play to unlock the ${community.rewardG.toLocaleString()} G$ pool, then it splits by games played — play more, earn more${community.myProjectedG != null && community.myProjectedG > 0 ? ` · Your share: ~${community.myProjectedG.toLocaleString()} G$` : community.myContribution != null ? ` · You: ${community.myContribution}/${community.capPerPlayer}` : ` · Cap ${community.capPerPlayer}/player`}`}
+                sub={`Earn ${(community.perGameG ?? 0).toLocaleString()} G$ every game, up to ${(community.capPerPlayer * (community.perGameG ?? 0)).toLocaleString()} G$${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You've earned ${community.myProjectedG.toLocaleString()} G$` : ` · Play to earn`}`}
                 progress={{ value: community.progress, total: community.target }}
                 onClick={() => setSelectedEvent({ type: "live-community", data: community })}
               />
@@ -679,7 +679,7 @@ export default function EventsPage() {
                 color="#22c55e"
                 tag="COMMUNITY · MILESTONE HIT"
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
-                sub={`${community.rewardG.toLocaleString()} G$ splitting now by games played${community.myProjectedG != null && community.myProjectedG > 0 ? ` · Your share: ~${community.myProjectedG.toLocaleString()} G$` : ` · ${community.playersIn} players in`}`}
+                sub={`Pool unlocked · ${(community.perGameG ?? 0).toLocaleString()} G$ per game${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You earned ${community.myProjectedG.toLocaleString()} G$` : ` · ${community.playersIn} players in`}`}
                 progress={{ value: community.progress, total: community.target }}
                 onClick={() => setSelectedEvent({ type: "live-community", data: community })}
               />

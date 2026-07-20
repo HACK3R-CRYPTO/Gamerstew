@@ -2719,10 +2719,11 @@ app.get('/api/challenges/past', async (_, res) => {
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
 // PER_PLAYER_CAP so no single grinder can solo the milestone.
 // Config lives as constants — bump TARGET and REWARD as community grows.
-const WEEKLY_CHALLENGE_TARGET    = 600;    // games the community must play to unlock the pool
-const WEEKLY_CHALLENGE_REWARD_G  = 94000;  // G$ total pool (~₦15,000) · split PROPORTIONALLY by games played
+const WEEKLY_CHALLENGE_TARGET    = 900;    // games the community must play to unlock the pool (≈ budget ÷ per-game)
+const WEEKLY_CHALLENGE_PER_GAME_G = 105;   // FIXED G$ earned per game (~₦16.67) · cap × this = the max per player
+const WEEKLY_CHALLENGE_REWARD_G  = 94500;  // G$ budget ceiling (~₦15,000) · = TARGET × PER_GAME_G when fully hit
 const WEEKLY_CHALLENGE_UBI_G     = 50;     // G$ GameArena sends to GoodDollar
-const WEEKLY_CHALLENGE_CAP       = 150;    // max games per player that count toward their share
+const WEEKLY_CHALLENGE_CAP       = 150;    // max games per player · CAP × PER_GAME_G = 15,750 G$ (~₦2,500) max payout
 
 app.get('/api/weekly-challenge', async (req, res) => {
   const nowUTC = new Date();
@@ -2780,11 +2781,10 @@ app.get('/api/weekly-challenge', async (req, res) => {
     })),
   );
 
-  // Proportional economics: each capped game is worth pool ÷ total capped games,
-  // so a player's projected share = their capped games × perGameG. Lets the card
-  // show "your share" and "play more, earn more" instead of an equal split.
-  const perGameG = totalCapped > 0 ? WEEKLY_CHALLENGE_REWARD_G / totalCapped : 0;
-  const myProjectedG = myContribution != null ? Math.floor(myContribution * perGameG) : null;
+  // Fixed economics: each capped game earns a fixed PER_GAME_G, so a player's
+  // earned-so-far = their capped games × PER_GAME_G (guaranteed, not diluted).
+  const perGameG = WEEKLY_CHALLENGE_PER_GAME_G;
+  const myProjectedG = myContribution != null ? myContribution * perGameG : null;
 
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,
@@ -3066,11 +3066,11 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
       .reduce((s, n) => s + Math.min(WEEKLY_CHALLENGE_CAP, n), 0);
     const hit = totalCapped >= WEEKLY_CHALLENGE_TARGET;
 
-    // PROPORTIONAL payout: each game (up to the per-player cap) is worth an equal
-    // slice of the pool, so play more = earn more. perGameG = pool ÷ total capped
-    // games across the community; a player's payout = their capped games × perGameG.
+    // FIXED payout: each game (up to the per-player cap) earns a fixed PER_GAME_G,
+    // so a player's payout = their capped games × PER_GAME_G, guaranteed and not
+    // diluted by turnout. A cap player always gets CAP × PER_GAME_G.
     const qualifyingWallets = Array.from(rawCount.keys());
-    const perGameG = totalCapped > 0 ? WEEKLY_CHALLENGE_REWARD_G / totalCapped : 0;
+    const perGameG = WEEKLY_CHALLENGE_PER_GAME_G;
 
     const players = await Promise.all(
       qualifyingWallets.map(async (w) => {
@@ -3080,10 +3080,14 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
           username:    await resolveUsername(w) || null,
           gamesPlayed: rawCount.get(w),
           countedGames,
-          payoutG:     Math.floor(countedGames * perGameG),
+          payoutG:     countedGames * perGameG,
         };
       })
     );
+    // Total owed vs the budget · flags if overplay pushed payouts past the pool
+    // (fixed rate can exceed the budget if lots of people play past the target).
+    const totalOwedG = players.reduce((s, p) => s + p.payoutG, 0);
+    const overBudget = totalOwedG > WEEKLY_CHALLENGE_REWARD_G;
 
     players.sort((a, b) => b.countedGames - a.countedGames);
 
@@ -3095,7 +3099,9 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
       target:          WEEKLY_CHALLENGE_TARGET,
       totalPlayers:    qualifyingWallets.length,
       rewardPool:      WEEKLY_CHALLENGE_REWARD_G,
-      perGameG:        Math.round(perGameG * 100) / 100,
+      perGameG,
+      totalOwedG,
+      overBudget,
       ubiG:            WEEKLY_CHALLENGE_UBI_G,
       players,
     });
