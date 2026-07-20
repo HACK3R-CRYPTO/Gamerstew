@@ -3098,6 +3098,29 @@ function _pruneChallengeReceipts() {
   }
 }
 
+// ─── Signer gas guard ────────────────────────────────────────────────────────
+// The score-signer wallet (0xc1cF, == on-chain scoreValidator) pays gas for
+// every backend-submitted write. If it runs dry, writes revert (caught as
+// best-effort, so gameplay is fine) but scores silently stop reaching the chain.
+// This warns LOUDLY in the logs before that happens. Throttled: checks at most
+// once per interval, and only from the write path — no activity, no polling.
+const SIGNER_MIN_CELO = Number(process.env.SIGNER_MIN_CELO || 5);
+const SIGNER_GAS_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+let _lastSignerGasCheck = 0;
+async function _checkSignerGas() {
+  if (!provider || !passScoreWriter?.runner?.address) return;
+  const nowMs = Date.now();
+  if (nowMs - _lastSignerGasCheck < SIGNER_GAS_CHECK_INTERVAL_MS) return;
+  _lastSignerGasCheck = nowMs;
+  try {
+    const addr = passScoreWriter.runner.address;
+    const bal = Number(ethers.formatEther(await provider.getBalance(addr)));
+    if (bal < SIGNER_MIN_CELO) {
+      console.warn(`🔴 SIGNER LOW GAS · ${addr} has ${bal.toFixed(3)} CELO (< ${SIGNER_MIN_CELO}) · top it up or on-chain score writes will start failing`);
+    }
+  } catch { /* balance check is best-effort */ }
+}
+
 let _challengeWriteChain = Promise.resolve();
 async function _doRecordChallengeMatch(session) {
   if (!passScoreWriter) return; // no validator key configured — silently skip
@@ -3124,6 +3147,7 @@ async function _doRecordChallengeMatch(session) {
   } catch (e) {
     console.warn(`⚠️  Challenge AI recordScore failed · ${String(session.wallet).slice(0, 10)}…:`, e?.message);
   }
+  _checkSignerGas(); // throttled inside · warns before the signer runs dry
 }
 function recordChallengeMatchOnChain(session) {
   _challengeWriteChain = _challengeWriteChain.then(() => _doRecordChallengeMatch(session)).catch(() => {});
