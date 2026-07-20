@@ -259,7 +259,7 @@ export default function ArenaLadderPage() {
                       fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
                     }}
                   >
-                    W{w.split("-W")[1]}
+                    {w.startsWith("S") ? `S${w.slice(1)}` : `W${w.split("-W")[1]}`}
                   </button>
                 );
               })}
