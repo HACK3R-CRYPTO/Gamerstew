@@ -64,6 +64,36 @@ function Stat({ label, value, size = "md" }: { label: string; value: string; siz
   );
 }
 
+// Telegram community entry point · shown in the home top bar (mobile + desktop)
+// so the first thing after the splash includes a one-tap route into the
+// community, where daily action + announcements live. Telegram blue, subtle
+// glow, secondary to the Play/Sign-in CTAs by design.
+function TelegramChip() {
+  return (
+    <a
+      href="https://t.me/gamearenaHQ"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Join the GameArena community on Telegram"
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "6px 11px", borderRadius: 999,
+        background: "rgba(42,165,224,0.12)",
+        border: "1px solid rgba(42,165,224,0.4)",
+        color: "#7fd3ff", textDecoration: "none",
+        fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em",
+        boxShadow: "0 0 14px rgba(42,165,224,0.18)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="#2ca5e0" aria-hidden="true">
+        <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
+      </svg>
+      Community
+    </a>
+  );
+}
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "2px 2px 8px" }}>
@@ -142,7 +172,10 @@ function HomeScreenMobile({
       {/* Top row — mute (left) + About (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", zIndex: 2 }}>
         <SoundToggle muted={muted} onToggle={onMute} size={36} />
-        <button onClick={onAbout} style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.12em", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}>ABOUT</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <TelegramChip />
+          <button onClick={onAbout} style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.12em", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}>ABOUT</button>
+        </div>
       </div>
 
       {/* Hero — logo + one headline + one line. Auto-sized (no flex: 1)
@@ -217,6 +250,7 @@ function HomeScreenDesktop({
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Pill color="#a78bfa">{climbPillLabel(live?.climb ?? null)}</Pill>
           <SoundToggle muted={muted} onToggle={onMute} size={34} />
+          <TelegramChip />
         </div>
         <img src="/logo-full.png" alt="Game Arena" style={{ width: "clamp(280px, 32vw, 440px)", height: "auto", filter: "drop-shadow(0 4px 32px rgba(167,139,250,0.55))" }} />
         <h1 style={{ fontFamily: T.display, fontSize: 56, lineHeight: 1.02, color: T.ink, margin: 0, letterSpacing: "-0.015em" }}>
