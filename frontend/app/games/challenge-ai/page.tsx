@@ -196,7 +196,9 @@ export default function ChallengeAiPage() {
   // Stops on the first hash, on unmount, or after ~30s (the write is best-effort
   // and may be off if the validator key is unset — we just show nothing then).
   useEffect(() => {
-    if (phase !== "result" || demoMatch || !matchId || onchainTx) return;
+    // Only players with a GamePass get an on-chain write, so only they poll for
+    // the receipt. Guests (demo) and signed-in-but-unminted players call nothing.
+    if (phase !== "result" || demoMatch || needsMint || !matchId || onchainTx) return;
     let cancelled = false;
     let tries = 0;
     const tick = async () => {
@@ -210,7 +212,7 @@ export default function ChallengeAiPage() {
     };
     tick();
     return () => { cancelled = true; };
-  }, [phase, demoMatch, matchId, onchainTx]);
+  }, [phase, demoMatch, needsMint, matchId, onchainTx]);
 
   // Desktop breakpoint · same 900px rule as /games and the leaderboards,
   // so AppBottomNav renders its wide (docked-rail) variant on web.

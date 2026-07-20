@@ -30,13 +30,13 @@ function fmtName(e: LadderEntry): string {
   return `${e.wallet.slice(0, 6)}…${e.wallet.slice(-4)}`;
 }
 
-function untilSundayUtc(): string {
-  const now = new Date();
-  const end = new Date(now);
-  const day = now.getUTCDay() || 7;
-  end.setUTCDate(now.getUTCDate() + (7 - day));
-  end.setUTCHours(23, 59, 59, 999);
-  const ms = end.getTime() - now.getTime();
+// Countdown to the ladder reset. The reset is now the skill-game SEASON
+// boundary (returned by the backend as currentEndsAt), so Challenge AI and the
+// skill leaderboards roll over on the same clock. Empty string until we have it.
+function untilTs(endSec?: number): string {
+  if (!endSec) return "";
+  const ms = endSec * 1000 - Date.now();
+  if (ms <= 0) return "0h";
   const d = Math.floor(ms / 86400000);
   const h = Math.floor((ms % 86400000) / 3600000);
   return d > 0 ? `${d}d ${h}h` : `${h}h`;
@@ -154,7 +154,7 @@ export default function ArenaLadderPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"week" | "past">("week");
   const [selWeek, setSelWeek] = useState<string | undefined>(undefined); // undefined = current
-  const resetIn = useMemo(untilSundayUtc, []);
+  const resetIn = useMemo(() => untilTs(ladder?.currentEndsAt), [ladder?.currentEndsAt]);
 
   // Switching tabs drives which week loads: THIS WEEK always the current
   // board; PAST defaults to the most recent finished week.
@@ -232,8 +232,8 @@ export default function ArenaLadderPage() {
               <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.display }}>MARKOV LADDER</div>
               <div style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
                 {isCurrentWeek
-                  ? <>Live · resets in {resetIn}{showPool && <> · {ladder!.poolGs} G$ pool pays Sunday</>}</>
-                  : <>Final standings · week {ladder?.week?.split("-W")[1]}</>}
+                  ? <>Live · resets in {resetIn}{showPool && <> · {ladder!.poolGs} G$ pool pays at reset</>}</>
+                  : <>Final standings · {ladder?.week?.startsWith("S") ? `season ${ladder.week.slice(1)}` : `week ${ladder?.week?.split("-W")[1]}`}</>}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -297,7 +297,7 @@ export default function ArenaLadderPage() {
             <div style={{ fontSize: 38, marginBottom: 8 }}>📖</div>
             <div style={{ color: "#fff", fontSize: 15, fontWeight: 900 }}>No finished weeks yet</div>
             <div style={{ color: T.inkDim, fontSize: 12, marginTop: 6 }}>
-              The first ladder week is still running — final standings land here every Sunday.
+              The first ladder week is still running — final standings land here when the season resets.
             </div>
           </div>
         )}

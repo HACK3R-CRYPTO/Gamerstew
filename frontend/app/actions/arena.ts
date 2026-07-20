@@ -84,6 +84,9 @@ export type LadderData = {
   currentWeek?: string;
   weeks?: string[];
   remainingToday?: number | null;
+  currentSeason?: number;
+  currentEndsAt?: number;    // unix seconds · same boundary as the skill seasons
+  currentStartsAt?: number;
   poolGs: number;
   poolBaseGs?: number;
   players: number;
