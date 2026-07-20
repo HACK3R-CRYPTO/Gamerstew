@@ -14,6 +14,9 @@ import Onboarding, { type OnboardingResult } from "@/components/Onboarding";
 const ONBOARDED_KEY = "gamearena:onboarded";
 
 function fmtNum(n: number): string {
+  const trim = (s: string) => s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
+  if (n >= 1e9) return `${trim((n / 1e9).toFixed(2))}B`;
+  if (n >= 1e6) return `${trim((n / 1e6).toFixed(2))}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return String(n);
 }
