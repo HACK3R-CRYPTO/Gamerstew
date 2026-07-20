@@ -2807,11 +2807,10 @@ app.get('/api/weekly-challenge', async (req, res) => {
     })),
   );
 
-  // Fixed economics: each capped game earns a fixed PER_GAME_G. But only VERIFIED
-  // players actually get paid, so an unverified asker earns 0 until they verify.
+  // Fixed economics: each capped game earns a fixed PER_GAME_G, so a player's
+  // earned-so-far = their capped games × PER_GAME_G (guaranteed, not diluted).
   const perGameG = WEEKLY_CHALLENGE_PER_GAME_G;
-  const meVerified = wallet ? await isVerified(wallet) : false;
-  const myProjectedG = (myContribution != null && meVerified) ? myContribution * perGameG : (myContribution != null ? 0 : null);
+  const myProjectedG = myContribution != null ? myContribution * perGameG : null;
 
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,
@@ -2824,7 +2823,6 @@ app.get('/api/weekly-challenge', async (req, res) => {
     capPerPlayer: WEEKLY_CHALLENGE_CAP,
     perGameG:     Math.round(perGameG * 100) / 100,
     myProjectedG,
-    youVerified:  meVerified,   // false = played but not verified → won't be paid
     windowStart:  monday.toISOString(),
     windowEnd:    sunday.toISOString(),
     myContribution,
