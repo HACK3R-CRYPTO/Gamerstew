@@ -2719,10 +2719,10 @@ app.get('/api/challenges/past', async (_, res) => {
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
 // PER_PLAYER_CAP so no single grinder can solo the milestone.
 // Config lives as constants — bump TARGET and REWARD as community grows.
-const WEEKLY_CHALLENGE_TARGET    = 500;   // games needed to hit milestone
-const WEEKLY_CHALLENGE_REWARD_G  = 500;  // G$ total pool split equally among qualifying players
-const WEEKLY_CHALLENGE_UBI_G     = 50;   // G$ GameArena sends to GoodDollar
-const WEEKLY_CHALLENGE_CAP       = 70;   // max games per player that count toward total
+const WEEKLY_CHALLENGE_TARGET    = 600;    // games the community must play to unlock the pool
+const WEEKLY_CHALLENGE_REWARD_G  = 94000;  // G$ total pool (~₦15,000) · split PROPORTIONALLY by games played
+const WEEKLY_CHALLENGE_UBI_G     = 50;     // G$ GameArena sends to GoodDollar
+const WEEKLY_CHALLENGE_CAP       = 150;    // max games per player that count toward their share
 
 app.get('/api/weekly-challenge', async (req, res) => {
   const nowUTC = new Date();
@@ -2780,6 +2780,12 @@ app.get('/api/weekly-challenge', async (req, res) => {
     })),
   );
 
+  // Proportional economics: each capped game is worth pool ÷ total capped games,
+  // so a player's projected share = their capped games × perGameG. Lets the card
+  // show "your share" and "play more, earn more" instead of an equal split.
+  const perGameG = totalCapped > 0 ? WEEKLY_CHALLENGE_REWARD_G / totalCapped : 0;
+  const myProjectedG = myContribution != null ? Math.floor(myContribution * perGameG) : null;
+
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,
     progress:     totalCapped,
@@ -2789,6 +2795,8 @@ app.get('/api/weekly-challenge', async (req, res) => {
     rewardG:      WEEKLY_CHALLENGE_REWARD_G,
     ubiG:         WEEKLY_CHALLENGE_UBI_G,
     capPerPlayer: WEEKLY_CHALLENGE_CAP,
+    perGameG:     Math.round(perGameG * 100) / 100,
+    myProjectedG,
     windowStart:  monday.toISOString(),
     windowEnd:    sunday.toISOString(),
     myContribution,
@@ -3058,20 +3066,23 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
       .reduce((s, n) => s + Math.min(WEEKLY_CHALLENGE_CAP, n), 0);
     const hit = totalCapped >= WEEKLY_CHALLENGE_TARGET;
 
-    // Per-player payout = total reward pool ÷ number of qualifying players
+    // PROPORTIONAL payout: each game (up to the per-player cap) is worth an equal
+    // slice of the pool, so play more = earn more. perGameG = pool ÷ total capped
+    // games across the community; a player's payout = their capped games × perGameG.
     const qualifyingWallets = Array.from(rawCount.keys());
-    const perPlayerG = qualifyingWallets.length > 0
-      ? Math.floor(WEEKLY_CHALLENGE_REWARD_G / qualifyingWallets.length)
-      : 0;
+    const perGameG = totalCapped > 0 ? WEEKLY_CHALLENGE_REWARD_G / totalCapped : 0;
 
     const players = await Promise.all(
-      qualifyingWallets.map(async (w) => ({
-        wallet:      w,
-        username:    await resolveUsername(w) || null,
-        gamesPlayed: rawCount.get(w),
-        countedGames: Math.min(WEEKLY_CHALLENGE_CAP, rawCount.get(w)),
-        payoutG:     perPlayerG,
-      }))
+      qualifyingWallets.map(async (w) => {
+        const countedGames = Math.min(WEEKLY_CHALLENGE_CAP, rawCount.get(w));
+        return {
+          wallet:      w,
+          username:    await resolveUsername(w) || null,
+          gamesPlayed: rawCount.get(w),
+          countedGames,
+          payoutG:     Math.floor(countedGames * perGameG),
+        };
+      })
     );
 
     players.sort((a, b) => b.countedGames - a.countedGames);
@@ -3084,7 +3095,7 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
       target:          WEEKLY_CHALLENGE_TARGET,
       totalPlayers:    qualifyingWallets.length,
       rewardPool:      WEEKLY_CHALLENGE_REWARD_G,
-      perPlayerG,
+      perGameG:        Math.round(perGameG * 100) / 100,
       ubiG:            WEEKLY_CHALLENGE_UBI_G,
       players,
     });

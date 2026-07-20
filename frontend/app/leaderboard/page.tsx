@@ -61,6 +61,8 @@ type WeeklyChallengeData = {
   rewardG: number;
   ubiG: number;
   capPerPlayer: number;
+  perGameG?: number;
+  myProjectedG?: number | null;
   myContribution: number | null;
   windowEnd: string;
   contributors?: Array<{ wallet: string; username: string | null; games: number }>;
@@ -666,7 +668,7 @@ export default function EventsPage() {
                 color="#22c55e"
                 tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
-                sub={`Hit the milestone to split ${community.rewardG.toLocaleString()} G$${community.ubiG ? ` · ${community.ubiG} G$ to GoodDollar` : ""}${community.myContribution != null ? ` · You: ${community.myContribution}/${community.capPerPlayer}` : ` · Cap ${community.capPerPlayer}/player`}`}
+                sub={`Play to unlock the ${community.rewardG.toLocaleString()} G$ pool, then it splits by games played — play more, earn more${community.myProjectedG != null && community.myProjectedG > 0 ? ` · Your share: ~${community.myProjectedG.toLocaleString()} G$` : community.myContribution != null ? ` · You: ${community.myContribution}/${community.capPerPlayer}` : ` · Cap ${community.capPerPlayer}/player`}`}
                 progress={{ value: community.progress, total: community.target }}
                 onClick={() => setSelectedEvent({ type: "live-community", data: community })}
               />
@@ -677,7 +679,7 @@ export default function EventsPage() {
                 color="#22c55e"
                 tag="COMMUNITY · MILESTONE HIT"
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
-                sub={`${community.rewardG.toLocaleString()} G$ splitting now between ${community.playersIn} qualifying players`}
+                sub={`${community.rewardG.toLocaleString()} G$ splitting now by games played${community.myProjectedG != null && community.myProjectedG > 0 ? ` · Your share: ~${community.myProjectedG.toLocaleString()} G$` : ` · ${community.playersIn} players in`}`}
                 progress={{ value: community.progress, total: community.target }}
                 onClick={() => setSelectedEvent({ type: "live-community", data: community })}
               />
