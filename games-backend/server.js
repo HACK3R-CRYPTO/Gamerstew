@@ -2714,6 +2714,32 @@ app.get('/api/challenges/past', async (_, res) => {
   res.json({ challenges: data || [] });
 });
 
+// ─── GoodDollar identity verification (cached) ───────────────────────────────
+// isWhitelisted on the GoodDollar identity contract = a face-verified human.
+// The community pool pays VERIFIED players only; unverified players are skipped
+// (stops the task-group farmers who play but never verify from taking money).
+// Verification is sticky (once whitelisted, it stays), so we cache `true`
+// forever and `false` for a few minutes so a just-verified wallet updates soon.
+const GD_IDENTITY_ADDR = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
+const _gdIdentity = provider
+  ? new ethers.Contract(GD_IDENTITY_ADDR, ['function isWhitelisted(address) view returns (bool)'], provider)
+  : null;
+const _verifiedCache = new Map(); // wallet -> { verified, at }
+const VERIFIED_FALSE_TTL_MS = 10 * 60 * 1000;
+async function isVerified(wallet) {
+  if (!_gdIdentity || !wallet) return false;
+  const w = String(wallet).toLowerCase();
+  const c = _verifiedCache.get(w);
+  if (c && (c.verified || Date.now() - c.at < VERIFIED_FALSE_TTL_MS)) return c.verified;
+  try {
+    const v = await _gdIdentity.isWhitelisted(w);
+    _verifiedCache.set(w, { verified: v, at: Date.now() });
+    return v;
+  } catch {
+    return c ? c.verified : false; // best-effort: keep last known, else treat unverified
+  }
+}
+
 // ─── GET /api/weekly-challenge — community games milestone ──────────────────
 // Returns progress toward the weekly community games target. Counts games
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
@@ -2781,10 +2807,11 @@ app.get('/api/weekly-challenge', async (req, res) => {
     })),
   );
 
-  // Fixed economics: each capped game earns a fixed PER_GAME_G, so a player's
-  // earned-so-far = their capped games × PER_GAME_G (guaranteed, not diluted).
+  // Fixed economics: each capped game earns a fixed PER_GAME_G. But only VERIFIED
+  // players actually get paid, so an unverified asker earns 0 until they verify.
   const perGameG = WEEKLY_CHALLENGE_PER_GAME_G;
-  const myProjectedG = myContribution != null ? myContribution * perGameG : null;
+  const meVerified = wallet ? await isVerified(wallet) : false;
+  const myProjectedG = (myContribution != null && meVerified) ? myContribution * perGameG : (myContribution != null ? 0 : null);
 
   res.json({
     target:       WEEKLY_CHALLENGE_TARGET,
@@ -2797,6 +2824,7 @@ app.get('/api/weekly-challenge', async (req, res) => {
     capPerPlayer: WEEKLY_CHALLENGE_CAP,
     perGameG:     Math.round(perGameG * 100) / 100,
     myProjectedG,
+    youVerified:  meVerified,   // false = played but not verified → won't be paid
     windowStart:  monday.toISOString(),
     windowEnd:    sunday.toISOString(),
     myContribution,
@@ -3075,21 +3103,26 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
     const players = await Promise.all(
       qualifyingWallets.map(async (w) => {
         const countedGames = Math.min(WEEKLY_CHALLENGE_CAP, rawCount.get(w));
+        const verified = await isVerified(w);
         return {
           wallet:      w,
           username:    await resolveUsername(w) || null,
           gamesPlayed: rawCount.get(w),
           countedGames,
-          payoutG:     countedGames * perGameG,
+          verified,
+          // Unverified players are SKIPPED · they earn nothing no matter how much
+          // they played. Only face-verified humans get paid.
+          payoutG:     verified ? countedGames * perGameG : 0,
         };
       })
     );
-    // Total owed vs the budget · flags if overplay pushed payouts past the pool
-    // (fixed rate can exceed the budget if lots of people play past the target).
+    // Sort verified-with-payout first, then by games. Only verified count toward
+    // what's owed. `overBudget` flags if verified overplay passed the budget.
+    players.sort((a, b) => (b.payoutG - a.payoutG) || (b.countedGames - a.countedGames));
+    const verifiedPlayers   = players.filter(p => p.verified).length;
+    const skippedUnverified = players.length - verifiedPlayers;
     const totalOwedG = players.reduce((s, p) => s + p.payoutG, 0);
     const overBudget = totalOwedG > WEEKLY_CHALLENGE_REWARD_G;
-
-    players.sort((a, b) => b.countedGames - a.countedGames);
 
     res.json({
       milestoneHit:    hit,
@@ -3098,9 +3131,11 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
       totalCappedGames: totalCapped,
       target:          WEEKLY_CHALLENGE_TARGET,
       totalPlayers:    qualifyingWallets.length,
+      verifiedPlayers,       // only these get paid
+      skippedUnverified,     // played but not verified → skipped
       rewardPool:      WEEKLY_CHALLENGE_REWARD_G,
       perGameG,
-      totalOwedG,
+      totalOwedG,            // sum owed to VERIFIED players only
       overBudget,
       ubiG:            WEEKLY_CHALLENGE_UBI_G,
       players,
