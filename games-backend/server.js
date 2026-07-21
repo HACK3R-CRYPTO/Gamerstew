@@ -2745,9 +2745,9 @@ async function isVerified(wallet) {
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
 // PER_PLAYER_CAP so no single grinder can solo the milestone.
 // Config lives as constants — bump TARGET and REWARD as community grows.
-const WEEKLY_CHALLENGE_TARGET    = 900;    // games the community must play to unlock the pool (≈ budget ÷ per-game)
-const WEEKLY_CHALLENGE_PER_GAME_G = 105;   // FIXED G$ earned per game (~₦16.67) · cap × this = the max per player
-const WEEKLY_CHALLENGE_REWARD_G  = 94500;  // G$ budget ceiling (~₦15,000) · = TARGET × PER_GAME_G when fully hit
+const WEEKLY_CHALLENGE_TARGET    = 1200;   // games the community must play to unlock the pool (≈ budget ÷ per-game)
+const WEEKLY_CHALLENGE_PER_GAME_G = 105;   // FIXED G$ earned per game (~₦17) · cap × this = the max per player
+const WEEKLY_CHALLENGE_REWARD_G  = 126000; // G$ budget ceiling (~₦20,000) · = TARGET × PER_GAME_G when fully hit
 const WEEKLY_CHALLENGE_UBI_G     = 50;     // G$ GameArena sends to GoodDollar
 const WEEKLY_CHALLENGE_CAP       = 150;    // max games per player · CAP × PER_GAME_G = 15,750 G$ (~₦2,500) max payout
 
