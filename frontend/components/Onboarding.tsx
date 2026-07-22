@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
-import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useBalance, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
@@ -124,10 +124,17 @@ export default function Onboarding({
   const [setupLine, setSetupLine] = useState(0);
   const [mintError, setMintError] = useState<MintError | null>(null);
   const [slowMint, setSlowMint] = useState(false);
+  // Live username availability · "idle" | "checking" | "available" | "taken".
+  // Debounced on-chain isUsernameAvailable read so the player sees it before
+  // they ever tap the button, instead of hanging on a doomed mint.
+  const [nameStatus, setNameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const triedOnceRef = useRef(false);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const publicClient = usePublicClient();
 
   const valid = username.length >= 3 && username.length <= 16;
+  // Block submit on a known-taken name so the player fixes it before any tx.
+  const canSubmit = valid && nameStatus !== "taken";
   const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 
   // Returning user with a pass · skip the whole flow.
@@ -166,12 +173,57 @@ export default function Onboarding({
     return () => window.clearInterval(rot);
   }, [phase]);
 
+  // Live username availability · debounced on-chain read. Only checks valid-
+  // length names (mint requires 3+ chars). Lets the player see "taken" as they
+  // type instead of discovering it via a doomed, hanging mint tx.
+  useEffect(() => {
+    const name = username.trim();
+    if (name.length < 3 || !publicClient) { setNameStatus("idle"); return; }
+    let cancelled = false;
+    setNameStatus("checking");
+    const t = setTimeout(async () => {
+      try {
+        const available = await publicClient.readContract({
+          address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+          abi: GAME_PASS_ABI,
+          functionName: "isUsernameAvailable",
+          args: [name],
+        }) as boolean;
+        if (!cancelled) setNameStatus(available ? "available" : "taken");
+      } catch {
+        // Read failed · don't block the player; the mint-time check still guards.
+        if (!cancelled) setNameStatus("idle");
+      }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [username, publicClient]);
+
   // Actually call mint. Replaces the old fake timer.
   // Slow-tx hint after 20s · most Celo mints land in 5–10s, beyond that
   // it's almost always gas, RPC lag, or a wallet prompt the user missed.
   async function runMint() {
     setMintError(null);
     setSlowMint(false);
+    // Pre-flight: a taken username makes mint() revert, and Forno often returns
+    // an EMPTY revert (no reason string), so the "username taken" catch below
+    // never matches and the UI hangs on the loading screen. Check availability
+    // first so a taken name is an instant, clear message instead of a hang.
+    if (publicClient && username) {
+      try {
+        const available = await publicClient.readContract({
+          address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+          abi: GAME_PASS_ABI,
+          functionName: "isUsernameAvailable",
+          args: [username],
+        }) as boolean;
+        if (!available) {
+          setNameStatus("taken");
+          setMintError({ kind: "taken", message: "That name's taken — pick another." });
+          setPhase("create");
+          return;
+        }
+      } catch { /* read failed · fall through, the tx-revert path still guards */ }
+    }
     if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
     slowTimerRef.current = setTimeout(() => setSlowMint(true), 20_000);
     try {
@@ -400,15 +452,19 @@ export default function Onboarding({
               style={{
                 width: "100%", boxSizing: "border-box", padding: "15px 16px", textAlign: "center",
                 background: "rgba(0,0,0,0.4)", borderRadius: 14, color: "#fff",
-                border: `1.5px solid ${mintError?.kind === "taken" ? "#f87171" : valid ? "rgba(134,239,172,0.6)" : T.hairlineHi}`,
+                border: `1.5px solid ${(mintError?.kind === "taken" || nameStatus === "taken") ? "#f87171" : nameStatus === "available" ? "rgba(134,239,172,0.9)" : valid ? "rgba(134,239,172,0.6)" : T.hairlineHi}`,
                 fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", outline: "none",
                 boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.15), inset 0 2px 8px rgba(0,0,0,0.5)" : "inset 0 2px 8px rgba(0,0,0,0.5)",
                 transition: "border-color 0.15s, box-shadow 0.15s",
               }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, padding: "0 4px" }}>
-              <span style={{ fontFamily: T.body, fontSize: 10, color: mintError?.kind === "taken" ? "#f87171" : T.inkSoft, fontWeight: 700 }}>
-                {mintError?.kind === "taken" ? mintError.message : "3–16 characters"}
+              <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 700, color: (mintError?.kind === "taken" || nameStatus === "taken") ? "#f87171" : nameStatus === "available" ? "#86efac" : T.inkSoft }}>
+                {nameStatus === "checking" ? "checking…"
+                  : nameStatus === "taken" ? "that name's taken"
+                  : nameStatus === "available" ? "available ✓"
+                  : mintError?.kind === "taken" ? mintError.message
+                  : "3–16 characters"}
               </span>
               <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 800, color: username.length > 0 ? (valid ? "#86efac" : "#f87171") : T.inkSoft }}>{username.length}/16</span>
             </div>
@@ -422,12 +478,12 @@ export default function Onboarding({
           </div>
         )}
 
-        <button onClick={start} disabled={!valid} style={{
+        <button onClick={start} disabled={!canSubmit} style={{
           width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 19, color: "#fff", padding: "17px", borderRadius: 16,
-          background: !valid ? "rgba(255,255,255,0.06)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
-          border: `1.5px solid ${!valid ? T.hairline : T.accent}`,
-          boxShadow: !valid ? "none" : `0 14px 30px -8px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)`,
-          cursor: valid ? "pointer" : "default", opacity: valid ? 1 : 0.6, letterSpacing: "0.02em", transition: "all 0.15s",
+          background: !canSubmit ? "rgba(255,255,255,0.06)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
+          border: `1.5px solid ${!canSubmit ? T.hairline : T.accent}`,
+          boxShadow: !canSubmit ? "none" : `0 14px 30px -8px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)`,
+          cursor: canSubmit ? "pointer" : "default", opacity: canSubmit ? 1 : 0.6, letterSpacing: "0.02em", transition: "all 0.15s",
         }}>
           Let&apos;s play! 🎮
         </button>

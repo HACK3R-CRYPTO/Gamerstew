@@ -19,7 +19,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount, useBalance, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useBalance, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread, MINIPAY_DEEPLINKS } from "@/lib/contracts";
 import { captureReferralFromUrl, readPendingReferral, clearPendingReferral } from "@/lib/referral";
@@ -48,6 +48,7 @@ function MintInner() {
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
   const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
 
   const [username, setUsername] = useState("");
   const [minting, setMinting] = useState(false);
@@ -138,6 +139,24 @@ function MintInner() {
       setErr("Username must be at least 3 characters");
       setErrKind("other");
       return;
+    }
+    // Pre-flight: a taken name reverts mint(), and Forno often returns an empty
+    // revert, so the "username taken" catch never fires and the UI hangs. Check
+    // availability first and fail fast with a clear message.
+    if (publicClient) {
+      try {
+        const available = await publicClient.readContract({
+          address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
+          abi: GAME_PASS_ABI,
+          functionName: "isUsernameAvailable",
+          args: [username],
+        }) as boolean;
+        if (!available) {
+          setErr("Username taken. Try another.");
+          setErrKind("taken");
+          return;
+        }
+      } catch { /* read failed · fall through, the revert path still guards */ }
     }
     setMinting(true);
     setSlowMint(false);
