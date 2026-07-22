@@ -43,6 +43,7 @@ import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
@@ -470,7 +471,7 @@ export default function StackTowerPage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!needsMint && gasStatus === "block") {
+    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       setGasHelpOpen(true);
       return;
     }

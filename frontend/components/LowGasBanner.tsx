@@ -14,6 +14,7 @@
 // Tappable in both states so the player has one path to the help sheet.
 
 import type { GasBucket } from "@/hooks/useGasStatus";
+import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 
 const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -35,6 +36,8 @@ type Props = {
 };
 
 export function LowGasBanner({ status, approxSavesLeft, onOpenHelp, context = "score" }: Props) {
+  // Gasless scoring: the player pays no gas to save, so this warning is moot.
+  if (GASLESS_SKILL_GAMES) return null;
   if (status !== "warn" && status !== "block") return null;
 
   const isBlock = status === "block";
