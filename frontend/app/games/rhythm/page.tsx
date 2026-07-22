@@ -33,6 +33,7 @@ import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
@@ -864,7 +865,7 @@ export default function RhythmGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!needsMint && gasStatus === "block") {
+    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       setGasHelpOpen(true);
       return;
     }
