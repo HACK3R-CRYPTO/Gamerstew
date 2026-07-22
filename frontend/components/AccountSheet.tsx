@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import { useAccount, useBalance, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
 import { formatEther } from "viem";
@@ -330,8 +331,12 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                   state (USDC fee adapter pays gas), so they stay on the
                   copy-address path. */}
               {(() => {
-                const showLow = gasStatus === "warn" || gasStatus === "block";
-                const isBlock = gasStatus === "block";
+                // Gasless scoring: CELO is NOT needed to play or save games, so
+                // never frame the CELO row as "saves left / out of gas" — that
+                // wrongly tells players they can't save. Just show it as the
+                // network-fee token with a neutral copy path.
+                const showLow = !GASLESS_SKILL_GAMES && (gasStatus === "warn" || gasStatus === "block");
+                const isBlock = !GASLESS_SKILL_GAMES && gasStatus === "block";
                 const dot = isBlock ? "#fb7185" : showLow ? "#fbbf24" : null;
                 const subCopy = isBlock
                   ? "Out of gas · tap to top up in Telegram"
@@ -339,7 +344,9 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                     ? approxSavesLeft != null && approxSavesLeft > 0
                       ? `About ${approxSavesLeft} saves left · tap to top up`
                       : "Running low · tap to top up"
-                    : "Network gas · tap to copy address for top-up";
+                    : GASLESS_SKILL_GAMES
+                      ? "Network fee token · not needed to play"
+                      : "Network gas · tap to copy address for top-up";
                 return (
                   <TokenRow
                     icon={<img src="/tokens/celo.png" alt="" width={22} height={22} style={{ width: 22, height: 22, objectFit: "contain" }} />}
