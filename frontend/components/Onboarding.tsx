@@ -133,8 +133,11 @@ export default function Onboarding({
   const publicClient = usePublicClient();
 
   const valid = username.length >= 3 && username.length <= 16;
-  // Block submit on a known-taken name so the player fixes it before any tx.
-  const canSubmit = valid && nameStatus !== "taken";
+  // Block submit on a known-taken name, and while the availability check is
+  // still running, so the player can't fire off a mint before we know the name
+  // is free. ("idle" — read failed or name too short — still allows submit; the
+  // pre-flight check in runMint guards that path.)
+  const canSubmit = valid && nameStatus !== "taken" && nameStatus !== "checking";
   const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 
   // Returning user with a pass · skip the whole flow.
