@@ -58,8 +58,14 @@ async function handleProject(client, project, state, opts) {
     return 'done';
   }
 
-  // Submit + solve challenge, with one retry on a bad challenge answer.
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // Submit the response, then solve + verify the anti-human challenge.
+  //
+  // Slot-safety: each successful `respond` may consume a daily-limit slot, so
+  // we never resubmit on a *network* hiccup — we retry only the verify call
+  // with the SAME challenge. A fresh submission happens only when the grader
+  // genuinely rejects the answer (near-impossible: the solver is exact and
+  // runs in <1ms), and even then at most twice total.
+  for (let submission = 1; submission <= 2; submission++) {
     let challenge;
     try {
       challenge = await client.respond(id, gen.answers);
@@ -70,7 +76,20 @@ async function handleProject(client, project, state, opts) {
         saveState(state);
         return 'skipped';
       }
+      if (e instanceof HttpError && e.status === 429) {
+        log(`  rate limited on respond — stopping pass (${e.body?.retry_after ?? '?'}s)`);
+        return 'ratelimited';
+      }
       log(`  ✗ respond failed: ${e.message}`);
+      state.stats.failures++;
+      saveState(state);
+      return 'failed';
+    }
+
+    if (!challenge?.challengeId || !challenge?.prompt) {
+      log(`  ✗ unexpected respond shape (no challenge): ${JSON.stringify(challenge).slice(0, 200)}`);
+      state.stats.failures++;
+      saveState(state);
       return 'failed';
     }
 
@@ -80,24 +99,47 @@ async function handleProject(client, project, state, opts) {
       answer = solveChallenge(challenge.prompt);
     } catch (e) {
       log(`  ✗ could not solve challenge "${challenge.prompt}": ${e.message}`);
+      state.stats.failures++;
+      saveState(state);
       return 'failed';
     }
     const solveMs = (performance.now() - t0).toFixed(1);
 
-    try {
-      const result = await client.verifyChallenge(id, challenge.challengeId, answer);
-      if (result.passed) {
-        log(`  ✓ PAID ${result.payout} ${result.currency} · solved in ${solveMs}ms · tx ${result.txHash || 'n/a'}`);
-        state.responded[id] = { at: Date.now(), status: 'paid', txHash: result.txHash };
-        state.stats.responses++;
-        state.stats.payouts++;
-        saveState(state);
-        return 'paid';
+    // Verify — retry ONLY on transient network errors, same challenge, no new slot.
+    let result = null;
+    for (let vt = 1; vt <= 3; vt++) {
+      try {
+        result = await client.verifyChallenge(id, challenge.challengeId, answer);
+        break;
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 429) {
+          log(`  rate limited on verify — stopping pass`);
+          return 'ratelimited';
+        }
+        log(`  … verify network error (try ${vt}/3): ${e.message}`);
+        await sleep(300 * vt);
       }
-      log(`  ✗ challenge rejected (attempt ${attempt}): ${result.error || 'unknown'} · answer=${answer} · ${solveMs}ms`);
-    } catch (e) {
-      log(`  ✗ verify failed (attempt ${attempt}): ${e.message}`);
     }
+
+    if (result?.passed) {
+      log(`  ✓ PAID ${result.payout} ${result.currency} · solved in ${solveMs}ms · tx ${result.txHash || 'n/a'}`);
+      state.responded[id] = { at: Date.now(), status: 'paid', txHash: result.txHash };
+      state.stats.responses++;
+      state.stats.payouts++;
+      saveState(state);
+      return 'paid';
+    }
+
+    if (result && result.passed === false) {
+      // Genuine rejection — try one fresh submission.
+      log(`  ✗ challenge rejected (submission ${submission}): ${result.error || 'unknown'} · answer=${answer} · ${solveMs}ms`);
+      continue;
+    }
+
+    // result === null: verify never got a response. Don't resubmit (would risk a
+    // second slot) — leave the project unhandled so a later pass retries cleanly.
+    log('  ✗ verify unreachable after retries — will retry next pass');
+    return 'failed';
   }
   state.stats.failures++;
   saveState(state);
@@ -138,6 +180,7 @@ async function pass(client, state, opts) {
   for (const project of fresh) {
     if (budget <= 0) { log('out of daily budget for this pass'); break; }
     const outcome = await handleProject(client, project, state, opts);
+    if (outcome === 'ratelimited') break; // back off until the next pass
     if (outcome === 'paid') budget--;
   }
 }
