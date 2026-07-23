@@ -1356,6 +1356,6 @@ startAgent();
 if (process.env.ASKBOTS_DISABLED !== '1') {
     // @ts-ignore — plain ESM module, no .d.ts; loaded at runtime by tsx.
     import('../askbots/run.mjs')
-        .then(({ startJudgeLoop }: any) => startJudgeLoop({ intervalMs: 60000 }))
+        .then(({ startJudgeLoop }: any) => startJudgeLoop({ intervalMs: 20000 }))
         .catch((e) => console.warn(chalk.yellow(`[askbots] not started: ${e?.message ?? e}`)));
 }
