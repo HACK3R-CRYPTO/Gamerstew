@@ -186,7 +186,7 @@ async function pass(client, state, opts) {
 }
 
 // Embeddable entrypoint. Returns the loop promise; safe to fire-and-forget.
-export async function startJudgeLoop({ once = false, dry = false, intervalMs = 45000 } = {}) {
+export async function startJudgeLoop({ once = false, dry = false, intervalMs = 20000 } = {}) {
   let client;
   try {
     client = new AskbotsClient();
@@ -230,7 +230,7 @@ async function cli() {
   await startJudgeLoop({
     once: flag('once'),
     dry: flag('dry'),
-    intervalMs: Math.max(10, parseInt(optVal('interval', '45'), 10)) * 1000,
+    intervalMs: Math.max(10, parseInt(optVal('interval', '20'), 10)) * 1000,
   });
 }
 

@@ -1,7 +1,8 @@
 // reviewer.mjs — turn a project + its property into high-quality, correctly
 // typed answers. This is where the rating is won or lost: builders thumbs-up
-// specific, grounded feedback and thumbs-down generic filler, so we always
-// fetch the real property and force the model to cite concrete details.
+// specific, grounded feedback and thumbs-down generic filler OR fabricated
+// claims, so we (a) actually probe the real property per type, and (b) when we
+// genuinely can't reach it, tell the builder honestly instead of inventing.
 import { generateJSON } from './llm.mjs';
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -42,49 +43,149 @@ function htmlToText(html) {
   return `${header}${header ? '\n\n' : ''}VISIBLE TEXT:\n${body}`;
 }
 
-// Best-effort retrieval of whatever the property actually is.
+// Turn an SSE or JSON body into a parsed object where possible.
+function parseMaybeSse(text) {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { return JSON.parse(trimmed); } catch { /* fall through */ }
+  }
+  const dataLines = trimmed.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim());
+  for (const d of dataLines) {
+    try { return JSON.parse(d); } catch { /* keep looking */ }
+  }
+  return trimmed.slice(0, 2000);
+}
+
+// APIs: fetch the endpoint, then try to discover an OpenAPI/Swagger spec so the
+// review can speak to real routes, not guesses.
+async function probeApi(url) {
+  const out = { note: '', content: '', ok: false };
+  try {
+    const r = await fetchText(url);
+    out.ok = r.status < 400;
+    out.status = r.status;
+    out.content = `HTTP ${r.status} · content-type: ${r.contentType}\n` +
+      (/html/i.test(r.contentType) ? htmlToText(r.text) : r.text).slice(0, 6000);
+  } catch (e) {
+    out.note = `direct call failed: ${e.message}`;
+  }
+  try {
+    const origin = new URL(url).origin;
+    for (const p of ['/openapi.json', '/swagger.json', '/.well-known/openapi.json', '/openapi.yaml']) {
+      try {
+        const s = await fetchText(origin + p);
+        if (s.ok && (s.text.includes('"paths"') || s.text.includes('paths:') || s.text.includes('swagger'))) {
+          out.content += `\n\nOPENAPI SPEC (${p}):\n${s.text.slice(0, 5000)}`;
+          out.ok = true;
+          break;
+        }
+      } catch { /* try next */ }
+    }
+  } catch { /* bad url */ }
+  return out;
+}
+
+// MCP servers speak JSON-RPC (Streamable HTTP / SSE). A GET tells us nothing, so
+// we run the real `initialize` + `tools/list` handshake and review what it
+// advertises (server name, capabilities, tools).
+async function probeMcp(url) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+  const rpc = (id, method, params) => JSON.stringify({ jsonrpc: '2.0', id, method, params });
+  const out = { note: '', content: '', ok: false };
+  const collected = {};
+  try {
+    const init = await fetchText(url, {
+      method: 'POST',
+      headers,
+      body: rpc(1, 'initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'MARKOV', version: '1.0' },
+      }),
+    });
+    collected.initializeStatus = init.status;
+    collected.initialize = parseMaybeSse(init.text);
+    out.ok = init.status < 400 && !!collected.initialize;
+  } catch (e) {
+    collected.initializeError = e.message;
+  }
+  try {
+    const tools = await fetchText(url, { method: 'POST', headers, body: rpc(2, 'tools/list', {}) });
+    collected.tools = parseMaybeSse(tools.text);
+  } catch (e) {
+    collected.toolsError = e.message;
+  }
+  out.content = 'MCP JSON-RPC handshake result:\n' + JSON.stringify(collected, null, 2);
+  if (!out.ok) {
+    // Fall back to a plain GET in case it serves docs at the same URL.
+    try {
+      const r = await fetchText(url);
+      if (r.text) out.content += `\n\nGET ${url} (HTTP ${r.status}):\n${(/html/i.test(r.contentType) ? htmlToText(r.text) : r.text).slice(0, 3000)}`;
+    } catch { /* ignore */ }
+  }
+  return out;
+}
+
+// Best-effort retrieval of whatever the property actually is. Returns
+// { note, content, ok, thin } — `ok` false / `thin` true flips the reviewer
+// into honest "couldn't fully access this" mode instead of fabricating.
 export async function fetchProperty(project) {
   const url = project.propertyUrl;
   const type = project.propertyType;
-  if (!url) return { note: 'No propertyUrl provided.', content: '' };
+  if (!url) return { note: 'No propertyUrl provided.', content: '', ok: false, thin: true };
   try {
-    const r = await fetchText(url);
-    let content;
+    let content = '';
+    let ok = true;
+    let extra = '';
     if (type === 'website') {
+      const r = await fetchText(url);
+      ok = r.status < 400;
+      extra = `HTTP ${r.status}`;
       content = /html/i.test(r.contentType) || /^\s*</.test(r.text) ? htmlToText(r.text) : r.text;
     } else if (type === 'skill_file') {
-      content = r.text; // raw markdown/instructions
-    } else if (type === 'api' || type === 'mcp_server') {
-      content =
-        `HTTP ${r.status} · content-type: ${r.contentType}\n` +
-        (/html/i.test(r.contentType) ? htmlToText(r.text) : r.text);
+      const r = await fetchText(url);
+      ok = r.status < 400;
+      extra = `HTTP ${r.status}`;
+      content = r.text;
+    } else if (type === 'api') {
+      const a = await probeApi(url);
+      ok = a.ok; extra = a.note || `HTTP ${a.status ?? '?'}`; content = a.content;
+    } else if (type === 'mcp_server') {
+      const m = await probeMcp(url);
+      ok = m.ok; extra = m.ok ? 'handshake ok' : 'handshake failed'; content = m.content;
     } else {
+      const r = await fetchText(url);
+      ok = r.status < 400;
       content = /html/i.test(r.contentType) ? htmlToText(r.text) : r.text;
     }
+    const thin = !content || content.replace(/\s+/g, ' ').trim().length < 200;
     const truncated = content.length > MAX_CONTENT;
     return {
-      note: `Fetched ${url} (HTTP ${r.status}, ${r.contentType || 'unknown type'})${truncated ? ', truncated' : ''}.`,
+      note: `Fetched ${url} (${extra}${truncated ? ', truncated' : ''}${thin ? ', thin content' : ''}).`,
       content: content.slice(0, MAX_CONTENT),
+      ok: ok && !thin,
+      thin,
     };
   } catch (e) {
-    return { note: `Could not fetch ${url}: ${e.message}. Review from the URL and project context only.`, content: '' };
+    return { note: `Could not reach ${url}: ${e.message}.`, content: '', ok: false, thin: true };
   }
 }
 
-const SYSTEM = `You are MARKOV, a rigorous product reviewer that evaluates websites, APIs, MCP servers and skill files for builders on askbots. Builders rate every answer thumbs up or down, and only specific, useful, honest feedback earns a thumbs up.
+const SYSTEM = `You are MARKOV, a rigorous product reviewer that evaluates websites, APIs, MCP servers and skill files for builders on askbots. Builders rate every answer thumbs up or down; only specific, useful, HONEST feedback earns a thumbs up. Fabricated or generic feedback earns a thumbs down.
 
 Rules:
-- Ground every claim in a concrete detail actually present in the provided content (a heading, a nav item, an endpoint, an error message, a sentence). Never invent features.
-- Be specific and actionable. "Improve the CTA" is useless; "the hero CTA reads 'Submit' with no value proposition — try 'Start earning USDT'" is useful.
-- Be calibrated and honest. Do not inflate ratings. Most real products are a 5-8.
+- Ground every claim in a concrete detail actually present in the provided content (a heading, a nav item, an endpoint, a tool name, an error message, a sentence). Never invent features or pages.
+- For freeform answers: LEAD with the single most important issue, then at most two more, each ranked and each paired with one concrete, specific fix. Skip filler and praise-padding. 1-4 sentences.
+- Be calibrated and honest on ratings. Most real products are a 5-8. Reserve 9-10 for genuinely excellent, 1-3 for broken.
+- If REACHABILITY says the property could not be fully accessed, say so plainly, review only what IS observable (the URL, the project description, the questions, any partial content), keep ratings conservative/neutral, and never fabricate observations. Honesty about access beats a made-up review.
 - Match each answer to its question type exactly.
-- If the content could not be fetched, reason from the URL, project name and question wording, and say what you would check — never fabricate observations.
 
 Return ONLY a JSON object of this exact shape:
 {"answers": {"<questionId>": <answer>, ...}}
-Where the value format depends on the question "type":
-- "rating": an integer 1-10 (as a number or numeric string).
-- "freeform": a specific, concrete string, 1-4 sentences, referencing real details.
+Value format by question "type":
+- "rating": an integer 1-10 (number or numeric string).
+- "freeform": a specific, concrete string referencing real details.
 - "multiple_choice": exactly one string from the provided choices, verbatim.
 - "multiselect": an array of one or more strings, each verbatim from the provided choices.
 Answer EVERY question. No extra keys, no commentary outside the JSON.`;
@@ -95,11 +196,15 @@ function buildUser(project, prop) {
     if (q.choices) base.choices = q.choices;
     return base;
   });
+  const reachability = prop.ok
+    ? 'REACHABILITY: property fetched successfully — review the content directly.'
+    : 'REACHABILITY: property could NOT be fully accessed (unreachable, blocked, or near-empty). Be honest about this, review only what is observable, keep ratings conservative, do not fabricate.';
   return [
     `PROJECT: ${project.name || '(unnamed)'}`,
     `PROPERTY TYPE: ${project.propertyType}`,
     `PROPERTY URL: ${project.propertyUrl}`,
     `FETCH NOTE: ${prop.note}`,
+    reachability,
     '',
     'PROPERTY CONTENT (may be truncated):',
     prop.content ? prop.content : '(no content retrieved)',
@@ -172,10 +277,10 @@ export function coerceAnswers(project, raw) {
 }
 
 // Full pipeline: fetch property -> generate -> validate. Returns
-// { answers, provider, note }.
+// { answers, provider, note, reachable }.
 export async function generateAnswers(project) {
   const prop = await fetchProperty(project);
   const { data, provider } = await generateJSON(SYSTEM, buildUser(project, prop));
   const answers = coerceAnswers(project, data);
-  return { answers, provider, note: prop.note };
+  return { answers, provider, note: prop.note, reachable: prop.ok };
 }
