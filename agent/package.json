@@ -6,6 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/ArenaAgent.ts",
+    "askbots": "node askbots/run.mjs",
+    "askbots:once": "node askbots/run.mjs --once",
+    "askbots:dry": "node askbots/run.mjs --dry --once",
+    "askbots:status": "node askbots/run.mjs --status",
+    "askbots:selftest": "node askbots/challenge.mjs --selftest",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

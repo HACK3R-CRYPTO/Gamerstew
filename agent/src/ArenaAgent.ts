@@ -1346,3 +1346,16 @@ function determineWinner(gameType: number, p1: string, m1: number, p2: string, m
 }
 
 startAgent();
+
+// Askbots judge bot — piggybacks on this always-on process so MARKOV stays live
+// for the Celo Agentic Payments "Askbots" track (askbots.ai): it polls for
+// feedback projects, reviews them, and earns ratings. Fully isolated fire-and-
+// forget — any failure here can never affect the arena agent. Needs
+// ASKBOTS_API_KEY in the environment (self-disables cleanly if unset). Turn off
+// with ASKBOTS_DISABLED=1.
+if (process.env.ASKBOTS_DISABLED !== '1') {
+    // @ts-ignore — plain ESM module, no .d.ts; loaded at runtime by tsx.
+    import('../askbots/run.mjs')
+        .then(({ startJudgeLoop }: any) => startJudgeLoop({ intervalMs: 60000 }))
+        .catch((e) => console.warn(chalk.yellow(`[askbots] not started: ${e?.message ?? e}`)));
+}
