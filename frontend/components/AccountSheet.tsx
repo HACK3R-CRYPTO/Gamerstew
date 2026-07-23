@@ -378,6 +378,9 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                 onClick={() => goTo("/vote")}
               />
               <NavRow icon="🐣" label="My pet · profile" sub="Stats, achievements, equipped habitat" onClick={() => goTo("/profile")} />
+              {/* Agents · GoodAgents partnership. Players deploy a verified AI
+                  agent that plays the arena for them. */}
+              <NavRow icon="🤖" label="Deploy an agent" sub="Your AI agent plays the arena · GoodAgents" onClick={() => goTo("/agents")} />
               <NavRow icon="⚙️" label="Settings" sub="Audio, notifications, verification, sign out" onClick={() => goTo("/settings")} />
               {/* Community row · the always-on door to the player chat.
                   Doubles as the help path · gas top-ups, prize claims, weekly
