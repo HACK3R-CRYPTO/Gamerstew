@@ -2,9 +2,15 @@
 
 import { useMemo } from "react";
 import { useReadContracts } from "wagmi";
-import { AGENT_ATTESTATION_ADDRESS } from "@goodagent/widget";
+import { AGENT_VAULT_ADDRESS } from "@goodagent/widget";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
+
+// getAgent lives on the vault contract (AGENT_VAULT_ADDRESS = 0x0409042B...),
+// NOT on AGENT_ATTESTATION_ADDRESS despite the name — verified on-chain: the
+// attestation address reverts on getAgent. Using the vault is what actually
+// returns the agent's operator.
+const ATTESTATION = AGENT_VAULT_ADDRESS;
 
 // Minimal ABI for the one call we need. The package exports the attestation
 // contract address but not its ABI, so we declare the getAgent fragment here.
@@ -37,7 +43,7 @@ export function useAgentAddresses(wallets: (string | undefined | null)[]): Set<s
 
   const { data } = useReadContracts({
     contracts: unique.map((w) => ({
-      address: AGENT_ATTESTATION_ADDRESS as `0x${string}`,
+      address: ATTESTATION as `0x${string}`,
       abi: GET_AGENT_ABI,
       functionName: "getAgent" as const,
       args: [w as `0x${string}`],

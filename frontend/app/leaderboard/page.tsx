@@ -369,7 +369,7 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
   if (p.shape === "sparkle") return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>✦</div>;
   return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
 }
-function StagePodium({ podium }: { podium: (AllTimeEntry | undefined)[] }) {
+function StagePodium({ podium, agentSet }: { podium: (AllTimeEntry | undefined)[]; agentSet: Set<string> }) {
   const placements = [
     { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
     { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
@@ -389,7 +389,10 @@ function StagePodium({ podium }: { podium: (AllTimeEntry | undefined)[] }) {
         const labelBottom = pl.bottomPct + charHeightPct + 1;
         return (
           <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
-            <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>{pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}</div>
+            <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
+              {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
+              {pl.entry && agentSet.has(pl.entry.player.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#67e8f9", marginLeft: 4, textShadow: "0 0 8px #22d3ee" }}>🤖</span>}
+            </div>
             <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>{pl.entry ? pl.entry.score.toLocaleString() : 0}</div>
           </div>
         );
@@ -757,7 +760,7 @@ export default function EventsPage() {
               </a>
             )}
 
-            <StagePodium podium={podium} />
+            <StagePodium podium={podium} agentSet={agentSet} />
 
             {allEntries === null && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, textAlign: "center", padding: "12px 0" }}>Loading all-time ladder…</div>}
 
