@@ -24,6 +24,8 @@ import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import EventTeaser from "@/components/EventTeaser";
 import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
+import { AgentBadge } from "@/components/AgentBadge";
+import { useAgentAddresses } from "@/hooks/useAgentAddresses";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 const PAGE_SIZE = 16;
@@ -395,13 +397,16 @@ function StagePodium({ podium }: { podium: (AllTimeEntry | undefined)[] }) {
     </div>
   );
 }
-function PlayerRow({ entry, rank, isMe }: { entry: AllTimeEntry; rank: number; isMe: boolean }) {
+function PlayerRow({ entry, rank, isMe, isAgent }: { entry: AllTimeEntry; rank: number; isMe: boolean; isAgent?: boolean }) {
   const color = T.accent;
   return (
     <div style={{ borderRadius: 999, padding: 2.5, background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`, boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)` }}>
       <div style={{ borderRadius: 999, background: isMe ? `linear-gradient(90deg, ${color}26 0%, rgba(20,10,50,0.9) 100%)` : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)", padding: "8px 14px 8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${color}1f`, border: `1px solid ${color}66`, fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em" }}>#{rank}</span>
-        <span style={{ flex: 1, fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? `You · ${fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}</span>
+        <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? `You · ${fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}</span>
+          {isAgent && <AgentBadge />}
+        </span>
         <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{entry.score.toLocaleString()}</span>
       </div>
     </div>
@@ -610,6 +615,9 @@ export default function EventsPage() {
   const totalPages = Math.max(1, Math.ceil(restAll.length / PAGE_SIZE));
   const rest = restAll.slice(allPage * PAGE_SIZE, (allPage + 1) * PAGE_SIZE);
   const myAllPage = myAllRank ? (myAllRank.rank <= 3 ? -1 : Math.floor((myAllRank.rank - 4) / PAGE_SIZE)) : -1;
+  // Flag which of the visible all-time rows are deployed agents (one multicall
+  // covers the podium + the current page), so PlayerRow can badge them.
+  const agentSet = useAgentAddresses([...podium, ...rest].map(e => e.player));
 
   const pastLoading = pastSeasons === null || pastCups === null || pastChallenges === null;
 
@@ -758,7 +766,7 @@ export default function EventsPage() {
                 {rest.map((e, i) => {
                   const rank = 4 + allPage * PAGE_SIZE + i;
                   const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                  return <PlayerRow key={e.player} entry={e} rank={rank} isMe={isMe} />;
+                  return <PlayerRow key={e.player} entry={e} rank={rank} isMe={isMe} isAgent={agentSet.has(e.player.toLowerCase())} />;
                 })}
               </div>
             )}
