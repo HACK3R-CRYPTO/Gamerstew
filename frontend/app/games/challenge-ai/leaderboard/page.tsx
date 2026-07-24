@@ -13,6 +13,8 @@ import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { getArenaLadder, type LadderData, type LadderEntry } from "@/app/actions/arena";
+import { AgentBadge } from "@/components/AgentBadge";
+import { useAgentAddresses } from "@/hooks/useAgentAddresses";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -74,7 +76,7 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
   return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
 }
 
-function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
+function StagePodium({ podium, agentSet }: { podium: (LadderEntry | undefined)[]; agentSet: Set<string> }) {
   const placements = [
     { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
     { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
@@ -96,6 +98,7 @@ function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
           <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
             <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
               {pl.entry ? fmtName(pl.entry) : "—"}
+              {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#67e8f9", marginLeft: 4, textShadow: "0 0 8px #22d3ee" }}>🤖</span>}
             </div>
             <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>
               {pl.entry ? `${pl.entry.points} pts` : "—"}
@@ -108,7 +111,7 @@ function StagePodium({ podium }: { podium: (LadderEntry | undefined)[] }) {
 }
 
 // ─── pill row · ranks 4+ · same construction as the other boards ────────────
-function LadderRow({ entry, isMe }: { entry: LadderEntry; isMe: boolean }) {
+function LadderRow({ entry, isMe, isAgent }: { entry: LadderEntry; isMe: boolean; isAgent?: boolean }) {
   return (
     <div style={{
       borderRadius: 999, padding: 2.5,
@@ -130,8 +133,11 @@ function LadderRow({ entry, isMe }: { entry: LadderEntry; isMe: boolean }) {
           fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em",
         }}>#{entry.rank}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {isMe ? `You · ${fmtName(entry)}` : fmtName(entry)}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {isMe ? `You · ${fmtName(entry)}` : fmtName(entry)}
+            </span>
+            {isAgent && <AgentBadge />}
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>
             {entry.wins}W · {entry.matches} matches
@@ -183,6 +189,9 @@ export default function ArenaLadderPage() {
   const me = ladder?.me ?? null;
   const podium = ladder?.top?.slice(0, 3) ?? [];
   const rest = ladder?.top?.slice(3) ?? [];
+  // Flag which ladder entries are deployed agents (one multicall over the
+  // whole board) so the podium and rows can badge them apart from humans.
+  const agentSet = useAgentAddresses((ladder?.top ?? []).map((e) => e.wallet));
   // Advertise the pool ONLY when a base amount was deliberately funded
   // (env). Player refill spending accumulates silently until then — a
   // '4 G$ pool' built from two refills is noise, not a prize.
@@ -334,13 +343,13 @@ export default function ArenaLadderPage() {
         {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length > 0 && (
           <>
             {/* Podium · the crown moment */}
-            <StagePodium podium={[podium[0], podium[1], podium[2]]} />
+            <StagePodium podium={[podium[0], podium[1], podium[2]]} agentSet={agentSet} />
 
             {/* Rows 4+ */}
             {rest.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                 {rest.map((e) => (
-                  <LadderRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} />
+                  <LadderRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} isAgent={agentSet.has(e.wallet.toLowerCase())} />
                 ))}
               </div>
             )}
