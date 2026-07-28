@@ -3749,11 +3749,68 @@ app.post('/api/cosmetics/equip', requireSecret, gameSubmitLimiter, async (req, r
 
 // POST /api/arena/throw — one round. Instant response with MARKOV's move,
 // round result, persona line, and (on match end) the seed reveal + model stats.
+// ─── Live match spectating (SSE) ─────────────────────────────────────────────
+// Lets anyone watch an in-progress MARKOV match round-by-round, e.g. a
+// GoodAgents agent playing MARKOV. One-way server→viewer push, so SSE (not
+// WebSocket): simpler, auto-reconnects, scales. Each round the match engine
+// produces is broadcast to every viewer subscribed to that matchId. Late
+// joiners replay a short history buffer so they catch up. The stream is public
+// (match moves are non-sensitive and verifiable via the revealed seed).
+//
+// NOTE ON PACING: a match otherwise resolves in milliseconds. For a watchable
+// live view, the CALLER (the agent) should pace its /api/arena/throw calls
+// (~1s between rounds). This feed relays whatever rounds arrive.
+const liveMatchHub = new Map(); // matchId → { clients:Set<res>, history:[] }
+function liveHub(matchId) {
+  let h = liveMatchHub.get(matchId);
+  if (!h) { h = { clients: new Set(), history: [] }; liveMatchHub.set(matchId, h); }
+  return h;
+}
+function liveBroadcast(matchId, type, payload) {
+  const h = liveMatchHub.get(matchId);
+  const frame = { type, ...payload };
+  const chunk = `data: ${JSON.stringify(frame)}\n\n`;
+  if (h) {
+    h.history.push(chunk);
+    if (h.history.length > 24) h.history.shift();
+    for (const res of h.clients) { try { res.write(chunk); } catch { /* dropped */ } }
+    if (type === 'end') {
+      for (const res of h.clients) { try { res.end(); } catch {} }
+      setTimeout(() => liveMatchHub.delete(matchId), 30_000); // keep briefly for late joiners
+    }
+  }
+}
+
+// GET /api/arena/live/:matchId — SSE stream of a match's rounds as they play.
+// Public + CORS so a partner site (e.g. goodagentids.xyz) can subscribe via
+// EventSource. Events: {type:'round', round, playerMove, aiMove, result,
+// score, ...} per round, then {type:'end', final:{outcome, seed, ...}}.
+app.get('/api/arena/live/:matchId', (req, res) => {
+  const matchId = String(req.params.matchId || '');
+  if (!matchId) return res.status(400).end();
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'X-Accel-Buffering': 'no', // don't let proxies buffer the stream
+  });
+  res.flushHeaders?.();
+  const h = liveHub(matchId);
+  h.clients.add(res);
+  res.write(`data: ${JSON.stringify({ type: 'hello', matchId })}\n\n`);
+  for (const chunk of h.history) res.write(chunk); // replay so late joiners catch up
+  const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 20_000);
+  req.on('close', () => { clearInterval(hb); h.clients.delete(res); });
+});
+
 app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
   const { matchId, move } = req.body || {};
   if (typeof matchId !== 'string') return res.status(400).json({ error: 'matchId required' });
   const out = arenaEngine.throw(matchId, Number(move));
   if (out.error) return res.status(400).json(out);
+  // Push this round to any live spectators, then close the stream on match end.
+  liveBroadcast(matchId, out.final ? 'end' : 'round', out);
   return res.json(out);
 });
 
