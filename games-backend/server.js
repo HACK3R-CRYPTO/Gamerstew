@@ -2768,12 +2768,23 @@ app.get('/api/verified-stats', async (_, res) => {
   const cached = cacheGet('verified:stats');
   if (cached) return res.json(cached);
   try {
-    // Every wallet we've ever seen play. `users` is the canonical player table.
-    const { data: rows, error } = await supabase.from('users').select('wallet_address');
-    if (error) throw error;
-    const wallets = Array.from(new Set(
-      (rows || []).map(r => r.wallet_address?.toLowerCase()).filter(Boolean)
-    ));
+    // Enumerate the SAME player population the rest of the app counts: one
+    // Player entity per GamePass minter in the subgraph (keyed by wallet).
+    // Using this instead of the backend `users` table keeps the denominator
+    // consistent with globalStat.totalPlayers everywhere else on the site.
+    const wallets = [];
+    let cursor = '';
+    for (let page = 0; page < 20; page++) { // 20 × 1000 = 20k ceiling, ample
+      const q = await subgraph.gql(
+        `query P($c: ID!) { players(first: 1000, where: { id_gt: $c }, orderBy: id, orderDirection: asc) { id } }`,
+        { c: cursor },
+      );
+      const batch = (q.players || []).map(p => p.id?.toLowerCase()).filter(Boolean);
+      if (batch.length === 0) break;
+      wallets.push(...batch);
+      cursor = batch[batch.length - 1];
+      if (batch.length < 1000) break;
+    }
 
     const flags = await mapLimit(wallets, 12, (w) => isVerified(w));
     const verifiedPlayers = flags.filter(Boolean).length;
