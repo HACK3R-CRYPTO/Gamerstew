@@ -187,8 +187,10 @@ export default function ImpactPage() {
   const players = live?.players ?? DD2.players;
   const games = live?.games ?? DD2.games;
   const ubi = live?.ubi ?? DD2.ubi;
-  // True GoodDollar-verified humans (falls back to the confirmed floor).
-  const verified = vstats?.verifiedPlayers ?? VERIFIED_FALLBACK;
+  // True GoodDollar-verified humans. Until the backend endpoint is live it
+  // returns 0 — treat any non-positive value as "no data yet" and show the
+  // confirmed on-chain floor instead of a misleading zero.
+  const verified = vstats && vstats.verifiedPlayers > 0 ? vstats.verifiedPlayers : VERIFIED_FALLBACK;
 
   const playersDelta = Math.round(((players - DD1.players) / DD1.players) * 100);
   const gamesDelta = games - DD1.games;
