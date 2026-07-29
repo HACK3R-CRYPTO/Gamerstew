@@ -3,8 +3,8 @@
 // ─── /impact · The G$ Economy ─────────────────────────────────────────────
 // A judge/investor-facing view of how GoodDollar (G$) flows through the arena:
 // verified humans in, real G$ spent on perks, a share routed to GoodCollective
-// UBI, and prize pools paid weekly. Framed by demo-day "epochs" (a fortnight
-// each) so momentum reads at a glance.
+// UBI, and a treasury that funds operations. Framed by demo-day "epochs" (a
+// fortnight each) so momentum reads at a glance.
 //
 // Live figures (players / games / UBI) come from the same subgraph aggregate
 // /home uses, so this page can never drift from the rest of the app. Figures
@@ -12,7 +12,7 @@
 // the surprise consistency payout) are pinned constants, each traceable to an
 // on-chain event — nothing here is self-reported.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { fetchGlobalStat } from "@/lib/homePreload";
@@ -34,9 +34,23 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
+const KEYFRAMES = `
+@keyframes impact-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes impact-bar  { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes impact-glow { 0%,100% { opacity: 0.45; } 50% { opacity: 0.85; } }
+@keyframes impact-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.impact-reveal { animation: impact-rise 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+.impact-card { transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease; }
+.impact-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.18); box-shadow: 0 18px 40px -24px rgba(0,0,0,0.9); }
+.impact-barfill { transform-origin: left center; animation: impact-bar 1.1s cubic-bezier(0.22,1,0.36,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .impact-reveal, .impact-barfill, .impact-glowpulse, .impact-floaty { animation: none !important; }
+}
+`;
+
 // ─── pinned baselines · each traceable on-chain ───────────────────────────
 // Demo Day 1 snapshot (Jul 15) — the epoch boundary we measure momentum from.
-const DD1 = { players: 227, games: 12483, ubi: 385, perks: 0 };
+const DD1 = { players: 227, games: 12483, ubi: 385 };
 // Demo Day 2 fallbacks — used only if the live subgraph fetch fails, so the
 // page never renders empty. Live values override these on load.
 const DD2 = { players: 391, games: 14083, ubi: 1138 };
@@ -53,48 +67,80 @@ function fmtG(n: number): string {
   return String(Math.round(n));
 }
 function fmtInt(n: number): string {
-  return n.toLocaleString("en-US");
+  return Math.round(n).toLocaleString("en-US");
+}
+
+// ─── count-up ───────────────────────────────────────────────────────────
+// Eases a number from its previous value to the target once the target
+// settles. Respects prefers-reduced-motion (snaps instantly). Because the
+// live subgraph value arrives after the fallback, the tween re-runs toward
+// the real figure — the number visibly "finds" its true value.
+function useCountUp(target: number, duration = 1200): number {
+  const [val, setVal] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    if (typeof window === "undefined") { setVal(target); return; }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setVal(target); fromRef.current = target; return; }
+    const from = fromRef.current;
+    let raf = 0, start = 0;
+    const tick = (ts: number) => {
+      if (!start) start = ts;
+      const p = Math.min(1, (ts - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const next = from + (target - from) * eased;
+      setVal(next);
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
 }
 
 // ─── primitives ───────────────────────────────────────────────────────────
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style, delay = 0 }: { children: React.ReactNode; style?: React.CSSProperties; delay?: number }) {
   return (
-    <div style={{
+    <div className="impact-card impact-reveal" style={{
       background: T.surface, border: `1px solid ${T.hairline}`, borderRadius: 18,
-      padding: 18, ...style,
+      padding: 18, animationDelay: `${delay}ms`, ...style,
     }}>{children}</div>
   );
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>{children}</div>;
+function Eyebrow({ children, tint }: { children: React.ReactNode; tint?: string }) {
+  return <div style={{ fontFamily: T.body, fontSize: 11, color: tint ?? T.inkSoft, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>{children}</div>;
 }
 
-function KPI({ label, value, unit, tint, sub }: { label: string; value: string; unit?: string; tint: string; sub: string }) {
+function KPI({ label, value, unit, tint, sub, delay }: { label: string; value: string; unit?: string; tint: string; sub: string; delay: number }) {
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: tint }} />
+    <Card delay={delay} style={{ display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tint}, ${tint}00)` }} />
+      <div className="impact-glowpulse" style={{ position: "absolute", top: -40, right: -30, width: 120, height: 120, borderRadius: "50%", background: tint, filter: "blur(48px)", opacity: 0.18, animation: "impact-glow 5s ease-in-out infinite", pointerEvents: "none" }} />
       <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>{label}</span>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-        <span style={{ fontFamily: T.display, fontSize: 34, color: T.ink, lineHeight: 1, letterSpacing: "0.01em" }}>{value}</span>
-        {unit && <span style={{ fontFamily: T.display, fontSize: 16, color: tint }}>{unit}</span>}
+        <span style={{ fontFamily: T.display, fontSize: 32, color: T.ink, lineHeight: 1, letterSpacing: "0.01em", fontVariantNumeric: "tabular-nums" }}>{value}</span>
+        {unit && <span style={{ fontFamily: T.display, fontSize: 15, color: tint }}>{unit}</span>}
       </div>
-      <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>{sub}</span>
+      <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, lineHeight: 1.4 }}>{sub}</span>
     </Card>
   );
 }
 
-// Horizontal delta bar for the epoch momentum table.
-function MomentumRow({ label, from, to, delta, tint, pct }: { label: string; from: string; to: string; delta: string; tint: string; pct: number }) {
+// Two-tone momentum bar: the dim segment is where we stood at Demo Day 1, the
+// bright segment is growth added this epoch. basePct = DD1 / current.
+function MomentumRow({ label, from, to, delta, tint, basePct }: { label: string; from: string; to: string; delta: string; tint: string; basePct: number }) {
+  const clamped = Math.max(0, Math.min(100, basePct));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.7fr 0.7fr 0.8fr", alignItems: "center", gap: 8, padding: "12px 0", borderBottom: `1px solid ${T.hairline}` }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.6fr 0.7fr 0.7fr", alignItems: "center", gap: 8, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 700 }}>{label}</span>
-        <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: tint, borderRadius: 999 }} />
+        <div className="impact-barfill" style={{ display: "flex", height: 6, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+          <div style={{ width: `${clamped}%`, background: tint, opacity: 0.35 }} />
+          <div style={{ flex: 1, background: tint, boxShadow: `0 0 12px ${tint}99` }} />
         </div>
       </div>
-      <span style={{ fontFamily: T.display, fontSize: 15, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{from}</span>
+      <span style={{ fontFamily: T.display, fontSize: 14, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{from}</span>
       <span style={{ fontFamily: T.display, fontSize: 17, color: T.ink, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{to}</span>
       <span style={{ fontFamily: T.body, fontSize: 12, fontWeight: 800, color: tint, textAlign: "right" }}>{delta}</span>
     </div>
@@ -127,125 +173,177 @@ export default function ImpactPage() {
 
   const playersDelta = Math.round(((players - DD1.players) / DD1.players) * 100);
   const gamesDelta = games - DD1.games;
-  const ubiMult = (ubi / DD1.ubi);
+  const ubiMult = ubi / DD1.ubi;
 
   // Flow split · of every G$ spent on a perk, ~20% routes to GoodCollective
-  // UBI and ~80% funds the weekly prize pools paid to verified winners.
+  // UBI and ~80% goes to the treasury that funds operations.
   const ubiShare = 20;
-  const prizeShare = 80;
+  const treasuryShare = 80;
+
+  // animated counters
+  const ubiC = useCountUp(ubi);
+  const playersC = useCountUp(players);
+  const gamesC = useCountUp(games);
+  const spendC = useCountUp(PERKS.spendG);
+  const poolC = useCountUp(CONSISTENCY.poolG);
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
+      <style>{KEYFRAMES}</style>
       <AppHeader />
 
-      <div style={{ maxWidth: isDesktop ? 1000 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ maxWidth: isDesktop ? 1000 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         {/* ── header ── */}
-        <div>
-          <Eyebrow>The G$ Economy · Epoch 2</Eyebrow>
-          <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 36 : 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em", lineHeight: 1.05 }}>
+        <div className="impact-reveal">
+          <Eyebrow tint={T.accent}>The G$ Economy · Epoch 2</Eyebrow>
+          <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 38 : 28, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em", lineHeight: 1.04, textWrap: "balance" } as React.CSSProperties}>
             Where real G$ moves in the arena
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13.5, color: T.inkDim, margin: "8px 0 0", lineHeight: 1.5, maxWidth: 620 }}>
-            Every player is a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to GoodCollective UBI, and prize pools pay verified winners weekly — all on-chain, none of it self-reported.
+            Every player is a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to GoodCollective UBI, and the treasury funds operations — all on-chain, none of it self-reported.
           </p>
         </div>
 
-        {/* ── KPI grid ── */}
-        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "1fr 1fr", gap: 12 }}>
-          <KPI label="Verified humans" value={fmtInt(players)} tint={T.green} sub="GoodDollar-gated · no bot has ever won a prize" />
-          <KPI label="G$ to UBI" value={fmtG(ubi)} unit="G$" tint={T.accent} sub={`Routed to GoodCollective · ~${ubiMult.toFixed(1)}x since Demo Day 1`} />
-          <KPI label="Games on-chain" value={fmtG(games)} tint={T.cyan} sub="Every score a verifiable Celo tx" />
-          <KPI label="Perk spend" value={fmtG(PERKS.spendG)} unit="G$" tint={T.amber} sub={`${fmtInt(PERKS.purchases)} purchases · shipped this epoch`} />
+        {/* ── HERO · flagship UBI number ── */}
+        <Card delay={60} style={{
+          position: "relative", overflow: "hidden", padding: isDesktop ? "28px 30px" : "22px 20px",
+          display: "flex", flexDirection: isDesktop ? "row" : "column", gap: isDesktop ? 28 : 18,
+          alignItems: isDesktop ? "center" : "flex-start",
+          background: `radial-gradient(120% 140% at 100% 0%, ${T.accent}2e 0%, transparent 55%), ${T.surface}`,
+          borderColor: `${T.accent}3a`,
+        }}>
+          <div className="impact-glowpulse" style={{ position: "absolute", bottom: -70, left: -40, width: 220, height: 220, borderRadius: "50%", background: T.accent, filter: "blur(70px)", opacity: 0.22, animation: "impact-glow 6s ease-in-out infinite", pointerEvents: "none" }} />
+          <div style={{ position: "relative", flex: 1 }}>
+            <Eyebrow tint={T.accent}>Total routed to UBI</Eyebrow>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+              <span style={{ fontFamily: T.display, fontSize: isDesktop ? 72 : 52, color: T.ink, lineHeight: 0.92, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums", textShadow: `0 0 40px ${T.accent}55` }}>{fmtG(ubiC)}</span>
+              <span style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.accent }}>G$</span>
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, padding: "5px 12px", borderRadius: 999, background: `${T.green}1f`, border: `1px solid ${T.green}55` }}>
+              <span style={{ fontFamily: T.display, fontSize: 14, color: T.green }}>▲ ~{ubiMult.toFixed(1)}x</span>
+              <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>since Demo Day 1</span>
+            </div>
+            <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
+              Real GoodDollar sent to GoodCollective&apos;s UBI pool — funded by play, not by us.
+            </p>
+          </div>
+          {/* inline supporting stats */}
+          <div style={{ position: "relative", display: "flex", flexDirection: isDesktop ? "column" : "row", gap: isDesktop ? 14 : 20, flexShrink: 0 }}>
+            {[
+              { k: "Verified humans", v: fmtInt(playersC), tint: T.green },
+              { k: "Games on-chain", v: fmtG(gamesC), tint: T.cyan },
+            ].map((s) => (
+              <div key={s.k} style={{ display: "flex", flexDirection: "column", gap: 3, borderLeft: isDesktop ? `2px solid ${s.tint}` : "none", paddingLeft: isDesktop ? 12 : 0 }}>
+                <span style={{ fontFamily: T.display, fontSize: 26, color: T.ink, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{s.v}</span>
+                <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{s.k}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* ── KPI supporting row ── */}
+        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(3, 1fr)" : "1fr", gap: 12 }}>
+          <KPI delay={120} label="Perk spend" value={fmtG(spendC)} unit="G$" tint={T.amber} sub={`${fmtInt(PERKS.purchases)} purchases · shop shipped this epoch`} />
+          <KPI delay={160} label="Bots that won a prize" value="0" tint={T.green} sub="GoodDollar verification gates every payout" />
+          <KPI delay={200} label="Gas paid by players" value="0" tint={T.cyan} sub="Fully gasless · we sponsor every write" />
         </div>
 
         {/* ── epoch momentum ── */}
-        <Card>
+        <Card delay={240}>
           <Eyebrow>Momentum · Demo Day 1 → Demo Day 2</Eyebrow>
-          <div style={{ marginTop: 4, marginBottom: 8 }}>
-            <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>Two weeks of shipping</span>
+          <div style={{ marginTop: 4, marginBottom: 10 }}>
+            <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>Two weeks of shipping</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.7fr 0.7fr 0.8fr", gap: 8, paddingBottom: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.6fr 0.7fr 0.7fr", gap: 8, paddingBottom: 6 }}>
             {["Metric", "DD1", "DD2", "Δ"].map((h, i) => (
               <span key={h} style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
             ))}
           </div>
-          <MomentumRow label="Verified players" from={fmtInt(DD1.players)} to={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} pct={(players / (players)) * 100} />
-          <MomentumRow label="Games on-chain" from={fmtG(DD1.games)} to={fmtG(games)} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} pct={(DD1.games / games) * 100} />
-          <MomentumRow label="G$ to UBI" from={fmtG(DD1.ubi)} to={fmtG(ubi)} delta={`~${ubiMult.toFixed(1)}x`} tint={T.accent} pct={(DD1.ubi / ubi) * 100} />
-          <MomentumRow label="Perk purchases" from="—" to={fmtInt(PERKS.purchases)} delta="new" tint={T.amber} pct={100} />
-          <div style={{ marginTop: 10, fontFamily: T.body, fontSize: 11.5, color: T.inkSoft }}>
-            Perk shop went live this epoch · the fully-gasless flow (sign in with Google, we sponsor every write) drove the +{playersDelta}% player jump.
+          <MomentumRow label="Verified players" from={fmtInt(DD1.players)} to={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD1.players / players) * 100} />
+          <MomentumRow label="Games on-chain" from={fmtG(DD1.games)} to={fmtG(games)} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD1.games / games) * 100} />
+          <MomentumRow label="G$ to UBI" from={fmtG(DD1.ubi)} to={fmtG(ubi)} delta={`~${ubiMult.toFixed(1)}x`} tint={T.accent} basePct={(DD1.ubi / ubi) * 100} />
+          <MomentumRow label="Perk purchases" from="—" to={fmtInt(PERKS.purchases)} delta="new" tint={T.amber} basePct={0} />
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontFamily: T.body, fontSize: 11.5, color: T.inkSoft }}>
+            <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, opacity: 0.35 }} /> baseline
+              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, marginLeft: 8 }} /> growth this epoch
+            </span>
           </div>
         </Card>
 
         {/* ── flow diagram ── */}
-        <Card>
+        <Card delay={300}>
           <Eyebrow>How G$ flows</Eyebrow>
           <div style={{ marginTop: 4, marginBottom: 14 }}>
-            <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>In → through → out</span>
+            <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>In → through → out</span>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr auto 1fr" : "1fr", gap: 14, alignItems: "stretch" }}>
             {/* IN */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 14, borderRadius: 14, background: "rgba(251,191,36,0.08)", border: `1px solid ${T.amber}33` }}>
-              <span style={{ fontFamily: T.body, fontSize: 10, color: T.amber, fontWeight: 800, letterSpacing: "0.12em" }}>IN</span>
-              <span style={{ fontFamily: T.display, fontSize: 22, color: T.ink }}>{fmtG(PERKS.spendG)} G$</span>
-              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>Players spend on continues, revives &amp; cosmetics · {fmtInt(PERKS.purchases)} purchases</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.amber}18, transparent)`, border: `1px solid ${T.amber}3a` }}>
+              <span style={{ fontFamily: T.body, fontSize: 10, color: T.amber, fontWeight: 800, letterSpacing: "0.12em" }}>IN · PERK SPEND</span>
+              <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{fmtG(PERKS.spendG)} <span style={{ fontSize: 16, color: T.amber }}>G$</span></span>
+              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>Continues, revives &amp; cosmetics · {fmtInt(PERKS.purchases)} purchases</span>
             </div>
 
             {/* SPLIT */}
-            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 6, padding: isDesktop ? "0 4px" : "0" }}>
-              <span style={{ fontFamily: T.display, fontSize: 24, color: T.inkSoft }}>{isDesktop ? "→" : "↓"}</span>
-              <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em", textAlign: "center" }}>SPLIT<br />ON EVERY TX</span>
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 6, padding: isDesktop ? "0 4px" : "4px 0" }}>
+              <span className="impact-floaty" style={{ fontFamily: T.display, fontSize: 26, color: T.accent, animation: "impact-float 3s ease-in-out infinite" }}>{isDesktop ? "→" : "↓"}</span>
+              <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textAlign: "center" }}>SPLIT ON<br />EVERY TX</span>
             </div>
 
             {/* OUT */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 14, borderRadius: 14, background: "rgba(167,139,250,0.10)", border: `1px solid ${T.accent}44` }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.accent}20, transparent)`, border: `1px solid ${T.accent}4a` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.12em" }}>UBI · GOODCOLLECTIVE</span>
-                  <span style={{ fontFamily: T.display, fontSize: 18, color: T.ink }}>~{ubiShare}%</span>
+                  <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>~{ubiShare}%</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
-                  <div style={{ height: "100%", width: `${ubiShare}%`, background: T.accent, borderRadius: 999 }} />
+                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${ubiShare}%`, background: T.accent, borderRadius: 999, boxShadow: `0 0 12px ${T.accent}` }} />
                 </div>
                 <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{fmtG(ubi)} G$ routed to date</span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 14, borderRadius: 14, background: "rgba(52,211,153,0.08)", border: `1px solid ${T.green}33` }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.green}16, transparent)`, border: `1px solid ${T.green}3a` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <span style={{ fontFamily: T.body, fontSize: 10, color: T.green, fontWeight: 800, letterSpacing: "0.12em" }}>TREASURY</span>
-                  <span style={{ fontFamily: T.display, fontSize: 18, color: T.ink }}>~{prizeShare}%</span>
+                  <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>~{treasuryShare}%</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
-                  <div style={{ height: "100%", width: `${prizeShare}%`, background: T.green, borderRadius: 999 }} />
+                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${treasuryShare}%`, background: T.green, borderRadius: 999, boxShadow: `0 0 12px ${T.green}` }} />
                 </div>
                 <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Funds operations</span>
               </div>
             </div>
           </div>
-          <div style={{ marginTop: 12, fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
-            The 20/80 split is our current routing while we formalize the share with GoodCollective. Every unit is on a Celo transaction — the flow is auditable end to end.
+          <div style={{ marginTop: 14, fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
+            The 20/80 split is our current routing while we formalize the share with GoodCollective. Every unit is on a Celo transaction — auditable end to end.
           </div>
         </Card>
 
         {/* ── consistency payout ── */}
-        <Card style={{ display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16, alignItems: isDesktop ? "center" : "flex-start" }}>
+        <Card delay={360} style={{
+          display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16,
+          alignItems: isDesktop ? "center" : "flex-start", position: "relative", overflow: "hidden",
+          background: `radial-gradient(120% 140% at 0% 100%, ${T.amber}22 0%, transparent 55%), ${T.surface}`,
+          borderColor: `${T.amber}33`,
+        }}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-            <Eyebrow>Loyalty · surprise payout</Eyebrow>
-            <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>Our {CONSISTENCY.players} most consistent players got paid</span>
-            <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5 }}>
+            <Eyebrow tint={T.amber}>Loyalty · surprise payout</Eyebrow>
+            <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>Our {CONSISTENCY.players} most consistent players got paid</span>
+            <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
               A one-off {fmtG(CONSISTENCY.poolG)} G$ pool to the players who kept showing up — noticing loyalty publicly brought them back, and their friends with them. Kept separate from the recurring economy above.
             </span>
           </div>
           <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
-            <div style={{ fontFamily: T.display, fontSize: 40, color: T.amber, lineHeight: 1 }}>{fmtG(CONSISTENCY.poolG)}</div>
-            <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.1em" }}>G$ TO LOYAL PLAYERS</div>
+            <div style={{ fontFamily: T.display, fontSize: 46, color: T.amber, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.amber}55` }}>{fmtG(poolC)}</div>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>G$ TO LOYAL PLAYERS</div>
           </div>
         </Card>
 
         {/* ── footer note ── */}
-        <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", lineHeight: 1.5 }}>
+        <div className="impact-reveal" style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", lineHeight: 1.5, animationDelay: "420ms" }}>
           Live figures read from the GameArena subgraph on Celo. Perk, baseline &amp; loyalty figures pinned to their on-chain events.
         </div>
       </div>
