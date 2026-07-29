@@ -214,13 +214,13 @@ export default function ImpactPage() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 14, borderRadius: 14, background: "rgba(52,211,153,0.08)", border: `1px solid ${T.green}33` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontFamily: T.body, fontSize: 10, color: T.green, fontWeight: 800, letterSpacing: "0.12em" }}>PRIZE POOLS</span>
+                  <span style={{ fontFamily: T.body, fontSize: 10, color: T.green, fontWeight: 800, letterSpacing: "0.12em" }}>TREASURY</span>
                   <span style={{ fontFamily: T.display, fontSize: 18, color: T.ink }}>~{prizeShare}%</span>
                 </div>
                 <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
                   <div style={{ height: "100%", width: `${prizeShare}%`, background: T.green, borderRadius: 999 }} />
                 </div>
-                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Paid weekly to verified winners only</span>
+                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Funds weekly prize pools &amp; operations</span>
               </div>
             </div>
           </div>
