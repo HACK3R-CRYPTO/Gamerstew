@@ -155,6 +155,9 @@ function MomentumRow({ label, from, to, delta, tint, basePct }: { label: string;
 export default function ImpactPage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [live, setLive] = useState<{ players: number; games: number; ubi: number } | null>(null);
+  // GoodDollar-verified count · true humans, not just pass minters. Live from
+  // /api/verified-stats (on-chain isWhitelisted per wallet).
+  const [vstats, setVstats] = useState<{ totalPlayers: number; verifiedPlayers: number } | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -172,9 +175,20 @@ export default function ImpactPage() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/verified-stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setVstats({ totalPlayers: Number(d.totalPlayers) || 0, verifiedPlayers: Number(d.verifiedPlayers) || 0 }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const players = live?.players ?? DD2.players;
   const games = live?.games ?? DD2.games;
   const ubi = live?.ubi ?? DD2.ubi;
+  // True GoodDollar-verified humans (falls back to the confirmed floor).
+  const verified = vstats?.verifiedPlayers ?? VERIFIED_FALLBACK;
 
   const playersDelta = Math.round(((players - DD1.players) / DD1.players) * 100);
   const gamesDelta = games - DD1.games;
@@ -187,7 +201,7 @@ export default function ImpactPage() {
 
   // animated counters
   const ubiC = useCountUp(ubi);
-  const playersC = useCountUp(players);
+  const verifiedC = useCountUp(verified);
   const gamesC = useCountUp(games);
   const spendC = useCountUp(PERKS.spendG);
   const poolC = useCountUp(CONSISTENCY.poolG);
@@ -206,7 +220,7 @@ export default function ImpactPage() {
             Where real G$ moves in the arena
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13.5, color: T.inkDim, margin: "8px 0 0", lineHeight: 1.5, maxWidth: 620 }}>
-            Every player is a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to GoodDollar UBI pool, and the treasury funds operations — all on-chain, none of it self-reported.
+            Every prize goes to a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to the GoodDollar UBI pool, and the treasury funds operations — all on-chain, none of it self-reported.
           </p>
         </div>
 
@@ -235,15 +249,15 @@ export default function ImpactPage() {
           </div>
           {/* inline supporting stats */}
           <div style={{ position: "relative", display: "flex", flexDirection: isDesktop ? "column" : "row", gap: isDesktop ? 14 : 20, flexShrink: 0 }}>
-            {[
-              { k: "Verified humans", v: fmtInt(playersC), tint: T.green },
-              { k: "Games on-chain", v: fmtG(gamesC), tint: T.cyan },
-            ].map((s) => (
-              <div key={s.k} style={{ display: "flex", flexDirection: "column", gap: 3, borderLeft: isDesktop ? `2px solid ${s.tint}` : "none", paddingLeft: isDesktop ? 12 : 0 }}>
-                <span style={{ fontFamily: T.display, fontSize: 26, color: T.ink, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{s.v}</span>
-                <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>{s.k}</span>
-              </div>
-            ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, borderLeft: isDesktop ? `2px solid ${T.green}` : "none", paddingLeft: isDesktop ? 12 : 0 }}>
+              <span style={{ fontFamily: T.display, fontSize: 26, color: T.ink, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{fmtInt(verifiedC)}</span>
+              <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Verified humans</span>
+              <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft }}>of {fmtInt(players)} players</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, borderLeft: isDesktop ? `2px solid ${T.cyan}` : "none", paddingLeft: isDesktop ? 12 : 0 }}>
+              <span style={{ fontFamily: T.display, fontSize: 26, color: T.ink, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{fmtG(gamesC)}</span>
+              <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Games on-chain</span>
+            </div>
           </div>
         </Card>
 
@@ -265,7 +279,7 @@ export default function ImpactPage() {
               <span key={h} style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
             ))}
           </div>
-          <MomentumRow label="Verified players" from={fmtInt(DD1.players)} to={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD1.players / players) * 100} />
+          <MomentumRow label="Players" from={fmtInt(DD1.players)} to={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD1.players / players) * 100} />
           <MomentumRow label="Games on-chain" from={fmtG(DD1.games)} to={fmtG(games)} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD1.games / games) * 100} />
           <MomentumRow label="G$ to UBI" from={fmtG(DD1.ubi)} to={fmtG(ubi)} delta={`~${ubiMult.toFixed(1)}x`} tint={T.accent} basePct={(DD1.ubi / ubi) * 100} />
           <MomentumRow label="Perk purchases" from="—" to={fmtInt(PERKS.purchases)} delta="new" tint={T.amber} basePct={0} />
@@ -323,7 +337,7 @@ export default function ImpactPage() {
             </div>
           </div>
           <div style={{ marginTop: 14, fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
-            The 20/80 split is our current routing while we formalize the share with GoodDollar (and route to a GoodCollective pool). Every unit is on a Celo transaction — auditable end to end.
+            The 20/80 split is our current routing while we formalize the share with the GoodDollar team. Every unit is on a Celo transaction — auditable end to end.
           </div>
         </Card>
 
