@@ -4,7 +4,7 @@
 // the contract holds the canonical on-chain price in 18-decimal G$.
 //
 // Every perk is CASUAL-MODE ONLY. Ranked play stays pure skill and never
-// touches this shop. 20% of every purchase streams to the GoodCollective
+// touches this shop. 20% of every purchase streams to the GoodDollar
 // UBI pool; the split is enforced on-chain.
 
 import { parseEther } from "viem";

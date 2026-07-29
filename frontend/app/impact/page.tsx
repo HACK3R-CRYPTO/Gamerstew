@@ -2,7 +2,7 @@
 
 // ─── /impact · The G$ Economy ─────────────────────────────────────────────
 // A judge/investor-facing view of how GoodDollar (G$) flows through the arena:
-// verified humans in, real G$ spent on perks, a share routed to GoodCollective
+// verified humans in, real G$ spent on perks, a share routed to the GoodDollar UBI pool
 // UBI, and a treasury that funds operations. Framed by demo-day "epochs" (a
 // fortnight each) so momentum reads at a glance.
 //
@@ -59,6 +59,11 @@ const PERKS = { purchases: 617, spendG: 3766 };
 // Surprise loyalty payout to the 5 most consistent players (one-off, kept out
 // of the recurring economy so it doesn't distort the flow figures).
 const CONSISTENCY = { players: 5, poolG: 320000 };
+// GoodDollar-verified humans · fallback only. The live figure comes from
+// /api/verified-stats, which checks isWhitelisted on-chain for every player —
+// the true verified set, not just GamePass minters. This floor matches the
+// last confirmed on-chain count in case the endpoint is unreachable.
+const VERIFIED_FALLBACK = 250;
 
 function fmtG(n: number): string {
   const trim = (s: string) => s.replace(/\.0+$|(\.\d*?)0+$/, "$1");
@@ -175,7 +180,7 @@ export default function ImpactPage() {
   const gamesDelta = games - DD1.games;
   const ubiMult = ubi / DD1.ubi;
 
-  // Flow split · of every G$ spent on a perk, ~20% routes to GoodCollective
+  // Flow split · of every G$ spent on a perk, ~20% routes to the GoodDollar UBI pool
   // UBI and ~80% goes to the treasury that funds operations.
   const ubiShare = 20;
   const treasuryShare = 80;
@@ -201,7 +206,7 @@ export default function ImpactPage() {
             Where real G$ moves in the arena
           </h1>
           <p style={{ fontFamily: T.body, fontSize: 13.5, color: T.inkDim, margin: "8px 0 0", lineHeight: 1.5, maxWidth: 620 }}>
-            Every player is a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to GoodCollective UBI, and the treasury funds operations — all on-chain, none of it self-reported.
+            Every player is a GoodDollar-verified human. Every game is a Celo transaction. Perks are spent in real G$, a share routes to GoodDollar UBI pool, and the treasury funds operations — all on-chain, none of it self-reported.
           </p>
         </div>
 
@@ -225,7 +230,7 @@ export default function ImpactPage() {
               <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>since Demo Day 1</span>
             </div>
             <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-              Real GoodDollar sent to GoodCollective&apos;s UBI pool — funded by play, not by us.
+              Real GoodDollar sent to GoodDollar&apos;s UBI pool — funded by play, not by us.
             </p>
           </div>
           {/* inline supporting stats */}
@@ -318,7 +323,7 @@ export default function ImpactPage() {
             </div>
           </div>
           <div style={{ marginTop: 14, fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
-            The 20/80 split is our current routing while we formalize the share with GoodCollective. Every unit is on a Celo transaction — auditable end to end.
+            The 20/80 split is our current routing while we formalize the share with GoodDollar (and route to a GoodCollective pool). Every unit is on a Celo transaction — auditable end to end.
           </div>
         </Card>
 

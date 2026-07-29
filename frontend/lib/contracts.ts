@@ -9,7 +9,7 @@ export const CONTRACT_ADDRESSES = {
   GAME_PASS: '0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE',
   HABITAT_REGISTRY: process.env.NEXT_PUBLIC_HABITAT_REGISTRY || '0x8888FEb43ac1833c683D0474204aa55A55BD010F',
   // PerkShop — M1 "G$ Perk Economy". Casual-mode saves/retries/cosmetics in G$,
-  // 20% of every sale to the GoodCollective UBI pool. Verified on Celoscan.
+  // 20% of every sale to the GoodDollar UBI pool. Verified on Celoscan.
   PERK_SHOP: process.env.NEXT_PUBLIC_PERK_SHOP || '0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5',
 };
 
