@@ -53,7 +53,7 @@ const KEYFRAMES = `
 const DD1 = { players: 227, games: 12483, ubi: 385 };
 // Demo Day 2 fallbacks — used only if the live subgraph fetch fails, so the
 // page never renders empty. Live values override these on load.
-const DD2 = { players: 391, games: 14083, ubi: 1138 };
+const DD2 = { players: 392, games: 14416, ubi: 1217 };
 // Perk shop · PerkShop contract PurchaseMade events (shipped this epoch).
 const PERKS = { purchases: 617, spendG: 3766 };
 // Surprise loyalty payout to the 5 most consistent players (one-off, kept out
@@ -316,7 +316,7 @@ export default function ImpactPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.accent}20, transparent)`, border: `1px solid ${T.accent}4a` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.12em" }}>UBI · GOODCOLLECTIVE</span>
+                  <span style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.12em" }}>GOODDOLLAR UBI POOL</span>
                   <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>~{ubiShare}%</span>
                 </div>
                 <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
