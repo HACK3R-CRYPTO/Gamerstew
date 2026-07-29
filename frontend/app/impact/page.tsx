@@ -220,7 +220,7 @@ export default function ImpactPage() {
                 <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)" }}>
                   <div style={{ height: "100%", width: `${prizeShare}%`, background: T.green, borderRadius: 999 }} />
                 </div>
-                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Funds weekly prize pools &amp; operations</span>
+                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Funds operations</span>
               </div>
             </div>
           </div>
