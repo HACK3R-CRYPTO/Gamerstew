@@ -4,7 +4,7 @@
 // the existing pet evolution stages so the world grows alongside the pet.
 //
 // Paid tiers (6-10) unlock by donating G$ via the HabitatRegistry contract.
-// 85% of every donation routes to the GoodCollective UBI pool, 15% to the
+// 85% of every donation routes to the GoodDollar UBI pool, 15% to the
 // GameArena treasury.
 //
 // Visual style is CSS-based for now (gradients + glow). When real art ships

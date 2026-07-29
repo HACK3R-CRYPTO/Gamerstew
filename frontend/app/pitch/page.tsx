@@ -598,7 +598,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
             <strong>The arena is live.</strong> Challenge MARKOV free in instant best-of-5 RPS · it learns your patterns, matches are provably fair, wins climb the weekly ladder. G$ powers refills and perks; the pool pays climbers. Free G$ claims every 24h from GoodDollar.
           </Bullet>
           <Bullet accent="#f472b6">
-            <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 20% G$ to the GoodCollective UBI pool, 80% to platform sustainability. G$ activity recycles into the economy that gates entry.
+            <strong>Habitat economy.</strong> Players spend G$ to unlock cosmetic habitat tiers. Every purchase routes 20% G$ to the GoodDollar UBI pool, 80% to platform sustainability. G$ activity recycles into the economy that gates entry.
           </Bullet>
         </BulletList>
       </SlideFrame>
@@ -860,7 +860,7 @@ const SLIDES: { key: string; render: () => React.ReactNode }[] = [
         }}>
           {[
             { c: GREEN, title: "Funding", body: "Seed. Tournaments, a third skill game, MCP surface for MARKOV, and a two engineer team for 12 months." },
-            { c: GOLD, title: "Distribution", body: "MiniPay dapp store, Celo Foundation intros, wallet integrations, GoodCollective co-marketing." },
+            { c: GOLD, title: "Distribution", body: "MiniPay dapp store, Celo Foundation intros, wallet integrations, GoodDollar co-marketing." },
             { c: MAGENTA, title: "Partnership", body: "Skill-game studios, autonomous-agent teams, and brands sponsoring verified-human-only cups." },
           ].map((a, i) => (
             <div key={i} style={{

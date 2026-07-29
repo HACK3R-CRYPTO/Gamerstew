@@ -2740,6 +2740,58 @@ async function isVerified(wallet) {
   }
 }
 
+// ─── GET /api/verified-stats — how many real humans, not just pass minters ──
+// The subgraph's totalPlayers counts everyone who ever minted a GamePass. That
+// is NOT the same as GoodDollar-verified humans: a wallet can hold a pass and
+// never pass face verification. This endpoint walks every known player wallet
+// and checks isWhitelisted on the GoodDollar identity contract, so the /impact
+// page can show the true verified count alongside total players.
+//
+// Heavy on first run (one on-chain read per uncached wallet), so the aggregate
+// is cached for an hour and the per-wallet `true` results are sticky forever in
+// _verifiedCache. Concurrency is bounded so we never fan out hundreds of RPCs
+// at once.
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+app.get('/api/verified-stats', async (_, res) => {
+  const cached = cacheGet('verified:stats');
+  if (cached) return res.json(cached);
+  try {
+    // Every wallet we've ever seen play. `users` is the canonical player table.
+    const { data: rows, error } = await supabase.from('users').select('wallet_address');
+    if (error) throw error;
+    const wallets = Array.from(new Set(
+      (rows || []).map(r => r.wallet_address?.toLowerCase()).filter(Boolean)
+    ));
+
+    const flags = await mapLimit(wallets, 12, (w) => isVerified(w));
+    const verifiedPlayers = flags.filter(Boolean).length;
+
+    const payload = {
+      totalPlayers:    wallets.length,   // everyone with an account
+      verifiedPlayers,                   // subset that passed GoodDollar verification
+      verifiedPct:     wallets.length ? Math.round((verifiedPlayers / wallets.length) * 100) : 0,
+      updatedAt:       new Date().toISOString(),
+    };
+    cacheSet('verified:stats', payload, 60 * 60 * 1000); // 1h
+    res.json(payload);
+  } catch (e) {
+    console.warn('verified-stats failed:', e?.message || e);
+    res.status(200).json({ totalPlayers: 0, verifiedPlayers: 0, verifiedPct: 0, updatedAt: null });
+  }
+});
+
 // ─── GET /api/weekly-challenge — community games milestone ──────────────────
 // Returns progress toward the weekly community games target. Counts games
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at

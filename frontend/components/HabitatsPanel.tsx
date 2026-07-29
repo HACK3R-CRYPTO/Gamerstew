@@ -10,7 +10,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 // ─── HabitatsPanel ────────────────────────────────────────────────────────────
 // Gallery of all 10 habitats. Free tiers render as "unlocked at level X".
 // Paid tiers render as "donate Y G$ to unlock" with a confirm modal flow
-// where each donation routes a portion to the GoodCollective UBI pool
+// where each donation routes a portion to the GoodDollar UBI pool
 // (verifiable on Celo) without exposing the exact split in the UI —
 // players see magnitude, not internal accounting.
 //

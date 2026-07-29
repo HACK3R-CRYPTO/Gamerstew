@@ -47,7 +47,7 @@ const RPS_INSTRUCTIONS = {
     "Wait for MatchCreated event · MARKOV's keeper auto-accepts within ~1 block.",
     "Submit your move commit (keccak256(move, salt)) via rps.commitMove(matchId, commit).",
     "Reveal with rps.revealMove(matchId, move, salt) once MARKOV has committed.",
-    "Settlement (winner payout, fee to GoodCollective UBI pool) happens in the reveal tx.",
+    "Settlement (winner payout, fee to GoodDollar UBI pool) happens in the reveal tx.",
   ],
   contract: PLATFORM_CONTRACT,
   chainId: CHAIN_ID,
