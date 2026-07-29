@@ -396,19 +396,28 @@ function HomeScreenDesktop({
             <button onClick={onAbout} style={{ background: "none", border: "none", color: T.accent, fontFamily: T.body, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, marginLeft: 2 }}>How it works ›</button>
           </div>
         </div>
-        <div style={{
-          display: "flex", gap: 32, marginTop: 18,
-          padding: "16px 22px", borderRadius: 18,
-          background: "rgba(255,255,255,0.04)",
-          border: `1px solid ${T.hairline}`,
-          alignSelf: "flex-start",
-        }}>
+        <a
+          href="/impact"
+          onClick={() => playClick()}
+          aria-label="See the G$ economy"
+          style={{
+            textDecoration: "none", color: "inherit",
+            display: "flex", gap: 32, marginTop: 18,
+            padding: "16px 22px", borderRadius: 18,
+            background: "rgba(255,255,255,0.04)",
+            border: `1px solid ${T.hairline}`,
+            alignSelf: "flex-start", cursor: "pointer", textAlign: "left",
+            transition: "border-color 0.15s, background 0.15s",
+          }}
+        >
           <Stat label="Players" value={live ? String(live.totalPlayers) : "—"} size="lg" />
           <span style={{ width: 1, background: T.hairline }} />
           <Stat label="Matches" value={live ? fmtNum(live.totalMatches) : "—"} size="lg" />
           <span style={{ width: 1, background: T.hairline }} />
-          <Stat label="G$ to UBI" value={live ? fmtNum(live.totalUbiDonatedG) : "—"} size="lg" />
-        </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Stat label="G$ to UBI ›" value={live ? fmtNum(live.totalUbiDonatedG) : "—"} size="lg" />
+          </div>
+        </a>
       </div>
       {/* right — pet + leaderboard preview */}
       <div style={{ flex: 1, maxWidth: 460, display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
