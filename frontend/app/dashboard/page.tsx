@@ -89,14 +89,14 @@ type Game = {
 };
 
 // Upcoming event — rides in the hero rotation as a gold slide (not a game).
-// Details TBD; teases the 400,000 G$ pool and points to the events page.
+// Details TBD; teases the $100 pool (paid in G$) and points to the events page.
 const EVENT_HERO: Game = {
   id: "event",
   kind: "event",
-  title: "400,000 G$ Event",
+  title: "$100 Event",
   subtitle: "Coming soon",
-  desc: "A huge prize pool is on the way. Details soon — keep playing to be ready.",
-  art: "/event-trophy.jpg",
+  desc: "Top 5 players split $100, paid in G$. Keep playing to lock a spot.",
+  art: "/event-100.jpg",
   bg: "linear-gradient(115deg, #7c3a0d 0%, #2a1266 55%, #170a3e 100%)",
   glow: "#f59e0b",
   active: true,
@@ -812,10 +812,9 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         </div>
         <div style={{ padding: "10px 14px 14px", maxWidth: "68%", position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>400,000</span>
-            <span style={{ fontFamily: T.display, fontSize: 17, color: "#fde68a", lineHeight: 1 }}>G$</span>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>$100</span>
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>event prize pool</div>
+          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>prize pool · paid in G$</div>
           <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 6, lineHeight: 1.4 }}>{game.desc}</div>
         </div>
       </button>
