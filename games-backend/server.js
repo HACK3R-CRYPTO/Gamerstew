@@ -86,6 +86,16 @@ function requireSecret(req, res, next) {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
+  // Public live-match SSE feed · any origin may subscribe (partner sites embed
+  // it). The stream is read-only, non-sensitive match data, so it bypasses the
+  // origin allowlist with permissive CORS instead of a 403.
+  if (req.path.startsWith('/api/arena/live/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
   if (!origin) {
     if (req.headers['x-internal-secret'] === INTERNAL_SECRET) return next();
     return res.status(403).json({ error: 'Forbidden' });
