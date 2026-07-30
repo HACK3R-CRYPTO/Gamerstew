@@ -34,21 +34,20 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
-            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>400,000</span>
-            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 20 : 17, color: T.gold, lineHeight: 1 }}>G$</span>
+            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>$100</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.75)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
-            event prize pool
+            prize pool · paid in G$
           </div>
 
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "9px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-            Something big is on the way. Details drop soon — keep playing so you&apos;re ready when it goes live.
+            The top 5 players split a $100 pool, paid in G$. Keep playing to lock a spot before it goes live.
           </p>
         </div>
 
         {/* Same 3D trophy art as the dashboard hero · `screen` drops its dark bg */}
         <img
-          src="/event-trophy.jpg"
+          src="/event-100.jpg"
           alt=""
           style={{ width: isDesktop ? 128 : 96, height: isDesktop ? 128 : 96, objectFit: "contain", mixBlendMode: "screen", flexShrink: 0, pointerEvents: "none" }}
         />
