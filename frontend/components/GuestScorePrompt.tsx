@@ -100,7 +100,16 @@ export default function GuestScorePrompt({
 
 // Small chip for idle/start screens — tells guests they're welcome to play
 // and what signing in adds, without blocking anything.
-export function GuestPlayChip() {
+// `left` is optional and backwards-compatible: when a caller passes the guest's
+// remaining free-run count, the chip shows it ("Free play · 2 left") so the
+// funnel countdown is visible; omit it and the chip reads as before.
+export function GuestPlayChip({ left }: { left?: number } = {}) {
+  const label =
+    typeof left === "number"
+      ? left > 0
+        ? `Free play · ${left} left`
+        : "Free plays used · sign in"
+      : "Free play · sign in to save";
   return (
     <div style={{
       display: "inline-flex", alignItems: "center", gap: 6,
@@ -116,7 +125,7 @@ export function GuestPlayChip() {
       <span style={{
         color: "rgba(253,230,138,0.92)", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
         textTransform: "uppercase",
-      }}>Free play · sign in to save</span>
+      }}>{label}</span>
     </div>
   );
 }

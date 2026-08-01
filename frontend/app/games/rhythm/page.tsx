@@ -9,6 +9,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GuestLimitPrompt from "@/components/GuestLimitPrompt";
+import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { useAudioSettings, effectiveGains } from "@/hooks/useAudioSettings";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
@@ -339,6 +341,22 @@ export default function RhythmGamePage() {
   });
   const needsMint = authed && hasMinted === false;
   const [phase, setPhase] = useState<Phase>("idle");
+
+  // ─── Guest free-play limit ───────────────────────────────────────────────
+  // Guests (not signed in) get GUEST_PLAY_LIMIT free runs, then a sign-in
+  // gate — mirrors Challenge AI's demo limit. Signed-in players are unlimited.
+  const isGuest = !authed && !authPending;
+  const [guestLeft, setGuestLeft] = useState<number>(3);
+  const [guestLimitOpen, setGuestLimitOpen] = useState(false);
+  const guestCountedRef = useRef(false);
+  useEffect(() => { setGuestLeft(guestPlaysLeft("rhythm")); }, []);
+  useEffect(() => {
+    if (phase === "finished" && isGuest && !guestCountedRef.current) {
+      guestCountedRef.current = true;
+      bumpGuestPlayed("rhythm");
+      setGuestLeft(guestPlaysLeft("rhythm"));
+    }
+  }, [phase, isGuest]);
 
   // User audio preferences from profile — persisted in localStorage.
   // We pull this into a ref so audio callbacks can read the latest value
@@ -855,6 +873,14 @@ export default function RhythmGamePage() {
     // requested. Without it, two quick clicks during the ~500ms ticket
     // round trip insert two game_sessions rows for one actual play.
     if (startingRef.current) return;
+
+    // ═══ Guest free-play gate ════════════════════════════════════════════
+    // Block a new run once a guest is out of free plays; offer sign-in.
+    if (isGuest && guestPlaysLeft("rhythm") <= 0) {
+      setGuestLimitOpen(true);
+      return;
+    }
+    guestCountedRef.current = false;
 
     // ═══ Pre-game gas gate ═══════════════════════════════════════════════
     // Onchain finality is binary · we can't predict per-tx gas exactly, so
@@ -1821,6 +1847,7 @@ export default function RhythmGamePage() {
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
           guest={!authed && !authPending}
+          guestLeft={guestLeft}
           needsSetup={needsMint}
           onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner sits between the leaderboard preview and the START
@@ -1976,16 +2003,20 @@ export default function RhythmGamePage() {
         intent="gas-help"
         game="rhythm"
       />
+
+      {/* Guest free-play limit · sign-in gate once the free runs are used. */}
+      <GuestLimitPrompt open={guestLimitOpen} onClose={() => setGuestLimitOpen(false)} game="Rhythm Rush" />
     </div>
   );
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
   guest?: boolean;
+  guestLeft?: number;
   // Signed in but no GamePass yet — play works, saving doesn't. Gets the
   // honest chip below instead of the misleading gas banner.
   needsSetup?: boolean;
@@ -2050,7 +2081,7 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishS
         </span>
       </div>
 
-      {guest && <GuestPlayChip />}
+      {guest && <GuestPlayChip left={guestLeft} />}
 
       {/* Signed in, no slime yet — honest twin of the guest chip. */}
       {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}

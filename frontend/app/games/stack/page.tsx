@@ -28,6 +28,8 @@ import { useAuthStatus } from "@/hooks/useRequireAuth";
 import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GuestLimitPrompt from "@/components/GuestLimitPrompt";
+import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import { PushOptInModal } from "@/components/PushOptInModal";
@@ -211,6 +213,23 @@ export default function StackTowerPage() {
     query: { enabled: !!address },
   });
   const needsMint = authed && hasMinted === false;
+
+  // ─── Guest free-play limit ───────────────────────────────────────────────
+  // Guests (not signed in) get GUEST_PLAY_LIMIT free runs, then a sign-in
+  // gate — mirrors Challenge AI's demo limit. Signed-in players are unlimited.
+  const isGuest = !authed && !authPending;
+  const [guestLeft, setGuestLeft] = useState<number>(3);
+  const [guestLimitOpen, setGuestLimitOpen] = useState(false);
+  const guestCountedRef = useRef(false);
+  useEffect(() => { setGuestLeft(guestPlaysLeft("stack")); }, []);
+  useEffect(() => {
+    if (phase === "finished" && isGuest && !guestCountedRef.current) {
+      guestCountedRef.current = true;
+      bumpGuestPlayed("stack");
+      setGuestLeft(guestPlaysLeft("stack"));
+    }
+  }, [phase, isGuest]);
+
   const { getAccessToken, user } = usePrivy();
   // signMessageAsync is unused for stack (no tap-log replay) but kept here
   // so the import shape matches simon · easier diff when we add anti-replay.
@@ -459,6 +478,14 @@ export default function StackTowerPage() {
     // trip inserts two game_sessions rows for one actual run.
     if (startingRef.current) return;
 
+    // ═══ Guest free-play gate ════════════════════════════════════════════
+    // Block a new run once a guest is out of free plays; offer sign-in.
+    if (isGuest && guestPlaysLeft("stack") <= 0) {
+      setGuestLimitOpen(true);
+      return;
+    }
+    guestCountedRef.current = false;
+
     // ═══ Pre-game gas gate ═══════════════════════════════════════════════
     // Onchain finality is binary · either the score got recorded or it
     // doesn't exist. We can't predict per-tx gas perfectly, so when the
@@ -538,7 +565,7 @@ export default function StackTowerPage() {
     setCountdown(3);
     setPhase("countdown");
     startingRef.current = false;
-  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint]);
+  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
@@ -1006,7 +1033,7 @@ export default function StackTowerPage() {
             </span>
           </div>
 
-          {!authed && !authPending && <GuestPlayChip />}
+          {!authed && !authPending && <GuestPlayChip left={guestLeft} />}
 
           {/* Signed in, no slime yet — honest twin of the guest chip. */}
           {needsMint && <SetupPlayChip onFinishSetup={() => router.push("/home?ob=1")} />}
@@ -1230,6 +1257,9 @@ export default function StackTowerPage() {
         game="stack"
         score={score > 0 ? score : undefined}
       />
+
+      {/* Guest free-play limit · sign-in gate once the free runs are used. */}
+      <GuestLimitPrompt open={guestLimitOpen} onClose={() => setGuestLimitOpen(false)} game="Stack Tower" />
     </div>
   );
 }
