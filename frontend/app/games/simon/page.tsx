@@ -10,6 +10,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GuestLimitPrompt from "@/components/GuestLimitPrompt";
+import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { getPerk } from "@/lib/perks";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
@@ -212,12 +214,33 @@ export default function SimonGamePage() {
     query: { enabled: !!address },
   });
   const needsMint = authed && hasMinted === false;
+
+  // ─── Guest free-play limit ───────────────────────────────────────────────
+  // Guests (not signed in) get GUEST_PLAY_LIMIT free runs, then a sign-in
+  // gate — same funnel as Challenge AI's demo matches. isGuest is true only
+  // for the not-signed-in bucket; signed-in-unminted players play unlimited.
+  const isGuest = !authed && !authPending;
+  const [guestLeft, setGuestLeft] = useState<number>(3);
+  const [guestLimitOpen, setGuestLimitOpen] = useState(false);
+  const guestCountedRef = useRef(false);
+  useEffect(() => { setGuestLeft(guestPlaysLeft("simon")); }, []);
+
   // Mobile flag drives lighter-weight GPU effects on the Simon device.
   // Stacked 80/160/240px box-shadow blurs + triple drop-shadow filters
   // cause "Aww, snap!" renderer OOMs on low-end Android and the MiniPay
   // webview. Mobile gets slimmer shadows; desktop keeps the full drama.
   const isMobile = useIsMobile();
   const [phase, setPhase] = useState<Phase>("idle");
+
+  // Count a guest's free run once it finishes (guarded so it fires once per
+  // run). guestCountedRef is reset in startGame at the top of each run.
+  useEffect(() => {
+    if (phase === "finished" && isGuest && !guestCountedRef.current) {
+      guestCountedRef.current = true;
+      bumpGuestPlayed("simon");
+      setGuestLeft(guestPlaysLeft("simon"));
+    }
+  }, [phase, isGuest]);
 
   // Hard time limit · 10-minute countdown visible in HUD.
   // Game ends automatically when this hits 0 so the score always submits
@@ -776,6 +799,15 @@ export default function SimonGamePage() {
     // counted-games total.
     if (startingRef.current) return;
 
+    // ═══ Guest free-play gate ════════════════════════════════════════════
+    // Once a guest has used their free runs, block a new one and offer the
+    // sign-in that unlocks unlimited play. Signed-in players skip this.
+    if (isGuest && guestPlaysLeft("simon") <= 0) {
+      setGuestLimitOpen(true);
+      return;
+    }
+    guestCountedRef.current = false;
+
     // ═══ Pre-game gas gate ═══════════════════════════════════════════════
     // Onchain finality is binary · we can't predict per-tx gas exactly, so
     // when the bucket reads "block" we stop the player here rather than
@@ -857,7 +889,7 @@ export default function SimonGamePage() {
     startingRef.current = false;
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
-  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint]);
+  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint, isGuest]);
 
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
@@ -929,6 +961,7 @@ export default function SimonGamePage() {
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/simon/leaderboard")}
           guest={!authed && !authPending}
+          guestLeft={guestLeft}
           needsSetup={needsMint}
           onFinishSetup={() => router.push("/home?ob=1")}
           /* Banner self-hides for safe / guest / minipay buckets · only
@@ -1046,16 +1079,20 @@ export default function SimonGamePage() {
         intent="gas-help"
         game="simon"
       />
+
+      {/* Guest free-play limit · sign-in gate once the free runs are used. */}
+      <GuestLimitPrompt open={guestLimitOpen} onClose={() => setGuestLimitOpen(false)} game="Simon" />
     </div>
   );
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
   guest?: boolean;
+  guestLeft?: number;
   // Signed in but no GamePass yet — play works, saving doesn't. Gets the
   // honest SetupPlayChip instead of the misleading gas banner.
   needsSetup?: boolean;
@@ -1120,7 +1157,7 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, needsSetup, onFinishS
         </span>
       </div>
 
-      {guest && <GuestPlayChip />}
+      {guest && <GuestPlayChip left={guestLeft} />}
       {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
 
       {/* Gas posture pill · warn/block only · null for the happy path. */}
