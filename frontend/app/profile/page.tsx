@@ -508,7 +508,7 @@ export default function ProfilePage() {
             here. The passport page owns share/save; this is the door. */}
         {connected && address && (
           <button
-            onClick={() => router.push(`/pass/${address}`)}
+            onClick={() => router.push(`/pass/${(chainUsername as string | undefined) || address}`)}
             style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 14px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(90deg, rgba(167,139,250,0.2) 0%, rgba(40,18,100,0.55) 100%)", border: "1px solid rgba(167,139,250,0.4)" }}
           >
             <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.18)", border: "1px solid rgba(167,139,250,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🪪</span>

@@ -49,7 +49,7 @@ export default function PassportActions({ address, name, refCode }: { address: s
   // memorable, speakable) and fall back to the address.
   const code = refCode || address;
   const base = typeof window !== "undefined" ? window.location.origin : "https://gamearenahq.xyz";
-  const passUrl = useMemo(() => `${base}/pass/${address}?ref=${code}`, [base, address, code]);
+  const passUrl = useMemo(() => `${base}/pass/${code}?ref=${code}`, [base, code]);
   const playUrl = useMemo(() => `${base}/?ref=${code}`, [base, code]);
 
   // Save the passport as a PNG · reuses the OG card (it IS the designed

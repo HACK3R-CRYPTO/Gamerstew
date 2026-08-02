@@ -7,8 +7,9 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getPassport } from "@/lib/passport";
+import { getPassport, resolvePassHandle } from "@/lib/passport";
 import PassportActions from "@/components/PassportActions";
+import PassTopBar from "@/components/PassTopBar";
 
 export const revalidate = 60;
 
@@ -29,8 +30,9 @@ function displayName(p: { username: string | null; address: string }): string {
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
-  const { address } = await params;
-  const p = await getPassport(address);
+  const { address: handle } = await params;
+  const resolved = await resolvePassHandle(handle);
+  const p = resolved ? await getPassport(resolved) : null;
   if (!p) return { title: "Player Passport" };
   const name = displayName(p);
   const title = `${name} · Game Arena Passport`;
@@ -46,8 +48,9 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
 }
 
 export default async function PassportPage({ params }: { params: Promise<{ address: string }> }) {
-  const { address } = await params;
-  const p = await getPassport(address);
+  const { address: handle } = await params;
+  const resolved = await resolvePassHandle(handle);
+  const p = resolved ? await getPassport(resolved) : null;
   if (!p) notFound();
 
   const name = displayName(p);
@@ -55,7 +58,8 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "14px 16px 60px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <PassTopBar />
 
         {/* identity hero · pet standing in its habitat */}
         <div style={{ position: "relative", borderRadius: 20, overflow: "hidden", border: `1px solid ${T.hairline}`, background: p.habitat?.gradient || T.surface }}>

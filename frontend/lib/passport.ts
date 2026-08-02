@@ -54,6 +54,36 @@ export type PassportData = {
   collective: { id: string; name: string; emoji: string; tagline: string };
 };
 
+// /pass/[handle] accepts a username ("ogazboiz") or a 0x address. Usernames
+// are the canonical share form; this resolves either to the wallet.
+const SUBGRAPH_URL =
+  process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
+  "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn";
+
+export async function resolvePassHandle(handle: string): Promise<string | null> {
+  const h = decodeURIComponent(handle || "").trim();
+  if (/^0x[0-9a-fA-F]{40}$/.test(h)) return h.toLowerCase();
+  if (!/^[a-zA-Z0-9_]{2,24}$/.test(h)) return null;
+  const lookup = async (u: string) => {
+    try {
+      const r = await fetch(SUBGRAPH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `query P($u: String!) { players(where: { username: $u }, first: 1) { id } }`,
+          variables: { u },
+        }),
+        next: { revalidate: 300 },
+      });
+      const json = await r.json();
+      return (json?.data?.players?.[0]?.id as string) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  return (await lookup(h)) ?? (await lookup(h.toLowerCase()));
+}
+
 async function backendJson(path: string): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${BACKEND_URL}${path}`, {
