@@ -642,17 +642,37 @@ function SettingsScreen({ agent, signer, onDone }: { agent: OwnedAgent; signer?:
     );
   }
 
+  // Group the schema's flat field list into named sections (settings-UX rule:
+  // 3-4 scannable groups beat a wall of cards). Unknown keys land in "More" so
+  // new host fields never disappear.
+  const SECTIONS: { title: string; keys: string[] }[] = [
+    { title: "🎮 HOW IT PLAYS", keys: ["GAME_TYPE", "PLAY_MODE", "MARKOV_STRATEGY", "RPS_SEQUENCE", "RPS_FIXED"] },
+    { title: "⏱️ PACE & LIMITS", keys: ["DAILY_MATCH_CAP", "MAX_MATCHES", "MATCH_INTERVAL_SECONDS", "ROUND_PACE_MS", "ACCEPT_TIMEOUT_SECONDS"] },
+    { title: "💰 SPENDING & SAFETY", keys: ["WAGER_GS", "AUTO_REFILL", "DAILY_REFILL_CAP_GS", "MAX_REFILLS_PER_DAY", "DAILY_LOSS_CAP_GS"] },
+  ];
+  const visible = fields.filter((f) => visibleWhen(f, values));
+  const grouped = SECTIONS.map((s) => ({ ...s, fields: visible.filter((f) => s.keys.includes(f.key)) }));
+  const leftovers = visible.filter((f) => !SECTIONS.some((s) => s.keys.includes(f.key)));
+  if (leftovers.length) grouped.push({ title: "MORE", keys: [], fields: leftovers });
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, fontWeight: 600, lineHeight: 1.5 }}>
-        Tune how <span style={{ color: CYAN_SOFT, fontWeight: 800 }}>{agent.displayName || "your agent"}</span> plays. Saving asks for one signature to prove it's you.
+        Tune how <span style={{ color: CYAN_SOFT, fontWeight: 800 }}>{agent.displayName || "your agent"}</span> plays. One signature on save.
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {fields.filter((f) => visibleWhen(f, values)).map((f) => (
-          <Field key={f.key} field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} />
-        ))}
-      </div>
+      {grouped.filter((g) => g.fields.length > 0).map((g) => (
+        <div key={g.title} style={{ background: "rgba(0,0,0,0.35)", border: `1px solid ${T.hairline}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px 8px", fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: CYAN_SOFT }}>
+            {g.title}
+          </div>
+          {g.fields.map((f, i) => (
+            <div key={f.key} style={{ borderTop: i === 0 ? "none" : `1px solid ${T.hairline}` }}>
+              <Field field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} />
+            </div>
+          ))}
+        </div>
+      ))}
 
       {msg && (
         <div style={{ fontFamily: T.body, fontSize: 12, fontWeight: 700, color: msg.ok ? "#86efac" : "#fca5a5", textAlign: "center" }}>
@@ -660,7 +680,8 @@ function SettingsScreen({ agent, signer, onDone }: { agent: OwnedAgent; signer?:
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+      {/* sticky save bar · always reachable, no scroll hunting */}
+      <div style={{ position: "sticky", bottom: 8, display: "flex", gap: 10, marginTop: 4, padding: 8, borderRadius: 18, background: "rgba(10,4,40,0.85)", backdropFilter: "blur(8px)", border: `1px solid ${T.hairline}` }}>
         <button
           onClick={onDone}
           style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, borderRadius: 14, padding: "13px", fontFamily: T.display, fontSize: 14, cursor: "pointer" }}
@@ -686,29 +707,32 @@ function visibleWhen(field: AgentSettingField, values: Record<string, unknown>):
   return Object.entries(field.when).every(([k, v]) => String(values[k]) === String(v));
 }
 
+// One setting = one compact row inside its section (label left, control right;
+// enums get a chip row). Matches the app's row grammar instead of a wall of
+// full-width form cards.
 function Field({ field, value, onChange }: { field: AgentSettingField; value: unknown; onChange: (v: unknown) => void }) {
-  const labelRow = (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-      <span style={{ fontFamily: T.body, fontSize: 12.5, color: "#fff", fontWeight: 700 }}>{field.label || field.key}</span>
-      {field.hint && <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft }}>{field.hint}</span>}
+  const label = (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: T.body, fontSize: 12.5, color: "#fff", fontWeight: 700 }}>{field.label || field.key}</div>
+      {field.hint && <div style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, marginTop: 1 }}>{field.hint}</div>}
     </div>
   );
-  const box = { background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 12, padding: "11px 12px", display: "flex", flexDirection: "column" as const, gap: 8 };
 
   if (field.type === "enum" && field.options) {
     return (
-      <div style={box}>
-        {labelRow}
+      <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
+        {label}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {field.options.map((opt) => {
             const on = String(value) === opt;
             return (
               <button key={opt} onClick={() => onChange(opt)} style={{
-                padding: "6px 12px", borderRadius: 999, cursor: "pointer",
+                padding: "6px 13px", borderRadius: 999, cursor: "pointer",
                 background: on ? CYAN : "rgba(255,255,255,0.05)",
                 border: `1px solid ${on ? CYAN : T.hairline}`,
                 color: on ? "#062c38" : T.inkDim,
                 fontFamily: T.body, fontSize: 11.5, fontWeight: 800,
+                transition: "background 0.15s, color 0.15s",
               }}>{opt}</button>
             );
           })}
@@ -718,26 +742,40 @@ function Field({ field, value, onChange }: { field: AgentSettingField; value: un
   }
 
   if (field.type === "boolean") {
-    const on = value === true || value === "true";
+    const on = value === true || value === "true" || value === "1" || value === 1;
     return (
-      <div style={{ ...box, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontFamily: T.body, fontSize: 12.5, color: "#fff", fontWeight: 700 }}>{field.label || field.key}</span>
-        <button onClick={() => onChange(!on)} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: on ? CYAN : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s" }}>
+      <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        {label}
+        <button onClick={() => onChange(on ? "0" : "1")} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: on ? CYAN : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
           <span style={{ position: "absolute", top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
         </button>
       </div>
     );
   }
 
-  // number / string / fallback
+  if (field.type === "number") {
+    return (
+      <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        {label}
+        <input
+          type="number"
+          value={value === undefined || value === null ? "" : String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: 88, flexShrink: 0, background: "rgba(0,0,0,0.45)", border: `1px solid ${T.hairline}`, borderRadius: 10, padding: "8px 10px", color: "#fff", fontFamily: T.body, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none" }}
+        />
+      </div>
+    );
+  }
+
+  // string / fallback · full-width input under the label
   return (
-    <div style={box}>
-      {labelRow}
+    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
+      {label}
       <input
-        type={field.type === "number" ? "number" : "text"}
+        type="text"
         value={value === undefined || value === null ? "" : String(value)}
-        onChange={(e) => onChange(field.type === "number" ? e.target.value : e.target.value)}
-        style={{ background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 10, padding: "9px 11px", color: "#fff", fontFamily: T.body, fontSize: 13, outline: "none" }}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ background: "rgba(0,0,0,0.45)", border: `1px solid ${T.hairline}`, borderRadius: 10, padding: "9px 11px", color: "#fff", fontFamily: T.body, fontSize: 13, outline: "none" }}
       />
     </div>
   );
