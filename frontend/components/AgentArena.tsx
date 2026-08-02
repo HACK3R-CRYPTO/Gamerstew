@@ -220,59 +220,113 @@ function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      <AgentCard agent={agent} live={!!matchId} />
       {matchId ? (
-        <LiveMatch
-          key={matchId}
-          matchId={matchId}
-          watchUrl={watchUrl}
-          agentName={name}
-          onPlayAgain={launched?.matchId === matchId ? () => { setLaunched(null); setErr(null); } : undefined}
-        />
+        <>
+          <AgentCard agent={agent} live />
+          <LiveMatch
+            key={matchId}
+            matchId={matchId}
+            watchUrl={watchUrl}
+            agentName={name}
+            onPlayAgain={launched?.matchId === matchId ? () => { setLaunched(null); setErr(null); } : undefined}
+          />
+        </>
       ) : (
-        <PlayWithAgent name={name} phase={phase} busy={busy} err={err} onPlay={play} />
+        <VersusStage agent={agent} phase={phase} busy={busy} err={err} onPlay={play} />
       )}
     </div>
   );
 }
 
-// Native "play with your agent" surface — feels like the manual FIGHT button.
-// The player taps it, signs once, their deployed agent steps into MARKOV on
-// GoodAgents, and the match streams live right here.
-function PlayWithAgent({ name, phase, busy, err, onPlay }: { name: string; phase: "idle" | "signing" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
+// ═══ VS stage · the pre-match face-off ═══════════════════════════════════════
+// Genre-standard matchup screen: the player's agent squares up against MARKOV,
+// VS emblem center, taunt on top — same visual grammar as the manual match's
+// VsSting, so agent play feels like a first-class fight, not a settings form.
+const AGENT_TAUNTS = [
+  "send your little bot. i'll model it too.",
+  "i've beaten smarter code than yours.",
+  "your agent learns? cute. so do i.",
+  "deploy it. i'll study it. i'll break it.",
+];
+
+function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; phase: "idle" | "signing" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
+  const name = agent.displayName || "Your agent";
   const label = phase === "signing" ? "CONFIRM IN YOUR WALLET…" : phase === "starting" ? "SENDING AGENT IN…" : "🤖 PLAY WITH YOUR AGENT";
-  const starting = busy;
+  const [tauntIdx, setTauntIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTauntIdx((i) => (i + 1) % AGENT_TAUNTS.length), 5000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 8px" }}>
-      <div style={{ position: "relative" }}>
-        <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(44vw, 160px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", opacity: starting ? 0.85 : 1 }} />
-        <div aria-hidden style={{ width: "42vw", maxWidth: 150, height: 24, borderRadius: "50%", background: `radial-gradient(ellipse, ${CYAN}44 0%, transparent 70%)`, filter: "blur(5px)", margin: "-8px auto 0" }} />
-      </div>
-      <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", marginTop: 8, letterSpacing: "0.03em" }}>
-        {starting ? "Stepping into the ring…" : `${name === "Your agent" ? "Your agent" : name} vs MARKOV`}
-      </div>
-      <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, fontWeight: 600, lineHeight: 1.5, maxWidth: 300, marginTop: 6 }}>
-        Send your agent in and watch it play MARKOV live, round by round. Best of 5, first to 3 wins.
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 2px" }}>
+      {/* MARKOV talks down at the challenger · same boss voice as the lobby */}
+      <div
+        key={tauntIdx}
+        style={{ alignSelf: "center", maxWidth: 300, background: "rgba(0,0,0,0.6)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: 14, padding: "8px 14px", fontFamily: T.body, fontSize: 12, fontStyle: "italic", color: "rgba(240,230,255,0.92)", textAlign: "center", animation: "bubblePop 0.4s cubic-bezier(0.22,1.4,0.36,1) both", marginBottom: 18 }}
+      >
+        “{AGENT_TAUNTS[tauntIdx]}”
       </div>
 
-      {err && <div style={{ marginTop: 12, fontFamily: T.body, fontSize: 12, color: "#fca5a5" }}>{err}</div>}
+      {/* the face-off · challenger slams in left, boss slams in right */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        {/* your agent · the challenger */}
+        <div style={{ flex: 1, maxWidth: 190, display: "flex", flexDirection: "column", alignItems: "center", animation: "slamL 0.45s cubic-bezier(0.22,1.2,0.36,1) both" }}>
+          <div style={{ width: "min(30vw, 118px)", aspectRatio: "1", borderRadius: 24, background: "linear-gradient(160deg, rgba(34,211,238,0.28) 0%, rgba(8,51,68,0.9) 100%)", border: "2px solid rgba(34,211,238,0.55)", boxShadow: `0 0 30px ${CYAN}44, inset 0 2px 12px rgba(255,255,255,0.15)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "min(14vw, 54px)", animation: "idleBobAlt 2.8s ease-in-out infinite" }}>
+            🤖
+          </div>
+          <div aria-hidden style={{ width: "min(26vw, 100px)", height: 18, borderRadius: "50%", background: `radial-gradient(ellipse, ${CYAN}55 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -4 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+            <span style={{ fontFamily: T.display, fontSize: 17, color: "#fff", letterSpacing: "0.03em", textShadow: `0 0 18px ${CYAN}88` }}>{name}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+            {agent.verified !== false && (
+              <span style={{ fontSize: 8.5, fontWeight: 800, color: CYAN_SOFT, background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.35)", borderRadius: 999, padding: "2px 7px", letterSpacing: "0.08em", fontFamily: T.body }}>VERIFIED</span>
+            )}
+            <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700 }}>your AI</span>
+          </div>
+        </div>
 
+        {/* VS emblem */}
+        <div style={{ fontFamily: T.display, fontSize: "min(9vw, 38px)", color: RIM, textShadow: `0 0 26px ${RIM}, 0 3px 6px rgba(0,0,0,0.6)`, animation: "vsPop 0.5s cubic-bezier(0.22,1.4,0.36,1) 0.25s both", flexShrink: 0, padding: "0 2px" }}>
+          VS
+        </div>
+
+        {/* MARKOV · the boss */}
+        <div style={{ flex: 1, maxWidth: 190, display: "flex", flexDirection: "column", alignItems: "center", animation: "slamR 0.45s cubic-bezier(0.22,1.2,0.36,1) both" }}>
+          <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(32vw, 128px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 22px rgba(251,191,36,0.35))" }} />
+          <div aria-hidden style={{ width: "min(26vw, 100px)", height: 18, borderRadius: "50%", background: `radial-gradient(ellipse, ${AI_GREEN}44 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -6 }} />
+          <div style={{ fontFamily: T.display, fontSize: 17, color: "#fff", letterSpacing: "0.03em", textShadow: `0 0 18px ${RIM}66`, marginTop: 6 }}>MARKOV</div>
+          <div style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700, marginTop: 3 }}>arena boss · learns patterns</div>
+        </div>
+      </div>
+
+      {/* match format · one glance, no reading */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 18, flexWrap: "wrap" }}>
+        {["BEST OF 5", "FIRST TO 3", "STREAMS LIVE"].map((chip) => (
+          <span key={chip} style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "5px 11px" }}>{chip}</span>
+        ))}
+      </div>
+
+      {err && <div style={{ marginTop: 12, fontFamily: T.body, fontSize: 12, color: "#fca5a5", textAlign: "center" }}>{err}</div>}
+
+      {/* thumb zone · one action */}
       <div
         role="button"
-        onClick={starting ? undefined : onPlay}
-        style={{ cursor: starting ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: `0 12px 26px -6px ${CYAN}66, inset 0 -3px 8px rgba(0,0,0,0.4)`, width: "100%", maxWidth: 320, marginTop: 20, transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
-        onMouseDown={(e) => { if (!starting) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+        onClick={busy ? undefined : onPlay}
+        style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, width: "100%", maxWidth: 340, margin: "16px auto 0", boxShadow: `0 12px 26px -6px ${CYAN}66, inset 0 -3px 8px rgba(0,0,0,0.4)`, transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+        onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
         onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
       >
-        <div style={{ borderRadius: "16px 16px 12px 12px", background: starting ? "rgba(34,211,238,0.4)" : `linear-gradient(160deg, #a5f3fc 0%, ${CYAN} 50%, #0e7490 100%)`, padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+        <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 60, boxSizing: "border-box", background: busy ? "rgba(34,211,238,0.4)" : `linear-gradient(160deg, #a5f3fc 0%, ${CYAN} 50%, #0e7490 100%)`, padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
           <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: phase === "idle" ? 17 : 14, color: "#062c38", letterSpacing: "0.04em" }}>
             {label}
           </span>
         </div>
       </div>
-      <div style={{ marginTop: 10, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+      <div style={{ marginTop: 9, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, textAlign: "center" }}>
         🔒 provably fair · streams live
       </div>
     </div>

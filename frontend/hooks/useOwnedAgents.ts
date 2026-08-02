@@ -13,6 +13,8 @@ export type OwnedAgent = {
   ownerWallet: string;
   gamePassUsername: string | null;
   status: string | null;
+  verified?: boolean;
+  readyToPlay?: boolean;
   activeMatchId: string | null;
   livePhase: string | null;
   liveWatchUrl: string | null;
