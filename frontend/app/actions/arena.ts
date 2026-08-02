@@ -78,6 +78,45 @@ export async function startArenaMatch(playerAddress: string): Promise<StartRespo
   }
 }
 
+// Send a player's deployed agent into an exhibition match against MARKOV. The
+// backend starts it and drives it round by round on the live SSE feed; we get
+// the matchId back instantly so the UI can open the live view. Auth is the
+// internal secret (server-to-server) — the scoped agent key stays with
+// GoodAgents.
+export async function playAgentMatch(agentAddress: string): Promise<{ matchId?: string; error?: string }> {
+  try {
+    const out = await backend('/api/arena/agent/play', { agentAddress });
+    if (out?.matchId) return { matchId: out.matchId };
+    return { error: out?.error || 'could_not_start' };
+  } catch {
+    return { error: 'backend_unreachable' };
+  }
+}
+
+// Batch-resolve on-chain GamePass usernames for arbitrary wallets (e.g. the
+// owners behind agents on the ladder). Returns a lowercased address → name map;
+// unnamed wallets are simply absent.
+export async function getUsernames(addresses: string[]): Promise<Record<string, string>> {
+  try {
+    const list = Array.from(
+      new Set(addresses.map((a) => a?.toLowerCase()).filter((a) => /^0x[0-9a-f]{40}$/.test(a || ""))),
+    ).slice(0, 500);
+    if (list.length === 0) return {};
+    const res = await fetch(`${BACKEND_URL}/api/usernames?wallets=${list.join(",")}`, {
+      headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      cache: 'no-store',
+    });
+    const data = await res.json();
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data?.usernames || {})) {
+      if (v && typeof v === 'string') out[k.toLowerCase()] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export type LadderEntry = { wallet: string; username?: string | null; points: number; matches: number; wins: number; rank: number };
 export type LadderData = {
   week: string;

@@ -30,12 +30,13 @@ const GET_AGENT_ABI = [
   },
 ] as const;
 
-// Given a list of wallet addresses, returns a lowercased Set of the ones that
-// are deployed GoodAgents agents. Source of truth is on-chain: the attestation
-// contract's getAgent(address) returns a non-zero operator for a real agent
-// (and the zero address for a normal human wallet). One multicall covers every
-// address passed in, so a whole leaderboard costs a single RPC round-trip.
-export function useAgentAddresses(wallets: (string | undefined | null)[]): Set<string> {
+// Given a list of wallet addresses, returns a lowercased Map of the ones that
+// are deployed GoodAgents agents → their operator (the owner wallet). Source of
+// truth is on-chain: getAgent(address) returns a non-zero operator for a real
+// agent (and the zero address for a normal human wallet). One multicall covers
+// every address passed in, so a whole leaderboard costs a single RPC round-trip.
+// This is what lets the board attach each agent to the player who deployed it.
+export function useAgentOperators(wallets: (string | undefined | null)[]): Map<string, string> {
   const unique = useMemo(
     () => Array.from(new Set(wallets.filter(Boolean).map((w) => (w as string).toLowerCase()))),
     [wallets],
@@ -52,8 +53,8 @@ export function useAgentAddresses(wallets: (string | undefined | null)[]): Set<s
   });
 
   return useMemo(() => {
-    const set = new Set<string>();
-    if (!data) return set;
+    const map = new Map<string, string>();
+    if (!data) return map;
     data.forEach((res, i) => {
       const r = res.result as unknown;
       // getAgent returns { operator, stakeAmount, unlockAt }. viem may hand it
@@ -61,8 +62,15 @@ export function useAgentAddresses(wallets: (string | undefined | null)[]): Set<s
       const operator = Array.isArray(r)
         ? (r[0] as string | undefined)
         : (r as { operator?: string } | undefined)?.operator;
-      if (operator && operator.toLowerCase() !== ZERO) set.add(unique[i]);
+      if (operator && operator.toLowerCase() !== ZERO) map.set(unique[i], operator.toLowerCase());
     });
-    return set;
+    return map;
   }, [data, unique]);
+}
+
+// Convenience: just the set of agent addresses (used where the owner isn't
+// needed, e.g. badging the all-time board).
+export function useAgentAddresses(wallets: (string | undefined | null)[]): Set<string> {
+  const operators = useAgentOperators(wallets);
+  return useMemo(() => new Set(operators.keys()), [operators]);
 }

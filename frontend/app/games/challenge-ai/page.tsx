@@ -19,6 +19,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import AgentArena from "@/components/AgentArena";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount, useReadContract } from "wagmi";
@@ -84,7 +86,7 @@ const SHAKE_MS = 1050;        // 3 fist pumps · network hides inside this
 const IMPACT_HOLD_MS = 1900;  // reveal + persona line on screen
 const BANNER_MS = 700;        // ROUND N banner
 
-type Phase = "lobby" | "vs" | "match" | "result";
+type Phase = "lobby" | "vs" | "match" | "result" | "agent";
 type RoundBeat = "banner" | "armed" | "shaking" | "impact";
 
 // Persistent local record vs MARKOV (client-side flavor; ladder = Phase B)
@@ -119,6 +121,7 @@ export default function ChallengeAiPage() {
   // engine: provable, ranked, GamePass-gated.
   const { authed, pending: authPending } = useAuthStatus();
   const { address } = useAccount();
+  const router = useRouter();
   // True while the CURRENT match is a local demo · routes throws to the demo
   // engine and keeps every ranked/provable claim off the demo UI.
   const [demoMatch, setDemoMatch] = useState(false);
@@ -446,6 +449,15 @@ export default function ChallengeAiPage() {
             onBuyRefill={buyRefill}
             isGuest={!authed && !authPending}
             demoLeft={demoLeft}
+            showAgentOption={authed}
+            onAgent={() => setPhase("agent")}
+          />
+        )}
+        {phase === "agent" && (
+          <AgentArena
+            wallet={address}
+            onBack={() => setPhase("lobby")}
+            onDeploy={() => router.push("/agents")}
           />
         )}
         {phase === "vs" && <VsSting pet={pet} />}
@@ -486,7 +498,7 @@ export default function ChallengeAiPage() {
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
-  isGuest, demoLeft,
+  isGuest, demoLeft, showAgentOption, onAgent,
 }: {
   pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
@@ -501,6 +513,8 @@ function Lobby({
   onBuyRefill: () => void;
   isGuest: boolean;   // no account · gets the local demo, never ranked
   demoLeft: number;   // demo matches remaining before the sign-in ask
+  showAgentOption: boolean; // signed-in players can hand the fight to their agent
+  onAgent: () => void;      // open the "your agent plays" panel
 }) {
   // Rotating taunt · MARKOV talks at the gate like a boss NPC.
   const TAUNTS = [
@@ -742,6 +756,32 @@ function Lobby({
             </div>
             <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
               <span>🔒 provably fair</span>
+            </div>
+          </>
+        )}
+
+        {/* Second path: hand the fight to your own agent. It plays MARKOV on the
+            board and you watch the match live. Only for signed-in players. */}
+        {showAgentOption && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 2px 12px", opacity: 0.6 }}>
+              <span style={{ flex: 1, height: 1, background: T.hairline }} />
+              <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, color: T.inkSoft, letterSpacing: "0.14em" }}>OR</span>
+              <span style={{ flex: 1, height: 1, background: T.hairline }} />
+            </div>
+            <div
+              role="button"
+              onClick={onAgent}
+              style={{ cursor: "pointer", userSelect: "none", borderRadius: 16, background: "rgba(0,0,0,0.4)", border: "1px solid rgba(34,211,238,0.35)", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, transition: "border-color 0.2s, background 0.2s" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(34,211,238,0.1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(0,0,0,0.4)"; }}
+            >
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(34,211,238,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🤖</div>
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div style={{ fontFamily: T.display, fontSize: 15, color: "#67e8f9", letterSpacing: "0.02em" }}>Send your agent</div>
+                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 600, marginTop: 1 }}>Your AI plays MARKOV · watch it live</div>
+              </div>
+              <span style={{ color: "#67e8f9", fontSize: 18, flexShrink: 0 }}>›</span>
             </div>
           </>
         )}

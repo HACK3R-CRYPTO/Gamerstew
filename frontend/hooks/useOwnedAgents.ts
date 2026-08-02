@@ -26,7 +26,13 @@ const PARTNER_AGENTS_URL =
 // relies on Samuel's partner endpoint to answer "does this player already have
 // an agent?" and to show it instead of asking for anything. Pass every linked
 // wallet (embedded + external); results merge across all of them.
-export function useOwnedAgents(wallets: (string | undefined | null)[]) {
+export function useOwnedAgents(
+  wallets: (string | undefined | null)[],
+  // When set, re-fetch on this interval so live match state (activeMatchId,
+  // liveWatchUrl, livePhase) stays fresh and the lobby can flip to the live
+  // viewer the moment the agent steps into a match. Omit for a one-shot lookup.
+  pollMs?: number,
+) {
   const owners = useMemo(
     () =>
       Array.from(
@@ -53,38 +59,46 @@ export function useOwnedAgents(wallets: (string | undefined | null)[]) {
     }
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    Promise.all(
-      owners.map((owner) =>
-        fetch(`${PARTNER_AGENTS_URL}?owner=${owner}`)
-          .then((r) => (r.ok ? r.json() : { agents: [] }))
-          .then((d) => (Array.isArray(d?.agents) ? (d.agents as OwnedAgent[]) : []))
-          .catch(() => [] as OwnedAgent[]),
-      ),
-    )
-      .then((lists) => {
-        if (cancelled) return;
-        // Merge and de-dupe by agentAddress across every wallet.
-        const byAddress = new Map<string, OwnedAgent>();
-        for (const a of lists.flat()) {
-          if (a?.agentAddress) byAddress.set(a.agentAddress.toLowerCase(), a);
-        }
-        setAgents(Array.from(byAddress.values()));
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load your agents");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const load = (showSpinner: boolean) => {
+      if (showSpinner) setLoading(true);
+      Promise.all(
+        owners.map((owner) =>
+          fetch(`${PARTNER_AGENTS_URL}?owner=${owner}`)
+            .then((r) => (r.ok ? r.json() : { agents: [] }))
+            .then((d) => (Array.isArray(d?.agents) ? (d.agents as OwnedAgent[]) : []))
+            .catch(() => [] as OwnedAgent[]),
+        ),
+      )
+        .then((lists) => {
+          if (cancelled) return;
+          // Merge and de-dupe by agentAddress across every wallet.
+          const byAddress = new Map<string, OwnedAgent>();
+          for (const a of lists.flat()) {
+            if (a?.agentAddress) byAddress.set(a.agentAddress.toLowerCase(), a);
+          }
+          setAgents(Array.from(byAddress.values()));
+          setError(null);
+        })
+        .catch(() => {
+          if (!cancelled) setError("Could not load your agents");
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setLoading(false);
+          if (pollMs && pollMs > 0) timer = setTimeout(() => load(false), pollMs);
+        });
+    };
+
+    load(true);
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, pollMs]);
 
   return { agents, loading, error, hasAgent: agents.length > 0 };
 }
