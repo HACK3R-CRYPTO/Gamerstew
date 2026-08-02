@@ -60,38 +60,39 @@ export default async function Image({ params }: { params: Promise<{ address: str
         {/* legibility gradient · dark floor rising from the bottom */}
         <div style={{ position: "absolute", top: 0, left: 0, width: 1200, height: 630, display: "flex", background: "linear-gradient(180deg, rgba(10,2,38,0.18) 0%, rgba(10,2,38,0.55) 55%, rgba(10,2,38,0.94) 100%)" }} />
 
-        {/* pet · standing in its world, right side */}
+        {/* the fighter, ON the stage · the habitat art is a presentation
+            platform — the pet stands center-stage where the art wants it */}
         {petImg && (
-          <div style={{ position: "absolute", right: 90, top: 130, display: "flex" }}>
+          <div style={{ position: "absolute", left: 0, top: 96, width: 1200, display: "flex", justifyContent: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={petImg} alt="" width={290} height={290} style={{ objectFit: "contain" }} />
+            <img src={petImg} alt="" width={250} height={250} style={{ objectFit: "contain" }} />
           </div>
         )}
 
-        {/* identity + boast · anchored on the dark floor */}
-        <div style={{ position: "absolute", left: 96, bottom: 84, display: "flex", flexDirection: "column" }}>
+        {/* one focal column · name under the fighter, boasts under the name */}
+        <div style={{ position: "absolute", left: 0, bottom: 58, width: 1200, display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ display: "flex", fontSize: 58, fontWeight: 800, textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}>{name}</div>
+            <div style={{ display: "flex", fontSize: 62, fontWeight: 800, textShadow: "0 3px 16px rgba(0,0,0,0.85)" }}>{name}</div>
             {p?.minted && (
-              <div style={{ display: "flex", fontSize: 19, fontWeight: 800, color: "#86efac", background: "rgba(10,40,20,0.75)", border: "2px solid rgba(134,239,172,0.6)", borderRadius: 999, padding: "7px 18px" }}>
+              <div style={{ display: "flex", fontSize: 19, fontWeight: 800, color: "#86efac", background: "rgba(10,40,20,0.78)", border: "2px solid rgba(134,239,172,0.6)", borderRadius: 999, padding: "7px 18px" }}>
                 VERIFIED
               </div>
             )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 20 }}>
             {p?.rank && (
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, background: "rgba(10,2,38,0.72)", border: "2px solid rgba(251,191,36,0.55)", borderRadius: 18, padding: "12px 24px" }}>
-                <div style={{ display: "flex", fontSize: 44, fontWeight: 800, color: "#fbbf24" }}>#{p.rank}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, background: "rgba(10,2,38,0.78)", border: "2px solid rgba(251,191,36,0.55)", borderRadius: 18, padding: "11px 24px" }}>
+                <div style={{ display: "flex", fontSize: 42, fontWeight: 800, color: "#fbbf24" }}>#{p.rank}</div>
                 <div style={{ display: "flex", fontSize: 19, color: "rgba(220,210,255,0.85)", fontWeight: 700 }}>all-time</div>
               </div>
             )}
-            <div style={{ display: "flex", alignItems: "center", background: "rgba(10,2,38,0.72)", border: "2px solid rgba(255,255,255,0.18)", borderRadius: 18, padding: "12px 24px", fontSize: 24, fontWeight: 700, color: "rgba(230,222,255,0.95)" }}>
+            <div style={{ display: "flex", alignItems: "center", background: "rgba(10,2,38,0.78)", border: "2px solid rgba(255,255,255,0.18)", borderRadius: 18, padding: "11px 24px", fontSize: 24, fontWeight: 700, color: "rgba(230,222,255,0.95)" }}>
               LV {p?.level ?? 1} · {p?.gamesPlayed ?? 0} games{totalBadges > 0 ? ` · 🏅 ${totalBadges}` : ""}
             </div>
           </div>
 
-          <div style={{ display: "flex", marginTop: 24, fontSize: 22, fontWeight: 800, color: "#c4b5fd", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+          <div style={{ display: "flex", marginTop: 22, fontSize: 22, fontWeight: 800, color: "#c4b5fd", textShadow: "0 2px 10px rgba(0,0,0,0.85)" }}>
             GAMEARENAHQ.XYZ · free skill games on Celo · think you can beat me?
           </div>
         </div>
