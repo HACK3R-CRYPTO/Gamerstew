@@ -131,6 +131,9 @@ export default function ChallengeAiPage() {
   const { agents: ownedAgents } = useOwnedAgents(authed ? [address] : [], 15000);
   const myAgent = ownedAgents[0] ?? null;
   const [agentStrategy, setAgentStrategy] = useState<string | null>(null);
+  // Where the agent panel opens: "play" auto-launches the match; "settings"
+  // jumps straight into the full editor (lobby ⚙️) and Done returns here.
+  const [agentEntry, setAgentEntry] = useState<"play" | "settings">("play");
   useEffect(() => {
     if (!myAgent || agentStrategy !== null) return;
     let cancelled = false;
@@ -468,7 +471,8 @@ export default function ChallengeAiPage() {
             isGuest={!authed && !authPending}
             demoLeft={demoLeft}
             showAgentOption={authed}
-            onAgent={() => setPhase("agent")}
+            onAgent={() => { setAgentEntry("play"); setPhase("agent"); }}
+            onAgentSettings={() => { setAgentEntry("settings"); setPhase("agent"); }}
             isDesktop={isDesktop}
             agent={myAgent}
             agentStrategy={agentStrategy}
@@ -482,6 +486,7 @@ export default function ChallengeAiPage() {
             onBack={() => setPhase("lobby")}
             onDeploy={() => router.push("/agents")}
             strategyOverride={agentStrategy}
+            entry={agentEntry}
           />
         )}
         {phase === "vs" && <VsSting pet={pet} />}
@@ -522,7 +527,7 @@ export default function ChallengeAiPage() {
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
-  isGuest, demoLeft, showAgentOption, onAgent, isDesktop,
+  isGuest, demoLeft, showAgentOption, onAgent, onAgentSettings, isDesktop,
   agent, agentStrategy, onAgentStrategy, onDeploy,
 }: {
   pet: PetStage;
@@ -540,6 +545,7 @@ function Lobby({
   demoLeft: number;   // demo matches remaining before the sign-in ask
   showAgentOption: boolean; // signed-in players can hand the fight to their agent
   onAgent: () => void;      // launch the agent flow (sign → live match)
+  onAgentSettings: () => void; // open the full agent settings editor
   isDesktop: boolean;       // wide layout
   agent: OwnedAgent | null;         // the player's deployed agent, if any
   agentStrategy: string | null;     // inline loadout choice (MARKOV_STRATEGY)
@@ -852,6 +858,15 @@ function Lobby({
                     }}>{opt.label}</button>
                   );
                 })}
+                {/* full editor · one tap into the settings subscreen, Done
+                    returns here (quick choice inline, depth behind the gear) */}
+                <button
+                  onClick={onAgentSettings}
+                  title="All agent settings"
+                  style={{ padding: "9px 12px", minHeight: 36, borderRadius: 999, cursor: "pointer", background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontSize: 13, transition: "background 0.15s" }}
+                >
+                  ⚙️
+                </button>
               </div>
             )}
 

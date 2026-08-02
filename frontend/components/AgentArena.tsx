@@ -104,6 +104,7 @@ export default function AgentArena({
   onDeploy,
   autoPlay = true,
   strategyOverride = null,
+  entry = "play",
 }: {
   wallet?: string;
   onBack: () => void;
@@ -114,21 +115,27 @@ export default function AgentArena({
   autoPlay?: boolean;
   // Strategy picked in the lobby loadout · a change is signed+saved on play.
   strategyOverride?: string | null;
+  // "play" = auto-launch the match; "settings" = open the editor directly
+  // (lobby ⚙️) and Back/Done return straight to the lobby.
+  entry?: "play" | "settings";
 }) {
   // Poll the lookup every 5s so a fresh activeMatchId flips us into the live
   // view without the player doing anything.
   const { agents, loading, hasAgent } = useOwnedAgents([wallet], 5000);
   const agent = pickAgent(agents);
-  const [screen, setScreen] = useState<"main" | "settings">("main");
+  const [screen, setScreen] = useState<"main" | "settings">(entry === "settings" ? "settings" : "main");
 
   const inSettings = screen === "settings" && !!agent;
+  // Entered via the lobby ⚙️ → Back/Done return to the lobby, never to a
+  // stranded main panel (this screen is not a destination).
+  const settingsExit = entry === "settings" ? onBack : () => setScreen("main");
 
   return (
     <div style={{ animation: "riseIn 0.35s ease both", minHeight: "min(calc(100dvh - 230px), 640px)", display: "flex", flexDirection: "column" }}>
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <button
-          onClick={inSettings ? () => setScreen("main") : onBack}
+          onClick={inSettings ? settingsExit : onBack}
           style={{ background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, color: T.inkDim, borderRadius: 999, padding: "7px 13px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", fontFamily: T.body }}
         >
           ← Back
@@ -149,8 +156,8 @@ export default function AgentArena({
 
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
-      {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={() => setScreen("main")} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay} strategyOverride={strategyOverride} />}
+      {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play"} strategyOverride={strategyOverride} />}
     </div>
   );
 }
