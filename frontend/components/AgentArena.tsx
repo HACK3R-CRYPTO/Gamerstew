@@ -102,10 +102,15 @@ export default function AgentArena({
   wallet,
   onBack,
   onDeploy,
+  autoPlay = true,
 }: {
   wallet?: string;
   onBack: () => void;
   onDeploy: () => void;
+  // Launch the play flow as soon as the agent resolves. Tapping "SEND YOUR AI"
+  // in the lobby IS the intent — no second button stop (time-to-fun rule). The
+  // VS stage plays as the transition while the wallet prompt rises over it.
+  autoPlay?: boolean;
 }) {
   // Poll the lookup every 5s so a fresh activeMatchId flips us into the live
   // view without the player doing anything.
@@ -142,7 +147,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={() => setScreen("main")} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay} />}
     </div>
   );
 }
@@ -190,7 +195,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
+function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -240,6 +245,17 @@ function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
       setPhase("idle");
     }
   };
+
+  // One tap in the lobby = play. Fire the flow the moment the agent resolves;
+  // if the player cancels the signature, the VS stage stays with the button as
+  // the retry. Guarded so it fires once per visit.
+  const autoFired = useRef(false);
+  useEffect(() => {
+    if (!autoPlay || autoFired.current || !agent.deployId || matchId) return;
+    autoFired.current = true;
+    play();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay, agent.deployId, matchId]);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
