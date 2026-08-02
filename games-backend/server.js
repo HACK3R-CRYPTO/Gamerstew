@@ -2456,6 +2456,40 @@ app.post('/api/habitat/equip', requireSecret, async (req, res) => {
   res.json({ success: true, equipped: tier });
 });
 
+// ─── GoodCollective choice ──────────────────────────────────────────────────
+// Per-player attribution: which GoodCollective their G$ spending's UBI share
+// supports. On-chain the 20% flows to one pool, so this ledger drives display
+// (passport, impact) and future multi-pool routing. Table: collective_choice.
+
+// GET /api/collective/:address → { collectiveId } (null when never chosen)
+app.get('/api/collective/:address', async (req, res) => {
+  const addr = String(req.params.address || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return res.status(400).json({ error: 'Invalid address' });
+  try {
+    const { data } = await supabase
+      .from('collective_choice').select('collective_id').eq('wallet', addr).maybeSingle();
+    return res.json({ collectiveId: data?.collective_id ?? null });
+  } catch {
+    return res.json({ collectiveId: null });
+  }
+});
+
+// POST /api/collective/choose { address, collectiveId } · requireSecret: comes
+// through a Next server action for the connected wallet (same trust model as
+// /api/habitat/equip).
+app.post('/api/collective/choose', requireSecret, async (req, res) => {
+  const { address, collectiveId } = req.body || {};
+  const addr = String(address || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return res.status(400).json({ error: 'Invalid address' });
+  const id = String(collectiveId || '').trim();
+  if (!id || id.length > 64 || !/^[a-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'Invalid collective' });
+  const { error } = await supabase
+    .from('collective_choice')
+    .upsert({ wallet: addr, collective_id: id, set_at: new Date().toISOString() }, { onConflict: 'wallet' });
+  if (error) return res.status(500).json({ error: 'Persist failed' });
+  return res.json({ success: true, collectiveId: id });
+});
+
 // ─── GET /api/streak/:address ────────────────────────────────────────────
 app.get('/api/streak/:address', async (req, res) => {
   const addr = req.params.address.toLowerCase();
