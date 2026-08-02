@@ -13,8 +13,33 @@
 // GET /api/arena/live/:matchId.
 
 import { useEffect, useRef, useState } from "react";
+import { useSignMessage } from "wagmi";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
-import { playAgentMatch } from "@/app/actions/arena";
+import {
+  goodAgentsPlay, goodAgentsSchema, goodAgentsSettings, goodAgentsPatchSettings,
+  type AgentSettingField,
+} from "@/app/actions/goodagents";
+
+// The exact message a player signs to authorise a deploy action — must match
+// the host byte-for-byte (see GAMEARENA_PARTNER_API.md).
+function deployMsg(action: string, deployId: string, issuedAt: number): string {
+  return `GoodAgent deploy control\nAction: ${action}\nDeploy: ${deployId}\nIssued: ${issuedAt}`;
+}
+
+function errText(code?: string): string {
+  switch (code) {
+    case "unreachable": return "GoodAgents is unreachable right now.";
+    case "AGENT_NOT_VERIFIED": return "Your agent isn't verified yet.";
+    case "AGENT_BUSY": return "Your agent is already in a match.";
+    case "NOT_PROVISIONED": return "Your agent isn't set up to play yet.";
+    case "SKILL_NOT_INSTALLED": return "The arena skill isn't installed on your agent.";
+    case "INVALID_SIGNATURE":
+    case "SIGNATURE_EXPIRED":
+    case "OWNER_AUTH_REQUIRED": return "Signature didn't verify. Try again.";
+    case "GAMEARENA_FIRST_AGENT_ONLY": return "This works with your first agent only.";
+    default: return "Couldn't start the match. Try again.";
+  }
+}
 
 // Follows whichever backend the app points at (local:3005 in dev, Railway in
 // prod). Samuel's lookup usually hands us a full liveWatchUrl; this is only the
@@ -73,25 +98,38 @@ export default function AgentArena({
   // view without the player doing anything.
   const { agents, loading, hasAgent } = useOwnedAgents([wallet], 5000);
   const agent = pickAgent(agents);
+  const [screen, setScreen] = useState<"main" | "settings">("main");
+
+  const inSettings = screen === "settings" && !!agent;
 
   return (
     <div style={{ animation: "riseIn 0.35s ease both", minHeight: "calc(100dvh - 230px)", display: "flex", flexDirection: "column" }}>
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <button
-          onClick={onBack}
+          onClick={inSettings ? () => setScreen("main") : onBack}
           style={{ background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, color: T.inkDim, borderRadius: 999, padding: "7px 13px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", fontFamily: T.body }}
         >
           ← Back
         </button>
-        <span style={{ fontFamily: T.display, fontSize: 15, color: CYAN_SOFT, letterSpacing: "0.04em" }}>
-          🤖 YOUR AGENT
+        <span style={{ fontFamily: T.display, fontSize: 15, color: CYAN_SOFT, letterSpacing: "0.04em", flex: 1 }}>
+          {inSettings ? "⚙️ AGENT SETTINGS" : "🤖 YOUR AGENT"}
         </span>
+        {agent && !inSettings && (
+          <button
+            onClick={() => setScreen("settings")}
+            title="Agent settings"
+            style={{ background: "rgba(34,211,238,0.1)", border: "1px solid rgba(34,211,238,0.3)", color: CYAN_SOFT, borderRadius: 999, width: 34, height: 34, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            ⚙️
+          </button>
+        )}
       </div>
 
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
-      {agent && <AgentBody agent={agent} />}
+      {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={() => setScreen("main")} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} />}
     </div>
   );
 }
@@ -139,25 +177,45 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent }: { agent: OwnedAgent }) {
+function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
-  // with your agent" and watches the match live, just like manual play. The
-  // match id comes from a player-launched match or one the lookup already
-  // reports (activeMatchId).
-  const [launched, setLaunched] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
+  // with your agent", signs one message, and GoodAgents starts a real MARKOV
+  // match; we stream it live. The match id comes from that launch or one the
+  // lookup already reports (activeMatchId).
+  const { signMessageAsync } = useSignMessage();
+  const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(null);
+  const [phase, setPhase] = useState<"idle" | "signing" | "starting">("idle");
   const [err, setErr] = useState<string | null>(null);
-  const matchId = launched || agent.activeMatchId || null;
+
+  const matchId = launched?.matchId || agent.activeMatchId || null;
+  const watchUrl = launched?.matchId
+    ? launched.watchUrl
+    : agent.activeMatchId
+      ? agent.liveWatchUrl ?? null
+      : null;
   const name = agent.displayName || "Your agent";
+  const busy = phase !== "idle";
 
   const play = async () => {
-    setStarting(true);
+    if (!agent.deployId) { setErr("Agent isn't ready yet. Try again in a moment."); return; }
     setErr(null);
-    const out = await playAgentMatch(agent.agentAddress);
-    setStarting(false);
-    if (out.matchId) setLaunched(out.matchId);
-    else setErr(out.error === "backend_unreachable" ? "Arena is unreachable right now." : "Couldn't start the match. Try again.");
+    const owner = agent.ownerWallet || signer || "";
+    const issuedAt = Date.now();
+    try {
+      setPhase("signing");
+      const signature = await signMessageAsync({ message: deployMsg("play", agent.deployId, issuedAt) });
+      setPhase("starting");
+      const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
+      if (out.matchId) setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
+      else setErr(errText(out.error));
+    } catch (e: unknown) {
+      // User rejected the signature, or wallet threw.
+      const msg = (e as { message?: string })?.message || "";
+      setErr(/reject|denied|cancel/i.test(msg) ? "You cancelled the signature." : "Wallet couldn't sign. Try again.");
+    } finally {
+      setPhase("idle");
+    }
   };
 
   return (
@@ -167,22 +225,23 @@ function AgentBody({ agent }: { agent: OwnedAgent }) {
         <LiveMatch
           key={matchId}
           matchId={matchId}
-          watchUrl={agent.activeMatchId === matchId ? agent.liveWatchUrl ?? null : null}
+          watchUrl={watchUrl}
           agentName={name}
-          onPlayAgain={launched === matchId ? () => { setLaunched(null); setErr(null); } : undefined}
+          onPlayAgain={launched?.matchId === matchId ? () => { setLaunched(null); setErr(null); } : undefined}
         />
       ) : (
-        <PlayWithAgent name={name} starting={starting} err={err} onPlay={play} />
+        <PlayWithAgent name={name} phase={phase} busy={busy} err={err} onPlay={play} />
       )}
     </div>
   );
 }
 
 // Native "play with your agent" surface — feels like the manual FIGHT button.
-// The player taps it, their deployed agent steps into MARKOV, and the match
-// streams live right here. (The start currently routes through our stand-in
-// driver; it swaps to GoodAgents' real start-match call when Samuel ships it.)
-function PlayWithAgent({ name, starting, err, onPlay }: { name: string; starting: boolean; err: string | null; onPlay: () => void }) {
+// The player taps it, signs once, their deployed agent steps into MARKOV on
+// GoodAgents, and the match streams live right here.
+function PlayWithAgent({ name, phase, busy, err, onPlay }: { name: string; phase: "idle" | "signing" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
+  const label = phase === "signing" ? "CONFIRM IN YOUR WALLET…" : phase === "starting" ? "SENDING AGENT IN…" : "🤖 PLAY WITH YOUR AGENT";
+  const starting = busy;
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 8px" }}>
       <div style={{ position: "relative" }}>
@@ -208,8 +267,8 @@ function PlayWithAgent({ name, starting, err, onPlay }: { name: string; starting
       >
         <div style={{ borderRadius: "16px 16px 12px 12px", background: starting ? "rgba(34,211,238,0.4)" : `linear-gradient(160deg, #a5f3fc 0%, ${CYAN} 50%, #0e7490 100%)`, padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
           <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-          <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 17, color: "#062c38", letterSpacing: "0.04em" }}>
-            {starting ? "SUMMONING MARKOV…" : "🤖 PLAY WITH YOUR AGENT"}
+          <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: phase === "idle" ? 17 : 14, color: "#062c38", letterSpacing: "0.04em" }}>
+            {label}
           </span>
         </div>
       </div>
@@ -258,21 +317,42 @@ function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: str
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const url = watchUrl || `${LIVE_BASE}/${matchId}`;
+    // Prefer GoodAgents' own stream (watchUrl); if it errors before delivering a
+    // single frame, fall back to our arena feed on the same matchId. Matches
+    // carry the same am_ id on both sides, so the fallback is a real safety net
+    // rather than a guess.
+    const primary = watchUrl || `${LIVE_BASE}/${matchId}`;
+    const fallback = watchUrl ? `${LIVE_BASE}/${matchId}` : null;
+    let gotFrame = false;
+    let usedFallback = false;
     let es: EventSource | null = null;
-    try {
-      es = new EventSource(url);
-    } catch {
-      return;
-    }
-    es.onopen = () => setConnected(true);
-    es.onmessage = (ev) => {
+
+    const connect = (url: string) => {
+      try {
+        es = new EventSource(url);
+      } catch {
+        return;
+      }
+      es.onopen = () => setConnected(true);
+      es.onmessage = onFrame;
+      es.onerror = () => {
+        setConnected(false);
+        if (!gotFrame && fallback && !usedFallback) {
+          usedFallback = true;
+          es?.close();
+          connect(fallback);
+        }
+      };
+    };
+
+    const onFrame = (ev: MessageEvent) => {
       let frame: Record<string, unknown>;
       try {
         frame = JSON.parse(ev.data);
       } catch {
         return;
       }
+      gotFrame = true; // a valid frame arrived · don't fall back
       const type = frame.type;
       if (type === "hello") {
         setConnected(true);
@@ -299,7 +379,8 @@ function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: str
         es?.close();
       }
     };
-    es.onerror = () => setConnected(false);
+
+    connect(primary);
     return () => es?.close();
   }, [matchId, watchUrl]);
 
@@ -433,6 +514,165 @@ function MatchEnd({ final, score, agentName, onPlayAgain }: { final: LiveFinal; 
           ↻ Send in again
         </button>
       )}
+    </div>
+  );
+}
+
+// ═══ settings ═════════════════════════════════════════════════════════════════
+// Schema-driven config, rendered natively from GoodAgents' /settings/schema.
+// Saving signs one "configuration" message and PATCHes the host. Only the
+// fields the host advertises show up, so new options appear automatically.
+function SettingsScreen({ agent, signer, onDone }: { agent: OwnedAgent; signer?: string; onDone: () => void }) {
+  const { signMessageAsync } = useSignMessage();
+  const [fields, setFields] = useState<AgentSettingField[]>([]);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
+  const owner = agent.ownerWallet || signer || "";
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([goodAgentsSchema(), goodAgentsSettings(owner)]).then(([schema, cur]) => {
+      if (cancelled) return;
+      const fs = schema.fields || [];
+      setFields(fs);
+      const init: Record<string, unknown> = {};
+      for (const f of fs) init[f.key] = cur.configuration?.[f.key] ?? f.default ?? "";
+      setValues(init);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [owner]);
+
+  const set = (k: string, v: unknown) => setValues((prev) => ({ ...prev, [k]: v }));
+
+  const save = async () => {
+    if (!agent.deployId) return;
+    setSaving(true);
+    setMsg(null);
+    const issuedAt = Date.now();
+    try {
+      const signature = await signMessageAsync({ message: deployMsg("configuration", agent.deployId, issuedAt) });
+      const out = await goodAgentsPatchSettings(owner, { ownerWallet: signer || owner, issuedAt, signature, configuration: values });
+      if (out.ok) { setMsg({ ok: true, text: "Saved" + (out.restarted ? " · agent restarted" : "") }); }
+      else setMsg({ text: errText(out.error) });
+    } catch (e: unknown) {
+      const m = (e as { message?: string })?.message || "";
+      setMsg({ text: /reject|denied|cancel/i.test(m) ? "You cancelled the signature." : "Wallet couldn't sign. Try again." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Skeleton />;
+
+  if (fields.length === 0) {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: T.inkDim, fontFamily: T.body, fontSize: 13, gap: 6 }}>
+        <div style={{ fontSize: 34 }}>⚙️</div>
+        No settings to configure right now.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, fontWeight: 600, lineHeight: 1.5 }}>
+        Tune how <span style={{ color: CYAN_SOFT, fontWeight: 800 }}>{agent.displayName || "your agent"}</span> plays. Saving asks for one signature to prove it's you.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {fields.filter((f) => visibleWhen(f, values)).map((f) => (
+          <Field key={f.key} field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} />
+        ))}
+      </div>
+
+      {msg && (
+        <div style={{ fontFamily: T.body, fontSize: 12, fontWeight: 700, color: msg.ok ? "#86efac" : "#fca5a5", textAlign: "center" }}>
+          {msg.ok ? "✓ " : ""}{msg.text}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <button
+          onClick={onDone}
+          style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, borderRadius: 14, padding: "13px", fontFamily: T.display, fontSize: 14, cursor: "pointer" }}
+        >
+          Done
+        </button>
+        <button
+          onClick={saving ? undefined : save}
+          style={{ flex: 2, background: saving ? "rgba(34,211,238,0.4)" : `linear-gradient(160deg, #a5f3fc 0%, ${CYAN} 60%, #0e7490 100%)`, border: "2px solid rgba(255,255,255,0.4)", color: "#062c38", borderRadius: 14, padding: "13px", fontFamily: T.display, fontSize: 14, letterSpacing: "0.03em", cursor: saving ? "wait" : "pointer", boxShadow: `0 10px 22px -6px ${CYAN}66` }}
+        >
+          {saving ? "SIGNING…" : "💾 SAVE SETTINGS"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Honor the schema's `when` clause — a field shows only when the named fields
+// currently hold the given values (e.g. sequence moves only for the sequence
+// strategy). Keeps the form tidy instead of dumping every key at once.
+function visibleWhen(field: AgentSettingField, values: Record<string, unknown>): boolean {
+  if (!field.when) return true;
+  return Object.entries(field.when).every(([k, v]) => String(values[k]) === String(v));
+}
+
+function Field({ field, value, onChange }: { field: AgentSettingField; value: unknown; onChange: (v: unknown) => void }) {
+  const labelRow = (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+      <span style={{ fontFamily: T.body, fontSize: 12.5, color: "#fff", fontWeight: 700 }}>{field.label || field.key}</span>
+      {field.hint && <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft }}>{field.hint}</span>}
+    </div>
+  );
+  const box = { background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 12, padding: "11px 12px", display: "flex", flexDirection: "column" as const, gap: 8 };
+
+  if (field.type === "enum" && field.options) {
+    return (
+      <div style={box}>
+        {labelRow}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {field.options.map((opt) => {
+            const on = String(value) === opt;
+            return (
+              <button key={opt} onClick={() => onChange(opt)} style={{
+                padding: "6px 12px", borderRadius: 999, cursor: "pointer",
+                background: on ? CYAN : "rgba(255,255,255,0.05)",
+                border: `1px solid ${on ? CYAN : T.hairline}`,
+                color: on ? "#062c38" : T.inkDim,
+                fontFamily: T.body, fontSize: 11.5, fontWeight: 800,
+              }}>{opt}</button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (field.type === "boolean") {
+    const on = value === true || value === "true";
+    return (
+      <div style={{ ...box, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontFamily: T.body, fontSize: 12.5, color: "#fff", fontWeight: 700 }}>{field.label || field.key}</span>
+        <button onClick={() => onChange(!on)} style={{ width: 46, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: on ? CYAN : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s" }}>
+          <span style={{ position: "absolute", top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+        </button>
+      </div>
+    );
+  }
+
+  // number / string / fallback
+  return (
+    <div style={box}>
+      {labelRow}
+      <input
+        type={field.type === "number" ? "number" : "text"}
+        value={value === undefined || value === null ? "" : String(value)}
+        onChange={(e) => onChange(field.type === "number" ? e.target.value : e.target.value)}
+        style={{ background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 10, padding: "9px 11px", color: "#fff", fontFamily: T.body, fontSize: 13, outline: "none" }}
+      />
     </div>
   );
 }
