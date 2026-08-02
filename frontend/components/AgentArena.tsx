@@ -118,6 +118,12 @@ export default function AgentArena({
   const agent = pickAgent(agents);
   const [screen, setScreen] = useState<"main" | "settings">("main");
 
+  // First visit = one loadout moment (pick a strategy, smart default selected);
+  // every visit after = one-tap auto-launch. The flag flips on first launch.
+  const [ftueDone] = useState(() => {
+    try { return localStorage.getItem("ga_agent_ftue") === "1"; } catch { return true; }
+  });
+
   const inSettings = screen === "settings" && !!agent;
 
   return (
@@ -147,7 +153,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={() => setScreen("main")} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && ftueDone} />}
     </div>
   );
 }
@@ -203,8 +209,24 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
   // lookup already reports (activeMatchId).
   const { signMessageAsync } = useSignMessage();
   const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(null);
-  const [phase, setPhase] = useState<"idle" | "signing" | "waking" | "starting">("idle");
+  const [phase, setPhase] = useState<"idle" | "signing" | "saving" | "waking" | "starting">("idle");
   const [err, setErr] = useState<string | null>(null);
+
+  // Loadout: the ONE pre-match choice (strategy). Loaded from the host so the
+  // chips reflect reality; changing it bundles a signed save into the play tap.
+  const [strategy, setStrategy] = useState<string | null>(null);
+  const [savedStrategy, setSavedStrategy] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    goodAgentsSettings(agent.ownerWallet || signer || "").then((s) => {
+      if (cancelled) return;
+      const cur = (s.configuration?.MARKOV_STRATEGY as string) || "random";
+      setStrategy(cur);
+      setSavedStrategy(cur);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.deployId]);
 
   const matchId = launched?.matchId || agent.activeMatchId || null;
   const watchUrl = launched?.matchId
@@ -220,6 +242,20 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
     setErr(null);
     const owner = agent.ownerWallet || signer || "";
     try {
+      // Loadout change rides along: if the player picked a different strategy,
+      // sign + save it before the match so the agent actually plays that way.
+      if (strategy && savedStrategy && strategy !== savedStrategy) {
+        setPhase("signing");
+        const saveAt = Date.now();
+        const saveSig = await signMessageAsync({ message: deployMsg("configuration", agent.deployId, saveAt) });
+        setPhase("saving");
+        const saved = await goodAgentsPatchSettings(owner, {
+          ownerWallet: signer || owner, issuedAt: saveAt, signature: saveSig,
+          configuration: { MARKOV_STRATEGY: strategy },
+        });
+        if (!saved.ok) { setErr(errText(saved.error)); return; }
+        setSavedStrategy(strategy);
+      }
       // A paused agent can't play — wake it first (signed "resume"), then play.
       // Two signatures only in that case; a running agent signs once.
       if (agent.status === "paused" || agent.readyToPlay === false) {
@@ -235,8 +271,10 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
       const signature = await signMessageAsync({ message: deployMsg("play", agent.deployId, issuedAt) });
       setPhase("starting");
       const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
-      if (out.matchId) setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
-      else setErr(errText(out.error));
+      if (out.matchId) {
+        setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
+        try { localStorage.setItem("ga_agent_ftue", "1"); } catch {} // first launch done → one-tap next time
+      } else setErr(errText(out.error));
     } catch (e: unknown) {
       // User rejected the signature, or wallet threw.
       const msg = (e as { message?: string })?.message || "";
@@ -271,7 +309,7 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
           />
         </>
       ) : (
-        <VersusStage agent={agent} phase={phase} busy={busy} err={err} onPlay={play} />
+        <VersusStage agent={agent} phase={phase} busy={busy} err={err} onPlay={play} strategy={strategy} savedStrategy={savedStrategy} onStrategy={setStrategy} />
       )}
     </div>
   );
@@ -288,9 +326,25 @@ const AGENT_TAUNTS = [
   "deploy it. i'll study it. i'll break it.",
 ];
 
-function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; phase: "idle" | "signing" | "waking" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
+// Strategy options mirror the host schema's MARKOV_STRATEGY enum (the full
+// schema-driven editor lives in Settings; this strip is the quick loadout).
+const STRATEGY_OPTIONS = [
+  { id: "random", label: "🎲 Random" },
+  { id: "counter", label: "🧠 Counter" },
+  { id: "sequence", label: "🔁 Sequence" },
+  { id: "fixed", label: "📌 Fixed" },
+];
+
+function VersusStage({ agent, phase, busy, err, onPlay, strategy, savedStrategy, onStrategy }: { agent: OwnedAgent; phase: "idle" | "signing" | "saving" | "waking" | "starting"; busy: boolean; err: string | null; onPlay: () => void; strategy: string | null; savedStrategy: string | null; onStrategy: (s: string) => void }) {
   const name = agent.displayName || "Your agent";
-  const label = phase === "signing" ? "CONFIRM IN YOUR WALLET…" : phase === "waking" ? "WAKING YOUR AGENT…" : phase === "starting" ? "SENDING AGENT IN…" : "🤖 PLAY WITH YOUR AGENT";
+  const changed = !!strategy && !!savedStrategy && strategy !== savedStrategy;
+  const label =
+    phase === "signing" ? "CONFIRM IN YOUR WALLET…"
+    : phase === "saving" ? "SAVING GAME PLAN…"
+    : phase === "waking" ? "WAKING YOUR AGENT…"
+    : phase === "starting" ? "SENDING AGENT IN…"
+    : changed ? "💾 SAVE & PLAY"
+    : "🤖 PLAY WITH YOUR AGENT";
   const [tauntIdx, setTauntIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTauntIdx((i) => (i + 1) % AGENT_TAUNTS.length), 5000);
@@ -345,6 +399,32 @@ function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; p
           <span key={chip} style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "5px 11px" }}>{chip}</span>
         ))}
       </div>
+
+      {/* loadout · the ONE pre-match choice, smart default pre-selected. The
+          full editor stays behind ⚙️; changing here bundles a signed save into
+          the play tap ("SAVE & PLAY"). */}
+      {strategy && (
+        <div style={{ marginTop: 14, alignSelf: "center", width: "100%", maxWidth: 340 }}>
+          <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.14em", color: T.inkSoft, textAlign: "center", marginBottom: 7 }}>
+            {name.toUpperCase()}&apos;S GAME PLAN
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+            {STRATEGY_OPTIONS.map((opt) => {
+              const on = strategy === opt.id;
+              return (
+                <button key={opt.id} onClick={busy ? undefined : () => onStrategy(opt.id)} style={{
+                  padding: "7px 13px", borderRadius: 999, cursor: busy ? "default" : "pointer",
+                  background: on ? CYAN : "rgba(0,0,0,0.4)",
+                  border: `1px solid ${on ? CYAN : T.hairline}`,
+                  color: on ? "#062c38" : T.inkDim,
+                  fontFamily: T.body, fontSize: 11.5, fontWeight: 800,
+                  transition: "background 0.15s, color 0.15s",
+                }}>{opt.label}</button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {err && <div style={{ marginTop: 12, fontFamily: T.body, fontSize: 12, color: "#fca5a5", textAlign: "center" }}>{err}</div>}
 
