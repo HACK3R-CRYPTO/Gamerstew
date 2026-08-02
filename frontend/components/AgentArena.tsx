@@ -70,7 +70,7 @@ const AGENT_ART = "/games/challenge-ai-v2/ai-bot-easy.png";
 // hue steps and rotate the base art's palette. Deterministic — the same agent
 // always wears the same colors, on the VS stage, the live card, everywhere.
 // (Stage 2 is bought skins in the Arena Mall; this ships identity for free.)
-function agentHue(address: string): number {
+export function agentHue(address: string): number {
   let h = 0;
   for (const c of (address || "").toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return (h % 12) * 30;
@@ -103,6 +103,7 @@ export default function AgentArena({
   onBack,
   onDeploy,
   autoPlay = true,
+  strategyOverride = null,
 }: {
   wallet?: string;
   onBack: () => void;
@@ -111,18 +112,14 @@ export default function AgentArena({
   // in the lobby IS the intent — no second button stop (time-to-fun rule). The
   // VS stage plays as the transition while the wallet prompt rises over it.
   autoPlay?: boolean;
+  // Strategy picked in the lobby loadout · a change is signed+saved on play.
+  strategyOverride?: string | null;
 }) {
   // Poll the lookup every 5s so a fresh activeMatchId flips us into the live
   // view without the player doing anything.
   const { agents, loading, hasAgent } = useOwnedAgents([wallet], 5000);
   const agent = pickAgent(agents);
   const [screen, setScreen] = useState<"main" | "settings">("main");
-
-  // First visit = one loadout moment (pick a strategy, smart default selected);
-  // every visit after = one-tap auto-launch. The flag flips on first launch.
-  const [ftueDone] = useState(() => {
-    try { return localStorage.getItem("ga_agent_ftue") === "1"; } catch { return true; }
-  });
 
   const inSettings = screen === "settings" && !!agent;
 
@@ -153,7 +150,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={() => setScreen("main")} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && ftueDone} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay} strategyOverride={strategyOverride} />}
     </div>
   );
 }
@@ -201,7 +198,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -221,7 +218,9 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
     goodAgentsSettings(agent.ownerWallet || signer || "").then((s) => {
       if (cancelled) return;
       const cur = (s.configuration?.MARKOV_STRATEGY as string) || "random";
-      setStrategy(cur);
+      // Lobby loadout wins: if the player picked a strategy there, carry it in
+      // (differs from saved → play() signs the save on the same tap).
+      setStrategy(strategyOverride || cur);
       setSavedStrategy(cur);
     });
     return () => { cancelled = true; };
@@ -271,10 +270,8 @@ function AgentBody({ agent, signer, autoPlay }: { agent: OwnedAgent; signer?: st
       const signature = await signMessageAsync({ message: deployMsg("play", agent.deployId, issuedAt) });
       setPhase("starting");
       const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
-      if (out.matchId) {
-        setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
-        try { localStorage.setItem("ga_agent_ftue", "1"); } catch {} // first launch done → one-tap next time
-      } else setErr(errText(out.error));
+      if (out.matchId) setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
+      else setErr(errText(out.error));
     } catch (e: unknown) {
       // User rejected the signature, or wallet threw.
       const msg = (e as { message?: string })?.message || "";
