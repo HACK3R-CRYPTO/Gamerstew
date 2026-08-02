@@ -15,6 +15,9 @@ export type OwnedAgent = {
   status: string | null;
   verified?: boolean;
   readyToPlay?: boolean;
+  dailyCapReached?: boolean;
+  matchesToday?: number;
+  dailyMatchCap?: number;
   activeMatchId: string | null;
   livePhase: string | null;
   liveWatchUrl: string | null;

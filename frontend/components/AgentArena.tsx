@@ -157,7 +157,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play"} strategyOverride={strategyOverride} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} />}
     </div>
   );
 }
@@ -205,7 +205,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay, strategyOverride }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -313,7 +313,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride }: { agent: Owned
           />
         </>
       ) : (
-        <VersusStage agent={agent} phase={phase} busy={busy} err={err} onPlay={play} strategy={strategy} savedStrategy={savedStrategy} onStrategy={setStrategy} />
+        <VersusStage agent={agent} phase={phase} busy={busy} err={err} onPlay={play} strategy={strategy} savedStrategy={savedStrategy} onStrategy={setStrategy} onSettings={onSettings} />
       )}
     </div>
   );
@@ -339,14 +339,18 @@ const STRATEGY_OPTIONS = [
   { id: "fixed", label: "📌 Fixed" },
 ];
 
-function VersusStage({ agent, phase, busy, err, onPlay, strategy, savedStrategy, onStrategy }: { agent: OwnedAgent; phase: "idle" | "signing" | "saving" | "waking" | "starting"; busy: boolean; err: string | null; onPlay: () => void; strategy: string | null; savedStrategy: string | null; onStrategy: (s: string) => void }) {
+function VersusStage({ agent, phase, busy, err, onPlay, strategy, savedStrategy, onStrategy, onSettings }: { agent: OwnedAgent; phase: "idle" | "signing" | "saving" | "waking" | "starting"; busy: boolean; err: string | null; onPlay: () => void; strategy: string | null; savedStrategy: string | null; onStrategy: (s: string) => void; onSettings?: () => void }) {
   const name = agent.displayName || "Your agent";
   const changed = !!strategy && !!savedStrategy && strategy !== savedStrategy;
+  // Daily cap spent → the play button becomes the fix (raise the cap in
+  // settings), never a dead click or a doomed signature.
+  const capped = !!agent.dailyCapReached;
   const label =
     phase === "signing" ? "CONFIRM IN YOUR WALLET…"
     : phase === "saving" ? "SAVING GAME PLAN…"
     : phase === "waking" ? "WAKING YOUR AGENT…"
     : phase === "starting" ? "SENDING AGENT IN…"
+    : capped ? "⚙️ RAISE DAILY CAP"
     : changed ? "💾 SAVE & PLAY"
     : "🤖 PLAY WITH YOUR AGENT";
   const [tauntIdx, setTauntIdx] = useState(0);
@@ -430,12 +434,18 @@ function VersusStage({ agent, phase, busy, err, onPlay, strategy, savedStrategy,
         </div>
       )}
 
+      {capped && (
+        <div style={{ marginTop: 12, alignSelf: "center", display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: 999, padding: "7px 14px", fontFamily: T.body, fontSize: 11, fontWeight: 700, color: RIM }}>
+          🎟 {name} played {agent.matchesToday ?? agent.dailyMatchCap ?? ""}/{agent.dailyMatchCap ?? ""} matches today — cap resets daily
+        </div>
+      )}
+
       {err && <div style={{ marginTop: 12, fontFamily: T.body, fontSize: 12, color: "#fca5a5", textAlign: "center" }}>{err}</div>}
 
       {/* thumb zone · one action */}
       <div
         role="button"
-        onClick={busy ? undefined : onPlay}
+        onClick={busy ? undefined : capped ? onSettings : onPlay}
         style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, width: "100%", maxWidth: 340, margin: "16px auto 0", boxShadow: `0 12px 26px -6px ${CYAN}66, inset 0 -3px 8px rgba(0,0,0,0.4)`, transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
         onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
         onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
