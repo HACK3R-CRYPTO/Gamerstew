@@ -538,8 +538,12 @@ function Lobby({
   return (
     <div
       style={{
-        // Full scene: fills the viewport between AppHeader and bottom nav.
-        minHeight: "calc(100dvh - 230px)",
+        // Full scene between AppHeader and bottom nav — but CAPPED. On tall
+        // desktop viewports an uncapped 100dvh scene stretches the lockup
+        // (bubble → boss → glow → nameplate) apart: voids open, the floor glow
+        // detaches from MARKOV's feet, the pet floats in dead space. Capping
+        // keeps the composition tight; the page centers it instead.
+        minHeight: "min(calc(100dvh - 230px), 640px)",
         display: "flex",
         flexDirection: "column",
         position: "relative",

@@ -103,7 +103,7 @@ export default function AgentArena({
   const inSettings = screen === "settings" && !!agent;
 
   return (
-    <div style={{ animation: "riseIn 0.35s ease both", minHeight: "calc(100dvh - 230px)", display: "flex", flexDirection: "column" }}>
+    <div style={{ animation: "riseIn 0.35s ease both", minHeight: "min(calc(100dvh - 230px), 640px)", display: "flex", flexDirection: "column" }}>
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <button
