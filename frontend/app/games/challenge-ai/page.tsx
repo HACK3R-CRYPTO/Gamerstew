@@ -754,7 +754,7 @@ function Lobby({
               <div
                 role="button"
                 onClick={busy ? undefined : onStart}
-                style={{ flex: isDesktop && showAgentOption ? 1.35 : undefined, cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+                style={{ flex: isDesktop && showAgentOption ? 1 : undefined, cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
                 onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                 onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
@@ -767,7 +767,7 @@ function Lobby({
                       {busy ? "SUMMONING MARKOV…" : "⚔️ FIGHT"}
                     </div>
                     {!busy && (
-                      <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
+                      <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, textShadow: "0 1px 3px rgba(0,0,0,0.4)", whiteSpace: "nowrap" }}>
                         YOU THROW THE MOVES
                       </div>
                     )}
@@ -792,8 +792,8 @@ function Lobby({
                       <div style={{ fontFamily: T.display, fontSize: 15.5, color: "#062c38", letterSpacing: "0.04em" }}>
                         🤖 SEND YOUR AI
                       </div>
-                      <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 1, opacity: 0.85 }}>
-                        IT FIGHTS FOR YOU · YOU WATCH LIVE
+                      <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.04em", marginTop: 1, opacity: 0.85, whiteSpace: "nowrap" }}>
+                        IT FIGHTS · YOU WATCH LIVE
                       </div>
                     </div>
                   </div>
