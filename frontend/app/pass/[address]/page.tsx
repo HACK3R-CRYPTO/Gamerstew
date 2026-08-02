@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: { params: Promise<{ address: 
   const title = `${name} · Game Arena Passport`;
   const description = `${p.rank ? `Ranked #${p.rank} · ` : ""}LV ${p.level} · ${p.gamesPlayed} games played · ${
     p.badges.gold + p.badges.silver + p.badges.bronze
-  } podium badges. Free skill games on Celo — think you can beat them?`;
+  } podium badges. Quick games that make you sharper, on Celo — think you can beat them?`;
   return {
     title,
     description,

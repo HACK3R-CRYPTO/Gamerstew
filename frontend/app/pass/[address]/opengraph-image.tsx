@@ -63,9 +63,9 @@ export default async function Image({ params }: { params: Promise<{ address: str
         {/* the fighter, ON the stage · the habitat art is a presentation
             platform — the pet stands center-stage where the art wants it */}
         {petImg && (
-          <div style={{ position: "absolute", left: 0, top: 96, width: 1200, display: "flex", justifyContent: "center" }}>
+          <div style={{ position: "absolute", left: 0, top: 82, width: 1200, display: "flex", justifyContent: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={petImg} alt="" width={250} height={250} style={{ objectFit: "contain" }} />
+            <img src={petImg} alt="" width={276} height={276} style={{ objectFit: "contain" }} />
           </div>
         )}
 
@@ -93,7 +93,7 @@ export default async function Image({ params }: { params: Promise<{ address: str
           </div>
 
           <div style={{ display: "flex", marginTop: 22, fontSize: 22, fontWeight: 800, color: "#c4b5fd", textShadow: "0 2px 10px rgba(0,0,0,0.85)" }}>
-            GAMEARENAHQ.XYZ · free skill games on Celo · think you can beat me?
+            GAMEARENAHQ.XYZ · quick games that make you sharper · think you can beat me?
           </div>
         </div>
       </div>
