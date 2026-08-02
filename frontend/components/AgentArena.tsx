@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSignMessage } from "wagmi";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import {
-  goodAgentsPlay, goodAgentsSchema, goodAgentsSettings, goodAgentsPatchSettings,
+  goodAgentsPlay, goodAgentsSchema, goodAgentsSettings, goodAgentsPatchSettings, goodAgentsStart,
   type AgentSettingField,
 } from "@/app/actions/goodagents";
 
@@ -198,7 +198,7 @@ function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
   // lookup already reports (activeMatchId).
   const { signMessageAsync } = useSignMessage();
   const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(null);
-  const [phase, setPhase] = useState<"idle" | "signing" | "starting">("idle");
+  const [phase, setPhase] = useState<"idle" | "signing" | "waking" | "starting">("idle");
   const [err, setErr] = useState<string | null>(null);
 
   const matchId = launched?.matchId || agent.activeMatchId || null;
@@ -214,9 +214,19 @@ function AgentBody({ agent, signer }: { agent: OwnedAgent; signer?: string }) {
     if (!agent.deployId) { setErr("Agent isn't ready yet. Try again in a moment."); return; }
     setErr(null);
     const owner = agent.ownerWallet || signer || "";
-    const issuedAt = Date.now();
     try {
+      // A paused agent can't play — wake it first (signed "resume"), then play.
+      // Two signatures only in that case; a running agent signs once.
+      if (agent.status === "paused" || agent.readyToPlay === false) {
+        setPhase("signing");
+        const wakeAt = Date.now();
+        const wakeSig = await signMessageAsync({ message: deployMsg("resume", agent.deployId, wakeAt) });
+        setPhase("waking");
+        const woke = await goodAgentsStart(agent.deployId, { ownerWallet: signer || owner, issuedAt: wakeAt, signature: wakeSig });
+        if (!woke.ok) { setErr(errText(woke.error)); return; }
+      }
       setPhase("signing");
+      const issuedAt = Date.now();
       const signature = await signMessageAsync({ message: deployMsg("play", agent.deployId, issuedAt) });
       setPhase("starting");
       const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
@@ -262,9 +272,9 @@ const AGENT_TAUNTS = [
   "deploy it. i'll study it. i'll break it.",
 ];
 
-function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; phase: "idle" | "signing" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
+function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; phase: "idle" | "signing" | "waking" | "starting"; busy: boolean; err: string | null; onPlay: () => void }) {
   const name = agent.displayName || "Your agent";
-  const label = phase === "signing" ? "CONFIRM IN YOUR WALLET…" : phase === "starting" ? "SENDING AGENT IN…" : "🤖 PLAY WITH YOUR AGENT";
+  const label = phase === "signing" ? "CONFIRM IN YOUR WALLET…" : phase === "waking" ? "WAKING YOUR AGENT…" : phase === "starting" ? "SENDING AGENT IN…" : "🤖 PLAY WITH YOUR AGENT";
   const [tauntIdx, setTauntIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTauntIdx((i) => (i + 1) % AGENT_TAUNTS.length), 5000);

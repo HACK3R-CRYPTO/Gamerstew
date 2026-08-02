@@ -81,6 +81,27 @@ export async function goodAgentsPatchSettings(
   }
 }
 
+// Resume a paused agent (owner signs the "resume" action). A paused agent
+// can't play — this wakes its process on GoodAgents so /play can run.
+export async function goodAgentsStart(
+  deployId: string,
+  body: { ownerWallet: string; issuedAt: number; signature: string },
+): Promise<{ ok?: boolean; status?: string; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/agents/${deployId}/start`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data?.error || `http_${res.status}` };
+    return { ok: true, status: data?.status };
+  } catch {
+    return { error: 'unreachable' };
+  }
+}
+
 export type PlayResult = {
   matchId?: string;
   agentAddress?: string;
