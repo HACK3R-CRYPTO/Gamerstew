@@ -19,6 +19,14 @@ function authHeaders(json = true): Record<string, string> {
   return h;
 }
 
+// Never let a hung partner host hang OUR UI: every call gets a deadline.
+// Reads fail fast; play/start get longer since they boot an agent process.
+const READ_TIMEOUT_MS = 12_000;
+const WRITE_TIMEOUT_MS = 45_000;
+function deadline(ms: number): AbortSignal {
+  return AbortSignal.timeout(ms);
+}
+
 export type AgentSettingField = {
   key: string;
   type: string;              // "enum" | "number" | "boolean" | "string" | ...
@@ -32,7 +40,7 @@ export type AgentSettingsSchema = { skillId?: string; fields: AgentSettingField[
 
 export async function goodAgentsSchema(): Promise<AgentSettingsSchema> {
   try {
-    const res = await fetch(`${BASE}/settings/schema`, { headers: authHeaders(false), cache: 'no-store' });
+    const res = await fetch(`${BASE}/settings/schema`, { headers: authHeaders(false), cache: 'no-store', signal: deadline(READ_TIMEOUT_MS) });
     const data = await res.json();
     return { skillId: data?.skillId, fields: Array.isArray(data?.fields) ? data.fields : [] };
   } catch {
@@ -53,7 +61,7 @@ export type AgentSettings = {
 
 export async function goodAgentsSettings(owner: string): Promise<AgentSettings> {
   try {
-    const res = await fetch(`${BASE}/settings?owner=${owner}`, { headers: authHeaders(false), cache: 'no-store' });
+    const res = await fetch(`${BASE}/settings?owner=${owner}`, { headers: authHeaders(false), cache: 'no-store', signal: deadline(READ_TIMEOUT_MS) });
     if (!res.ok) return { error: res.status === 404 ? 'no_agent' : 'error' };
     return await res.json();
   } catch {
@@ -72,6 +80,7 @@ export async function goodAgentsPatchSettings(
       headers: authHeaders(),
       body: JSON.stringify(body),
       cache: 'no-store',
+      signal: deadline(WRITE_TIMEOUT_MS),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { error: data?.error || `http_${res.status}` };
@@ -93,6 +102,7 @@ export async function goodAgentsStart(
       headers: authHeaders(),
       body: JSON.stringify(body),
       cache: 'no-store',
+      signal: deadline(WRITE_TIMEOUT_MS),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { error: data?.error || `http_${res.status}` };
@@ -122,6 +132,7 @@ export async function goodAgentsPlay(
       headers: authHeaders(),
       body: JSON.stringify(body),
       cache: 'no-store',
+      signal: deadline(WRITE_TIMEOUT_MS),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { error: data?.error || `http_${res.status}` };
