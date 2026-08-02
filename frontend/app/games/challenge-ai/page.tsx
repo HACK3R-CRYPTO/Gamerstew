@@ -476,16 +476,14 @@ export default function ChallengeAiPage() {
             isDesktop={isDesktop}
             agent={myAgent}
             agentStrategy={agentStrategy}
-            onAgentStrategy={setAgentStrategy}
             onDeploy={() => router.push("/agents")}
           />
         )}
         {phase === "agent" && (
           <AgentArena
             wallet={address}
-            onBack={() => setPhase("lobby")}
+            onBack={() => { setPhase("lobby"); setAgentStrategy(null); /* refetch · settings may have changed */ }}
             onDeploy={() => router.push("/agents")}
-            strategyOverride={agentStrategy}
             entry={agentEntry}
           />
         )}
@@ -528,7 +526,7 @@ export default function ChallengeAiPage() {
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
   isGuest, demoLeft, showAgentOption, onAgent, onAgentSettings, isDesktop,
-  agent, agentStrategy, onAgentStrategy, onDeploy,
+  agent, agentStrategy, onDeploy,
 }: {
   pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
@@ -548,8 +546,7 @@ function Lobby({
   onAgentSettings: () => void; // open the full agent settings editor
   isDesktop: boolean;       // wide layout
   agent: OwnedAgent | null;         // the player's deployed agent, if any
-  agentStrategy: string | null;     // inline loadout choice (MARKOV_STRATEGY)
-  onAgentStrategy: (s: string) => void;
+  agentStrategy: string | null;     // current MARKOV_STRATEGY · summary pill display
   onDeploy: () => void;             // no agent yet → GoodAgents widget
 }) {
   // WHO fights: one lobby, two modes. A segmented switch flips the same scene
@@ -738,8 +735,8 @@ function Lobby({
             position: "absolute",
             bottom: -4,
             left: "6%",
-            width: aiMode && agent ? 86 : 74,
-            height: aiMode && agent ? 86 : 74,
+            width: 74,
+            height: 74,
             objectFit: "contain",
             transform: "scaleX(-1)",
             animation: "idleBobAlt 2.8s ease-in-out infinite",
@@ -836,36 +833,21 @@ function Lobby({
               </div>
             )}
 
-            {/* AI mode loadout · the one pre-match choice, default pre-picked.
-                A change is signed+saved on the same play tap. */}
-            {aiMode && agent && agentStrategy && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                {[
-                  { id: "random", label: "🎲 Random" },
-                  { id: "counter", label: "🧠 Counter" },
-                  { id: "sequence", label: "🔁 Sequence" },
-                  { id: "fixed", label: "📌 Fixed" },
-                ].map((opt) => {
-                  const on = agentStrategy === opt.id;
-                  return (
-                    <button key={opt.id} onClick={() => onAgentStrategy(opt.id)} style={{
-                      padding: "9px 13px", borderRadius: 999, cursor: "pointer", minHeight: 36,
-                      background: on ? "#22d3ee" : "rgba(0,0,0,0.4)",
-                      border: `1px solid ${on ? "#22d3ee" : T.hairline}`,
-                      color: on ? "#062c38" : T.inkDim,
-                      fontFamily: T.body, fontSize: 11, fontWeight: 800,
-                      transition: "background 0.15s, color 0.15s",
-                    }}>{opt.label}</button>
-                  );
-                })}
-                {/* full editor · one tap into the settings subscreen, Done
-                    returns here (quick choice inline, depth behind the gear) */}
+            {/* AI mode loadout · ONE summary pill: current strategy as the
+                tap-to-edit entry point (Android settings pattern). The editor
+                lives in the settings subscreen, not in the lobby. */}
+            {aiMode && agent && (
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
                 <button
                   onClick={onAgentSettings}
-                  title="All agent settings"
-                  style={{ padding: "9px 12px", minHeight: 36, borderRadius: 999, cursor: "pointer", background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontSize: 13, transition: "background 0.15s" }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 15px", minHeight: 38, borderRadius: 999, cursor: "pointer", background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, transition: "background 0.15s" }}
                 >
-                  ⚙️
+                  <span style={{ fontSize: 12 }}>⚙️</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: T.inkSoft }}>GAME PLAN</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: "#67e8f9" }}>
+                    {agentStrategy ? ({ random: "🎲 Random", counter: "🧠 Counter", sequence: "🔁 Sequence", fixed: "📌 Fixed" } as Record<string, string>)[agentStrategy] ?? agentStrategy : "…"}
+                  </span>
+                  <span style={{ color: T.inkSoft, fontSize: 12 }}>›</span>
                 </button>
               </div>
             )}
