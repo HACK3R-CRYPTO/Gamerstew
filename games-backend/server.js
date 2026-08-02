@@ -81,6 +81,16 @@ function requireSecret(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
+// ─── Agent-play scoped key — GoodAgents' server plays MARKOV with this ────────
+// A partner (GoodAgents) drives deployed agents through the arena. We hand them
+// a scoped key that ONLY opens the /api/arena/agent/* routes — never the master
+// INTERNAL_SECRET. If unset, the agent routes are simply closed (feature off).
+const AGENT_PLAY_KEY = process.env.AGENT_PLAY_KEY || '';
+function requireAgentKey(req, res, next) {
+  if (AGENT_PLAY_KEY && req.headers['x-agent-key'] === AGENT_PLAY_KEY) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
 // For no-origin requests (Next.js server actions) require INTERNAL_SECRET.
 // Browser requests must come from an allowed origin.
 app.use((req, res, next) => {
@@ -92,6 +102,14 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/arena/live/')) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  // Agent-play routes · server-to-server from GoodAgents (no browser origin).
+  // Gated by the scoped agent key inside the route; let the no-origin request
+  // through here so it can reach the handler instead of dying on the CORS gate.
+  if (req.path.startsWith('/api/arena/agent/')) {
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     return next();
   }
@@ -3883,6 +3901,51 @@ app.post('/api/arena/throw', requireSecret, gameSubmitLimiter, (req, res) => {
   const out = arenaEngine.throw(matchId, Number(move));
   if (out.error) return res.status(400).json(out);
   // Push this round to any live spectators, then close the stream on match end.
+  liveBroadcast(matchId, out.final ? 'end' : 'round', out);
+  return res.json(out);
+});
+
+// ─── Agent play (GoodAgents) ─────────────────────────────────────────────────
+// A deployed GoodAgents agent plays MARKOV through these two routes, driven by
+// GoodAgents' server with the scoped AGENT_PLAY_KEY. They mirror /start + /throw
+// but: (1) auth is the scoped key, not the master secret; (2) no human daily
+// free-match limit — agents are their own track; (3) /start verifies on-chain
+// that the address is a real deployed agent, so only genuine agents can grind
+// the board. Matches still flow through arenaEngine → onMatchComplete, so they
+// land on the same ladder (the frontend splits Players vs Agents by detection)
+// and stream live via the existing SSE feed. The caller MUST pace throws (~1s)
+// or the match resolves in milliseconds with nothing to watch.
+const AGENT_VAULT_ADDRESS = '0x0409042B55e99Df8c0Feb7525A770838f3A47090';
+const agentVault = provider ? new ethers.Contract(AGENT_VAULT_ADDRESS, [
+  'function getAgent(address) view returns (address operator, uint256 stakeAmount, uint256 unlockAt)',
+], provider) : null;
+
+app.post('/api/arena/agent/start', requireAgentKey, gameSubmitLimiter, async (req, res) => {
+  const { agentAddress } = req.body || {};
+  if (!agentAddress || !/^0x[0-9a-fA-F]{40}$/.test(agentAddress)) {
+    return res.status(400).json({ error: 'agentAddress required' });
+  }
+  // On-chain gate: a real agent has a non-zero operator on the vault. Blocks
+  // random wallets from posing as agents on the board.
+  if (agentVault) {
+    try {
+      const [operator] = await agentVault.getAgent(agentAddress);
+      if (!operator || /^0x0+$/.test(operator)) {
+        return res.status(403).json({ error: 'not_a_deployed_agent' });
+      }
+    } catch (e) {
+      console.error('agent verify failed:', e?.shortMessage || e?.message);
+      return res.status(503).json({ error: 'agent_verify_unavailable' });
+    }
+  }
+  return res.json(arenaEngine.start(agentAddress));
+});
+
+app.post('/api/arena/agent/throw', requireAgentKey, gameSubmitLimiter, (req, res) => {
+  const { matchId, move } = req.body || {};
+  if (typeof matchId !== 'string') return res.status(400).json({ error: 'matchId required' });
+  const out = arenaEngine.throw(matchId, Number(move));
+  if (out.error) return res.status(400).json(out);
   liveBroadcast(matchId, out.final ? 'end' : 'round', out);
   return res.json(out);
 });
