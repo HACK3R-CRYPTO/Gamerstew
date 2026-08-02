@@ -27,6 +27,20 @@ export default function PassportActions({ address, name }: { address: string; na
   const isOwner = !!viewer && viewer.toLowerCase() === address.toLowerCase();
   const [copied, setCopied] = useState(false);
 
+  // Your referral score · the loop needs a visible scoreboard or sharing feels
+  // pointless. referralCount already existed in the season API; it was just
+  // never surfaced to the player.
+  const [refCount, setRefCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isOwner) return;
+    let cancelled = false;
+    fetch(`/api/season/me/${address}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && typeof d?.referralCount === "number") setRefCount(d.referralCount); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOwner, address]);
+
   // Landing on a shared passport IS the referral moment — bank the ref.
   useEffect(() => {
     try { captureReferralFromUrl(); } catch {}
@@ -96,7 +110,14 @@ export default function PassportActions({ address, name }: { address: string; na
             {savingCard ? "RENDERING CARD…" : "💾 SAVE AS IMAGE"}
           </button>
           <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
-            Friends who join from your link earn you season points
+            {refCount !== null && refCount > 0 ? (
+              <>
+                <span style={{ color: "#86efac" }}>🎉 {refCount} friend{refCount === 1 ? "" : "s"} joined from your link · +{refCount * 100} pts</span>
+                {refCount < 10 && <> · {10 - refCount} more can still count</>}
+              </>
+            ) : (
+              <>Each friend who joins the season from your link = +100 points on the Solo Ladder (up to 10)</>
+            )}
           </div>
         </>
       ) : (
