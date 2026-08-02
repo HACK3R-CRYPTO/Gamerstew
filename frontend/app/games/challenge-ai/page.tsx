@@ -551,6 +551,18 @@ function Lobby({
   // lobby screen (segmented control = same context, instant switch).
   const [mode, setMode] = useState<"you" | "ai">("you");
   const aiMode = mode === "ai" && showAgentOption;
+  // NEW badge on the YOUR AI segment · self-clears the first time the player
+  // flips there (persistent badges become wallpaper — red-dot blindness).
+  const [seenAiMode, setSeenAiMode] = useState(() => {
+    try { return localStorage.getItem("ga_ai_mode_seen") === "1"; } catch { return true; }
+  });
+  const pickMode = (m: "you" | "ai") => {
+    setMode(m);
+    if (m === "ai" && !seenAiMode) {
+      setSeenAiMode(true);
+      try { localStorage.setItem("ga_ai_mode_seen", "1"); } catch {}
+    }
+  };
   // Rotating taunt · MARKOV talks at the gate like a boss NPC.
   const TAUNTS = [
     "bring your best pattern. i've already modeled it.",
@@ -792,14 +804,25 @@ function Lobby({
                   ]).map((opt) => {
                     const active = mode === opt.id;
                     return (
-                      <button key={opt.id} onClick={() => setMode(opt.id)} style={{
+                      <button key={opt.id} onClick={() => pickMode(opt.id)} style={{
                         padding: "8px 18px", borderRadius: 999, cursor: "pointer",
                         background: active ? opt.on : "transparent", border: "none",
-                        color: active ? opt.ink : T.inkSoft,
+                        // inkDim, not inkSoft: an unselected mode must read as
+                        // tappable, never disabled.
+                        color: active ? opt.ink : T.inkDim,
                         fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
                         boxShadow: active ? `0 6px 14px -4px ${opt.on}aa, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
                         transition: "background 0.15s, color 0.15s",
-                      }}>{opt.label}</button>
+                        position: "relative",
+                      }}>
+                        {opt.label}
+                        {/* novelty signpost · gold pulse until first visit, then gone forever */}
+                        {opt.id === "ai" && !seenAiMode && (
+                          <span style={{ position: "absolute", top: -8, right: -6, background: "#fbbf24", color: "#3b2004", fontFamily: T.body, fontSize: 8, fontWeight: 900, letterSpacing: "0.1em", borderRadius: 999, padding: "2px 7px", boxShadow: "0 3px 8px rgba(0,0,0,0.4)", animation: "glowPulse 2s ease-in-out infinite" }}>
+                            NEW
+                          </span>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
