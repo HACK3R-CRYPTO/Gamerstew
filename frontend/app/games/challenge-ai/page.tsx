@@ -759,7 +759,7 @@ function Lobby({
                 onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
               >
-                <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", boxSizing: "border-box", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "14px 20px 12px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", minHeight: 66, boxSizing: "border-box", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
                   <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
                   <div style={{ position: "relative", zIndex: 1 }}>
@@ -781,12 +781,12 @@ function Lobby({
                 <div
                   role="button"
                   onClick={onAgent}
-                  style={{ flex: isDesktop ? 1 : undefined, cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 5, boxShadow: "0 10px 22px -6px rgba(34,211,238,0.5), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)", position: "relative" }}
+                  style={{ flex: isDesktop ? 1 : undefined, cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 10px 22px -6px rgba(34,211,238,0.5), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)", position: "relative" }}
                   onMouseDown={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                   onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 >
-                  <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", boxSizing: "border-box", background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "11px 20px 10px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", minHeight: 66, boxSizing: "border-box", background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
                     <div style={{ position: "relative", zIndex: 1 }}>
                       <div style={{ fontFamily: T.display, fontSize: 15.5, color: "#062c38", letterSpacing: "0.04em" }}>
