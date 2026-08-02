@@ -62,6 +62,9 @@ const AI_GREEN = "#22c55e";
 const RIM = "#fbbf24";
 
 const MARKOV_ART = "/games/challenge-ai-v2/ai-bot-medium.png";
+// The player's agent character · same chibi-armor family as MARKOV (green/teal
+// = the agent's cyan identity), mirrored on the VS stage to face the boss.
+const AGENT_ART = "/games/challenge-ai-v2/ai-bot-easy.png";
 const MOVE_ART = [
   "/games/challenge-ai-v2/moves/rock.png",
   "/games/challenge-ai-v2/moves/paper.png",
@@ -270,12 +273,11 @@ function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; p
 
       {/* the face-off · challenger slams in left, boss slams in right */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-        {/* your agent · the challenger */}
+        {/* your agent · the challenger — same presentation grammar as the boss:
+            raw character art + floor glow, mirrored to face MARKOV */}
         <div style={{ flex: 1, maxWidth: 190, display: "flex", flexDirection: "column", alignItems: "center", animation: "slamL 0.45s cubic-bezier(0.22,1.2,0.36,1) both" }}>
-          <div style={{ width: "min(30vw, 118px)", aspectRatio: "1", borderRadius: 24, background: "linear-gradient(160deg, rgba(34,211,238,0.28) 0%, rgba(8,51,68,0.9) 100%)", border: "2px solid rgba(34,211,238,0.55)", boxShadow: `0 0 30px ${CYAN}44, inset 0 2px 12px rgba(255,255,255,0.15)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "min(14vw, 54px)", animation: "idleBobAlt 2.8s ease-in-out infinite" }}>
-            🤖
-          </div>
-          <div aria-hidden style={{ width: "min(26vw, 100px)", height: 18, borderRadius: "50%", background: `radial-gradient(ellipse, ${CYAN}55 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -4 }} />
+          <img src={AGENT_ART} alt={name} style={{ width: "min(32vw, 128px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.8s ease-in-out infinite", filter: `drop-shadow(0 0 22px ${CYAN}55)` }} />
+          <div aria-hidden style={{ width: "min(26vw, 100px)", height: 18, borderRadius: "50%", background: `radial-gradient(ellipse, ${CYAN}55 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -6 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
             <span style={{ fontFamily: T.display, fontSize: 17, color: "#fff", letterSpacing: "0.03em", textShadow: `0 0 18px ${CYAN}88` }}>{name}</span>
           </div>
@@ -337,8 +339,8 @@ function AgentCard({ agent, live }: { agent: OwnedAgent; live: boolean }) {
   const short = `${agent.agentAddress.slice(0, 6)}…${agent.agentAddress.slice(-4)}`;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(0,0,0,0.4)", border: `1px solid rgba(34,211,238,0.25)`, borderRadius: 16, padding: "12px 14px", marginBottom: 14 }}>
-      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(34,211,238,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>
-        🤖
+      <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+        <img src={AGENT_ART} alt="" style={{ width: 38, height: 38, objectFit: "contain", transform: "scaleX(-1)" }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
