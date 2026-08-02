@@ -760,30 +760,27 @@ function Lobby({
           </>
         )}
 
-        {/* Second path: hand the fight to your own agent. It plays MARKOV on the
-            board and you watch the match live. Only for signed-in players. */}
+        {/* Second path · slim pill so the lobby stays a one-viewport scene:
+            FIGHT owns the thumb zone, the agent path rides just under it. */}
         {showAgentOption && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 2px 12px", opacity: 0.6 }}>
-              <span style={{ flex: 1, height: 1, background: T.hairline }} />
-              <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, color: T.inkSoft, letterSpacing: "0.14em" }}>OR</span>
-              <span style={{ flex: 1, height: 1, background: T.hairline }} />
-            </div>
-            <div
-              role="button"
-              onClick={onAgent}
-              style={{ cursor: "pointer", userSelect: "none", borderRadius: 16, background: "rgba(0,0,0,0.4)", border: "1px solid rgba(34,211,238,0.35)", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, transition: "border-color 0.2s, background 0.2s" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(34,211,238,0.1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(0,0,0,0.4)"; }}
-            >
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(34,211,238,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🤖</div>
-              <div style={{ flex: 1, textAlign: "left" }}>
-                <div style={{ fontFamily: T.display, fontSize: 15, color: "#67e8f9", letterSpacing: "0.02em" }}>Send your agent</div>
-                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 600, marginTop: 1 }}>Your AI plays MARKOV · watch it live</div>
-              </div>
-              <span style={{ color: "#67e8f9", fontSize: 18, flexShrink: 0 }}>›</span>
-            </div>
-          </>
+          <div
+            role="button"
+            onClick={onAgent}
+            style={{
+              cursor: "pointer", userSelect: "none", marginTop: 10,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              borderRadius: 999, padding: "10px 16px",
+              background: "rgba(34,211,238,0.08)", border: "1px solid rgba(34,211,238,0.35)",
+              transition: "background 0.2s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(34,211,238,0.16)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(34,211,238,0.08)"; }}
+          >
+            <span style={{ fontSize: 15 }}>🤖</span>
+            <span style={{ fontFamily: T.display, fontSize: 13.5, color: "#67e8f9", letterSpacing: "0.03em" }}>Play with your agent</span>
+            <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700 }}>· watch it live</span>
+            <span style={{ color: "#67e8f9", fontSize: 14 }}>›</span>
+          </div>
         )}
       </div>
     </div>
