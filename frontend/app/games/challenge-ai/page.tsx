@@ -451,6 +451,7 @@ export default function ChallengeAiPage() {
             demoLeft={demoLeft}
             showAgentOption={authed}
             onAgent={() => setPhase("agent")}
+            isDesktop={isDesktop}
           />
         )}
         {phase === "agent" && (
@@ -498,7 +499,7 @@ export default function ChallengeAiPage() {
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
-  isGuest, demoLeft, showAgentOption, onAgent,
+  isGuest, demoLeft, showAgentOption, onAgent, isDesktop,
 }: {
   pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
@@ -515,6 +516,7 @@ function Lobby({
   demoLeft: number;   // demo matches remaining before the sign-in ask
   showAgentOption: boolean; // signed-in players can hand the fight to their agent
   onAgent: () => void;      // open the "your agent plays" panel
+  isDesktop: boolean;       // wide layout: mode cards go side by side
 }) {
   // Rotating taunt · MARKOV talks at the gate like a boss NPC.
   const TAUNTS = [
@@ -745,59 +747,63 @@ function Lobby({
             {/* MODE CHOICE · two sibling cards, same visual grammar, weighted.
                 Each card says WHO fights so the choice explains itself at the
                 point of decision (recognition over recall): green = you throw
-                the moves; cyan = your AI throws them while you watch. */}
-            <div
-              role="button"
-              onClick={busy ? undefined : onStart}
-              style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
-              onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
-              onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-            >
-              <div style={{ borderRadius: "16px 16px 12px 12px", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "14px 20px 12px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
-                <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-                <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
-                <div style={{ position: "relative", zIndex: 1 }}>
-                  <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
-                    {busy ? "SUMMONING MARKOV…" : "⚔️ FIGHT"}
-                  </div>
-                  {!busy && (
-                    <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
-                      YOU THROW THE MOVES
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Mode 2 · your deployed AI fights for you. Same candy-button
-                construction so it reads as a sibling choice, cyan-coded. */}
-            {showAgentOption && (
+                the moves; cyan = your AI throws them while you watch.
+                Layout is responsive: stacked in the mobile thumb zone,
+                side-by-side on desktop with FIGHT keeping the wider column. */}
+            <div style={{ display: "flex", flexDirection: isDesktop && showAgentOption ? "row" : "column", gap: 10, alignItems: "stretch" }}>
               <div
                 role="button"
-                onClick={onAgent}
-                style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 5, marginTop: 10, boxShadow: "0 10px 22px -6px rgba(34,211,238,0.5), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)", position: "relative" }}
-                onMouseDown={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+                onClick={busy ? undefined : onStart}
+                style={{ flex: isDesktop && showAgentOption ? 1.35 : undefined, cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+                onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                 onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
               >
-                <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "11px 20px 10px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
-                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", boxSizing: "border-box", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "14px 20px 12px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                  <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
                   <div style={{ position: "relative", zIndex: 1 }}>
-                    <div style={{ fontFamily: T.display, fontSize: 15.5, color: "#062c38", letterSpacing: "0.04em" }}>
-                      🤖 SEND YOUR AI
+                    <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
+                      {busy ? "SUMMONING MARKOV…" : "⚔️ FIGHT"}
                     </div>
-                    <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 1, opacity: 0.85 }}>
-                      IT FIGHTS FOR YOU · YOU WATCH LIVE
-                    </div>
+                    {!busy && (
+                      <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
+                        YOU THROW THE MOVES
+                      </div>
+                    )}
                   </div>
                 </div>
-                {/* novelty flag · draws the eye without demanding it */}
-                <span style={{ position: "absolute", top: -7, right: 10, background: "#fbbf24", color: "#3b2004", fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.1em", borderRadius: 999, padding: "3px 8px", boxShadow: "0 3px 8px rgba(0,0,0,0.4)" }}>
-                  NEW
-                </span>
               </div>
-            )}
+
+              {/* Mode 2 · your deployed AI fights for you. Same candy-button
+                  construction so it reads as a sibling choice, cyan-coded. */}
+              {showAgentOption && (
+                <div
+                  role="button"
+                  onClick={onAgent}
+                  style={{ flex: isDesktop ? 1 : undefined, cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 5, boxShadow: "0 10px 22px -6px rgba(34,211,238,0.5), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)", position: "relative" }}
+                  onMouseDown={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+                  onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+                >
+                  <div style={{ borderRadius: "16px 16px 12px 12px", height: "100%", boxSizing: "border-box", background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "11px 20px 10px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                    <div style={{ position: "relative", zIndex: 1 }}>
+                      <div style={{ fontFamily: T.display, fontSize: 15.5, color: "#062c38", letterSpacing: "0.04em" }}>
+                        🤖 SEND YOUR AI
+                      </div>
+                      <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 1, opacity: 0.85 }}>
+                        IT FIGHTS FOR YOU · YOU WATCH LIVE
+                      </div>
+                    </div>
+                  </div>
+                  {/* novelty flag · draws the eye without demanding it */}
+                  <span style={{ position: "absolute", top: -7, right: 10, background: "#fbbf24", color: "#3b2004", fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.1em", borderRadius: 999, padding: "3px 8px", boxShadow: "0 3px 8px rgba(0,0,0,0.4)", zIndex: 2 }}>
+                    NEW
+                  </span>
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
               <span>🔒 provably fair</span>
