@@ -22,21 +22,20 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
-export default function PassportActions({ address, name }: { address: string; name: string }) {
+export default function PassportActions({ address, name, refCode }: { address: string; name: string; refCode?: string | null }) {
   const { address: viewer } = useAccount();
   const isOwner = !!viewer && viewer.toLowerCase() === address.toLowerCase();
   const [copied, setCopied] = useState(false);
 
-  // Your referral score · the loop needs a visible scoreboard or sharing feels
-  // pointless. referralCount already existed in the season API; it was just
-  // never surfaced to the player.
+  // Your referral scoreboard · a referral counts when the friend gets
+  // VERIFIED (mints their GamePass) — not tied to any season event.
   const [refCount, setRefCount] = useState<number | null>(null);
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
-    fetch(`/api/season/me/${address}`)
+    fetch(`/api/ref/count?wallet=${address}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && typeof d?.referralCount === "number") setRefCount(d.referralCount); })
+      .then((d) => { if (!cancelled && typeof d?.count === "number") setRefCount(d.count); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isOwner, address]);
@@ -46,9 +45,12 @@ export default function PassportActions({ address, name }: { address: string; na
     try { captureReferralFromUrl(); } catch {}
   }, []);
 
+  // Share links use the username as the code when it exists (?ref=ogazboiz —
+  // memorable, speakable) and fall back to the address.
+  const code = refCode || address;
   const base = typeof window !== "undefined" ? window.location.origin : "https://gamearenahq.xyz";
-  const passUrl = useMemo(() => `${base}/pass/${address}?ref=${address}`, [base, address]);
-  const playUrl = useMemo(() => `${base}/?ref=${address}`, [base, address]);
+  const passUrl = useMemo(() => `${base}/pass/${address}?ref=${code}`, [base, address, code]);
+  const playUrl = useMemo(() => `${base}/?ref=${code}`, [base, code]);
 
   // Save the passport as a PNG · reuses the OG card (it IS the designed
   // shareable asset — one renderer, no drift). Mobile: native share sheet with
@@ -111,12 +113,11 @@ export default function PassportActions({ address, name }: { address: string; na
           </button>
           <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
             {refCount !== null && refCount > 0 ? (
-              <>
-                <span style={{ color: "#86efac" }}>🎉 {refCount} friend{refCount === 1 ? "" : "s"} joined from your link · +{refCount * 100} pts</span>
-                {refCount < 10 && <> · {10 - refCount} more can still count</>}
-              </>
+              <span style={{ color: "#86efac" }}>🎉 {refCount} friend{refCount === 1 ? "" : "s"} verified through you{refCode ? <> · your code: <strong>{refCode}</strong></> : null}</span>
+            ) : refCode ? (
+              <>Your code is <strong style={{ color: "#c4b5fd" }}>{refCode}</strong> — a referral counts once your friend verifies</>
             ) : (
-              <>Each friend who joins the season from your link = +100 points on the Solo Ladder (up to 10)</>
+              <>A referral counts once your friend verifies</>
             )}
           </div>
         </>

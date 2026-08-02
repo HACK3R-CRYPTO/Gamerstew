@@ -129,7 +129,7 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
         )}
 
         {/* share (own passport) / challenge CTA (visitor) · client component */}
-        <PassportActions address={p.address} name={name} />
+        <PassportActions address={p.address} name={name} refCode={p.username} />
       </div>
     </div>
   );

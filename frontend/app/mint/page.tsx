@@ -22,7 +22,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread, MINIPAY_DEEPLINKS } from "@/lib/contracts";
-import { captureReferralFromUrl, readPendingReferral, clearPendingReferral } from "@/lib/referral";
+import { captureReferralFromUrl, readPendingReferral, clearPendingReferral, resolveRefCode } from "@/lib/referral";
 
 // Minimum CELO we ask non-MiniPay wallets to hold before we let them tap
 // MINT. 0.002 CELO is a comfortable margin over the ~0.0005 CELO a Game
@@ -66,24 +66,47 @@ function MintInner() {
   // /mint, which strips query params. URL still wins when both exist
   // so a fresh share-link arrival overrides any stale cache.
   const [referrer, setReferrer] = useState(() => {
-    const fromUrl = params.get("ref")?.toLowerCase().trim() ?? "";
-    if (/^0x[a-f0-9]{40}$/.test(fromUrl)) return fromUrl;
+    const fromUrl = params.get("ref")?.trim() ?? "";
+    if (/^0x[a-fA-F0-9]{40}$/.test(fromUrl)) return fromUrl.toLowerCase();
+    if (/^[a-zA-Z0-9_]{2,24}$/.test(fromUrl)) return fromUrl; // username code · resolves below
     const cached = readPendingReferral();
     return cached ?? "";
   });
   // Capture from URL on mount too, so cache stays warm even if the user
   // never hits the leaderboard route.
   useEffect(() => { captureReferralFromUrl(); }, [params]);
-  const refClean = referrer.toLowerCase().trim();
-  const refIsEmpty = refClean.length === 0;
-  const refIsValidShape = /^0x[a-f0-9]{40}$/.test(refClean);
-  const refIsSelf = !!address && refClean === address.toLowerCase();
-  const refOk = refIsEmpty || (refIsValidShape && !refIsSelf);
+  const refTyped = referrer.trim();
+  const refIsEmpty = refTyped.length === 0;
+  const refIsAddress = /^0x[a-f0-9]{40}$/.test(refTyped.toLowerCase());
+  const refIsCodeShape = /^[a-zA-Z0-9_]{2,24}$/.test(refTyped);
+  // Username codes resolve to a wallet via the subgraph (debounced). The
+  // resolved address is what actually gets recorded — the code is just the
+  // human-friendly handle ("use my code ogazboiz").
+  const [resolvedRef, setResolvedRef] = useState<{ address: string; username: string | null } | null>(null);
+  const [resolvingRef, setResolvingRef] = useState(false);
+  useEffect(() => {
+    if (refIsEmpty || refIsAddress || !refIsCodeShape) { setResolvedRef(null); setResolvingRef(false); return; }
+    setResolvingRef(true);
+    const t = setTimeout(() => {
+      resolveRefCode(refTyped)
+        .then((hit) => { setResolvedRef(hit); })
+        .finally(() => setResolvingRef(false));
+    }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refTyped]);
+
+  const refClean = refIsAddress ? refTyped.toLowerCase() : resolvedRef?.address ?? "";
+  const refIsSelf = !!address && !!refClean && refClean === address.toLowerCase();
+  const refOk = refIsEmpty || (!!refClean && !refIsSelf);
   const refStatus: { tone: "ok" | "warn" | "info"; msg: string } | null =
     refIsEmpty ? null
     : refIsSelf ? { tone: "warn", msg: "Can't refer yourself" }
-    : !refIsValidShape ? { tone: "warn", msg: "Paste a full 0x… wallet" }
-    : { tone: "ok", msg: "Friend will get credit when you qualify" };
+    : refIsAddress ? { tone: "ok", msg: "Friend will get credit once you verify" }
+    : !refIsCodeShape ? { tone: "warn", msg: "Enter a username code or a 0x… wallet" }
+    : resolvingRef ? { tone: "info", msg: "Checking code…" }
+    : resolvedRef ? { tone: "ok", msg: `✓ Referred by @${resolvedRef.username ?? refTyped} — credit lands once you verify` }
+    : { tone: "warn", msg: "Code not found — check the spelling" };
   // Structured error kind lets us render a specific remediation card per
   // failure class instead of dumping raw RPC text on non-technical users.
   //   "gas"     → wallet has no CELO; show faucet/Telegram CTA.
@@ -424,9 +447,9 @@ function MintInner() {
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
-                      placeholder="0x… friend's wallet"
+                      placeholder="friend's code · e.g. ogazboiz"
                       value={referrer}
-                      onChange={e => setReferrer(e.target.value.replace(/[^0-9a-fA-FxX]/g, "").slice(0, 42))}
+                      onChange={e => setReferrer(e.target.value.replace(/[^0-9a-zA-Z_xX]/g, "").slice(0, 42))}
                       disabled={minting}
                       style={{
                         width: "100%", boxSizing: "border-box",
