@@ -805,7 +805,8 @@ function Lobby({
                     const active = mode === opt.id;
                     return (
                       <button key={opt.id} onClick={() => pickMode(opt.id)} style={{
-                        padding: "8px 18px", borderRadius: 999, cursor: "pointer",
+                        padding: "11px 18px", borderRadius: 999, cursor: "pointer", // ≥44px touch height
+                        minHeight: 40,
                         background: active ? opt.on : "transparent", border: "none",
                         // inkDim, not inkSoft: an unselected mode must read as
                         // tappable, never disabled.
@@ -842,7 +843,7 @@ function Lobby({
                   const on = agentStrategy === opt.id;
                   return (
                     <button key={opt.id} onClick={() => onAgentStrategy(opt.id)} style={{
-                      padding: "6px 12px", borderRadius: 999, cursor: "pointer",
+                      padding: "9px 13px", borderRadius: 999, cursor: "pointer", minHeight: 36,
                       background: on ? "#22d3ee" : "rgba(0,0,0,0.4)",
                       border: `1px solid ${on ? "#22d3ee" : T.hairline}`,
                       color: on ? "#062c38" : T.inkDim,
