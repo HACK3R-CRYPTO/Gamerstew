@@ -65,6 +65,16 @@ const MARKOV_ART = "/games/challenge-ai-v2/ai-bot-medium.png";
 // The player's agent character · same chibi-armor family as MARKOV (green/teal
 // = the agent's cyan identity), mirrored on the VS stage to face the boss.
 const AGENT_ART = "/games/challenge-ai-v2/ai-bot-easy.png";
+
+// Every agent gets its own armor color: hash the agent address into one of 12
+// hue steps and rotate the base art's palette. Deterministic — the same agent
+// always wears the same colors, on the VS stage, the live card, everywhere.
+// (Stage 2 is bought skins in the Arena Mall; this ships identity for free.)
+function agentHue(address: string): number {
+  let h = 0;
+  for (const c of (address || "").toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return (h % 12) * 30;
+}
 const MOVE_ART = [
   "/games/challenge-ai-v2/moves/rock.png",
   "/games/challenge-ai-v2/moves/paper.png",
@@ -276,7 +286,7 @@ function VersusStage({ agent, phase, busy, err, onPlay }: { agent: OwnedAgent; p
         {/* your agent · the challenger — same presentation grammar as the boss:
             raw character art + floor glow, mirrored to face MARKOV */}
         <div style={{ flex: 1, maxWidth: 190, display: "flex", flexDirection: "column", alignItems: "center", animation: "slamL 0.45s cubic-bezier(0.22,1.2,0.36,1) both" }}>
-          <img src={AGENT_ART} alt={name} style={{ width: "min(32vw, 128px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.8s ease-in-out infinite", filter: `drop-shadow(0 0 22px ${CYAN}55)` }} />
+          <img src={AGENT_ART} alt={name} style={{ width: "min(32vw, 128px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.8s ease-in-out infinite", filter: `hue-rotate(${agentHue(agent.agentAddress)}deg) drop-shadow(0 0 22px ${CYAN}55)` }} />
           <div aria-hidden style={{ width: "min(26vw, 100px)", height: 18, borderRadius: "50%", background: `radial-gradient(ellipse, ${CYAN}55 0%, transparent 70%)`, filter: "blur(5px)", marginTop: -6 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
             <span style={{ fontFamily: T.display, fontSize: 17, color: "#fff", letterSpacing: "0.03em", textShadow: `0 0 18px ${CYAN}88` }}>{name}</span>
@@ -340,7 +350,7 @@ function AgentCard({ agent, live }: { agent: OwnedAgent; live: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(0,0,0,0.4)", border: `1px solid rgba(34,211,238,0.25)`, borderRadius: 16, padding: "12px 14px", marginBottom: 14 }}>
       <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
-        <img src={AGENT_ART} alt="" style={{ width: 38, height: 38, objectFit: "contain", transform: "scaleX(-1)" }} />
+        <img src={AGENT_ART} alt="" style={{ width: 38, height: 38, objectFit: "contain", transform: "scaleX(-1)", filter: `hue-rotate(${agentHue(agent.agentAddress)}deg)` }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
