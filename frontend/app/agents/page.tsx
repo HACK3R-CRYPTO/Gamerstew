@@ -49,7 +49,7 @@ export default function AgentsPage() {
   // The deploy widget is the EMPTY state. A player who already owns an agent
   // gets their agent home instead: identity, status, and the two actions that
   // matter (send it in, tune it). One agent per wallet (partner API rule).
-  const { agents, loading } = useOwnedAgents(address ? [address] : []);
+  const { agents, knowsNoAgent } = useOwnedAgents(address ? [address] : []);
   const agent = agents[0] ?? null;
   const capped = !!agent?.dailyCapReached;
   const hasAgent = !!agent;
@@ -73,7 +73,7 @@ export default function AgentsPage() {
           </p>
         </div>
 
-        {loading && !hasAgent ? (
+        {!hasAgent && !knowsNoAgent && address ? (
           <div style={{ textAlign: "center", padding: 40, fontFamily: T.body, color: T.inkDim, fontSize: 13 }}>
             Checking for your agent…
           </div>

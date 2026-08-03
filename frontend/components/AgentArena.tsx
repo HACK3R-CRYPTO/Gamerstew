@@ -170,7 +170,7 @@ export default function AgentArena({
 }) {
   // Poll the lookup every 5s so a fresh activeMatchId flips us into the live
   // view without the player doing anything.
-  const { agents, loading, hasAgent } = useOwnedAgents([wallet], 5000);
+  const { agents, hasAgent, knowsNoAgent } = useOwnedAgents([wallet], 5000);
   const agent = pickAgent(agents);
   const [screen, setScreen] = useState<"main" | "settings">(entry === "settings" ? "settings" : "main");
   // Auto-launch fires ONCE per visit to this panel. Lives up here because the
@@ -211,8 +211,8 @@ export default function AgentArena({
         )}
       </div>
 
-      {loading && !agent && <Skeleton />}
-      {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
+      {!agent && !knowsNoAgent && <Skeleton />}
+      {knowsNoAgent && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
       {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} onLiveChange={setMatchLive} initialMatch={initialMatch} />}
     </div>
