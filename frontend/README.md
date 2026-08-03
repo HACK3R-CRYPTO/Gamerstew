@@ -46,7 +46,9 @@ Pages live under `app/`. Key routes:
 - `/games/rhythm` · Rhythm Rush
 - `/games/simon` · Simon Memory
 - `/games/stack` · Stack Tower
-- `/games/challenge-ai` · Challenge AI (MARKOV) Instant Arena
+- `/games/challenge-ai` · Challenge AI (MARKOV) Instant Arena · YOU / YOUR AI lobby switch: play MARKOV yourself, or send your deployed GoodAgents agent in and watch the match live (SSE stage with win dots, read meter, staged clashes)
+- `/agents` · deploy a personal AI agent (embedded GoodAgents widget)
+- `/pass/[address]` · public player passport (username or 0x in the URL) · rank, scores, badges, pet + habitat, lifetime UBI, per-player OG card, share/save with `?ref=` referral codes
 - `/games/survivor` · Slime Survivor, an in-progress route currently hidden from the lobby but reachable by direct link
 - `/games/<game>/leaderboard` · per-game leaderboards
 - `/leaderboard` and `/leaderboard/solo-ladder` · global and solo-ladder standings
@@ -59,7 +61,7 @@ Pages live under `app/`. Key routes:
 - `/settings` · settings
 - `/pitch`, `/privacy`, `/terms` · static content
 
-Server actions live in `app/actions/` (`game.ts`, `arena.ts`, `missions.ts`, `perks.ts`, `gas.ts`). Route handlers live in `app/api/` (season join/leaderboard/intent, markov-climb, pvp-leaderboard, match-outcome, a2a).
+Server actions live in `app/actions/` (`game.ts`, `arena.ts`, `missions.ts`, `perks.ts`, `gas.ts`, `goodagents.ts` for the partner API bridge, `collective.ts` for the GoodCollective choice). Route handlers live in `app/api/` (season join/leaderboard/intent, markov-climb, pvp-leaderboard, match-outcome, a2a, `ref/resolve` + `ref/count` for username referral codes).
 
 ## The games
 

@@ -37,7 +37,7 @@ Two problems.
 
 When we're tired we reach for the phone, scroll, and feel worse. GameArena is a short break that gives something back: quick games that leave you sharper. A reset, not an escape.
 
-And web3 gaming chased tokens instead of fun, filling leaderboards with bots. We built the opposite: games that are genuinely fun, verified humans only, and real value as a bonus rather than the bait. Through GoodDollar, verified players earn a daily basic income, which matters most for players in emerging markets.
+And web3 rewards never reached real people. To earn crypto you needed a wallet, you needed gas, and once you got past that, bots had already farmed the rewards. We built the opposite: sign in with Google and play with zero gas, every player is a verified human so no bot ever wins, and real value comes as a bonus rather than the bait. Through GoodDollar, verified players earn a daily basic income, which matters most for players in emerging markets.
 
 ---
 
@@ -180,6 +180,8 @@ For MARKOV's internal four-layer architecture (Economic · Reputation · Discove
   - [Solo games](#solo-games)
   - [MARKOV · autonomous on-chain AI opponent](#markov--autonomous-on-chain-ai-opponent)
   - [Events and seasonal competitions](#events-and-seasonal-competitions)
+  - [Player passport and referrals](#player-passport-and-referrals)
+  - [GoodCollective choice](#goodcollective-choice)
 - [Progression](#progression)
   - [Player level and XP](#player-level-and-xp)
   - [Rank tiers](#rank-tiers)
@@ -223,6 +225,8 @@ MARKOV is an autonomous AI agent you can challenge at any time · no human in th
 
 **For agents (A2A / on-chain):** the ArenaPlatform contract remains the on-chain wager interface · agent counterparties discover MARKOV via its A2A card and settle matches in G$ on Celo Mainnet.
 
+**For your own agent (GoodAgents partnership):** any player can deploy a personal AI agent through [GoodAgents](https://goodagentids.xyz) and send it in against MARKOV from the Challenge AI lobby. The agent is a real deployed contract attached to the player's verified wallet · it gets a name, mints a GamePass, and appears on the leaderboards with an 🤖 badge attributed to its owner ("by @username"). The lobby has a YOU / YOUR AI switch: pick a game plan (random, counter, sequence, fixed), sign one message, and watch the match live · round-by-round SSE stream with win dots, MARKOV's read meter, and staged move clashes. Owner actions (play, configure, wake) are EIP-191 signed; the arena verifies agents on-chain before they can play, and every agent match is the same commit-reveal engine as human matches.
+
 | Layer    | Mechanic                                                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Strategy | Markov-2 chains · predicts your next move from your last two                                                                          |
@@ -260,6 +264,16 @@ GameArena runs periodic competitions with G$ prize pools sourced from the platfo
 - **Community-funded pots** — player-contributed prize pools, no platform money involved.
 
 Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
+
+### Player passport and referrals
+
+Every verified player gets a public passport at `gamearenahq.xyz/pass/{username}` · verification status, all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
+
+Referrals ride on the passport. A player's referral code is their username (`?ref=ogazboiz` · a raw wallet still works), every share link carries it, and new players can type a code by hand during onboarding ("Got a referral code?" resolves live to `✓ referred by @name`). A referral counts the moment the referred player verifies and mints their GamePass. Your count shows on your profile and passport.
+
+### GoodCollective choice
+
+20% of every G$ a player spends (perks, habitats, match refills) funds universal basic income. Players choose which GoodCollective that share supports from Settings → Community · the choice is recorded per wallet, and their lifetime contribution shows on their passport. The registry ships with the on-chain-verified GoodDollar UBI pool and grows as more collective pool addresses are verified.
 
 ---
 
@@ -332,6 +346,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | Habitat unlock           | Paid cosmetic tiers (free tiers are level-gated) | Player → HabitatRegistry · 80% treasury / 20% UBI |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
+| UBI share routing        | Player picks their GoodCollective in Settings | 20% splits attributed to the chosen collective    |
 
 Legacy wager era: on-chain 1v1 wagers paid the winner 98% of the pot with 2% routed to the GoodCollective UBI pool. That interface remains live on ArenaPlatform for A2A agent counterparties.
 

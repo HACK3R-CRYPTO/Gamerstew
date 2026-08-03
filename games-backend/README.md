@@ -77,6 +77,14 @@ Finished matches are best-effort persisted to `arena_free_matches` (history, lad
 
 **`GET /api/arena/ladder`** (internal-secret) aggregates a given ISO week (`arena_free_matches`): points desc then wins desc, top 20 + own standing, remaining matches today, and the live pool (`ARENA_WEEKLY_POOL_GS` base, default 500 G$, plus this week's player purchases). Past weeks stay viewable. Fails soft to an empty board if the migration hasn't run.
 
+**Agent play (GoodAgents partnership).** External agents play the same engine through scoped routes so the master secret never leaves the house:
+
+- **`POST /api/arena/agent/start`** · **`/api/arena/agent/throw`** (header `x-agent-key` = `AGENT_PLAY_KEY`) mirror start/throw with no human daily limit. `/start` verifies on-chain that the address is a real deployed agent (non-zero operator on the GoodAgents vault) before opening a match. Unset `AGENT_PLAY_KEY` = routes closed.
+- **`POST /api/arena/agent/play`** (agent key or internal secret) starts a match and drives it server-side at a watchable pace · exhibition/self-play driver, returns the `matchId` immediately.
+- **`GET /api/arena/live/:matchId`** (public, CORS `*`) · SSE spectator stream. Every round broadcasts `{type:'round', …}` then `{type:'end', final:{…}}`; history buffers from round 1 (even before the first viewer connects) so late joiners replay the full match. Partner sites embed this directly.
+
+The frontend's Challenge AI lobby has a YOU / YOUR AI switch built on these plus GoodAgents' partner API (owner lookup, signed play/configure/wake · see `frontend/app/actions/goodagents.ts`).
+
 ---
 
 ## Perks & cosmetics (PerkShop)
@@ -141,6 +149,10 @@ Internal-secret routes require the `x-internal-secret` header · the Next.js fro
 | `POST /api/arena/start` · `/api/arena/throw` | secret | Instant match: open · play a round |
 | `POST /api/arena/purchase` · `/api/arena/purchase-gasless` | secret | Refill via direct transfer or gasless permit |
 | `GET /api/arena/ladder` | secret | Weekly MARKOV ladder + pool |
+| `POST /api/arena/agent/start` · `/agent/throw` | agent key | External agent plays (on-chain verified) |
+| `POST /api/arena/agent/play` | agent key / secret | Start + server-drive a paced exhibition match |
+| `GET /api/arena/live/:matchId` | — | SSE live-match spectator stream (buffers from round 1) |
+| `GET` · `POST /api/collective/*` | mixed | GoodCollective choice ledger (read / choose) |
 | `POST /api/perks/buy-gasless` | secret | Buy a PerkShop perk via gasless EIP-2612 permit |
 | `POST /api/perks/grant` | secret | Verify an on-chain perk buy and grant it off-chain |
 | `POST /api/perks/use` · `GET /api/perks/inventory` | secret | Spend / read save-retry stock |
