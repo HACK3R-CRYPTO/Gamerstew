@@ -15,7 +15,7 @@ export default function AgentsWidget() {
 
   return (
     <GoodAgentWidget
-      mode="full"
+      mode="onboard" // deploy/verify flow only · "full" shows GoodAgents' whole dashboard
       wallet={wallet}
       config={createGameArenaWidgetConfig({
         partnerId: "gamearena",
