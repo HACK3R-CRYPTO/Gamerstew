@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AgentArena, { agentHue as lobbyAgentHue } from "@/components/AgentArena";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
-import { goodAgentsSettings } from "@/app/actions/goodagents";
+import { getSettingsCached, prefetchAgentData } from "@/lib/agentPrefetch";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount, useReadContract } from "wagmi";
@@ -137,12 +137,20 @@ export default function ChallengeAiPage() {
   useEffect(() => {
     if (!myAgent || agentStrategy !== null) return;
     let cancelled = false;
-    goodAgentsSettings(myAgent.ownerWallet || address || "").then((s) => {
+    getSettingsCached(myAgent.ownerWallet || address || "").then((s) => {
       if (!cancelled) setAgentStrategy((s.configuration?.MARKOV_STRATEGY as string) || "random");
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myAgent?.deployId]);
+
+  // Ready up the partner API from the lobby: warm the settings schema + the
+  // agent's config so ⚙️ and the play flow open instant, no click-time fetch.
+  useEffect(() => {
+    if (!authed) return;
+    prefetchAgentData(myAgent?.ownerWallet || address || null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, myAgent?.deployId]);
   // True while the CURRENT match is a local demo · routes throws to the demo
   // engine and keeps every ranked/provable claim off the demo UI.
   const [demoMatch, setDemoMatch] = useState(false);

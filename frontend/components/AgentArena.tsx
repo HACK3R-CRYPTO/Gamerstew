@@ -17,9 +17,10 @@ import toast from "react-hot-toast";
 import { useSignMessage } from "wagmi";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import {
-  goodAgentsPlay, goodAgentsSchema, goodAgentsSettings, goodAgentsPatchSettings, goodAgentsStart,
+  goodAgentsPlay, goodAgentsPatchSettings, goodAgentsStart,
   type AgentSettingField,
 } from "@/app/actions/goodagents";
+import { getSchemaCached, getSettingsCached, invalidateSettings } from "@/lib/agentPrefetch";
 
 // The exact message a player signs to authorise a deploy action — must match
 // the host byte-for-byte (see GAMEARENA_PARTNER_API.md).
@@ -223,7 +224,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
   const [savedStrategy, setSavedStrategy] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    goodAgentsSettings(agent.ownerWallet || signer || "").then((s) => {
+    getSettingsCached(agent.ownerWallet || signer || "").then((s) => {
       if (cancelled) return;
       const cur = (s.configuration?.MARKOV_STRATEGY as string) || "random";
       // Lobby loadout wins: if the player picked a strategy there, carry it in
@@ -269,6 +270,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
           configuration: { MARKOV_STRATEGY: strategy },
         });
         if (!saved.ok) { fail(errText(saved.error)); return; }
+        invalidateSettings(owner);
         setSavedStrategy(strategy);
       }
       // A paused agent can't play — wake it first (signed "resume"), then play.
@@ -728,7 +730,7 @@ function SettingsScreen({ agent, signer, onDone }: { agent: OwnedAgent; signer?:
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([goodAgentsSchema(), goodAgentsSettings(owner)]).then(([schema, cur]) => {
+    Promise.all([getSchemaCached(), getSettingsCached(owner)]).then(([schema, cur]) => {
       if (cancelled) return;
       const fs = schema.fields || [];
       setFields(fs);
@@ -750,7 +752,7 @@ function SettingsScreen({ agent, signer, onDone }: { agent: OwnedAgent; signer?:
     try {
       const signature = await signMessageAsync({ message: deployMsg("configuration", agent.deployId, issuedAt) });
       const out = await goodAgentsPatchSettings(owner, { ownerWallet: signer || owner, issuedAt, signature, configuration: values });
-      if (out.ok) { setMsg({ ok: true, text: "Saved" + (out.restarted ? " · agent restarted" : "") }); }
+      if (out.ok) { invalidateSettings(owner); setMsg({ ok: true, text: "Saved" + (out.restarted ? " · agent restarted" : "") }); }
       else setMsg({ text: errText(out.error) });
     } catch (e: unknown) {
       const m = (e as { message?: string })?.message || "";
