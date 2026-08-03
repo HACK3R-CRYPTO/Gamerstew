@@ -561,7 +561,9 @@ button[aria-label$="button"],
    wears GameArena's skin (purple surface, our ink scale, our hairline) instead
    of the stock dark-slate + Inter. Primary stays GoodDollar/CTA green — it
    matches our own play-button green. */
-.ga-widget {
+/* doubled class = higher specificity than the widget's own .ga-widget rule,
+   which loads AFTER globals in the bundle and would otherwise win the tie */
+.ga-widget.ga-widget {
   --ga-bg: rgba(40, 18, 100, 0.55);
   --ga-surface: rgba(0, 0, 0, 0.35);
   --ga-border: rgba(255, 255, 255, 0.08);

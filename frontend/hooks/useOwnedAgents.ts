@@ -52,8 +52,17 @@ export function useOwnedAgents(
   );
 
   const key = owners.join(",");
-  const [agents, setAgents] = useState<OwnedAgent[]>([]);
+  // Seed from the last-known result so an owner NEVER sees the "deploy an
+  // agent" empty state during the lookup round-trip — the cached agent shows
+  // instantly and the fresh fetch replaces it in the background.
+  const [agents, setAgents] = useState<OwnedAgent[]>(() => {
+    try {
+      const raw = localStorage.getItem(`ga_agents_${key}`);
+      return raw ? (JSON.parse(raw) as OwnedAgent[]) : [];
+    } catch { return []; }
+  });
   const [loading, setLoading] = useState(false);
+  const [resolved, setResolved] = useState(false); // true once a live lookup answered
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,7 +92,10 @@ export function useOwnedAgents(
           for (const a of lists.flat()) {
             if (a?.agentAddress) byAddress.set(a.agentAddress.toLowerCase(), a);
           }
-          setAgents(Array.from(byAddress.values()));
+          const list = Array.from(byAddress.values());
+          setAgents(list);
+          setResolved(true);
+          try { localStorage.setItem(`ga_agents_${key}`, JSON.stringify(list)); } catch {}
           setError(null);
         })
         .catch(() => {
@@ -105,5 +117,7 @@ export function useOwnedAgents(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, pollMs]);
 
-  return { agents, loading, error, hasAgent: agents.length > 0 };
+  // knowsNoAgent: safe to show the deploy/empty state — either a live lookup
+  // confirmed zero agents, or there's no cached agent to show meanwhile.
+  return { agents, loading, resolved, error, hasAgent: agents.length > 0, knowsNoAgent: agents.length === 0 && resolved };
 }

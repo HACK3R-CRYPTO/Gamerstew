@@ -47,7 +47,7 @@ Pages live under `app/`. Key routes:
 - `/games/simon` · Simon Memory
 - `/games/stack` · Stack Tower
 - `/games/challenge-ai` · Challenge AI (MARKOV) Instant Arena · YOU / YOUR AI lobby switch: play MARKOV yourself, or send your deployed GoodAgents agent in and watch the match live (SSE stage with win dots, read meter, staged clashes)
-- `/agents` · deploy a personal AI agent (embedded GoodAgents widget)
+- `/agents` · agent home: owners see their deployed agent (identity, daily match usage, send-in CTA); newcomers get the embedded GoodAgents deploy widget (onboard mode, face verification first, rethemed to GameArena tokens)
 - `/pass/[address]` · public player passport (username or 0x in the URL) · rank, scores, badges, pet + habitat, lifetime UBI, per-player OG card, share/save with `?ref=` referral codes
 - `/games/survivor` · Slime Survivor, an in-progress route currently hidden from the lobby but reachable by direct link
 - `/games/<game>/leaderboard` · per-game leaderboards

@@ -128,7 +128,7 @@ export default function ChallengeAiPage() {
   // The player's deployed GoodAgents agent (if any) · powers the YOU/YOUR AI
   // lobby switch. Strategy is the inline loadout choice; it rides into the
   // agent flow so a change is signed+saved on the same play tap.
-  const { agents: ownedAgents } = useOwnedAgents(authed ? [address] : [], 15000);
+  const { agents: ownedAgents, knowsNoAgent } = useOwnedAgents(authed ? [address] : [], 15000);
   const myAgent = ownedAgents[0] ?? null;
   const [agentStrategy, setAgentStrategy] = useState<string | null>(null);
   // Where the agent panel opens: "play" auto-launches the match; "settings"
@@ -491,6 +491,7 @@ export default function ChallengeAiPage() {
             onAgentSettings={() => { setAgentEntry("settings"); setPhase("agent"); }}
             isDesktop={isDesktop}
             agent={myAgent}
+            agentKnownAbsent={knowsNoAgent}
             agentStrategy={agentStrategy}
             onDeploy={() => router.push("/agents")}
           />
@@ -544,7 +545,7 @@ export default function ChallengeAiPage() {
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
   isGuest, demoLeft, showAgentOption, onAgent, onAgentSettings, isDesktop,
-  agent, agentStrategy, onDeploy, agentLaunchPhase,
+  agent, agentKnownAbsent, agentStrategy, onDeploy, agentLaunchPhase,
 }: {
   pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
@@ -565,6 +566,7 @@ function Lobby({
   onAgentSettings: () => void; // open the full agent settings editor
   isDesktop: boolean;       // wide layout
   agent: OwnedAgent | null;         // the player's deployed agent, if any
+  agentKnownAbsent: boolean;        // live lookup CONFIRMED no agent (safe to pitch deploy)
   agentStrategy: string | null;     // current MARKOV_STRATEGY · summary pill display
   onDeploy: () => void;             // no agent yet → GoodAgents widget
 }) {
@@ -887,20 +889,22 @@ function Lobby({
               // deploy. You only leave the lobby when the match is real.
               const busyAi = agentLaunchPhase !== "idle";
               const capped = !!agent?.dailyCapReached;
-              const label = !agent ? "🤖 DEPLOY YOUR AGENT"
+              const checking = !agent && !agentKnownAbsent; // lookup still in flight · never pitch deploy yet
+              const label = checking ? "CHECKING YOUR AGENT…"
+                : !agent ? "🤖 DEPLOY YOUR AGENT"
                 : agentLaunchPhase === "signing" ? "CONFIRM IN YOUR WALLET…"
                 : agentLaunchPhase === "waking" ? "WAKING YOUR AGENT…"
                 : agentLaunchPhase === "starting" ? "SENDING AGENT IN…"
                 : capped ? "⚙️ RAISE DAILY CAP"
                 : `⚔️ SEND ${(agent.displayName || "YOUR AI").toUpperCase()} IN`;
-              const sub = !agent ? "ONE-TIME SETUP ON GOODAGENTS"
+              const sub = checking ? "" : !agent ? "ONE-TIME SETUP ON GOODAGENTS"
                 : capped && !busyAi ? `${agent.matchesToday ?? ""}/${agent.dailyMatchCap ?? ""} MATCHES TODAY · RESETS DAILY`
                 : "IT FIGHTS · YOU WATCH LIVE";
               return (
                 <div
                   role="button"
-                  onClick={busyAi ? undefined : !agent ? onDeploy : capped ? onAgentSettings : onAgent}
-                  style={{ cursor: busyAi ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,211,238,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+                  onClick={busyAi || checking ? undefined : !agent ? onDeploy : capped ? onAgentSettings : onAgent}
+                  style={{ cursor: busyAi || checking ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,211,238,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
                   onMouseDown={(e) => { if (!busyAi) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                   onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
@@ -908,10 +912,10 @@ function Lobby({
                   <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busyAi ? "rgba(34,211,238,0.4)" : "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
                     <div style={{ position: "relative", zIndex: 1 }}>
-                      <div style={{ fontFamily: T.display, fontSize: busyAi ? 15 : 18, color: "#062c38", letterSpacing: "0.04em" }}>
+                      <div style={{ fontFamily: T.display, fontSize: busyAi || checking ? 15 : 18, color: "#062c38", letterSpacing: "0.04em" }}>
                         {label}
                       </div>
-                      {!busyAi && (
+                      {!busyAi && sub && (
                         <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 2, opacity: 0.85, whiteSpace: "nowrap" }}>
                           {sub}
                         </div>
