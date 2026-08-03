@@ -2456,6 +2456,40 @@ app.post('/api/habitat/equip', requireSecret, async (req, res) => {
   res.json({ success: true, equipped: tier });
 });
 
+// ─── GoodCollective choice ──────────────────────────────────────────────────
+// Per-player attribution: which GoodCollective their G$ spending's UBI share
+// supports. On-chain the 20% flows to one pool, so this ledger drives display
+// (passport, impact) and future multi-pool routing. Table: collective_choice.
+
+// GET /api/collective/:address → { collectiveId } (null when never chosen)
+app.get('/api/collective/:address', async (req, res) => {
+  const addr = String(req.params.address || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return res.status(400).json({ error: 'Invalid address' });
+  try {
+    const { data } = await supabase
+      .from('collective_choice').select('collective_id').eq('wallet', addr).maybeSingle();
+    return res.json({ collectiveId: data?.collective_id ?? null });
+  } catch {
+    return res.json({ collectiveId: null });
+  }
+});
+
+// POST /api/collective/choose { address, collectiveId } · requireSecret: comes
+// through a Next server action for the connected wallet (same trust model as
+// /api/habitat/equip).
+app.post('/api/collective/choose', requireSecret, async (req, res) => {
+  const { address, collectiveId } = req.body || {};
+  const addr = String(address || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return res.status(400).json({ error: 'Invalid address' });
+  const id = String(collectiveId || '').trim();
+  if (!id || id.length > 64 || !/^[a-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'Invalid collective' });
+  const { error } = await supabase
+    .from('collective_choice')
+    .upsert({ wallet: addr, collective_id: id, set_at: new Date().toISOString() }, { onConflict: 'wallet' });
+  if (error) return res.status(500).json({ error: 'Persist failed' });
+  return res.json({ success: true, collectiveId: id });
+});
+
 // ─── GET /api/streak/:address ────────────────────────────────────────────
 app.get('/api/streak/:address', async (req, res) => {
   const addr = req.params.address.toLowerCase();
@@ -3858,7 +3892,11 @@ function liveHub(matchId) {
   return h;
 }
 function liveBroadcast(matchId, type, payload) {
-  const h = liveMatchHub.get(matchId);
+  // liveHub (not .get): CREATE the hub so history buffers from round 1 even
+  // when no viewer has connected yet. With .get, rounds broadcast before the
+  // first viewer were dropped — every spectator joined mid-match missing the
+  // opening rounds. Hubs are cleaned up 30s after the 'end' frame as before.
+  const h = liveHub(matchId);
   const frame = { type, ...payload };
   const chunk = `data: ${JSON.stringify(frame)}\n\n`;
   if (h) {
@@ -3920,25 +3958,75 @@ const agentVault = provider ? new ethers.Contract(AGENT_VAULT_ADDRESS, [
   'function getAgent(address) view returns (address operator, uint256 stakeAmount, uint256 unlockAt)',
 ], provider) : null;
 
+// On-chain gate: a real agent has a non-zero operator on the vault. Blocks
+// random wallets from posing as agents on the board. Returns null if OK,
+// or an {status, error} object to send back.
+async function verifyAgentAddress(agentAddress) {
+  if (!agentVault) return null; // RPC down · fail open (dev)
+  try {
+    const [operator] = await agentVault.getAgent(agentAddress);
+    if (!operator || /^0x0+$/.test(operator)) {
+      return { status: 403, error: 'not_a_deployed_agent' };
+    }
+    return null;
+  } catch (e) {
+    console.error('agent verify failed:', e?.shortMessage || e?.message);
+    return { status: 503, error: 'agent_verify_unavailable' };
+  }
+}
+
 app.post('/api/arena/agent/start', requireAgentKey, gameSubmitLimiter, async (req, res) => {
   const { agentAddress } = req.body || {};
   if (!agentAddress || !/^0x[0-9a-fA-F]{40}$/.test(agentAddress)) {
     return res.status(400).json({ error: 'agentAddress required' });
   }
-  // On-chain gate: a real agent has a non-zero operator on the vault. Blocks
-  // random wallets from posing as agents on the board.
-  if (agentVault) {
-    try {
-      const [operator] = await agentVault.getAgent(agentAddress);
-      if (!operator || /^0x0+$/.test(operator)) {
-        return res.status(403).json({ error: 'not_a_deployed_agent' });
-      }
-    } catch (e) {
-      console.error('agent verify failed:', e?.shortMessage || e?.message);
-      return res.status(503).json({ error: 'agent_verify_unavailable' });
-    }
-  }
+  const bad = await verifyAgentAddress(agentAddress);
+  if (bad) return res.status(bad.status).json({ error: bad.error });
   return res.json(arenaEngine.start(agentAddress));
+});
+
+// POST /api/arena/agent/play — start a match AND drive it to completion on the
+// server, one paced round at a time, broadcasting each round to the live SSE
+// feed. Returns the matchId immediately so the caller (a player tapping "send
+// my agent", or GoodAgents) can open the live view right away. Auth accepts the
+// scoped agent key OR GameArena's own internal secret (its "play" button hits
+// this via a server action).
+//
+// NOTE: the agent's moves here are chosen server-side — this is the exhibition/
+// self-play driver that makes the match watchable on demand. When GoodAgents
+// drives its own agent's real strategy, it uses /agent/start + /agent/throw
+// instead and this route is skipped.
+app.post('/api/arena/agent/play', gameSubmitLimiter, async (req, res) => {
+  const keyOk = AGENT_PLAY_KEY && req.headers['x-agent-key'] === AGENT_PLAY_KEY;
+  const secretOk = INTERNAL_SECRET && req.headers['x-internal-secret'] === INTERNAL_SECRET;
+  if (!keyOk && !secretOk) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { agentAddress, pace } = req.body || {};
+  if (!agentAddress || !/^0x[0-9a-fA-F]{40}$/.test(agentAddress)) {
+    return res.status(400).json({ error: 'agentAddress required' });
+  }
+  const bad = await verifyAgentAddress(agentAddress);
+  if (bad) return res.status(bad.status).json({ error: bad.error });
+
+  const started = arenaEngine.start(agentAddress);
+  const matchId = started.matchId;
+  // Answer instantly · the client opens the live feed on this id.
+  res.json({ matchId, commitHash: started.commitHash, bestOf: started.bestOf, winsNeeded: started.winsNeeded });
+
+  // Drive the match asynchronously so viewers see it unfold round by round.
+  const stepMs = Math.min(Math.max(Number(pace) || 1100, 500), 3000);
+  (async () => {
+    // Cap high enough that even a tie-heavy random driver reaches 3 wins; ties
+    // replay and don't count, so a match can run well past 5 rounds.
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, stepMs));
+      const move = Math.floor(Math.random() * 3);
+      const out = arenaEngine.throw(matchId, move);
+      if (!out || out.error) break;
+      liveBroadcast(matchId, out.final ? 'end' : 'round', out);
+      if (out.final) break;
+    }
+  })().catch((e) => console.error('agent self-play failed:', e?.message));
 });
 
 app.post('/api/arena/agent/throw', requireAgentKey, gameSubmitLimiter, (req, res) => {

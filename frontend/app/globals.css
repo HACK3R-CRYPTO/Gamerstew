@@ -553,6 +553,10 @@ button[aria-label$="button"],
 @keyframes glowPulse { 0%,100% { box-shadow: 0 8px 30px rgba(251,191,36,0.27) } 50% { box-shadow: 0 8px 44px rgba(251,191,36,0.55) } }
 @keyframes bubblePop { 0% { transform: scale(0.6) translateY(6px); opacity: 0 } 70% { transform: scale(1.05) translateY(0); opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
 @keyframes floorPulse { 0%,100% { opacity: 0.55; transform: scaleX(1) } 50% { opacity: 0.85; transform: scaleX(1.06) } }
+@keyframes spin { to { transform: rotate(360deg) } }
+/* passport section rows · hairline between siblings, none against card edges */
+.pass-rows > * + * { border-top: 1px solid rgba(255,255,255,0.08); }
+@keyframes livePulse { 0%,100% { opacity: 1; transform: scale(1) } 50% { opacity: 0.4; transform: scale(0.82) } }
 @keyframes iconDrift { 0%,100% { transform: translateY(0) rotate(var(--rot, 0deg)) } 50% { transform: translateY(-14px) rotate(var(--rot, 0deg)) } }
 @keyframes slamL { from { transform: translateX(-90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }
 @keyframes slamR { from { transform: translateX(90px) scale(0.8); opacity: 0 } to { transform: none; opacity: 1 } }

@@ -8,6 +8,7 @@ import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { claimGas } from "@/app/actions/gas";
+import { captureReferralFromUrl, readPendingReferral, clearPendingReferral, resolveRefCode } from "@/lib/referral";
 
 // ─── design tokens ──────────────────────────────────────────────────────
 const T = {
@@ -123,6 +124,46 @@ export default function Onboarding({
   const [copied, setCopied] = useState(false);
   const [setupLine, setSetupLine] = useState(0);
   const [mintError, setMintError] = useState<MintError | null>(null);
+
+  // ─── Referral · this onboarding IS the real mint path, so the referral has
+  // to be recorded here (it previously only existed on the parallel /mint
+  // page, which most players never see — link referrals silently died).
+  // bankedRef = a ?ref link already captured; the code input is progressive
+  // disclosure for word-of-mouth ("use my code ogazboiz").
+  const [bankedRef, setBankedRef] = useState<string | null>(null);
+  const [refOpen, setRefOpen] = useState(false);
+  const [refCode, setRefCode] = useState("");
+  const [refResolved, setRefResolved] = useState<{ address: string; username: string | null } | null>(null);
+  const [refResolving, setRefResolving] = useState(false);
+  useEffect(() => {
+    captureReferralFromUrl();
+    setBankedRef(readPendingReferral());
+  }, []);
+  useEffect(() => {
+    const code = refCode.trim();
+    if (!/^[a-zA-Z0-9_]{2,24}$/.test(code) && !/^0x[a-fA-F0-9]{40}$/.test(code)) { setRefResolved(null); setRefResolving(false); return; }
+    setRefResolving(true);
+    const t = setTimeout(() => {
+      resolveRefCode(code).then(setRefResolved).finally(() => setRefResolving(false));
+    }, 450);
+    return () => clearTimeout(t);
+  }, [refCode]);
+
+  // Record the referral the moment the mint lands (mint = verified player →
+  // that's when a referral counts). Manual code beats the banked link value.
+  const recordReferral = async () => {
+    const me = address?.toLowerCase();
+    const referrer = refResolved?.address ?? bankedRef ?? readPendingReferral();
+    if (!me || !referrer || referrer === me) return;
+    try {
+      await fetch("/api/season/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: me, referrer }),
+      });
+      clearPendingReferral();
+    } catch { /* best-effort · first-write-wins server-side */ }
+  };
   const [slowMint, setSlowMint] = useState(false);
   // Live username availability · "idle" | "checking" | "available" | "taken".
   // Debounced on-chain isUsernameAvailable read so the player sees it before
@@ -251,6 +292,7 @@ export default function Onboarding({
         ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
       });
       await refetchPass();
+      void recordReferral(); // fire-and-forget · never blocks the flow
       setPhase("verify");
     } catch (e: unknown) {
       const raw = e instanceof Error ? e.message : String(e);
@@ -258,6 +300,7 @@ export default function Onboarding({
       // Race: same wallet minted in another tab · silent success.
       if (lower.includes("already minted")) {
         await refetchPass();
+        void recordReferral();
         setPhase("verify");
         return;
       }
@@ -471,6 +514,44 @@ export default function Onboarding({
               </span>
               <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 800, color: username.length > 0 ? (valid ? "#86efac" : "#f87171") : T.inkSoft }}>{username.length}/16</span>
             </div>
+
+            {/* Referral · progressive disclosure. A banked ?ref link shows as a
+                quiet confirmation; word-of-mouth players open the code input. */}
+            {bankedRef && !refOpen ? (
+              <div style={{ marginTop: 10, textAlign: "center", fontFamily: T.body, fontSize: 10.5, fontWeight: 700, color: "#86efac" }}>
+                🎁 Referral linked ✓{" "}
+                <button onClick={() => setRefOpen(true)} style={{ background: "none", border: "none", color: T.inkSoft, fontSize: 10.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                  change
+                </button>
+              </div>
+            ) : !refOpen ? (
+              <div style={{ marginTop: 10, textAlign: "center" }}>
+                <button onClick={() => setRefOpen(true)} style={{ background: "none", border: "none", color: T.inkSoft, fontFamily: T.body, fontSize: 11, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}>
+                  🎁 Got a referral code?
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: 10 }}>
+                <input
+                  type="text" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                  placeholder="friend's code · e.g. ogazboiz"
+                  value={refCode}
+                  onChange={e => setRefCode(e.target.value.replace(/[^0-9a-zA-Z_xX]/g, "").slice(0, 42))}
+                  style={{
+                    width: "100%", boxSizing: "border-box", padding: "11px 14px", textAlign: "center",
+                    background: "rgba(0,0,0,0.4)", borderRadius: 12, color: "#fff",
+                    border: `1.5px solid ${refResolved ? "rgba(134,239,172,0.7)" : refCode.trim().length > 1 && !refResolving ? "rgba(248,113,113,0.5)" : T.hairlineHi}`,
+                    fontFamily: T.body, fontSize: 13, fontWeight: 700, outline: "none",
+                  }}
+                />
+                <div style={{ marginTop: 5, textAlign: "center", fontFamily: T.body, fontSize: 10, fontWeight: 700, color: refResolved ? "#86efac" : refResolving ? T.inkSoft : refCode.trim().length > 1 ? "#f87171" : T.inkSoft }}>
+                  {refResolving ? "checking…"
+                    : refResolved ? `✓ referred by @${refResolved.username ?? "friend"}`
+                    : refCode.trim().length > 1 ? "code not found"
+                    : "optional · counts once you're verified"}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

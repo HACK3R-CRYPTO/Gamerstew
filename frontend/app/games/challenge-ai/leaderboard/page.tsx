@@ -12,9 +12,9 @@ import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
-import { getArenaLadder, type LadderData, type LadderEntry } from "@/app/actions/arena";
+import { getArenaLadder, getUsernames, type LadderData, type LadderEntry } from "@/app/actions/arena";
 import { AgentBadge } from "@/components/AgentBadge";
-import { useAgentAddresses } from "@/hooks/useAgentAddresses";
+import { useAgentOperators } from "@/hooks/useAgentAddresses";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -76,7 +76,7 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
   return <div style={{ ...base, color: p.color, fontSize: `${p.size + 4}px`, fontWeight: 900 }}>★</div>;
 }
 
-function StagePodium({ podium, agentSet }: { podium: (LadderEntry | undefined)[]; agentSet: Set<string> }) {
+function StagePodium({ podium, agentSet, ownerLabel }: { podium: (LadderEntry | undefined)[]; agentSet: Set<string>; ownerLabel?: (w: string) => string | null }) {
   const placements = [
     { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
     { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
@@ -100,6 +100,11 @@ function StagePodium({ podium, agentSet }: { podium: (LadderEntry | undefined)[]
               {pl.entry ? fmtName(pl.entry) : "—"}
               {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#67e8f9", marginLeft: 4, textShadow: "0 0 8px #22d3ee" }}>🤖</span>}
             </div>
+            {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && ownerLabel?.(pl.entry.wallet) && (
+              <div style={{ color: "#67e8f9", fontSize: 9, fontWeight: 800, textShadow: "0 2px 4px rgba(0,0,0,0.8)", marginTop: 1 }}>
+                by {ownerLabel(pl.entry.wallet)}
+              </div>
+            )}
             <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>
               {pl.entry ? `${pl.entry.points} pts` : "—"}
             </div>
@@ -111,7 +116,7 @@ function StagePodium({ podium, agentSet }: { podium: (LadderEntry | undefined)[]
 }
 
 // ─── pill row · ranks 4+ · same construction as the other boards ────────────
-function LadderRow({ entry, isMe, isAgent }: { entry: LadderEntry; isMe: boolean; isAgent?: boolean }) {
+function LadderRow({ entry, isMe, isAgent, owner }: { entry: LadderEntry; isMe: boolean; isAgent?: boolean; owner?: string | null }) {
   return (
     <div style={{
       borderRadius: 999, padding: 2.5,
@@ -140,6 +145,7 @@ function LadderRow({ entry, isMe, isAgent }: { entry: LadderEntry; isMe: boolean
             {isAgent && <AgentBadge />}
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>
+            {owner && <span style={{ color: "#67e8f9" }}>by {owner} · </span>}
             {entry.wins}W · {entry.matches} matches
           </div>
         </div>
@@ -187,11 +193,47 @@ export default function ArenaLadderPage() {
 
   const isCurrentWeek = !ladder?.currentWeek || ladder.week === ladder.currentWeek;
   const me = ladder?.me ?? null;
-  const podium = ladder?.top?.slice(0, 3) ?? [];
-  const rest = ladder?.top?.slice(3) ?? [];
-  // Flag which ladder entries are deployed agents (one multicall over the
-  // whole board) so the podium and rows can badge them apart from humans.
-  const agentSet = useAgentAddresses((ladder?.top ?? []).map((e) => e.wallet));
+
+  // Which board are we looking at. Humans and agents share one ladder, but
+  // agents grind far more matches, so a mixed list buries real players. Two
+  // lenses keep each competition honest — and the Agents lens attaches every
+  // agent to the player who deployed it.
+  const [view, setView] = useState<"players" | "agents">("players");
+
+  // agent wallet → operator (owner). One multicall over the whole board.
+  const agentOps = useAgentOperators((ladder?.top ?? []).map((e) => e.wallet));
+  const agentSet = useMemo(() => new Set(agentOps.keys()), [agentOps]);
+
+  // Resolve the owners' on-chain names so an agent reads "by @owner".
+  const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
+  const opsKey = useMemo(() => Array.from(new Set(agentOps.values())).sort().join(","), [agentOps]);
+  useEffect(() => {
+    const ops = opsKey ? opsKey.split(",") : [];
+    if (ops.length === 0) { setOwnerNames({}); return; }
+    let cancelled = false;
+    getUsernames(ops).then((m) => { if (!cancelled) setOwnerNames(m); });
+    return () => { cancelled = true; };
+  }, [opsKey]);
+
+  const ownerLabel = (agentWallet: string): string | null => {
+    const op = agentOps.get(agentWallet.toLowerCase());
+    if (!op) return null;
+    const name = ownerNames[op];
+    return name ? `@${name.replace(/^@/, "")}` : `${op.slice(0, 6)}…${op.slice(-4)}`;
+  };
+
+  // Filter to the active lens, then re-rank 1..N within it so each board reads
+  // as its own clean standings instead of a gap-filled global rank.
+  const hasAgents = agentSet.size > 0;
+  const viewEntries = useMemo(() => {
+    const all = ladder?.top ?? [];
+    const list = all.filter((e) =>
+      view === "agents" ? agentSet.has(e.wallet.toLowerCase()) : !agentSet.has(e.wallet.toLowerCase()),
+    );
+    return list.map((e, i) => ({ ...e, rank: i + 1 }));
+  }, [ladder?.top, view, agentSet]);
+  const podium = viewEntries.slice(0, 3);
+  const rest = viewEntries.slice(3);
   // Advertise the pool ONLY when a base amount was deliberately funded
   // (env). Player refill spending accumulates silently until then — a
   // '4 G$ pool' built from two refills is noise, not a prize.
@@ -227,6 +269,29 @@ export default function ArenaLadderPage() {
             );
           })}
         </div>
+
+        {/* Players / Agents lens · only shown once agents are actually on the
+            board, so a purely human ladder stays a single clean list. */}
+        {hasAgents && (
+          <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+            {([
+              { id: "players" as const, label: "🎮 PLAYERS" },
+              { id: "agents" as const, label: "🤖 AGENTS" },
+            ]).map((opt) => {
+              const active = view === opt.id;
+              const on = opt.id === "agents" ? "#22d3ee" : "#22c55e";
+              return (
+                <button key={opt.id} onClick={() => setView(opt.id)} style={{
+                  padding: "8px 16px", borderRadius: 10, cursor: "pointer",
+                  background: active ? on : "transparent", border: "none",
+                  color: active ? (opt.id === "agents" ? "#062c38" : "#fff") : T.inkSoft,
+                  fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.08em",
+                  boxShadow: active ? `0 6px 14px -4px ${on}aa, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
+                }}>{opt.label}</button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Header strip · arena identity + week status */}
         <div style={{
@@ -343,13 +408,13 @@ export default function ArenaLadderPage() {
         {!loading && !(tab === "past" && pastWeeks.length === 0) && ladder && ladder.top.length > 0 && (
           <>
             {/* Podium · the crown moment */}
-            <StagePodium podium={[podium[0], podium[1], podium[2]]} agentSet={agentSet} />
+            <StagePodium podium={[podium[0], podium[1], podium[2]]} agentSet={agentSet} ownerLabel={ownerLabel} />
 
             {/* Rows 4+ */}
             {rest.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                 {rest.map((e) => (
-                  <LadderRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} isAgent={agentSet.has(e.wallet.toLowerCase())} />
+                  <LadderRow key={e.wallet} entry={e} isMe={!!address && e.wallet === address.toLowerCase()} isAgent={agentSet.has(e.wallet.toLowerCase())} owner={agentSet.has(e.wallet.toLowerCase()) ? ownerLabel(e.wallet) : null} />
                 ))}
               </div>
             )}

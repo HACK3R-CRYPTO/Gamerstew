@@ -13,19 +13,44 @@
 const KEY = "season1_pending_referrer";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// Reads `?ref=` from the current URL and writes it to localStorage if
-// it parses as a 0x wallet. Idempotent — repeated calls on the same
-// page reload the same value. Returns the wallet (or null) so a caller
-// can branch in the same render.
+function store(wallet: string): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ wallet, at: Date.now() }));
+  } catch { /* private mode / quota — accept that this user misses persistence */ }
+}
+
+// Resolve a referral code (GamePass username or 0x wallet) to a wallet via
+// /api/ref/resolve. Returns null when the code matches nobody.
+export async function resolveRefCode(code: string): Promise<{ address: string; username: string | null } | null> {
+  try {
+    const res = await fetch(`/api/ref/resolve?code=${encodeURIComponent(code.trim())}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.address ? { address: data.address, username: data.username ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Reads `?ref=` from the current URL and banks it. Accepts a 0x wallet
+// (stored synchronously, as before) OR a username code (resolved via the
+// subgraph in the background, then stored). Idempotent. Returns the wallet
+// when it was an address; username codes return null here but still land in
+// storage once resolved.
 export function captureReferralFromUrl(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = new URL(window.location.href).searchParams.get("ref")?.toLowerCase().trim() ?? null;
+  const raw = new URL(window.location.href).searchParams.get("ref")?.trim() ?? null;
   if (!raw) return null;
-  if (!/^0x[a-f0-9]{40}$/.test(raw)) return null;
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ wallet: raw, at: Date.now() }));
-  } catch { /* private mode / quota — accept that this user misses persistence */ }
-  return raw;
+  const lower = raw.toLowerCase();
+  if (/^0x[a-f0-9]{40}$/.test(lower)) {
+    store(lower);
+    return lower;
+  }
+  // Username code · resolve fire-and-forget so the sync callers stay sync.
+  if (/^[a-zA-Z0-9_]{2,24}$/.test(raw)) {
+    void resolveRefCode(raw).then((hit) => { if (hit) store(hit.address); });
+  }
+  return null;
 }
 
 // Returns the cached referrer if still fresh; null if missing, expired,

@@ -234,6 +234,18 @@ export default function ProfilePage() {
   const router = useRouter();
   const { authenticated } = usePrivy();
   const { address } = useAccount();
+
+  // Referral scoreboard · verified-referee count for the passport banner.
+  const [refCount, setRefCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!address) { setRefCount(null); return; }
+    let cancelled = false;
+    fetch(`/api/ref/count?wallet=${address.toLowerCase()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && typeof d?.count === "number") setRefCount(d.count); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [address]);
   const [isDesktop, setIsDesktop] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -500,6 +512,31 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* PASSPORT · the public, shareable face of this profile. Promoted
+            here (not just the account sheet) because the profile is where
+            players come to admire their stats — the share impulse lives
+            here. The passport page owns share/save; this is the door. */}
+        {connected && address && (
+          <button
+            onClick={() => router.push(`/pass/${(chainUsername as string | undefined) || address}`)}
+            style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 14px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(90deg, rgba(167,139,250,0.2) 0%, rgba(40,18,100,0.55) 100%)", border: "1px solid rgba(167,139,250,0.4)" }}
+          >
+            <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.18)", border: "1px solid rgba(167,139,250,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🪪</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
+                My passport & referrals
+                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} verified</span>}
+              </span>
+              <span style={{ display: "block", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>
+                {chainUsername
+                  ? <>Your code: <strong style={{ color: "#c4b5fd" }}>{String(chainUsername)}</strong> · counts when a friend verifies</>
+                  : <>Share it or save the card · counts when a friend verifies</>}
+              </span>
+            </span>
+            <span style={{ color: T.accent, fontSize: 16, flexShrink: 0 }}>›</span>
+          </button>
         )}
 
         {/* VERIFY CARD · only for connected players who haven't verified

@@ -16,6 +16,7 @@ import AppBottomNav from "@/components/AppBottomNav";
 import { UnblockNotificationsModal } from "@/components/UnblockNotificationsModal";
 import { WalletSheet } from "@/components/WalletSheet";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
+import CollectivePicker from "@/components/CollectivePicker";
 import { useGasStatus } from "@/hooks/useGasStatus";
 
 // Token system matches /profile + /shop so the three surfaces read as
@@ -598,6 +599,8 @@ export default function SettingsPage() {
             >
               <Icon name="chevR" size={14} color={T.inkSoft} />
             </Row>
+            {/* GoodCollective picker · where the player's UBI share goes */}
+            <CollectivePicker />
           </div>
         </section>
 
