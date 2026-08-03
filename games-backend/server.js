@@ -3892,7 +3892,11 @@ function liveHub(matchId) {
   return h;
 }
 function liveBroadcast(matchId, type, payload) {
-  const h = liveMatchHub.get(matchId);
+  // liveHub (not .get): CREATE the hub so history buffers from round 1 even
+  // when no viewer has connected yet. With .get, rounds broadcast before the
+  // first viewer were dropped — every spectator joined mid-match missing the
+  // opening rounds. Hubs are cleaned up 30s after the 'end' frame as before.
+  const h = liveHub(matchId);
   const frame = { type, ...payload };
   const chunk = `data: ${JSON.stringify(frame)}\n\n`;
   if (h) {
