@@ -1,6 +1,8 @@
 "use client";
 
-import { GoodAgentWidget, createGameArenaWidgetConfig, usePrivyWalletAdapter } from "@goodagent/widget";
+import { GoodAgentWidget, createGameArenaWidgetConfig } from "@goodagent/widget";
+// 0.3.x moved the Privy bridge to a subpath so wagmi-only apps skip the dep.
+import { usePrivyWalletAdapter } from "@goodagent/widget/privy";
 import "@goodagent/widget/styles.css";
 
 // The GoodAgents widget + the Privy wallet bridge, isolated in its own client
