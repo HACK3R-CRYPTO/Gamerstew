@@ -223,6 +223,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
   // lookup already reports (activeMatchId).
   const { signMessageAsync } = useSignMessage();
   const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(null);
+  const [matchDone, setMatchDone] = useState(false);
   const [phase, setPhase] = useState<"idle" | "signing" | "saving" | "waking" | "starting">("idle");
   const [err, setErr] = useState<string | null>(null);
 
@@ -325,13 +326,15 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {matchId ? (
         <>
-          <AgentCard agent={agent} live />
+          <AgentCard agent={agent} live={!matchDone} done={matchDone} />
           <LiveMatch
             key={matchId}
             matchId={matchId}
             watchUrl={watchUrl}
             agentName={name}
-            onPlayAgain={launched?.matchId === matchId ? () => { setLaunched(null); setErr(null); } : undefined}
+            agentAddress={agent.agentAddress}
+            onEnded={() => setMatchDone(true)}
+            onPlayAgain={launched?.matchId === matchId ? () => { setLaunched(null); setErr(null); setMatchDone(false); } : undefined}
           />
         </>
       ) : (
@@ -487,7 +490,7 @@ function VersusStage({ agent, phase, busy, err, onPlay, strategy, savedStrategy,
   );
 }
 
-function AgentCard({ agent, live }: { agent: OwnedAgent; live: boolean }) {
+function AgentCard({ agent, live, done }: { agent: OwnedAgent; live: boolean; done?: boolean }) {
   const short = `${agent.agentAddress.slice(0, 6)}…${agent.agentAddress.slice(-4)}`;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(0,0,0,0.4)", border: `1px solid rgba(34,211,238,0.25)`, borderRadius: 16, padding: "12px 14px", marginBottom: 14 }}>
@@ -507,16 +510,16 @@ function AgentCard({ agent, live }: { agent: OwnedAgent; live: boolean }) {
           {agent.gamePassUsername ? `@${agent.gamePassUsername} · ${short}` : short}
         </div>
       </div>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: live ? "#fca5a5" : T.inkSoft, flexShrink: 0 }}>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", background: live ? "#ef4444" : T.inkSoft, boxShadow: live ? "0 0 8px #ef4444" : "none", animation: live ? "livePulse 1.2s ease-in-out infinite" : "none" }} />
-        {live ? "LIVE" : "IDLE"}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: live ? "#fca5a5" : done ? "#86efac" : T.inkSoft, flexShrink: 0 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: live ? "#ef4444" : done ? "#22c55e" : T.inkSoft, boxShadow: live ? "0 0 8px #ef4444" : "none", animation: live ? "livePulse 1.2s ease-in-out infinite" : "none" }} />
+        {live ? "LIVE" : done ? "FINISHED" : "IDLE"}
       </span>
     </div>
   );
 }
 
 // ═══ live match viewer ═════════════════════════════════════════════════════════
-function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: string; watchUrl: string | null; agentName: string; onPlayAgain?: () => void }) {
+function LiveMatch({ matchId, watchUrl, agentName, agentAddress, onEnded, onPlayAgain }: { matchId: string; watchUrl: string | null; agentName: string; agentAddress?: string; onEnded?: () => void; onPlayAgain?: () => void }) {
   const [rounds, setRounds] = useState<LiveRound[]>([]);
   const [score, setScore] = useState({ player: 0, ai: 0, ties: 0 });
   const [line, setLine] = useState<string | null>(null);
@@ -525,12 +528,11 @@ function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: str
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Prefer GoodAgents' own stream (watchUrl); if it errors before delivering a
-    // single frame, fall back to our arena feed on the same matchId. Matches
-    // carry the same am_ id on both sides, so the fallback is a real safety net
-    // rather than a guess.
-    const primary = watchUrl || `${LIVE_BASE}/${matchId}`;
-    const fallback = watchUrl ? `${LIVE_BASE}/${matchId}` : null;
+    // OUR arena feed is primary: the match runs on our engine, and our feed
+    // replays history to late joiners (Samuel's stream doesn't — that's how
+    // round 1 went missing from the tape). His watchUrl is the fallback.
+    const primary = `${LIVE_BASE}/${matchId}`;
+    const fallback = watchUrl;
     let gotFrame = false;
     let usedFallback = false;
     let es: EventSource | null = null;
@@ -584,6 +586,7 @@ function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: str
         if (r.markovLine) setLine(r.markovLine);
         const f = (frame.final || {}) as LiveFinal;
         setEnded(f);
+        onEnded?.();
         es?.close();
       }
     };
@@ -622,14 +625,16 @@ function LiveMatch({ matchId, watchUrl, agentName, onPlayAgain }: { matchId: str
         </div>
       )}
 
+      {/* victory/defeat hero rises ABOVE the tape the moment the match ends —
+          no scroll-hunting for the result, no dead gap (celebrate, then guide) */}
+      {ended && <MatchEnd final={ended} score={score} agentName={agentName} agentAddress={agentAddress} onPlayAgain={onPlayAgain} />}
+
       {/* round-by-round tape */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", marginTop: 12, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: 220 }}>
+      <div ref={scrollRef} style={{ flex: ended ? undefined : 1, overflowY: "auto", marginTop: 12, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 160 : 220 }}>
         {rounds.map((r) => (
           <RoundRow key={r.round} r={r} />
         ))}
       </div>
-
-      {ended && <MatchEnd final={ended} score={score} agentName={agentName} onPlayAgain={onPlayAgain} />}
     </div>
   );
 }
@@ -702,25 +707,65 @@ function RoundRow({ r }: { r: LiveRound }) {
   );
 }
 
-function MatchEnd({ final, score, agentName, onPlayAgain }: { final: LiveFinal; score: { player: number; ai: number; ties: number }; agentName: string; onPlayAgain?: () => void }) {
+// ═══ result hero ═════════════════════════════════════════════════════════════
+// Celebrate, then guide: victory gets the agent's own colored character +
+// confetti + a proper candy CTA; defeat gets MARKOV's gloat, no confetti.
+const CONFETTI_BITS = Array.from({ length: 16 }, (_, i) => ({
+  left: (i * 61) % 100,
+  delay: (i % 8) * 0.22,
+  color: ["#fbbf24", "#22d3ee", "#a78bfa", "#22c55e", "#f472b6"][i % 5],
+  size: 6 + (i % 3) * 3,
+}));
+
+function MatchEnd({ final, score, agentName, agentAddress, onPlayAgain }: { final: LiveFinal; score: { player: number; ai: number; ties: number }; agentName: string; agentAddress?: string; onPlayAgain?: () => void }) {
   const won = score.player > score.ai;
   const tie = score.player === score.ai;
   return (
-    <div style={{ marginTop: 12, textAlign: "center", background: won ? "rgba(34,211,238,0.1)" : tie ? "rgba(251,191,36,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${won ? "rgba(34,211,238,0.4)" : tie ? "rgba(251,191,36,0.4)" : "rgba(239,68,68,0.4)"}`, borderRadius: 14, padding: "12px 14px" }}>
-      <div style={{ fontFamily: T.display, fontSize: 18, color: won ? CYAN_SOFT : tie ? RIM : "#fca5a5", letterSpacing: "0.04em" }}>
-        {won ? `${agentName || "Your agent"} won` : tie ? "Dead even" : "MARKOV took it"}
+    <div style={{ position: "relative", marginTop: 12, textAlign: "center", overflow: "hidden", background: won ? "rgba(34,211,238,0.1)" : tie ? "rgba(251,191,36,0.1)" : "rgba(239,68,68,0.08)", border: `1px solid ${won ? "rgba(34,211,238,0.45)" : tie ? "rgba(251,191,36,0.4)" : "rgba(239,68,68,0.35)"}`, borderRadius: 18, padding: "16px 14px 14px", animation: "riseIn 0.35s ease both" }}>
+      {/* confetti · victory only */}
+      {won && CONFETTI_BITS.map((c, i) => (
+        <span key={i} aria-hidden style={{ position: "absolute", top: -12, left: `${c.left}%`, width: c.size, height: c.size, borderRadius: 2, background: c.color, animation: `confettiFall ${2.4 + (i % 3) * 0.5}s linear ${c.delay}s infinite`, opacity: 0.9, pointerEvents: "none" }} />
+      ))}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={won || tie ? AGENT_ART : MARKOV_ART}
+          alt=""
+          style={{ width: 62, height: 62, objectFit: "contain", transform: won || tie ? "scaleX(-1)" : undefined, filter: won || tie ? `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 14px rgba(34,211,238,0.5))` : "drop-shadow(0 0 14px rgba(251,191,36,0.5))", animation: "idleBob 2.6s ease-in-out infinite" }}
+        />
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontFamily: T.display, fontSize: 24, color: won ? CYAN_SOFT : tie ? RIM : "#fca5a5", letterSpacing: "0.03em", textShadow: won ? "0 0 20px rgba(34,211,238,0.5)" : undefined }}>
+            {won ? `${agentName || "Your agent"} wins! 🏆` : tie ? "Dead even" : "MARKOV takes it"}
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, marginTop: 3 }}>
+            Final {score.player}–{score.ai}
+            {final.seed ? " · provably fair, seed revealed" : ""}
+          </div>
+        </div>
       </div>
-      <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, marginTop: 3 }}>
-        Final {score.player}–{score.ai}
-        {final.seed ? " · provably fair, seed revealed" : ""}
-      </div>
+
+      {!won && !tie && (
+        <div style={{ fontFamily: T.body, fontStyle: "italic", fontSize: 11.5, color: "rgba(240,230,255,0.8)", marginTop: 8 }}>
+          “tell your bot to bring a better pattern next time.”
+        </div>
+      )}
+
       {onPlayAgain && (
-        <button
+        <div
+          role="button"
           onClick={onPlayAgain}
-          style={{ marginTop: 12, background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.4)", color: CYAN_SOFT, borderRadius: 999, padding: "9px 20px", fontFamily: T.display, fontSize: 13, letterSpacing: "0.03em", cursor: "pointer" }}
+          style={{ cursor: "pointer", userSelect: "none", borderRadius: 16, background: "#083344", paddingBottom: 5, maxWidth: 300, margin: "14px auto 0", boxShadow: `0 10px 22px -6px ${CYAN}66, inset 0 -3px 8px rgba(0,0,0,0.4)`, transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+          onMouseDown={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(2px)"; }}
+          onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
         >
-          ↻ Send in again
-        </button>
+          <div style={{ borderRadius: "14px 14px 11px 11px", background: `linear-gradient(160deg, #a5f3fc 0%, ${CYAN} 55%, #0e7490 100%)`, padding: "12px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 6px 14px rgba(255,255,255,0.5), inset 0 -3px 8px rgba(0,0,0,0.25)" }}>
+            <span style={{ fontFamily: T.display, fontSize: 15, color: "#062c38", letterSpacing: "0.04em" }}>
+              {won ? "⚔️ RUN IT BACK" : "⚔️ SEND IN AGAIN"}
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
