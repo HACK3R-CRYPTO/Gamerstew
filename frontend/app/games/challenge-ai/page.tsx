@@ -629,6 +629,16 @@ function Lobby({
         animation: "riseIn 0.35s ease both",
       }}
     >
+      {/* Back to the games hub · every sibling game lobby shows an explicit
+          exit, and the global bottom nav alone wasn't reading as "leave this
+          game" (its Play tab is the current section). Recognition over recall:
+          a clear, consistent way out from the arena. */}
+      <Link href="/games" aria-label="Back to games" style={{ textDecoration: "none", position: "relative", zIndex: 3, alignSelf: "flex-start", marginBottom: 10 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 13px 6px 10px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: T.inkDim, cursor: "pointer" }}>
+          <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>‹</span> GAMES
+        </span>
+      </Link>
+
       {/* ambient floating game icons · same texture as /home */}
       {[
         { src: "/splash_screen_icons/dice.png", top: "4%", left: -18, size: 84, rot: -18, glow: "#c026d3", delay: 0 },
