@@ -6,7 +6,7 @@
       "name": "v2",
       "dependencies": {
         "@celo/attribution-tags": "^0.3.0",
-        "@goodagent/widget": "0.3.3",
+        "@goodagent/widget": "0.3.4",
         "@goodsdks/citizen-sdk": "^1.2.3",
         "@goodsdks/identity-sdk": "^1.0.5",
         "@privy-io/react-auth": "^3.21.2",
@@ -183,7 +183,7 @@
 
     "@gemini-wallet/core": ["@gemini-wallet/core@0.3.2", "", { "dependencies": { "@metamask/rpc-errors": "7.0.2", "eventemitter3": "5.0.1" }, "peerDependencies": { "viem": ">=2.0.0" } }, "sha512-Z4aHi3ECFf5oWYWM3F1rW83GJfB9OvhBYPTmb5q+VyK3uvzvS48lwo+jwh2eOoCRWEuT/crpb9Vwp2QaS5JqgQ=="],
 
-    "@goodagent/widget": ["@goodagent/widget@0.3.3", "", { "dependencies": { "@goodsdks/citizen-sdk": "^1.2.5", "viem": "^2.31.3" }, "peerDependencies": { "@privy-io/react-auth": "^2.0.0 || ^3.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@privy-io/react-auth"] }, "sha512-VKhoeTYr1E7D2XI+3ojHoc3tJCFFCK2NbSjJRbq5U6DGQo2wM5GW8+D8xuLwcZbeja6LzyzvejXVAf44fQDm9A=="],
+    "@goodagent/widget": ["@goodagent/widget@0.3.4", "", { "dependencies": { "@goodsdks/citizen-sdk": "^1.2.5", "viem": "^2.31.3" }, "peerDependencies": { "@privy-io/react-auth": "^2.0.0 || ^3.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@privy-io/react-auth"] }, "sha512-BCN68r8KI7CM0CjxrzSCt7cLcuC4TjJrEYumcG2AUFuHO/hXNpeVq+dPMxa5vLUtKJX+Jiyp3x98a4SQ+YcEqg=="],
 
     "@goodsdks/citizen-sdk": ["@goodsdks/citizen-sdk@1.2.3", "", { "dependencies": { "lz-string": "^1.5.0", "tsup": "^8.4.0" }, "peerDependencies": { "viem": "*", "wagmi": "*" } }, "sha512-Au23pSeD7Gflr2XDd4vxIr8515uqfCtlGNaKoqW4ki3H1i7X2LyxAzM5kcAHc9MH0VJWqF5YNYZ+vMHtQwJ35Q=="],
 
