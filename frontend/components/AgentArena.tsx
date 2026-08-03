@@ -665,10 +665,11 @@ function LiveMatch({ matchId, watchUrl, agentName, agentAddress, onEnded, onPlay
         <LatestClash r={rounds[rounds.length - 1]!} line={line} />
       )}
 
-      {!connected && !ended && rounds.length === 0 && (
-        <div style={{ textAlign: "center", color: T.inkSoft, fontFamily: T.body, fontSize: 12, padding: "20px 0" }}>
-          Connecting to the live feed…
-        </div>
+      {/* Pre-round-1 · never a dead 0-0 screen: the fighters square up in the
+          arena while the agent process boots and throws its first move. This
+          fills the same gap the manual match fills with the chant + fists. */}
+      {!ended && rounds.length === 0 && (
+        <WaitingFaceoff agentName={agentName} agentAddress={agentAddress} connected={connected} />
       )}
 
       {/* victory/defeat hero rises ABOVE the tape the moment the match ends —
@@ -676,11 +677,64 @@ function LiveMatch({ matchId, watchUrl, agentName, agentAddress, onEnded, onPlay
       {ended && <MatchEnd final={ended} score={score} agentName={agentName} agentAddress={agentAddress} onPlayAgain={onPlayAgain} />}
 
       {/* round-by-round tape */}
-      <div ref={scrollRef} style={{ flex: ended ? undefined : 1, overflowY: "auto", marginTop: 12, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 160 : 220 }}>
+      <div ref={scrollRef} style={{ flex: ended || rounds.length === 0 ? undefined : 1, overflowY: "auto", marginTop: 12, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 160 : 220 }}>
         {rounds.map((r) => (
           <RoundRow key={r.round} r={r} />
         ))}
       </div>
+    </div>
+  );
+}
+
+// ═══ waiting face-off · the gap before round 1 ════════════════════════════════
+// Agent matches have real boot time on GoodAgents (process start + pacing).
+// Fill it with the fight, not a spinner: both fighters bob face to face,
+// MARKOV runs his mouth, a pulse line says exactly what we're waiting for,
+// and past ~25s an honest "warming up" note manages expectations.
+const WAITING_LINES = [
+  "reading your bot's source code. adorable.",
+  "i've already simulated this match. you lose.",
+  "your agent is warming up. i don't need to.",
+  "booting… or stalling? i'd stall too.",
+];
+
+function WaitingFaceoff({ agentName, agentAddress, connected }: { agentName: string; agentAddress?: string; connected: boolean }) {
+  const [lineIdx, setLineIdx] = useState(0);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setLineIdx((i) => (i + 1) % WAITING_LINES.length), 4500);
+    const s = setTimeout(() => setSlow(true), 25_000);
+    return () => { clearInterval(t); clearTimeout(s); };
+  }, []);
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
+      {/* MARKOV talks while your bot boots */}
+      <div
+        key={lineIdx}
+        style={{ maxWidth: 300, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: 14, padding: "8px 14px", fontFamily: T.body, fontSize: 12, fontStyle: "italic", color: "rgba(240,230,255,0.92)", textAlign: "center", animation: "bubblePop 0.4s cubic-bezier(0.22,1.4,0.36,1) both", marginBottom: 16 }}
+      >
+        “{WAITING_LINES[lineIdx]}”
+      </div>
+
+      {/* the face-off, alive */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={AGENT_ART} alt={agentName} style={{ width: "min(26vw, 108px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.6s ease-in-out infinite", filter: `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 18px rgba(34,211,238,0.45))` }} />
+        <div style={{ fontFamily: T.display, fontSize: 28, color: RIM, textShadow: `0 0 22px ${RIM}`, animation: "vsPop 0.5s cubic-bezier(0.22,1.4,0.36,1) both" }}>VS</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(28vw, 116px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 18px rgba(251,191,36,0.35))" }} />
+      </div>
+
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 18, fontFamily: T.body, fontSize: 11.5, color: CYAN_SOFT, fontWeight: 700 }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: CYAN, animation: "livePulse 1.2s ease-in-out infinite" }} />
+        {connected ? `${agentName} is stepping into the ring — first throw incoming…` : "Connecting to the live feed…"}
+      </div>
+      {slow && (
+        <div style={{ marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, textAlign: "center", maxWidth: 300 }}>
+          Agent matches can take a moment to boot on GoodAgents — the fight starts the second your bot throws.
+        </div>
+      )}
     </div>
   );
 }
