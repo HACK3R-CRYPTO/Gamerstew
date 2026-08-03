@@ -13,6 +13,7 @@
 // GET /api/arena/live/:matchId.
 
 import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { useSignMessage } from "wagmi";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import {
@@ -157,7 +158,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} />}
     </div>
   );
 }
@@ -205,7 +206,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -243,8 +244,16 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { 
   const name = agent.displayName || "Your agent";
   const busy = phase !== "idle";
 
+  // Terminal failure (or cancel) during an auto-launched flow: the VS stage is
+  // a transition, not a place to strand people — toast the reason and return
+  // to the lobby. Manual retries (no onAbort) keep the inline error.
+  const fail = (msg: string) => {
+    if (onAbort) { toast.error(msg); onAbort(); }
+    else setErr(msg);
+  };
+
   const play = async () => {
-    if (!agent.deployId) { setErr("Agent isn't ready yet. Try again in a moment."); return; }
+    if (!agent.deployId) { fail("Agent isn't ready yet. Try again in a moment."); return; }
     setErr(null);
     const owner = agent.ownerWallet || signer || "";
     try {
@@ -259,7 +268,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { 
           ownerWallet: signer || owner, issuedAt: saveAt, signature: saveSig,
           configuration: { MARKOV_STRATEGY: strategy },
         });
-        if (!saved.ok) { setErr(errText(saved.error)); return; }
+        if (!saved.ok) { fail(errText(saved.error)); return; }
         setSavedStrategy(strategy);
       }
       // A paused agent can't play — wake it first (signed "resume"), then play.
@@ -270,7 +279,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { 
         const wakeSig = await signMessageAsync({ message: deployMsg("resume", agent.deployId, wakeAt) });
         setPhase("waking");
         const woke = await goodAgentsStart(agent.deployId, { ownerWallet: signer || owner, issuedAt: wakeAt, signature: wakeSig });
-        if (!woke.ok) { setErr(errText(woke.error)); return; }
+        if (!woke.ok) { fail(errText(woke.error)); return; }
       }
       setPhase("signing");
       const issuedAt = Date.now();
@@ -278,11 +287,11 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings }: { 
       setPhase("starting");
       const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
       if (out.matchId) setLaunched({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
-      else setErr(errText(out.error));
+      else fail(errText(out.error));
     } catch (e: unknown) {
       // User rejected the signature, or wallet threw.
       const msg = (e as { message?: string })?.message || "";
-      setErr(/reject|denied|cancel/i.test(msg) ? "You cancelled the signature." : "Wallet couldn't sign. Try again.");
+      fail(/reject|denied|cancel/i.test(msg) ? "You cancelled the signature." : "Wallet couldn't sign. Try again.");
     } finally {
       setPhase("idle");
     }
