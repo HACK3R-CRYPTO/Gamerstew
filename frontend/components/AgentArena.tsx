@@ -131,6 +131,9 @@ export default function AgentArena({
   // the way back and re-fire the wallet prompt (the "back from settings starts
   // a match" bug).
   const autoFiredRef = useRef(false);
+  // True while a match is on screen · the gear hides then (no mid-match
+  // settings edits — the match context stays clean).
+  const [matchLive, setMatchLive] = useState(false);
 
   const inSettings = screen === "settings" && !!agent;
   // Entered via the lobby ⚙️ → Back/Done return to the lobby, never to a
@@ -150,7 +153,7 @@ export default function AgentArena({
         <span style={{ fontFamily: T.display, fontSize: 15, color: CYAN_SOFT, letterSpacing: "0.04em", flex: 1 }}>
           {inSettings ? "⚙️ AGENT SETTINGS" : "🤖 YOUR AGENT"}
         </span>
-        {agent && !inSettings && (
+        {agent && !inSettings && !matchLive && (
           <button
             onClick={() => setScreen("settings")}
             title="Agent settings"
@@ -164,7 +167,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} onLiveChange={setMatchLive} />}
     </div>
   );
 }
@@ -212,7 +215,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort, autoFiredRef }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void; autoFiredRef?: React.MutableRefObject<boolean> }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort, autoFiredRef, onLiveChange }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void; autoFiredRef?: React.MutableRefObject<boolean>; onLiveChange?: (live: boolean) => void }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -242,6 +245,8 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
   }, [agent.deployId]);
 
   const matchId = launched?.matchId || agent.activeMatchId || null;
+  // Report the live state up so the header can hide the gear mid-match.
+  useEffect(() => { onLiveChange?.(!!matchId); return () => onLiveChange?.(false); }, [matchId, onLiveChange]);
   const watchUrl = launched?.matchId
     ? launched.watchUrl
     : agent.activeMatchId
