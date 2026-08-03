@@ -43,12 +43,12 @@ function errText(code?: string): string {
   }
 }
 
-// Follows whichever backend the app points at (local:3005 in dev, Railway in
-// prod). Samuel's lookup usually hands us a full liveWatchUrl; this is only the
-// fallback when it doesn't.
-const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "https://game-backend-production-6130.up.railway.app";
-const LIVE_BASE = `${BACKEND}/api/arena/live`;
+// Agent matches ALWAYS run on the production arena — GoodAgents' processes are
+// configured against it — so the live feed must point there even in local dev.
+// (Subscribing to localhost while mario fights on Railway = the eternal 0-0
+// screen.) Our prod feed also replays history to late joiners, which Samuel's
+// stream doesn't.
+const LIVE_BASE = "https://game-backend-production-6130.up.railway.app/api/arena/live";
 
 const T = {
   ink: "#ffffff",
