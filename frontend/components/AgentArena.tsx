@@ -133,6 +133,7 @@ type LiveRound = {
   playerMove: number; // the agent's move
   aiMove: number;     // MARKOV's move
   result: "win" | "loss" | "tie" | string;
+  readLevel?: number; // 0-100 · how deeply MARKOV has modeled the agent
   score: { player: number; ai: number; ties: number };
   markovLine?: string | null;
 };
@@ -647,41 +648,116 @@ function LiveMatch({ matchId, watchUrl, agentName, agentAddress, onEnded, onPlay
     if (el) el.scrollTop = el.scrollHeight;
   }, [rounds.length]);
 
+  const last = rounds.length > 0 ? rounds[rounds.length - 1]! : null;
+  const readLevel = last?.readLevel ?? null;
+  const shortName = (agentName || "YOUR AI").toUpperCase();
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* scoreboard: agent vs MARKOV */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 12 }}>
-        <Side label={agentName || "Your agent"} value={score.player} color={CYAN_SOFT} align="right" />
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: T.display, fontSize: 13, color: "#fff", opacity: 0.5 }}>vs</div>
-          <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, color: RIM, letterSpacing: "0.06em", marginTop: 2 }}>FIRST TO 3</div>
-          <div style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.08em", marginTop: 1 }}>{score.ties} TIES</div>
+      {/* header · same grammar as the manual match: win dots + round banner */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <WinDots label={shortName} wins={score.player} color={CYAN} align="left" />
+        <div style={{ fontFamily: T.body, fontSize: 12, fontWeight: 800, letterSpacing: "0.2em", color: T.inkDim }}>
+          {ended ? "FINAL" : last ? `ROUND ${last.round}` : "ROUND 1"}
         </div>
-        <Side label="MARKOV" value={score.ai} color="#86efac" align="left" />
+        <WinDots label="MARKOV" wins={score.ai} color={AI_GREEN} align="right" />
       </div>
 
-      {/* the most recent clash, big */}
-      {rounds.length > 0 && (
-        <LatestClash r={rounds[rounds.length - 1]!} line={line} />
+      {/* MARKOV's read · how deeply he has modeled the agent (from the stream) */}
+      {readLevel !== null && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: T.inkDim, flexShrink: 0 }}>🧠 MARKOV&apos;S READ</span>
+          <div style={{ flex: 1, height: 7, borderRadius: 999, background: "rgba(0,0,0,0.45)", overflow: "hidden" }}>
+            <div style={{ width: `${Math.min(readLevel, 100)}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${RIM}, #f59e0b)`, boxShadow: `0 0 8px ${RIM}`, transition: "width 0.6s ease" }} />
+          </div>
+          <span style={{ fontFamily: T.body, fontSize: 12, fontWeight: 800, color: RIM, flexShrink: 0 }}>{Math.min(readLevel, 100)}%</span>
+        </div>
       )}
 
-      {/* Pre-round-1 · never a dead 0-0 screen: the fighters square up in the
-          arena while the agent process boots and throws its first move. This
-          fills the same gap the manual match fills with the chant + fists. */}
-      {!ended && rounds.length === 0 && (
-        <WaitingFaceoff agentName={agentName} agentAddress={agentAddress} connected={connected} />
-      )}
+      {/* THE STAGE · fighters hold the arena, the action plays center — a
+          spectator watches the same theater the manual match performs in */}
+      <div style={{ position: "relative", borderRadius: 20, background: "linear-gradient(180deg, rgba(20,10,50,0.55) 0%, rgba(10,4,32,0.85) 100%)", border: `1px solid ${T.hairline}`, minHeight: 250, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: "16px 12px 30px" }}>
+        {/* fighters · corners, alive */}
+        <div style={{ position: "absolute", left: "5%", bottom: 18, display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={AGENT_ART} alt={agentName} style={{ width: "min(17vw, 76px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.6s ease-in-out infinite", filter: `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 14px rgba(34,211,238,0.4))` }} />
+          <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: CYAN_SOFT, marginTop: 4 }}>{shortName}</span>
+        </div>
+        <div style={{ position: "absolute", right: "5%", bottom: 18, display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(18vw, 82px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 14px rgba(251,191,36,0.35))" }} />
+          <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac", marginTop: 4 }}>MARKOV</span>
+        </div>
+        {/* stage floor */}
+        <div aria-hidden style={{ position: "absolute", left: "12%", right: "12%", bottom: 10, height: 22, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(167,139,250,0.25) 0%, transparent 70%)", filter: "blur(6px)", animation: "floorPulse 3.2s ease-in-out infinite" }} />
+
+        {/* center · waiting, or the clash of the latest round */}
+        {!ended && !last ? (
+          <WaitingFaceoff agentName={agentName} connected={connected} />
+        ) : last ? (
+          <StageClash key={last.round} r={last} line={line} agentName={shortName} />
+        ) : null}
+      </div>
 
       {/* victory/defeat hero rises ABOVE the tape the moment the match ends —
           no scroll-hunting for the result, no dead gap (celebrate, then guide) */}
       {ended && <MatchEnd final={ended} score={score} agentName={agentName} agentAddress={agentAddress} onPlayAgain={onPlayAgain} />}
 
       {/* round-by-round tape */}
-      <div ref={scrollRef} style={{ flex: ended || rounds.length === 0 ? undefined : 1, overflowY: "auto", marginTop: 12, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 160 : 220 }}>
+      <div ref={scrollRef} style={{ overflowY: "auto", marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 150 : 130 }}>
         {rounds.map((r) => (
           <RoundRow key={r.round} r={r} />
         ))}
       </div>
+    </div>
+  );
+}
+
+// Win dots · first-to-3 rendered the way the manual match renders it.
+function WinDots({ label, wins, color, align }: { label: string; wins: number; color: string; align: "left" | "right" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "flex-end", gap: 5 }}>
+      <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", color: T.inkDim }}>{label}</span>
+      <div style={{ display: "flex", gap: 5 }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: i < wins ? color : "rgba(255,255,255,0.12)", boxShadow: i < wins ? `0 0 8px ${color}` : "none", transition: "background 0.3s" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The clash · the latest round performed center-stage: moves slam in from each
+// side, result punches, MARKOV talks. Re-keyed per round so it replays.
+function StageClash({ r, line, agentName }: { r: LiveRound; line: string | null; agentName: string }) {
+  const win = r.result === "win";
+  const tie = r.result === "tie";
+  const tone = win ? CYAN_SOFT : tie ? RIM : "#fca5a5";
+  return (
+    <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "slamL 0.4s cubic-bezier(0.22,1.2,0.36,1) both" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={MOVE_ART[r.playerMove]} alt={MOVE_NAME[r.playerMove]} style={{ width: 84, height: 84, objectFit: "contain", filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.5))" }} />
+          <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", marginTop: 2 }}>{MOVE_NAME[r.playerMove]}</span>
+        </div>
+        <div style={{ textAlign: "center", animation: "vsPop 0.45s cubic-bezier(0.22,1.4,0.36,1) 0.2s both" }}>
+          <div style={{ fontFamily: T.display, fontSize: 17, color: tone, letterSpacing: "0.05em", textShadow: `0 0 16px ${tone}66` }}>
+            {win ? `${agentName} WINS` : tie ? "TIE" : "MARKOV WINS"}
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>ROUND {r.round}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "slamR 0.4s cubic-bezier(0.22,1.2,0.36,1) both" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={MOVE_ART[r.aiMove]} alt={MOVE_NAME[r.aiMove]} style={{ width: 84, height: 84, objectFit: "contain", filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.5))" }} />
+          <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", marginTop: 2 }}>{MOVE_NAME[r.aiMove]}</span>
+        </div>
+      </div>
+      {line && (
+        <div style={{ fontFamily: T.body, fontStyle: "italic", fontSize: 11.5, color: "rgba(240,230,255,0.85)", textAlign: "center", maxWidth: 300, animation: "bubblePop 0.35s cubic-bezier(0.22,1.4,0.36,1) 0.3s both" }}>
+          “{line}”
+        </div>
+      )}
     </div>
   );
 }
@@ -698,7 +774,7 @@ const WAITING_LINES = [
   "booting… or stalling? i'd stall too.",
 ];
 
-function WaitingFaceoff({ agentName, agentAddress, connected }: { agentName: string; agentAddress?: string; connected: boolean }) {
+function WaitingFaceoff({ agentName, connected }: { agentName: string; connected: boolean }) {
   const [lineIdx, setLineIdx] = useState(0);
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -717,16 +793,10 @@ function WaitingFaceoff({ agentName, agentAddress, connected }: { agentName: str
         “{WAITING_LINES[lineIdx]}”
       </div>
 
-      {/* the face-off, alive */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={AGENT_ART} alt={agentName} style={{ width: "min(26vw, 108px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.6s ease-in-out infinite", filter: `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 18px rgba(34,211,238,0.45))` }} />
-        <div style={{ fontFamily: T.display, fontSize: 28, color: RIM, textShadow: `0 0 22px ${RIM}`, animation: "vsPop 0.5s cubic-bezier(0.22,1.4,0.36,1) both" }}>VS</div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(28vw, 116px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 18px rgba(251,191,36,0.35))" }} />
-      </div>
+      {/* the fighters already hold the stage corners · center is the VS mark */}
+      <div style={{ fontFamily: T.display, fontSize: 30, color: RIM, textShadow: `0 0 24px ${RIM}`, animation: "vsPop 0.5s cubic-bezier(0.22,1.4,0.36,1) both" }}>VS</div>
 
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 18, fontFamily: T.body, fontSize: 11.5, color: CYAN_SOFT, fontWeight: 700 }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 14, fontFamily: T.body, fontSize: 11.5, color: CYAN_SOFT, fontWeight: 700 }}>
         <span style={{ width: 7, height: 7, borderRadius: "50%", background: CYAN, animation: "livePulse 1.2s ease-in-out infinite" }} />
         {connected ? `${agentName} is stepping into the ring — first throw incoming…` : "Connecting to the live feed…"}
       </div>
