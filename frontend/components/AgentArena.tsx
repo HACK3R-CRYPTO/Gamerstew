@@ -126,6 +126,11 @@ export default function AgentArena({
   const { agents, loading, hasAgent } = useOwnedAgents([wallet], 5000);
   const agent = pickAgent(agents);
   const [screen, setScreen] = useState<"main" | "settings">(entry === "settings" ? "settings" : "main");
+  // Auto-launch fires ONCE per visit to this panel. Lives up here because the
+  // play body unmounts while settings is open — a body-local ref would reset on
+  // the way back and re-fire the wallet prompt (the "back from settings starts
+  // a match" bug).
+  const autoFiredRef = useRef(false);
 
   const inSettings = screen === "settings" && !!agent;
   // Entered via the lobby ⚙️ → Back/Done return to the lobby, never to a
@@ -159,7 +164,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} />}
     </div>
   );
 }
@@ -207,7 +212,7 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort, autoFiredRef }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void; autoFiredRef?: React.MutableRefObject<boolean> }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
@@ -302,7 +307,8 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
   // One tap in the lobby = play. Fire the flow the moment the agent resolves;
   // if the player cancels the signature, the VS stage stays with the button as
   // the retry. Guarded so it fires once per visit.
-  const autoFired = useRef(false);
+  const autoFiredLocal = useRef(false);
+  const autoFired = autoFiredRef ?? autoFiredLocal;
   useEffect(() => {
     if (!autoPlay || autoFired.current || !agent.deployId || matchId) return;
     autoFired.current = true;
