@@ -34,20 +34,26 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
-            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>$100</span>
+            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>$150</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.75)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
-            prize pool · paid in G$
+            Top 5 · prize pool · paid in G$
           </div>
 
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "9px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-            The top 5 players split a $100 pool, paid in G$. Keep playing to lock a spot before it goes live.
+            The top 5 players split a $150 pool, paid in G$. Keep playing to lock a spot before it goes live.
           </p>
+
+          {/* GoodAgents supports the pool · credited, not the headline. */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10 }}>
+            <img src="/goodagents-logo.png" alt="" width={16} height={16} style={{ display: "block" }} />
+            <span style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
+          </div>
         </div>
 
         {/* Same 3D trophy art as the dashboard hero · `screen` drops its dark bg */}
         <img
-          src="/event-100.jpg"
+          src="/event-prize.png"
           alt=""
           style={{ width: isDesktop ? 128 : 96, height: isDesktop ? 128 : 96, objectFit: "contain", mixBlendMode: "screen", flexShrink: 0, pointerEvents: "none" }}
         />

@@ -85,18 +85,37 @@ type Game = {
   active: boolean;
   href: string;
   isNew?: boolean;
-  kind?: "event";   // "event" → HeroCard renders the gold teaser variant
+  kind?: "event" | "aimode";   // "event" → gold teaser · "aimode" → cyan AI feature-drop
 };
 
-// Upcoming event — rides in the hero rotation as a gold slide (not a game).
-// Details TBD; teases the $100 pool (paid in G$) and points to the events page.
+// AI-mode feature drop — the discovery surface for the new "build your own AI"
+// mode, which otherwise only lives on the buried YOU/YOUR AI switch inside the
+// Challenge lobby and a menu row. Leads the hero rotation so every player sees
+// it. Powered by GoodAgents (the deploy widget is theirs), so credited here.
+const AI_HERO: Game = {
+  id: "aimode",
+  kind: "aimode",
+  title: "Build your AI. Fight MARKOV.",
+  subtitle: "New mode",
+  desc: "Deploy your own AI agent and watch it climb the ladder against MARKOV.",
+  art: "/ai-vs-markov.png",
+  bg: "linear-gradient(150deg, #0b3b52 0%, #241466 58%, #170a3e 100%)",
+  glow: "#22d3ee",
+  active: true,
+  href: "/games/challenge-ai",
+};
+
+// Upcoming prize event — leads the hero rotation as a gold slide. $150 Top-5
+// G$ pool. GoodAgents supports the pool (their contribution folds in), credited
+// as a supporter, not the headline — this is the normal competition, not an
+// AI/agents event. Routes to the events/leaderboard page.
 const EVENT_HERO: Game = {
   id: "event",
   kind: "event",
-  title: "$100 Event",
+  title: "$150 Event",
   subtitle: "Coming soon",
-  desc: "Top 5 players split $100, paid in G$. Keep playing to lock a spot.",
-  art: "/event-100.jpg",
+  desc: "Top 5 players split $150, paid in G$. Keep playing to lock a spot.",
+  art: "/event-prize.png",
   bg: "linear-gradient(115deg, #7c3a0d 0%, #2a1266 55%, #170a3e 100%)",
   glow: "#f59e0b",
   active: true,
@@ -141,9 +160,9 @@ const GAMES: Game[] = [
     desc: "Repeat the color run. Go deeper than everyone else for a top rank.", active: true, href: "/games/simon",
   },
   {
-    id: "arena", title: "Challenge AI", subtitle: "Free · instant · outsmart MARKOV",
+    id: "arena", title: "Challenge AI", subtitle: "Outsmart MARKOV · or send your own AI",
     art: "/games/challenge-ais.png", bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)", glow: "#22c55e",
-    desc: "Beat the AI that learns your patterns. Free, instant, weekly ladder.", active: true, href: "/games/challenge-ai",
+    desc: "Beat the AI that learns your patterns — or deploy your own AI to fight it. Free, weekly ladder.", active: true, href: "/games/challenge-ai",
     isNew: true,
   },
 ];
@@ -309,6 +328,9 @@ export default function DashboardPage() {
   const onPlayGame = async (id: string) => {
     // The event hero isn't a game — it routes to the events page.
     if (id === "event") { router.push("/leaderboard"); return; }
+    // The AI-mode hero routes into the Challenge lobby, where the YOU/YOUR AI
+    // switch and the deploy-on-GoodAgents CTA both live.
+    if (id === "aimode") { router.push("/games/challenge-ai"); return; }
     // Spam-tap guard · ignore while a load is in flight (the overlay
     // covers the cards anyway, but this stops queued promises racing).
     if (loadingGame) return;
@@ -342,7 +364,7 @@ export default function DashboardPage() {
   // falls back to the first game when nothing is flagged.
   const heroes = GAMES.filter(g => g.isNew);
   // Event teaser leads the rotation, then the new-game heroes cycle after it.
-  const heroList = [EVENT_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
+  const heroList = [AI_HERO, EVENT_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -795,6 +817,37 @@ function HeroCarousel({ heroes, active, onPlayGame, onDot }: {
 }
 
 function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame: (id: string) => void }) {
+  // AI-mode slide — cyan feature-drop variant. Surfaces the "build your own
+  // AI" mode, which is otherwise invisible outside the Challenge lobby.
+  if (game.kind === "aimode") {
+    return (
+      <button onClick={() => onPlayGame(game.id)} style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(34,211,238,0.35)", cursor: "pointer",
+        borderRadius: 20, textAlign: "left", background: game.bg,
+        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,211,238,0.28), transparent 70%)", pointerEvents: "none" }} />
+        {/* Agent-vs-MARKOV art — `screen` blend drops its black background */}
+        <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -22, bottom: -22, width: 184, height: 184, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
+          <Pill color="#22d3ee" soft={false}>✨ NEW MODE</Pill>
+        </div>
+        <div style={{ padding: "8px 14px 14px", maxWidth: "70%", position: "relative", zIndex: 1 }}>
+          <div style={{ fontFamily: T.display, fontSize: 21, lineHeight: 1.06, textShadow: "0 0 18px rgba(34,211,238,0.4)" }}>
+            <span style={{ color: "#fff" }}>Build your AI.</span><br />
+            <span style={{ color: "#67e8f9" }}>Fight MARKOV.</span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 10.5, color: "rgba(207,250,254,0.82)", marginTop: 6, lineHeight: 1.4 }}>Deploy your agent · watch it climb</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8 }}>
+            <img src="/goodagents-logo.png" alt="" width={14} height={14} style={{ display: "block" }} />
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(207,250,254,0.65)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Powered by GoodAgents</span>
+          </div>
+        </div>
+      </button>
+    );
+  }
+
   // Event slide — gold teaser variant of the hero.
   if (game.kind === "event") {
     return (
@@ -810,12 +863,16 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
           <Pill color="#fde68a">⚡ EVENT · COMING SOON</Pill>
         </div>
-        <div style={{ padding: "10px 14px 14px", maxWidth: "68%", position: "relative", zIndex: 1 }}>
+        <div style={{ padding: "10px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>$100</span>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>$150</span>
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>prize pool · paid in G$</div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 6, lineHeight: 1.4 }}>{game.desc}</div>
+          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>Top 5 · prize pool · paid in G$</div>
+          {/* GoodAgents supports the pool · credited, not the headline. */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8 }}>
+            <img src="/goodagents-logo.png" alt="" width={14} height={14} style={{ display: "block" }} />
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.7)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
+          </div>
         </div>
       </button>
     );
