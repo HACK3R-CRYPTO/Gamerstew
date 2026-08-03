@@ -676,39 +676,68 @@ function LiveMatch({ matchId, watchUrl, agentName, agentAddress, onEnded, onPlay
 
       {/* THE STAGE · fighters hold the arena, the action plays center — a
           spectator watches the same theater the manual match performs in */}
-      <div style={{ position: "relative", borderRadius: 20, background: "linear-gradient(180deg, rgba(20,10,50,0.55) 0%, rgba(10,4,32,0.85) 100%)", border: `1px solid ${T.hairline}`, minHeight: 250, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: "16px 12px 30px" }}>
-        {/* fighters · corners, alive */}
-        <div style={{ position: "absolute", left: "5%", bottom: 18, display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={AGENT_ART} alt={agentName} style={{ width: "min(17vw, 76px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.6s ease-in-out infinite", filter: `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 14px rgba(34,211,238,0.4))` }} />
-          <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: CYAN_SOFT, marginTop: 4 }}>{shortName}</span>
-        </div>
-        <div style={{ position: "absolute", right: "5%", bottom: 18, display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(18vw, 82px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 14px rgba(251,191,36,0.35))" }} />
-          <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: "#86efac", marginTop: 4 }}>MARKOV</span>
-        </div>
+      {!ended && (
+      <div style={{ position: "relative", borderRadius: 20, background: "linear-gradient(180deg, rgba(20,10,50,0.55) 0%, rgba(10,4,32,0.85) 100%)", border: `1px solid ${T.hairline}`, minHeight: 250, overflow: "hidden", padding: "16px 10px 26px" }}>
         {/* stage floor */}
         <div aria-hidden style={{ position: "absolute", left: "12%", right: "12%", bottom: 10, height: 22, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(167,139,250,0.25) 0%, transparent 70%)", filter: "blur(6px)", animation: "floorPulse 3.2s ease-in-out infinite" }} />
 
-        {/* center · waiting, or the clash of the latest round */}
-        {!ended && !last ? (
-          <WaitingFaceoff agentName={agentName} connected={connected} />
-        ) : last ? (
-          <StageClash key={last.round} r={last} line={line} agentName={shortName} />
-        ) : null}
+        {/* fighter | action | fighter · one flex row, so the fighters can
+            NEVER overlap the clash at any width (the absolute-corner version
+            ate the move labels and MARKOV's line on phones) */}
+        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 6, minHeight: 210 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={AGENT_ART} alt={agentName} style={{ width: "min(14vw, 68px)", height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBobAlt 2.6s ease-in-out infinite", filter: `hue-rotate(${agentHue(agentAddress || "")}deg) drop-shadow(0 0 14px rgba(34,211,238,0.4))` }} />
+            <span style={{ fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: CYAN_SOFT, marginTop: 4 }}>{shortName}</span>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", alignSelf: "center" }}>
+            {!ended && !last ? (
+              <WaitingFaceoff agentName={agentName} connected={connected} />
+            ) : last ? (
+              <StageClash key={last.round} r={last} line={line} agentName={shortName} />
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={MARKOV_ART} alt="MARKOV" style={{ width: "min(15vw, 74px)", height: "auto", objectFit: "contain", animation: "idleBob 3.2s ease-in-out infinite", filter: "drop-shadow(0 0 14px rgba(251,191,36,0.35))" }} />
+            <span style={{ fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#86efac", marginTop: 4 }}>MARKOV</span>
+          </div>
+        </div>
       </div>
+      )}
 
       {/* victory/defeat hero rises ABOVE the tape the moment the match ends —
           no scroll-hunting for the result, no dead gap (celebrate, then guide) */}
       {ended && <MatchEnd final={ended} score={score} agentName={agentName} agentAddress={agentAddress} onPlayAgain={onPlayAgain} />}
 
-      {/* round-by-round tape */}
-      <div ref={scrollRef} style={{ overflowY: "auto", marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: ended ? 150 : 130 }}>
-        {rounds.map((r) => (
-          <RoundRow key={r.round} r={r} />
-        ))}
-      </div>
+      {/* rounds · live = scrolling tape under the stage; finished = one
+          compact wrap strip so the whole result fits a single viewport
+          (the manual match's finish screen replaces the stage, same rule) */}
+      {ended ? (
+        <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6 }}>
+          {rounds.map((r) => {
+            const win = r.result === "win";
+            const tie = r.result === "tie";
+            const tone = win ? CYAN : tie ? RIM : "#ef4444";
+            return (
+              <span key={r.round} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 999, background: "rgba(0,0,0,0.3)", border: `1px solid ${tone}55`, fontFamily: T.body, fontSize: 10, fontWeight: 800 }}>
+                <span style={{ color: T.inkSoft }}>R{r.round}</span>
+                <span style={{ color: CYAN_SOFT }}>{MOVE_NAME[r.playerMove]?.[0] ?? "?"}</span>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone }} />
+                <span style={{ color: "#86efac" }}>{MOVE_NAME[r.aiMove]?.[0] ?? "?"}</span>
+              </span>
+            );
+          })}
+        </div>
+      ) : (
+        <div ref={scrollRef} style={{ overflowY: "auto", marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 0, maxHeight: 130 }}>
+          {rounds.map((r) => (
+            <RoundRow key={r.round} r={r} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
