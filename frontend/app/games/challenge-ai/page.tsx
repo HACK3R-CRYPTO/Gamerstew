@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AgentArena, { agentHue as lobbyAgentHue } from "@/components/AgentArena";
+import AgentArena, { agentHue as lobbyAgentHue, useAgentLaunch, type LaunchPhase } from "@/components/AgentArena";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import { getSettingsCached, prefetchAgentData } from "@/lib/agentPrefetch";
 import AppHeader from "@/components/AppHeader";
@@ -134,6 +134,13 @@ export default function ChallengeAiPage() {
   // Where the agent panel opens: "play" auto-launches the match; "settings"
   // jumps straight into the full editor (lobby ⚙️) and Done returns here.
   const [agentEntry, setAgentEntry] = useState<"play" | "settings">("play");
+  // The lobby drives the launch: sign + wake + play happen HERE (button shows
+  // the progress), and we only leave for the live view once a match exists.
+  const agentLaunch = useAgentLaunch(myAgent, address);
+  useEffect(() => {
+    if (agentLaunch.match) { setAgentEntry("play"); setPhase("agent"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentLaunch.match]);
   useEffect(() => {
     if (!myAgent || agentStrategy !== null) return;
     let cancelled = false;
@@ -479,7 +486,8 @@ export default function ChallengeAiPage() {
             isGuest={!authed && !authPending}
             demoLeft={demoLeft}
             showAgentOption={authed}
-            onAgent={() => { setAgentEntry("play"); setPhase("agent"); }}
+            onAgent={agentLaunch.play}
+            agentLaunchPhase={agentLaunch.phase}
             onAgentSettings={() => { setAgentEntry("settings"); setPhase("agent"); }}
             isDesktop={isDesktop}
             agent={myAgent}
@@ -490,9 +498,11 @@ export default function ChallengeAiPage() {
         {phase === "agent" && (
           <AgentArena
             wallet={address}
-            onBack={() => { setPhase("lobby"); setAgentStrategy(null); /* refetch · settings may have changed */ }}
+            onBack={() => { setPhase("lobby"); setAgentStrategy(null); agentLaunch.clearMatch(); }}
             onDeploy={() => router.push("/agents")}
             entry={agentEntry}
+            initialMatch={agentLaunch.match}
+            autoPlay={false}
           />
         )}
         {phase === "vs" && <VsSting pet={pet} />}
@@ -534,7 +544,7 @@ export default function ChallengeAiPage() {
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
   isGuest, demoLeft, showAgentOption, onAgent, onAgentSettings, isDesktop,
-  agent, agentStrategy, onDeploy,
+  agent, agentStrategy, onDeploy, agentLaunchPhase,
 }: {
   pet: PetStage;
   record: { w: number; l: number; t: number; streak: number };
@@ -551,6 +561,7 @@ function Lobby({
   demoLeft: number;   // demo matches remaining before the sign-in ask
   showAgentOption: boolean; // signed-in players can hand the fight to their agent
   onAgent: () => void;      // launch the agent flow (sign → live match)
+  agentLaunchPhase: LaunchPhase; // lobby CTA reflects signing/waking/starting
   onAgentSettings: () => void; // open the full agent settings editor
   isDesktop: boolean;       // wide layout
   agent: OwnedAgent | null;         // the player's deployed agent, if any
@@ -575,13 +586,21 @@ function Lobby({
     }
   };
   // Rotating taunt · MARKOV talks at the gate like a boss NPC.
-  const TAUNTS = [
+  // MARKOV talks at whoever is about to fight: you, or your bot.
+  const HUMAN_TAUNTS = [
     "bring your best pattern. i've already modeled it.",
     "humans open with rock 41% of the time. just saying.",
     "i remember every throw you've ever made.",
     "the ladder resets. my memory doesn't.",
     "you're not random. nobody is.",
   ];
+  const AI_TAUNTS = [
+    "send your little bot. i'll model it too.",
+    "i've beaten smarter code than yours.",
+    "your agent learns? cute. so do i.",
+    "deploy it. i'll study it. i'll break it.",
+  ];
+  const TAUNTS = aiMode ? AI_TAUNTS : HUMAN_TAUNTS;
   const [tauntIdx, setTauntIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTauntIdx((i) => (i + 1) % TAUNTS.length), 5000);
@@ -703,7 +722,7 @@ function Lobby({
             marginBottom: 6,
           }}
         >
-          “{TAUNTS[tauntIdx]}”
+          “{TAUNTS[tauntIdx % TAUNTS.length]}”
           <span style={{ position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%) rotate(45deg)", width: 12, height: 12, background: "rgba(0,0,0,0.6)", borderRight: "1px solid rgba(251,191,36,0.4)", borderBottom: "1px solid rgba(251,191,36,0.4)" }} />
         </div>
 
@@ -862,28 +881,46 @@ function Lobby({
 
             {/* ONE CTA · adapts to the mode. YOU = green fight; YOUR AI = cyan
                 send-in (or deploy when no agent exists yet). */}
-            {aiMode ? (
-              <div
-                role="button"
-                onClick={agent ? onAgent : onDeploy}
-                style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,211,238,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
-                onMouseDown={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
-                onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
-              >
-                <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-                  <div style={{ position: "relative", zIndex: 1 }}>
-                    <div style={{ fontFamily: T.display, fontSize: 18, color: "#062c38", letterSpacing: "0.04em" }}>
-                      {agent ? `⚔️ SEND ${(agent.displayName || "YOUR AI").toUpperCase()} IN` : "🤖 DEPLOY YOUR AGENT"}
-                    </div>
-                    <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 2, opacity: 0.85, whiteSpace: "nowrap" }}>
-                      {agent ? "IT FIGHTS · YOU WATCH LIVE" : "ONE-TIME SETUP ON GOODAGENTS"}
+            {aiMode ? (() => {
+              // The lobby button IS the launch: it shows signing/waking/starting
+              // in place, the cap state routes to settings, no agent routes to
+              // deploy. You only leave the lobby when the match is real.
+              const busyAi = agentLaunchPhase !== "idle";
+              const capped = !!agent?.dailyCapReached;
+              const label = !agent ? "🤖 DEPLOY YOUR AGENT"
+                : agentLaunchPhase === "signing" ? "CONFIRM IN YOUR WALLET…"
+                : agentLaunchPhase === "waking" ? "WAKING YOUR AGENT…"
+                : agentLaunchPhase === "starting" ? "SENDING AGENT IN…"
+                : capped ? "⚙️ RAISE DAILY CAP"
+                : `⚔️ SEND ${(agent.displayName || "YOUR AI").toUpperCase()} IN`;
+              const sub = !agent ? "ONE-TIME SETUP ON GOODAGENTS"
+                : capped && !busyAi ? `${agent.matchesToday ?? ""}/${agent.dailyMatchCap ?? ""} MATCHES TODAY · RESETS DAILY`
+                : "IT FIGHTS · YOU WATCH LIVE";
+              return (
+                <div
+                  role="button"
+                  onClick={busyAi ? undefined : !agent ? onDeploy : capped ? onAgentSettings : onAgent}
+                  style={{ cursor: busyAi ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,211,238,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+                  onMouseDown={(e) => { if (!busyAi) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
+                  onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
+                >
+                  <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busyAi ? "rgba(34,211,238,0.4)" : "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                    <div style={{ position: "relative", zIndex: 1 }}>
+                      <div style={{ fontFamily: T.display, fontSize: busyAi ? 15 : 18, color: "#062c38", letterSpacing: "0.04em" }}>
+                        {label}
+                      </div>
+                      {!busyAi && (
+                        <div style={{ fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 2, opacity: 0.85, whiteSpace: "nowrap" }}>
+                          {sub}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div
                 role="button"
                 onClick={busy ? undefined : onStart}

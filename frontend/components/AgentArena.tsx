@@ -84,6 +84,49 @@ const MOVE_ART = [
 ];
 const MOVE_NAME = ["ROCK", "PAPER", "SCISSORS"];
 
+// ─── launch hook · the lobby drives the whole flow ───────────────────────────
+// Wake (if paused) + play, signed by the owner, with toasts for every failure.
+// No navigation in here: the caller stays wherever it is (the lobby) until a
+// real match exists, then routes to the live view. This is what kills the
+// intermediate "press play again" screen.
+export type LaunchedMatch = { matchId: string; watchUrl: string | null };
+export type LaunchPhase = "idle" | "signing" | "waking" | "starting";
+
+export function useAgentLaunch(agent: OwnedAgent | null, signer?: string) {
+  const { signMessageAsync } = useSignMessage();
+  const [phase, setPhase] = useState<LaunchPhase>("idle");
+  const [match, setMatch] = useState<LaunchedMatch | null>(null);
+
+  const play = async () => {
+    if (!agent?.deployId || phase !== "idle") return;
+    const owner = agent.ownerWallet || signer || "";
+    try {
+      if (agent.status === "paused" || agent.readyToPlay === false) {
+        setPhase("signing");
+        const wakeAt = Date.now();
+        const wakeSig = await signMessageAsync({ message: deployMsg("resume", agent.deployId, wakeAt) });
+        setPhase("waking");
+        const woke = await goodAgentsStart(agent.deployId, { ownerWallet: signer || owner, issuedAt: wakeAt, signature: wakeSig });
+        if (!woke.ok) { toast.error(errText(woke.error)); return; }
+      }
+      setPhase("signing");
+      const issuedAt = Date.now();
+      const signature = await signMessageAsync({ message: deployMsg("play", agent.deployId, issuedAt) });
+      setPhase("starting");
+      const out = await goodAgentsPlay(owner, { ownerWallet: signer || owner, issuedAt, signature });
+      if (out.matchId) setMatch({ matchId: out.matchId, watchUrl: out.liveWatchUrl ?? null });
+      else toast.error(errText(out.error));
+    } catch (e: unknown) {
+      const m = (e as { message?: string })?.message || "";
+      toast.error(/reject|denied|cancel/i.test(m) ? "You cancelled the signature." : "Wallet couldn't sign. Try again.");
+    } finally {
+      setPhase("idle");
+    }
+  };
+
+  return { phase, match, play, clearMatch: () => setMatch(null) };
+}
+
 // ─── one round as it arrives off the SSE stream ──────────────────────────────
 type LiveRound = {
   round: number;
@@ -107,6 +150,7 @@ export default function AgentArena({
   autoPlay = true,
   strategyOverride = null,
   entry = "play",
+  initialMatch = null,
 }: {
   wallet?: string;
   onBack: () => void;
@@ -120,6 +164,8 @@ export default function AgentArena({
   // "play" = auto-launch the match; "settings" = open the editor directly
   // (lobby ⚙️) and Back/Done return straight to the lobby.
   entry?: "play" | "settings";
+  // Match already launched from the lobby → open directly in the live view.
+  initialMatch?: LaunchedMatch | null;
 }) {
   // Poll the lookup every 5s so a fresh activeMatchId flips us into the live
   // view without the player doing anything.
@@ -167,7 +213,7 @@ export default function AgentArena({
       {loading && !agent && <Skeleton />}
       {!loading && !hasAgent && <NoAgent onDeploy={onDeploy} />}
       {agent && inSettings && <SettingsScreen agent={agent} signer={wallet} onDone={settingsExit} />}
-      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} onLiveChange={setMatchLive} />}
+      {agent && !inSettings && <AgentBody agent={agent} signer={wallet} autoPlay={autoPlay && entry === "play" && !agent.dailyCapReached} strategyOverride={strategyOverride} onSettings={() => setScreen("settings")} onAbort={entry === "play" ? onBack : undefined} autoFiredRef={autoFiredRef} onLiveChange={setMatchLive} initialMatch={initialMatch} />}
     </div>
   );
 }
@@ -215,14 +261,14 @@ function NoAgent({ onDeploy }: { onDeploy: () => void }) {
   );
 }
 
-function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort, autoFiredRef, onLiveChange }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void; autoFiredRef?: React.MutableRefObject<boolean>; onLiveChange?: (live: boolean) => void }) {
+function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAbort, autoFiredRef, onLiveChange, initialMatch }: { agent: OwnedAgent; signer?: string; autoPlay?: boolean; strategyOverride?: string | null; onSettings?: () => void; onAbort?: () => void; autoFiredRef?: React.MutableRefObject<boolean>; onLiveChange?: (live: boolean) => void; initialMatch?: LaunchedMatch | null }) {
   // Hybrid model: the agent is deployed once in the widget (the on-chain sign +
   // stake step). Everything after that is native here — the player taps "play
   // with your agent", signs one message, and GoodAgents starts a real MARKOV
   // match; we stream it live. The match id comes from that launch or one the
   // lookup already reports (activeMatchId).
   const { signMessageAsync } = useSignMessage();
-  const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(null);
+  const [launched, setLaunched] = useState<{ matchId: string; watchUrl: string | null } | null>(initialMatch ?? null);
   const [matchDone, setMatchDone] = useState(false);
   const [phase, setPhase] = useState<"idle" | "signing" | "saving" | "waking" | "starting">("idle");
   const [err, setErr] = useState<string | null>(null);
@@ -316,7 +362,7 @@ function AgentBody({ agent, signer, autoPlay, strategyOverride, onSettings, onAb
   const autoFiredLocal = useRef(false);
   const autoFired = autoFiredRef ?? autoFiredLocal;
   useEffect(() => {
-    if (!autoPlay || autoFired.current || !agent.deployId || matchId) return;
+    if (!autoPlay || initialMatch || autoFired.current || !agent.deployId || matchId) return;
     autoFired.current = true;
     play();
     // eslint-disable-next-line react-hooks/exhaustive-deps
