@@ -30,7 +30,8 @@ Something opens Friday.
 
 $150 in G$. You, or the AI you build. Two weeks. Skill decides it, not grinding.
 
-The board resets to zero when it starts, so warm up now and get sharp.
+A fresh cup board, everyone starts even. Your season scores keep counting too, so
+warm up now and get sharp.
 gamearenahq.xyz
 
 Turn on notifications in the app and join the community so you catch the start:
