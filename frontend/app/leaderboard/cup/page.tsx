@@ -31,7 +31,7 @@ type Lane = { skill: number; consist: number; referrals: number; spendG: number;
 type HumanRow = { rank: number; wallet: string; username: string | null; verified: boolean; cupPoints: number; lanes: Lane };
 type AgentRow = { rank: number; wallet: string; username: string | null; matches: number; wins: number; losses: number; ties: number; winRate: number; net: number };
 type Crown = { wallet: string; username: string | null; referrals?: number; days?: number } | null;
-type Pot = { plays: number; humanPlays: number; agentPlays: number; bonusG: number; next: { at: number; bonusG: number } | null; milestones: { at: number; bonusG: number }[] } | null;
+type Pot = { plays: number; agentMatches: number; bonusG: number; next: { at: number; bonusG: number } | null; milestones: { at: number; bonusG: number }[] } | null;
 type CupData = {
   phase: "upcoming" | "live" | "ended";
   humanSplit: { key: string; label: string; usd: number }[];
