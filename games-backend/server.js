@@ -2865,6 +2865,128 @@ app.get('/api/verified-stats', async (_, res) => {
   }
 });
 
+// ─── Arena Cup ──────────────────────────────────────────────────────────────
+// The 14-day skill event: two ladders (humans + their AIs) + a community pot.
+// PHASE 1 (this): the HUMAN ladder from two lanes — Skill (best run per game)
+// and Consistency (distinct days) — computed from the SUBGRAPH. We use the
+// subgraph, not the `scores` table, on purpose: `scores` keeps only each
+// player's all-time best (saveScore deletes the lower row), so it cannot answer
+// "best run inside the 14-day window". Immutable subgraph Score entities carry
+// per-run blockTimestamps, so one windowed query yields both best-run and
+// distinct-days. Referral / G$-spend / Agent lanes land in later phases.
+//
+// Skill covers the 3 score games (gameType 0/1/2). Challenge AI is match-based,
+// not score-based — it feeds Consistency, the community pot, and the Agent Cup.
+const CUP = {
+  // UTC ISO. Set real dates when the Cup goes live (env overrides win).
+  startsAt: process.env.CUP_STARTS_AT || '2026-08-11T15:00:00Z',
+  endsAt:   process.env.CUP_ENDS_AT   || '2026-08-25T15:00:00Z',
+  // Cup Points lane weights (tune after a dry run).
+  weights: { skill: 1.0, consist: 8, ref: 25, spend: 1.0 },
+  kSpend: 1.0,
+  humanSplit: [
+    { key: 'champion',  label: 'Cup Champion',  usd: 40 },
+    { key: 'second',    label: 'Runner-up',     usd: 25 },
+    { key: 'third',     label: '3rd place',     usd: 15 },
+    { key: 'connector', label: 'Top Connector', usd: 12 },
+    { key: 'streak',    label: 'Iron Streak',   usd: 8  },
+  ],
+  agentSplit: [
+    { key: 'agent1', label: 'Top Agent', usd: 30 },
+    { key: 'agent2', label: '2nd Agent', usd: 12 },
+    { key: 'agent3', label: '3rd Agent', usd: 8  },
+  ],
+};
+// gameType -> score divisor (same mapping saveScore uses: rhythm 100, simon 20, stack 5).
+const CUP_DIVISOR = { 0: 100, 1: 20, 2: 5 };
+
+// Every run in the window, paginated by blockTimestamp (immutable Score rows).
+async function cupWindowScores(startSec, endSec) {
+  const out = [];
+  let cursor = startSec;
+  for (let page = 0; page < 40; page++) { // 40 * 1000 = 40k ceiling, ample
+    const q = await subgraph.gql(
+      `query CupScores($e: String!, $c: String!) {
+         scores(first: 1000, orderBy: blockTimestamp, orderDirection: asc,
+                where: { blockTimestamp_gte: $c, blockTimestamp_lt: $e }) {
+           player { id } gameType score blockTimestamp
+         }
+       }`,
+      { e: String(endSec), c: String(cursor) },
+    );
+    const batch = q.scores || [];
+    out.push(...batch);
+    if (batch.length < 1000) break;
+    cursor = Number(batch[batch.length - 1].blockTimestamp) + 1; // next second
+  }
+  return out;
+}
+
+app.get('/api/cup', async (req, res) => {
+  const startSec = Math.floor(Date.parse(CUP.startsAt) / 1000);
+  const endSec   = Math.floor(Date.parse(CUP.endsAt) / 1000);
+  const nowSec   = Math.floor(Date.now() / 1000);
+  const phase = nowSec < startSec ? 'upcoming' : nowSec >= endSec ? 'ended' : 'live';
+
+  let ladder = cacheGet('cup:human');
+  if (!ladder) {
+    try {
+      const rows = phase === 'upcoming' ? [] : await cupWindowScores(startSec, Math.min(nowSec, endSec));
+      const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set<yyyy-mm-dd> }
+      for (const r of rows) {
+        const w = r.player?.id?.toLowerCase();
+        if (!w) continue;
+        let p = byPlayer.get(w);
+        if (!p) { p = { best: {}, days: new Set() }; byPlayer.set(w, p); }
+        const gt = Number(r.gameType), sc = Number(r.score);
+        // Skill = the 3 score games only (0/1/2). Challenge AI (gameType 3) and
+        // any other type have no score-divisor, so they DON'T feed skill...
+        if (CUP_DIVISOR[gt] !== undefined && (!(gt in p.best) || sc > p.best[gt])) p.best[gt] = sc;
+        // ...but every game played still counts toward Consistency (a day shown up).
+        p.days.add(new Date(Number(r.blockTimestamp) * 1000).toISOString().slice(0, 10));
+      }
+      const wallets = Array.from(byPlayer.keys());
+      const vflags = await mapLimit(wallets, 12, (w) => isVerified(w));
+      const entries = wallets.map((w, i) => {
+        const p = byPlayer.get(w);
+        const skill = Object.entries(p.best)
+          .reduce((s, [gt, sc]) => s + Math.floor(sc / (CUP_DIVISOR[gt] || 20)), 0);
+        const consist = Math.min(14, p.days.size);
+        const cupPoints = Math.round(CUP.weights.skill * skill + CUP.weights.consist * consist);
+        return { wallet: w, verified: !!vflags[i], lanes: { skill, consist }, cupPoints };
+      });
+      // Verified first (only they can win), then by points, then earliest is implicit.
+      entries.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (b.cupPoints - a.cupPoints));
+      const top = entries.slice(0, 50);
+      await Promise.all(top.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
+      top.forEach((e, i) => { e.rank = i + 1; });
+      ladder = top;
+      cacheSet('cup:human', ladder, 60_000); // 1 min, same cadence as other ladders
+    } catch (e) {
+      console.warn('cup ladder failed:', e?.message || e);
+      ladder = [];
+    }
+  }
+
+  const meWallet = (req.query.wallet || '').toString().toLowerCase();
+  const me = meWallet ? (ladder.find((e) => e.wallet === meWallet) || null) : null;
+
+  res.json({
+    phase,
+    startsAt: CUP.startsAt,
+    endsAt: CUP.endsAt,
+    weights: CUP.weights,
+    humanSplit: CUP.humanSplit,
+    agentSplit: CUP.agentSplit,
+    human: ladder,
+    me,
+    // Phase 2+: agent ladder, community pot, referral + G$-spend lanes.
+    agent: [],
+    pot: null,
+    lanesLive: ['skill', 'consist'],
+  });
+});
+
 // ─── GET /api/weekly-challenge — community games milestone ──────────────────
 // Returns progress toward the weekly community games target. Counts games
 // from this week's Monday 00:00 UTC. Each player's contribution is capped at
