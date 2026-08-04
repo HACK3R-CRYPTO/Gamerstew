@@ -99,7 +99,7 @@ export default function CupPage() {
   // ── ladder → common entries, podium + pagination ──
   const entries: Entry[] = !board || !data ? [] : tab === "human"
     ? data.human.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), value: r.cupPoints.toLocaleString(), unit: "pts", verified: r.verified, mine: r.wallet === meLower }))
-    : data.agent.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), sub: r.owner ? `by ${r.owner.username || short(r.owner.wallet)}` : undefined, value: String(r.wins), unit: "W", verified: true, mine: false }));
+    : data.agent.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), sub: r.owner ? `by ${r.owner.username || short(r.owner.wallet)}` : undefined, value: String(r.wins), unit: "wins", verified: true, mine: false }));
   const podium = entries.slice(0, 3);
   const rest = entries.slice(3);
   const totalPages = Math.max(1, Math.ceil(rest.length / PAGE_SIZE));
@@ -140,7 +140,7 @@ export default function CupPage() {
         {phase === "upcoming" && (
           <>
             <Card style={{ textAlign: "center", padding: "24px 18px", background: `radial-gradient(120% 140% at 50% 0%, ${T.accent}22, transparent 60%), ${T.surface}` }}>
-              <div style={{ fontFamily: T.display, fontSize: 42, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 30px ${T.gold}44` }}>{countdown || "—"}</div>
+              <div style={{ fontFamily: T.display, fontSize: 42, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 30px ${T.gold}44` }}>{countdown || "soon"}</div>
               <div style={{ fontSize: 12.5, color: T.inkDim, marginTop: 8, lineHeight: 1.5, maxWidth: 380, margin: "8px auto 0" }}>Everyone starts at zero when it opens. Play now to warm up.</div>
               <button onClick={() => router.push("/games")} style={{ marginTop: 14, padding: "12px 28px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 13, fontWeight: 900, letterSpacing: "0.06em", color: "#0a0226", background: "linear-gradient(180deg,#fde68a,#fbbf24)", boxShadow: `0 8px 22px -8px ${T.gold}` }}>PLAY NOW ›</button>
             </Card>
@@ -178,7 +178,7 @@ export default function CupPage() {
 
             {/* tabs */}
             <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "center" }}>
-              {([{ id: "human", label: "🎮 Players" }, { id: "agent", label: "🤖 Agents" }] as const).map((o) => (
+              {([{ id: "human", label: "Players" }, { id: "agent", label: "Agents" }] as const).map((o) => (
                 <button key={o.id} onClick={() => setTab(o.id)} style={{
                   padding: "9px 20px", borderRadius: 10, cursor: "pointer", border: "none",
                   background: tab === o.id ? (o.id === "human" ? T.green : T.cyan) : "transparent",
@@ -195,11 +195,11 @@ export default function CupPage() {
               <>
                 {/* podium */}
                 <Podium entries={podium} />
-                {/* rest · paginated */}
+                {/* rest · paginated glowing pills */}
                 {rest.length > 0 && (
-                  <Card style={{ padding: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     {pageRows.map((e) => <Row key={e.wallet} e={e} tint={tint} />)}
-                  </Card>
+                  </div>
                 )}
                 {/* pager */}
                 {totalPages > 1 && (
@@ -238,38 +238,63 @@ function Pg({ label, onClick, disabled, tint }: { label: string; onClick: () => 
   );
 }
 
+// Confetti + character podium · the app's own leaderboard language
+// (mirrors StagePodium on the Events All-time tab).
+const CONFETTI = [
+  { left: "10%", top: "22%", color: "#f9a8d4", size: 9, shape: "star", dur: 3.5, delay: 0.0 },
+  { left: "20%", top: "55%", color: "#fbbf24", size: 11, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "30%", top: "18%", color: "#22d3ee", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
+  { left: "46%", top: "10%", color: "#fde68a", size: 12, shape: "sparkle", dur: 4.0, delay: 0.8 },
+  { left: "62%", top: "20%", color: "#e879f9", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
+  { left: "74%", top: "50%", color: "#34d399", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "26%", color: "#c084fc", size: 11, shape: "note", dur: 4.1, delay: 0.7 },
+];
+function Confetti({ p }: { p: typeof CONFETTI[number] }) {
+  const base = { position: "absolute" as const, left: p.left, top: p.top, width: p.size, height: p.size, animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`, pointerEvents: "none" as const, filter: `drop-shadow(0 0 6px ${p.color})` };
+  if (p.shape === "dot") return <div style={{ ...base, background: p.color, borderRadius: "50%" }} />;
+  if (p.shape === "triangle") return <div style={{ ...base, width: 0, height: 0, borderLeft: `${p.size / 2}px solid transparent`, borderRight: `${p.size / 2}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}`, background: "transparent" }} />;
+  if (p.shape === "note") return <div style={{ ...base, color: p.color, fontSize: p.size + 4, fontWeight: 900 }}>♪</div>;
+  if (p.shape === "sparkle") return <div style={{ ...base, color: p.color, fontSize: p.size + 4, fontWeight: 900 }}>✦</div>;
+  return <div style={{ ...base, color: p.color, fontSize: p.size + 4, fontWeight: 900 }}>★</div>;
+}
 function Podium({ entries }: { entries: Entry[] }) {
-  const slots = [
-    { e: entries[1], h: 96, m: "🥈", c: "#e2e8f0" },
-    { e: entries[0], h: 118, m: "🥇", c: T.gold },
-    { e: entries[2], h: 84, m: "🥉", c: "#f97316" },
+  const P = [
+    { char: "/characters/char1.png", e: entries[0], color: "#fbbf24", w: 18, bottom: 38, left: 50, z: 3 },
+    { char: "/characters/char2.png", e: entries[1], color: "#e2e8f0", w: 16, bottom: 33, left: 32, z: 2 },
+    { char: "/characters/char3.png", e: entries[2], color: "#f97316", w: 16, bottom: 32, left: 67, z: 2 },
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.15fr 1fr", gap: 8, alignItems: "end" }}>
-      {slots.map((s, i) => s.e ? (
-        <div key={i} style={{ minHeight: s.h, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 3, textAlign: "center", padding: "12px 6px 13px", borderRadius: 14, background: `linear-gradient(180deg, ${s.c}22, ${T.surface})`, border: `1px solid ${s.c}55`, boxShadow: i === 1 ? `0 10px 30px -14px ${s.c}` : "none" }}>
-          <span style={{ fontSize: i === 1 ? 26 : 20 }}>{s.m}</span>
-          <span style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: T.ink, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.e.name}</span>
-          {s.e.sub && <span style={{ fontSize: 9.5, color: T.inkSoft, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.e.sub}</span>}
-          <span style={{ fontFamily: T.display, fontSize: i === 1 ? 19 : 16, color: s.c }}>{s.e.value}<span style={{ fontSize: 9, color: T.inkSoft }}> {s.e.unit}</span></span>
-        </div>
-      ) : <div key={i} />)}
+    <div style={{ position: "relative", width: "100%", maxWidth: 520, aspectRatio: "3 / 2", margin: "0 auto" }}>
+      <img src="/characters/podium.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))", zIndex: 1 }} />
+      {CONFETTI.map((p, i) => <Confetti key={i} p={p} />)}
+      {P.map((pl) => pl.e && (
+        <img key={pl.left} src={pl.char} alt="" style={{ position: "absolute", left: `${pl.left}%`, bottom: `${pl.bottom}%`, transform: "translateX(-50%)", width: `${pl.w}%`, zIndex: pl.z, objectFit: "contain", filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)` }} />
+      ))}
+      {P.map((pl) => {
+        if (!pl.e) return null;
+        const labelBottom = pl.bottom + pl.w * 2.25 + 1;
+        return (
+          <div key={`l${pl.left}`} style={{ position: "absolute", left: `${pl.left}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
+            <div style={{ color: "#fff", fontSize: 12, fontWeight: 900, letterSpacing: "0.02em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>{pl.e.name}</div>
+            <div style={{ color: pl.color, fontFamily: T.display, fontSize: 14, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>{pl.e.value} {pl.e.unit}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function Row({ e, tint }: { e: Entry; tint: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, background: e.mine ? `${tint}1f` : "transparent" }}>
-      <span style={{ fontFamily: T.display, fontSize: 13, width: 26, textAlign: "center", color: T.inkSoft }}>{e.rank}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</span>
-          {e.verified && <span title="Verified" style={{ fontSize: 8.5 }}>✅</span>}
+    <div style={{ borderRadius: 999, padding: 2, background: `linear-gradient(135deg, ${tint} 0%, ${tint}55 100%)`, boxShadow: `0 0 10px ${tint}40, 0 5px 14px rgba(0,0,0,0.45)` }}>
+      <div style={{ borderRadius: 999, background: e.mine ? `linear-gradient(90deg, ${tint}2e 0%, rgba(20,10,50,0.92) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${tint}22`, border: `1px solid ${tint}66`, fontFamily: T.display, fontSize: 12.5, color: T.ink }}>{e.rank}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.mine ? `You · ${e.name}` : e.name}</div>
+          {e.sub && <div style={{ fontSize: 10, color: T.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.sub}</div>}
         </div>
-        {e.sub && <div style={{ fontSize: 10, color: T.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.sub}</div>}
+        <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{e.value}<span style={{ fontSize: 9, color: T.inkSoft }}> {e.unit}</span></span>
       </div>
-      <span style={{ fontFamily: T.display, fontSize: 15, color: tint, fontVariantNumeric: "tabular-nums" }}>{e.value}<span style={{ fontSize: 9, color: T.inkSoft }}> {e.unit}</span></span>
     </div>
   );
 }
@@ -289,20 +314,21 @@ function Expandable({ title, tint, defaultOpen, children }: { title: string; tin
 
 function HowBody() {
   const lanes = [
-    { i: "🎯", t: "Skill — best run per game" },
-    { i: "📅", t: "Consistency — distinct days" },
-    { i: "🤝", t: "Referrals — verified friends" },
-    { i: "💠", t: "G$ spend — √ curve" },
+    ["Skill", "your best run in each game"],
+    ["Consistency", "play on separate days"],
+    ["Referrals", "friends who verify and play"],
+    ["G$ spend", "perks, on a curve"],
   ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      {lanes.map((l) => (
-        <div key={l.t} style={{ display: "flex", gap: 9, alignItems: "center" }}>
-          <span style={{ fontSize: 15 }}>{l.i}</span>
-          <span style={{ fontSize: 12, color: T.inkDim }}>{l.t}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {lanes.map(([t, d]) => (
+        <div key={t} style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: T.accent, flexShrink: 0, transform: "translateY(-1px)" }} />
+          <span style={{ fontSize: 12.5, color: T.ink, fontWeight: 700 }}>{t}</span>
+          <span style={{ fontSize: 11.5, color: T.inkSoft }}>{d}</span>
         </div>
       ))}
-      <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 3 }}>Verified humans only · no farming · agents on their own ladder.</div>
+      <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3, lineHeight: 1.5 }}>Verified players only. Scores are checked server-side, so grinding and bots earn nothing.</div>
     </div>
   );
 }
@@ -323,8 +349,8 @@ function PrizeBody({ data, isDesktop }: { data: CupData | null; isDesktop: boole
   );
   return (
     <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 16 }}>
-      <Col head="🎮 Players · $100" tintc={T.green} rows={human} />
-      <Col head="🤖 Agents · $50 · GoodAgents" tintc={T.cyan} rows={agent} />
+      <Col head="Players · $100" tintc={T.green} rows={human} />
+      <Col head="Agents · $50 · GoodAgents" tintc={T.cyan} rows={agent} />
     </div>
   );
 }
