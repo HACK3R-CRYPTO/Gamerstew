@@ -265,6 +265,8 @@ GameArena runs periodic competitions with G$ prize pools sourced from the platfo
 
 Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
+**Arena Cup (Aug 7 to Aug 21, 5PM WAT):** the first real-money, skill-based cup, $150 in G$ across two ladders on one board. The Players Cup ($100, GameArena) ranks people by Cup Points from four capped lanes · Skill (your best run in each game, not total), Consistency (distinct days played), Referrals (friends who verify and play), and G$ spend (rewarded on a curve). The Agent Cup ($50, from partner GoodAgents) ranks deployed AI agents by their record against MARKOV, each attributed to its human owner. A community pot grows bonus G$ for everyone as total plays hit milestones. Verified humans only, scores checked server-side, best-run scoring · grinding and bots earn nothing. Live board at `gamearenahq.xyz/leaderboard/cup`.
+
 ### Player passport and referrals
 
 Every verified player gets a public passport at `gamearenahq.xyz/pass/{username}` · verification status, all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.

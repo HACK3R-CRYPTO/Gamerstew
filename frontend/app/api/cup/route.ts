@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { CUP_START, CUP_END } from "@/lib/cup";
 
 // Arena Cup ladder proxy → games-backend /api/cup (computes both ladders, the
 // crowns, and the community pot). Passes ?wallet through for "my rank".
@@ -22,8 +23,11 @@ export async function GET(req: Request) {
       headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" },
     });
   } catch {
+    // Backend unreachable → still return the real window so the page shows the
+    // correct "upcoming/live" state (without startsAt/endsAt the client's phase
+    // math falls through to "live" on NaN comparisons — the phantom-data bug).
     return NextResponse.json(
-      { phase: "upcoming", human: [], agent: [], crowns: { connector: null, streak: null }, pot: null, me: null },
+      { startsAt: CUP_START, endsAt: CUP_END, phase: "upcoming", human: [], agent: [], crowns: { connector: null, streak: null }, pot: null, me: null },
       { status: 200 },
     );
   }
