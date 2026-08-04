@@ -141,7 +141,7 @@ export default function CupPage() {
         {phase === "upcoming" && (
           <>
             <Card style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "16px 18px 20px", background: `radial-gradient(120% 130% at 50% 0%, ${T.gold}1e, transparent 62%), ${T.surface}` }}>
-              <img src="/event-prize.png" alt="" style={{ display: "block", width: 156, height: 156, objectFit: "contain", mixBlendMode: "screen", margin: "0 auto -8px", filter: `drop-shadow(0 0 26px ${T.gold}44)` }} />
+              <img src="/event-prize.png" alt="" style={{ display: "block", width: 146, height: 146, objectFit: "contain", mixBlendMode: "screen", margin: "0 auto 6px", filter: `drop-shadow(0 0 26px ${T.gold}44)`, WebkitMaskImage: "radial-gradient(circle at 50% 47%, #000 56%, transparent 76%)", maskImage: "radial-gradient(circle at 50% 47%, #000 56%, transparent 76%)" }} />
               <div style={{ fontFamily: T.display, fontSize: 40, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 28px ${T.gold}55`, lineHeight: 1 }}>{countdown || "soon"}</div>
               <div style={{ fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}>until the board opens</div>
               <div style={{ fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 360, margin: "11px auto 0" }}>Everyone starts at zero. Play now to warm up before it goes live.</div>
