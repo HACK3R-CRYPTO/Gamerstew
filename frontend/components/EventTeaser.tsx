@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import CupCountdown from "@/components/CupCountdown";
 
 // ─── EventTeaser ────────────────────────────────────────────────────────────
@@ -17,7 +18,8 @@ const T = {
 
 export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean }) {
   return (
-    <div style={{
+    <Link href="/leaderboard/cup" style={{
+      display: "block", textDecoration: "none", color: "inherit",
       position: "relative", overflow: "hidden", borderRadius: 18,
       padding: isDesktop ? "18px 22px" : "15px 16px",
       background: "linear-gradient(115deg, rgba(120,53,15,0.55) 0%, rgba(30,14,74,0.75) 55%, rgba(20,8,52,0.9) 100%)",
@@ -68,6 +70,6 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           style={{ width: isDesktop ? 128 : 96, height: isDesktop ? 128 : 96, objectFit: "contain", mixBlendMode: "screen", flexShrink: 0, pointerEvents: "none" }}
         />
       </div>
-    </div>
+    </Link>
   );
 }
