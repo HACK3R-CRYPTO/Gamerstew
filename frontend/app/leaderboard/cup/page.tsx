@@ -12,6 +12,7 @@ import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import { fmtCupCountdown } from "@/lib/cup";
+import { TG_GROUP_INVITE } from "@/lib/telegramDeepLink";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -146,6 +147,7 @@ export default function CupPage() {
               <div style={{ fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}>until the board opens</div>
               <div style={{ fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 360, margin: "11px auto 0" }}>Everyone starts at zero. Play now to warm up before it goes live.</div>
               <button onClick={() => router.push("/games")} style={{ marginTop: 14, padding: "12px 30px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 13, fontWeight: 900, letterSpacing: "0.06em", color: "#0a0226", background: "linear-gradient(180deg,#fde68a,#fbbf24)", boxShadow: `0 8px 24px -8px ${T.gold}` }}>PLAY NOW ›</button>
+              <a href={TG_GROUP_INVITE} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 13, fontSize: 12, fontWeight: 700, color: T.inkDim, textDecoration: "none" }}>Join the community so you don&apos;t miss the start ›</a>
             </Card>
             <Expandable title="How you climb" defaultOpen><HowBody /></Expandable>
             <Expandable title="Prizes · $150" tint={T.gold} defaultOpen><PrizeBody data={data} isDesktop={isDesktop} /></Expandable>
