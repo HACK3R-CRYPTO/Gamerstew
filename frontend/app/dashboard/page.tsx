@@ -15,6 +15,7 @@ import { useSignMessage } from "wagmi";
 import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
+import CupCountdown from "@/components/CupCountdown";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
 const T = {
@@ -861,13 +862,21 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         {/* Trophy art — `screen` blend drops its dark background into the card */}
         <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -14, bottom: -14, width: 172, height: 172, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
-          <Pill color="#fde68a">⚡ EVENT · COMING SOON</Pill>
+          <Pill color="#fde68a">⚡ ARENA CUP</Pill>
         </div>
-        <div style={{ padding: "10px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
+        <div style={{ padding: "8px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
             <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>$150</span>
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>in G$</span>
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>Top 5 · prize pool · paid in G$</div>
+          {/* Live countdown */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "4px 10px", borderRadius: 999, background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.4)" }}>
+            <CupCountdown
+              labelStyle={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(253,230,138,0.8)", textTransform: "uppercase" }}
+              timeStyle={{ fontFamily: T.display, fontSize: 13, color: "#fde68a" }}
+              gap={5}
+            />
+          </div>
           {/* GoodAgents supports the pool · credited, not the headline. */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8 }}>
             <img src="/goodagents-logo.png" alt="" width={14} height={14} style={{ display: "block" }} />

@@ -1,9 +1,10 @@
 "use client";
 
+import CupCountdown from "@/components/CupCountdown";
+
 // ─── EventTeaser ────────────────────────────────────────────────────────────
-// "Coming soon" banner for the upcoming 400,000 G$ event. Details aren't set
-// yet, so it teases the pool and builds anticipation without promising
-// mechanics. Shown on the dashboard (home) and the events/leaderboard page.
+// Teaser + live countdown for the Arena Cup ($150 in G$, supported by
+// GoodAgents). Shown on the dashboard (home) and the events/leaderboard page.
 
 const T = {
   ink: "#ffffff",
@@ -30,14 +31,23 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "3px 10px", borderRadius: 999, background: "rgba(251,191,36,0.16)", border: "1px solid rgba(251,191,36,0.45)" }}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: T.gold, boxShadow: `0 0 8px ${T.gold}` }} />
-            <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", color: T.gold, textTransform: "uppercase" }}>Event · Coming soon</span>
+            <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.18em", color: T.gold, textTransform: "uppercase" }}>Arena Cup</span>
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
             <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>$150</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.75)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
-            Top 5 · prize pool · paid in G$
+            Prize pool · paid in G$
+          </div>
+
+          {/* Live countdown · starts ticking the moment this ships */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 11, padding: "6px 13px", borderRadius: 999, background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.45)" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: T.gold, boxShadow: `0 0 8px ${T.gold}`, animation: "pulse-soft 1.6s ease-in-out infinite" }} />
+            <CupCountdown
+              labelStyle={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", color: "rgba(253,230,138,0.8)", textTransform: "uppercase" }}
+              timeStyle={{ fontFamily: T.display, fontSize: isDesktop ? 16 : 14, color: T.gold, letterSpacing: "0.02em" }}
+            />
           </div>
 
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "9px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
