@@ -28,32 +28,32 @@ export const PERKS: Perk[] = [
   {
     id: 1, game: "rhythm", gameLabel: "Rhythm Rush",
     name: "Save your run", blurb: "Miss a note? Keep the combo alive and play on.",
-    priceG$: parseEther("30"), priceLabel: "30 G$", kind: "save", emoji: "🎵",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "save", emoji: "🎵",
   },
   {
     id: 3, game: "stack", gameLabel: "Stack Tower",
     name: "Save your run", blurb: "Fumble a block? Rescue the tower and keep stacking.",
-    priceG$: parseEther("30"), priceLabel: "30 G$", kind: "save", emoji: "🧱",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "save", emoji: "🧱",
   },
   {
     id: 4, game: "stack", gameLabel: "Stack Tower",
     name: "Crystal Blocks", blurb: "Build your tower from glowing crystal. Yours forever.",
-    priceG$: parseEther("250"), priceLabel: "250 G$", kind: "cosmetic", emoji: "🧊",
+    priceG$: parseEther("500"), priceLabel: "500 G$", kind: "cosmetic", emoji: "🧊",
   },
   {
     id: 5, game: "simon", gameLabel: "Simon Memory",
     name: "Retry", blurb: "Botched the sequence? Take the round again.",
-    priceG$: parseEther("20"), priceLabel: "20 G$", kind: "retry", emoji: "🔁",
+    priceG$: parseEther("50"), priceLabel: "50 G$", kind: "retry", emoji: "🔁",
   },
   {
     id: 6, game: "challenge-ai", gameLabel: "Challenge AI",
     name: "Match Pack", blurb: "Out of matches? +5 more vs MARKOV, instant.",
-    priceG$: parseEther("2"), priceLabel: "2 G$", kind: "retry", emoji: "🎟",
+    priceG$: parseEther("50"), priceLabel: "50 G$", kind: "retry", emoji: "🎟",
   },
   {
     id: 2, game: "rhythm", gameLabel: "Rhythm Rush",
     name: "Neon Trail", blurb: "A glowing neon trail on your notes. Yours forever.",
-    priceG$: parseEther("300"), priceLabel: "300 G$", kind: "cosmetic", emoji: "✨",
+    priceG$: parseEther("750"), priceLabel: "750 G$", kind: "cosmetic", emoji: "✨",
   },
 ];
 

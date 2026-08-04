@@ -85,7 +85,7 @@ export const HABITATS: HabitatTier[] = [
 
   // ── PAID TIERS (G$ donation) ──────────────────────────────────────────────
   {
-    id: 6, name: "Celestial Arena", type: "paid", costG$: G$(300),
+    id: 6, name: "Celestial Arena", type: "paid", costG$: G$(500),
     bgImage: "/habitats/6.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(167,139,250,0.5) 0%, transparent 60%), linear-gradient(180deg, #1e0b4d 0%, #4c1d95 100%)",
@@ -95,7 +95,7 @@ export const HABITATS: HabitatTier[] = [
     blurb: "Floating among the stars.",
   },
   {
-    id: 7, name: "Mystic Garden", type: "paid", costG$: G$(1_000),
+    id: 7, name: "Mystic Garden", type: "paid", costG$: G$(1_500),
     bgImage: "/habitats/7.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(20,184,166,0.55) 0%, transparent 60%), linear-gradient(180deg, #042f2e 0%, #115e59 100%)",
@@ -105,7 +105,7 @@ export const HABITATS: HabitatTier[] = [
     blurb: "Glowing flora and chimes.",
   },
   {
-    id: 8, name: "Astral Realm", type: "paid", costG$: G$(3_000),
+    id: 8, name: "Astral Realm", type: "paid", costG$: G$(5_000),
     bgImage: "/habitats/8.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(232,121,249,0.5) 0%, transparent 60%), linear-gradient(180deg, #1f0a3a 0%, #581c87 100%)",
@@ -115,7 +115,7 @@ export const HABITATS: HabitatTier[] = [
     blurb: "Dimensions fold into each other.",
   },
   {
-    id: 9, name: "Cosmic Throne", type: "paid", costG$: G$(10_000),
+    id: 9, name: "Cosmic Throne", type: "paid", costG$: G$(15_000),
     bgImage: "/habitats/9.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(251,146,60,0.55) 0%, transparent 60%), linear-gradient(180deg, #4a1604 0%, #92400e 50%, #fbbf24 130%)",
@@ -125,7 +125,7 @@ export const HABITATS: HabitatTier[] = [
     blurb: "Reserved for the few.",
   },
   {
-    id: 10, name: "Eternal Sanctuary", type: "paid", costG$: G$(30_000),
+    id: 10, name: "Eternal Sanctuary", type: "paid", costG$: G$(50_000),
     bgImage: "/habitats/10.jpg",
     bg: {
       gradient: "radial-gradient(ellipse at 50% 90%, rgba(192,132,252,0.6) 0%, transparent 60%), linear-gradient(135deg, #ec4899 0%, #8b5cf6 35%, #06b6d4 70%, #fbbf24 100%)",
