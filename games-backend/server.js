@@ -2970,7 +2970,7 @@ app.get('/api/cup', async (req, res) => {
         // Agent Cup shows who's behind the bot. agentVault is a module-level
         // const defined later in the file — available at request time.
         await Promise.all(agent.map(async (e) => {
-          e.username = (await resolveUsername(e.wallet)) || null; // the agent's own name
+          e.username = (await resolveUsername(e.wallet)) || null; // on-chain pass name (usually null for the play address)
           e.owner = null;
           try {
             if (agentVault) {
@@ -2982,7 +2982,24 @@ app.get('/api/cup', async (req, res) => {
             }
           } catch { /* leave owner null on RPC hiccup */ }
         }));
-        agent.forEach((e, i) => { e.rank = i + 1; });
+        // The agent's display name lives in GoodAgents' partner data, keyed by
+        // owner (one agent per owner). Fill it in where the on-chain pass name
+        // was empty, so the board shows the agent's name, not a raw address.
+        const owners = [...new Set(agent.map((e) => e.owner?.wallet).filter(Boolean))];
+        const nameByOwner = new Map();
+        await Promise.all(owners.map(async (ow) => {
+          try {
+            const r = await fetch(`https://goodagentids.xyz/host/partners/gamearena/agents?owner=${ow}`);
+            if (!r.ok) return;
+            const j = await r.json();
+            const a = (j.agents || [])[0];
+            if (a?.displayName) nameByOwner.set(ow, a.displayName);
+          } catch { /* partner down · fall back to short address */ }
+        }));
+        agent.forEach((e, i) => {
+          if (!e.username && e.owner && nameByOwner.has(e.owner.wallet)) e.username = nameByOwner.get(e.owner.wallet);
+          e.rank = i + 1;
+        });
       } catch (e) { console.warn('cup agent lane:', e?.message || e); }
 
       const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set }
