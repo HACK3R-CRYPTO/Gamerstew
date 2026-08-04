@@ -29,7 +29,7 @@ const T = {
 
 type Lane = { skill: number; consist: number; referrals: number; spendG: number; spendPts: number };
 type HumanRow = { rank: number; wallet: string; username: string | null; verified: boolean; cupPoints: number; lanes: Lane };
-type AgentRow = { rank: number; wallet: string; username: string | null; matches: number; wins: number; losses: number; ties: number; winRate: number; net: number };
+type AgentRow = { rank: number; wallet: string; username: string | null; matches: number; wins: number; losses: number; ties: number; winRate: number; net: number; owner: { wallet: string; username: string | null } | null };
 type Crown = { wallet: string; username: string | null; referrals?: number; days?: number } | null;
 type Pot = { plays: number; agentMatches: number; bonusG: number; next: { at: number; bonusG: number } | null; milestones: { at: number; bonusG: number }[] } | null;
 type CupData = {
@@ -204,8 +204,9 @@ export default function CupPage() {
               <div style={{ padding: 24, textAlign: "center", color: T.inkSoft, fontFamily: T.body, fontSize: 12 }}>No agents in the arena yet. <Link href="/agents" style={{ color: T.cyan }}>Deploy yours →</Link></div>
             ) : (
               data!.agent.map((r) => (
-                <Row key={r.wallet} rank={r.rank} name={r.username || short(r.wallet)} verified
-                  right={`${r.wins}W`} sub={`${r.matches} matches · ${r.winRate}% win`} tint={T.cyan} />
+                <Row key={r.wallet} rank={r.rank} name={`🤖 ${r.username || short(r.wallet)}`} verified
+                  right={`${r.wins}W`}
+                  sub={`${r.owner ? `by ${r.owner.username || short(r.owner.wallet)} · ` : ""}${r.matches} matches · ${r.winRate}% win`} tint={T.cyan} />
               ))
             )
           )}

@@ -2966,7 +2966,22 @@ app.get('/api/cup', async (req, res) => {
           net: s.wins - (s.matches - s.wins - s.ties),
           winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
         })).sort((a, b) => b.net - a.net || b.winRate - a.winRate || b.matches - a.matches).slice(0, 50);
-        await Promise.all(agent.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
+        // Attach the human owner of each agent (agentVault operator) so the
+        // Agent Cup shows who's behind the bot. agentVault is a module-level
+        // const defined later in the file — available at request time.
+        await Promise.all(agent.map(async (e) => {
+          e.username = (await resolveUsername(e.wallet)) || null; // the agent's own name
+          e.owner = null;
+          try {
+            if (agentVault) {
+              const [operator] = await agentVault.getAgent(e.wallet);
+              if (operator && !/^0x0+$/.test(operator)) {
+                const ow = operator.toLowerCase();
+                e.owner = { wallet: ow, username: (await resolveUsername(ow)) || null };
+              }
+            }
+          } catch { /* leave owner null on RPC hiccup */ }
+        }));
         agent.forEach((e, i) => { e.rank = i + 1; });
       } catch (e) { console.warn('cup agent lane:', e?.message || e); }
 
