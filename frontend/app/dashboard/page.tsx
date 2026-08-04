@@ -327,8 +327,8 @@ export default function DashboardPage() {
   }, [connected, address]);
 
   const onPlayGame = async (id: string) => {
-    // The event hero isn't a game — it routes to the events page.
-    if (id === "event") { router.push("/leaderboard"); return; }
+    // The event hero isn't a game — it routes to the Arena Cup board.
+    if (id === "event") { router.push("/leaderboard/cup"); return; }
     // The AI-mode hero routes into the Challenge lobby, where the YOU/YOUR AI
     // switch and the deploy-on-GoodAgents CTA both live.
     if (id === "aimode") { router.push("/games/challenge-ai"); return; }

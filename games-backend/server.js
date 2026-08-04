@@ -2884,6 +2884,12 @@ const CUP = {
   // Cup Points lane weights (tune after a dry run).
   weights: { skill: 1.0, consist: 8, ref: 25, spend: 1.0 },
   kSpend: 1.0,
+  // Community pot: total plays (human + agent) unlock bonus G$ for everyone.
+  potMilestones: [
+    { at: 2_000,  bonusG: 20_000 },
+    { at: 5_000,  bonusG: 50_000 },
+    { at: 10_000, bonusG: 100_000 },
+  ],
   humanSplit: [
     { key: 'champion',  label: 'Cup Champion',  usd: 40 },
     { key: 'second',    label: 'Runner-up',     usd: 25 },
@@ -2927,63 +2933,136 @@ app.get('/api/cup', async (req, res) => {
   const endSec   = Math.floor(Date.parse(CUP.endsAt) / 1000);
   const nowSec   = Math.floor(Date.now() / 1000);
   const phase = nowSec < startSec ? 'upcoming' : nowSec >= endSec ? 'ended' : 'live';
+  const startIso = new Date(startSec * 1000).toISOString();
+  const endIso   = new Date(Math.min(nowSec, endSec) * 1000).toISOString();
 
-  let ladder = cacheGet('cup:human');
-  if (!ladder) {
+  let payload = cacheGet('cup:payload');
+  if (!payload) {
     try {
+      // ── Skill + Consistency, from the subgraph (per-run timestamps) ──
       const rows = phase === 'upcoming' ? [] : await cupWindowScores(startSec, Math.min(nowSec, endSec));
-      const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set<yyyy-mm-dd> }
+      const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set }
       for (const r of rows) {
         const w = r.player?.id?.toLowerCase();
         if (!w) continue;
         let p = byPlayer.get(w);
         if (!p) { p = { best: {}, days: new Set() }; byPlayer.set(w, p); }
         const gt = Number(r.gameType), sc = Number(r.score);
-        // Skill = the 3 score games only (0/1/2). Challenge AI (gameType 3) and
-        // any other type have no score-divisor, so they DON'T feed skill...
         if (CUP_DIVISOR[gt] !== undefined && (!(gt in p.best) || sc > p.best[gt])) p.best[gt] = sc;
-        // ...but every game played still counts toward Consistency (a day shown up).
         p.days.add(new Date(Number(r.blockTimestamp) * 1000).toISOString().slice(0, 10));
       }
       const wallets = Array.from(byPlayer.keys());
       const vflags = await mapLimit(wallets, 12, (w) => isVerified(w));
-      const entries = wallets.map((w, i) => {
+      const verifiedSet = new Set();
+      wallets.forEach((w, i) => { byPlayer.get(w).verified = !!vflags[i]; if (vflags[i]) verifiedSet.add(w); });
+
+      // ── G$ spend lane (arena_purchases, windowed) · √ curve, uncapped ──
+      const spendByWallet = new Map();
+      try {
+        const { data: buys } = await supabase.from('arena_purchases')
+          .select('wallet, amount_wei').gte('created_at', startIso).lt('created_at', endIso);
+        for (const b of buys || []) {
+          const w = b.wallet?.toLowerCase(); if (!w) continue;
+          spendByWallet.set(w, (spendByWallet.get(w) || 0) + Number(b.amount_wei) / 1e18);
+        }
+      } catch (e) { console.warn('cup spend lane:', e?.message || e); }
+
+      // ── Referral lane (season_v1_players.referrer_wallet, windowed) ──
+      // Counts a referral only if the referred wallet verified AND played in-window.
+      const refByWallet = new Map();
+      try {
+        const { data: joins } = await supabase.from('season_v1_players')
+          .select('wallet, referrer_wallet, joined_at')
+          .gte('joined_at', startIso).lt('joined_at', endIso)
+          .not('referrer_wallet', 'is', null);
+        for (const j of joins || []) {
+          const ref = j.referrer_wallet?.toLowerCase();
+          const referred = j.wallet?.toLowerCase();
+          if (!ref || !referred) continue;
+          if (verifiedSet.has(referred) && byPlayer.has(referred)) {
+            refByWallet.set(ref, (refByWallet.get(ref) || 0) + 1);
+          }
+        }
+      } catch (e) { console.warn('cup referral lane:', e?.message || e); }
+
+      // ── Human Cup Points ──
+      const entries = wallets.map((w) => {
         const p = byPlayer.get(w);
-        const skill = Object.entries(p.best)
-          .reduce((s, [gt, sc]) => s + Math.floor(sc / (CUP_DIVISOR[gt] || 20)), 0);
+        const skill = Object.entries(p.best).reduce((s, [gt, sc]) => s + Math.floor(sc / (CUP_DIVISOR[gt] || 20)), 0);
         const consist = Math.min(14, p.days.size);
-        const cupPoints = Math.round(CUP.weights.skill * skill + CUP.weights.consist * consist);
-        return { wallet: w, verified: !!vflags[i], lanes: { skill, consist }, cupPoints };
+        const referrals = refByWallet.get(w) || 0;
+        const spendG = spendByWallet.get(w) || 0;
+        const spendPts = Math.round(CUP.kSpend * Math.sqrt(spendG));
+        const cupPoints = Math.round(
+          CUP.weights.skill * skill + CUP.weights.consist * consist +
+          CUP.weights.ref * referrals + CUP.weights.spend * spendPts,
+        );
+        return { wallet: w, verified: p.verified, lanes: { skill, consist, referrals, spendG: Math.round(spendG), spendPts }, cupPoints };
       });
-      // Verified first (only they can win), then by points, then earliest is implicit.
       entries.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (b.cupPoints - a.cupPoints));
       const top = entries.slice(0, 50);
       await Promise.all(top.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
       top.forEach((e, i) => { e.rank = i + 1; });
-      ladder = top;
-      cacheSet('cup:human', ladder, 60_000); // 1 min, same cadence as other ladders
+
+      // ── Crowns (separate ladders so one strength can't sweep the board) ──
+      const vEntries = entries.filter((e) => e.verified);
+      const connectorE = [...vEntries].sort((a, b) => b.lanes.referrals - a.lanes.referrals)[0];
+      const streakE    = [...vEntries].sort((a, b) => b.lanes.consist - a.lanes.consist)[0];
+      const crowns = {
+        connector: connectorE && connectorE.lanes.referrals > 0
+          ? { wallet: connectorE.wallet, username: (await resolveUsername(connectorE.wallet)) || null, referrals: connectorE.lanes.referrals } : null,
+        streak: streakE && streakE.lanes.consist > 0
+          ? { wallet: streakE.wallet, username: (await resolveUsername(streakE.wallet)) || null, days: streakE.lanes.consist } : null,
+      };
+
+      // ── Agent Cup (agent_match_state, windowed) ──
+      let agent = [];
+      try {
+        const { data: arows } = await supabase.from('agent_match_state')
+          .select('challenger, outcome, resolved_at')
+          .gte('resolved_at', startIso).lt('resolved_at', endIso).limit(10000);
+        const astats = new Map();
+        for (const r of arows || []) {
+          const c = r.challenger?.toLowerCase(); if (!c) continue;
+          if (!astats.has(c)) astats.set(c, { matches: 0, wins: 0, ties: 0 });
+          const s = astats.get(c); s.matches++;
+          if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
+        }
+        agent = Array.from(astats.entries()).map(([w, s]) => ({
+          wallet: w, matches: s.matches, wins: s.wins, ties: s.ties,
+          losses: s.matches - s.wins - s.ties,
+          net: s.wins - (s.matches - s.wins - s.ties),
+          winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
+        })).sort((a, b) => b.net - a.net || b.winRate - a.winRate || b.matches - a.matches).slice(0, 50);
+        await Promise.all(agent.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
+        agent.forEach((e, i) => { e.rank = i + 1; });
+      } catch (e) { console.warn('cup agent lane:', e?.message || e); }
+
+      // ── Community pot (total plays → bonus G$ milestones) ──
+      const humanPlays = rows.length;
+      const agentPlays = agent.reduce((s, a) => s + a.matches, 0);
+      const totalPlays = humanPlays + agentPlays;
+      const bonusG = CUP.potMilestones.filter((m) => totalPlays >= m.at).reduce((s, m) => s + m.bonusG, 0);
+      const next = CUP.potMilestones.find((m) => totalPlays < m.at) || null;
+
+      payload = {
+        human: top, agent, crowns,
+        pot: { plays: totalPlays, humanPlays, agentPlays, bonusG, next, milestones: CUP.potMilestones },
+      };
+      cacheSet('cup:payload', payload, 60_000);
     } catch (e) {
-      console.warn('cup ladder failed:', e?.message || e);
-      ladder = [];
+      console.warn('cup failed:', e?.message || e);
+      payload = { human: [], agent: [], crowns: { connector: null, streak: null }, pot: null };
     }
   }
 
   const meWallet = (req.query.wallet || '').toString().toLowerCase();
-  const me = meWallet ? (ladder.find((e) => e.wallet === meWallet) || null) : null;
+  const me = meWallet ? (payload.human.find((e) => e.wallet === meWallet) || null) : null;
 
   res.json({
-    phase,
-    startsAt: CUP.startsAt,
-    endsAt: CUP.endsAt,
-    weights: CUP.weights,
-    humanSplit: CUP.humanSplit,
-    agentSplit: CUP.agentSplit,
-    human: ladder,
-    me,
-    // Phase 2+: agent ladder, community pot, referral + G$-spend lanes.
-    agent: [],
-    pot: null,
-    lanesLive: ['skill', 'consist'],
+    phase, startsAt: CUP.startsAt, endsAt: CUP.endsAt,
+    weights: CUP.weights, humanSplit: CUP.humanSplit, agentSplit: CUP.agentSplit,
+    ...payload, me,
   });
 });
 
