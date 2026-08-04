@@ -2941,10 +2941,39 @@ app.get('/api/cup', async (req, res) => {
     try {
       // ── Skill + Consistency, from the subgraph (per-run timestamps) ──
       const rows = phase === 'upcoming' ? [] : await cupWindowScores(startSec, Math.min(nowSec, endSec));
+
+      // ── Agent Cup (agent_match_state, windowed) · computed FIRST so we know
+      // the agent address set. Deployed agents are bots: their Challenge AI
+      // matches leave on-chain gameType-3 scores under the agent address, so
+      // without this they'd pollute the Human ladder's consistency lane. ──
+      let agent = [];
+      const agentSet = new Set();
+      try {
+        const { data: arows } = await supabase.from('agent_match_state')
+          .select('challenger, outcome, resolved_at')
+          .gte('resolved_at', startIso).lt('resolved_at', endIso).limit(10000);
+        const astats = new Map();
+        for (const r of arows || []) {
+          const c = r.challenger?.toLowerCase(); if (!c) continue;
+          agentSet.add(c);
+          if (!astats.has(c)) astats.set(c, { matches: 0, wins: 0, ties: 0 });
+          const s = astats.get(c); s.matches++;
+          if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
+        }
+        agent = Array.from(astats.entries()).map(([w, s]) => ({
+          wallet: w, matches: s.matches, wins: s.wins, ties: s.ties,
+          losses: s.matches - s.wins - s.ties,
+          net: s.wins - (s.matches - s.wins - s.ties),
+          winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
+        })).sort((a, b) => b.net - a.net || b.winRate - a.winRate || b.matches - a.matches).slice(0, 50);
+        await Promise.all(agent.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
+        agent.forEach((e, i) => { e.rank = i + 1; });
+      } catch (e) { console.warn('cup agent lane:', e?.message || e); }
+
       const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set }
       for (const r of rows) {
         const w = r.player?.id?.toLowerCase();
-        if (!w) continue;
+        if (!w || agentSet.has(w)) continue; // bots never enter the Human ladder
         let p = byPlayer.get(w);
         if (!p) { p = { best: {}, days: new Set() }; byPlayer.set(w, p); }
         const gt = Number(r.gameType), sc = Number(r.score);
@@ -3015,39 +3044,17 @@ app.get('/api/cup', async (req, res) => {
           ? { wallet: streakE.wallet, username: (await resolveUsername(streakE.wallet)) || null, days: streakE.lanes.consist } : null,
       };
 
-      // ── Agent Cup (agent_match_state, windowed) ──
-      let agent = [];
-      try {
-        const { data: arows } = await supabase.from('agent_match_state')
-          .select('challenger, outcome, resolved_at')
-          .gte('resolved_at', startIso).lt('resolved_at', endIso).limit(10000);
-        const astats = new Map();
-        for (const r of arows || []) {
-          const c = r.challenger?.toLowerCase(); if (!c) continue;
-          if (!astats.has(c)) astats.set(c, { matches: 0, wins: 0, ties: 0 });
-          const s = astats.get(c); s.matches++;
-          if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
-        }
-        agent = Array.from(astats.entries()).map(([w, s]) => ({
-          wallet: w, matches: s.matches, wins: s.wins, ties: s.ties,
-          losses: s.matches - s.wins - s.ties,
-          net: s.wins - (s.matches - s.wins - s.ties),
-          winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
-        })).sort((a, b) => b.net - a.net || b.winRate - a.winRate || b.matches - a.matches).slice(0, 50);
-        await Promise.all(agent.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
-        agent.forEach((e, i) => { e.rank = i + 1; });
-      } catch (e) { console.warn('cup agent lane:', e?.message || e); }
-
-      // ── Community pot (total plays → bonus G$ milestones) ──
-      const humanPlays = rows.length;
-      const agentPlays = agent.reduce((s, a) => s + a.matches, 0);
-      const totalPlays = humanPlays + agentPlays;
+      // ── Community pot (total on-chain plays → bonus G$ milestones) ──
+      // rows.length is every on-chain game play in the window (agent Challenge
+      // AI matches included), so we count it once here — no double-count.
+      const totalPlays = rows.length;
+      const agentMatches = agent.reduce((s, a) => s + a.matches, 0);
       const bonusG = CUP.potMilestones.filter((m) => totalPlays >= m.at).reduce((s, m) => s + m.bonusG, 0);
       const next = CUP.potMilestones.find((m) => totalPlays < m.at) || null;
 
       payload = {
         human: top, agent, crowns,
-        pot: { plays: totalPlays, humanPlays, agentPlays, bonusG, next, milestones: CUP.potMilestones },
+        pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones },
       };
       cacheSet('cup:payload', payload, 60_000);
     } catch (e) {
