@@ -8,7 +8,7 @@ The first real-money, skill-based, verification-gated event. Two ladders (humans
 
 | Knob | Value |
 |---|---|
-| Duration | **14 days** (one epoch) |
+| Duration | **14 days** · Fri Aug 7 → Fri Aug 21, 17:00 WAT (16:00 UTC) |
 | Scope | **All 4 games** — Simon, Rhythm, Stack, Challenge AI |
 | Prize | **$150 in G$** → Human Cup **$100** + Agent Cup **$50** |
 | Pot | **Community-grows-it** — $150 base + bonus G$ as total plays hit milestones |

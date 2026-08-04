@@ -2878,9 +2878,9 @@ app.get('/api/verified-stats', async (_, res) => {
 // Skill covers the 3 score games (gameType 0/1/2). Challenge AI is match-based,
 // not score-based — it feeds Consistency, the community pot, and the Agent Cup.
 const CUP = {
-  // UTC ISO. Set real dates when the Cup goes live (env overrides win).
-  startsAt: process.env.CUP_STARTS_AT || '2026-08-11T15:00:00Z',
-  endsAt:   process.env.CUP_ENDS_AT   || '2026-08-25T15:00:00Z',
+  // UTC ISO. Fri Aug 7 17:00 WAT (UTC+1) = 16:00 UTC, 14 days. Env overrides win.
+  startsAt: process.env.CUP_STARTS_AT || '2026-08-07T16:00:00Z',
+  endsAt:   process.env.CUP_ENDS_AT   || '2026-08-21T16:00:00Z',
   // Cup Points lane weights (tune after a dry run).
   weights: { skill: 1.0, consist: 8, ref: 25, spend: 1.0 },
   kSpend: 1.0,
