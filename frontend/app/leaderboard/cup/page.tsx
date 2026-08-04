@@ -127,7 +127,8 @@ export default function CupPage() {
           <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, margin: "6px 0 0", letterSpacing: "-0.01em", lineHeight: 1.05 }}>You + your AI vs the arena</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9, flexWrap: "wrap" }}>
             <span style={{ fontFamily: T.display, fontSize: 28, color: T.gold, textShadow: `0 0 22px ${T.gold}55` }}>$150</span>
-            {countdown && (
+            <span style={{ fontSize: 11, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>in G$ · players + AI agents</span>
+            {board && countdown && (
               <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, padding: "6px 12px", borderRadius: 999, background: "rgba(251,191,36,0.12)", border: `1px solid ${T.gold}44` }}>
                 <Eyebrow tint="rgba(253,230,138,0.8)">{cdLabel}</Eyebrow>
                 <span style={{ fontFamily: T.display, fontSize: 15, color: T.gold, fontVariantNumeric: "tabular-nums" }}>{countdown}</span>
@@ -139,10 +140,12 @@ export default function CupPage() {
         {/* ══════════ UPCOMING ══════════ */}
         {phase === "upcoming" && (
           <>
-            <Card style={{ textAlign: "center", padding: "24px 18px", background: `radial-gradient(120% 140% at 50% 0%, ${T.accent}22, transparent 60%), ${T.surface}` }}>
-              <div style={{ fontFamily: T.display, fontSize: 42, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 30px ${T.gold}44` }}>{countdown || "soon"}</div>
-              <div style={{ fontSize: 12.5, color: T.inkDim, marginTop: 8, lineHeight: 1.5, maxWidth: 380, margin: "8px auto 0" }}>Everyone starts at zero when it opens. Play now to warm up.</div>
-              <button onClick={() => router.push("/games")} style={{ marginTop: 14, padding: "12px 28px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 13, fontWeight: 900, letterSpacing: "0.06em", color: "#0a0226", background: "linear-gradient(180deg,#fde68a,#fbbf24)", boxShadow: `0 8px 22px -8px ${T.gold}` }}>PLAY NOW ›</button>
+            <Card style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "16px 18px 20px", background: `radial-gradient(120% 130% at 50% 0%, ${T.gold}1e, transparent 62%), ${T.surface}` }}>
+              <img src="/event-prize.png" alt="" style={{ display: "block", width: 156, height: 156, objectFit: "contain", mixBlendMode: "screen", margin: "0 auto -8px", filter: `drop-shadow(0 0 26px ${T.gold}44)` }} />
+              <div style={{ fontFamily: T.display, fontSize: 40, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 28px ${T.gold}55`, lineHeight: 1 }}>{countdown || "soon"}</div>
+              <div style={{ fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}>until the board opens</div>
+              <div style={{ fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 360, margin: "11px auto 0" }}>Everyone starts at zero. Play now to warm up before it goes live.</div>
+              <button onClick={() => router.push("/games")} style={{ marginTop: 14, padding: "12px 30px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 13, fontWeight: 900, letterSpacing: "0.06em", color: "#0a0226", background: "linear-gradient(180deg,#fde68a,#fbbf24)", boxShadow: `0 8px 24px -8px ${T.gold}` }}>PLAY NOW ›</button>
             </Card>
             <Expandable title="How you climb" defaultOpen><HowBody /></Expandable>
             <Expandable title="Prizes · $150" tint={T.gold} defaultOpen><PrizeBody data={data} isDesktop={isDesktop} /></Expandable>
