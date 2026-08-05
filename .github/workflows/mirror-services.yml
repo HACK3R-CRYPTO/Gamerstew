@@ -1,0 +1,52 @@
+name: Mirror services to deploy repos
+
+# Keeps the standalone deploy repos in sync with this monorepo. On every push to
+# main, each service folder is re-split and pushed to its own repo, so a change
+# in games-backend/ or agent/ lands in the matching standalone repo the deploy
+# host pulls from. The monorepo stays the single source of truth (and the
+# program submission); the split repos are downstream deploy targets only.
+#
+# Setup (one time): add a repo secret MIRROR_TOKEN with a token that has
+# contents:write on HACK3R-CRYPTO/gamearena-backend and
+# HACK3R-CRYPTO/gamearena-agent. Until it exists, the job fails harmlessly.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Split games-backend -> gamearena-backend
+        uses: danharrin/monorepo-split-github-action@v2.4.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        with:
+          package_directory: games-backend
+          repository_organization: HACK3R-CRYPTO
+          repository_name: gamearena-backend
+          user_name: ogazboiz
+          user_email: ogazboizakpolo@gmail.com
+          branch: main
+
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Split agent -> gamearena-agent
+        uses: danharrin/monorepo-split-github-action@v2.4.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        with:
+          package_directory: agent
+          repository_organization: HACK3R-CRYPTO
+          repository_name: gamearena-agent
+          user_name: ogazboiz
+          user_email: ogazboizakpolo@gmail.com
+          branch: main
