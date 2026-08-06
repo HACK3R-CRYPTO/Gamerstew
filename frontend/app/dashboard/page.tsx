@@ -193,15 +193,6 @@ async function fetchGlobalStat() {
   } catch { return null; }
 }
 
-function climbPillLabel(climb: { phase: string; endsAt: string } | null): string {
-  if (!climb || climb.phase !== "live") return "BETA · LIVE ON CELO";
-  const msLeft = new Date(climb.endsAt).getTime() - Date.now();
-  const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
-  if (daysLeft <= 0) return "BETA · LIVE ON CELO";
-  if (daysLeft === 1) return "MARKOV CLIMB · FINAL DAY";
-  return `MARKOV CLIMB · ${daysLeft} DAYS LEFT`;
-}
-
 // ─── page ───────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
@@ -1130,25 +1121,27 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
   );
 }
 
-function ClimbCard({ connected, dash, address, onConnect, router }: {
+function ClimbCard({ router }: {
   connected: boolean;
   dash: DashData | null;
   address: string | null;
   onConnect: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
-  const inEvent = connected && address && dash?.climb && dash.climb.rank > 0;
+  // "Your cup" tracks the live Arena Cup (single source of truth in lib/cup),
+  // NOT the ended June MARKOV Climb — which used to render as "BETA · LIVE ON
+  // CELO" with a stale rank long after it finished. CupCountdown self-ticks and
+  // handles upcoming → live → ended, so this reads like a real cup at every phase.
   return (
-    <button onClick={() => connected ? router.push("/games/challenge-ai") : onConnect()} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 15, background: "linear-gradient(135deg, rgba(251,191,36,0.12), rgba(180,83,9,0.28))", border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", textAlign: "left" }}>
+    <button onClick={() => router.push("/leaderboard/cup")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 15, background: "linear-gradient(135deg, rgba(251,191,36,0.12), rgba(180,83,9,0.28))", border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", textAlign: "left" }}>
       <span style={{ fontSize: 20, flexShrink: 0 }}>🏆</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: T.body, fontSize: 9, color: "#fde68a", fontWeight: 800, letterSpacing: "0.12em" }}>{climbPillLabel(dash?.climb ?? null)}</div>
+        <div style={{ fontFamily: T.body, fontSize: 9, color: "#fde68a", fontWeight: 800, letterSpacing: "0.12em" }}>ARENA CUP · $150 IN G$</div>
         <div style={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700, marginTop: 2 }}>
-          {inEvent
-            ? `You're #${dash!.climb!.rank} · ${dash!.climb!.matches} matches`
-            : connected
-              ? "Play MARKOV to enter · $5 USDC + 1,000 G$ pool"
-              : "Sign in to enter · $5 USDC + 1,000 G$ pool"}
+          <CupCountdown
+            labelStyle={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700 }}
+            timeStyle={{ fontFamily: T.body, fontSize: 12, color: "#fde68a", fontWeight: 800 }}
+          />
         </div>
       </div>
       <Icon name="chev" size={15} color={T.inkSoft} />
