@@ -635,9 +635,6 @@ export default function EventsPage() {
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
         </div>
 
-        {/* Upcoming event teaser — 400,000 G$ pool, details soon */}
-        <EventTeaser isDesktop={isDesktop} />
-
         {/* LIVE / PAST / ALL-TIME tab switcher */}
         <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
           {([
@@ -661,6 +658,12 @@ export default function EventsPage() {
         {/* LIVE */}
         {tab === "live" && (
           <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 12 }}>
+            {/* Arena Cup · the headline live event, featured full-width at the top
+                of the list. Hides itself once the Cup has ended (EventTeaser). */}
+            <div style={{ gridColumn: isDesktop ? "1 / -1" : "auto" }}>
+              <EventTeaser isDesktop={isDesktop} />
+            </div>
+
             {comp && comp.weeksLeft > 0 && <CupFeatureCard comp={comp} isDesktop={isDesktop} address={address} onClick={() => setSelectedEvent({ type: "live-cup", data: comp })} />}
 
             {meta && (
