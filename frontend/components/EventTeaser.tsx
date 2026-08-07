@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import CupCountdown from "@/components/CupCountdown";
+import { cupPhase, type CupPhase } from "@/lib/cup";
 
 // ─── EventTeaser ────────────────────────────────────────────────────────────
 // Teaser + live countdown for the Arena Cup ($150 in G$, supported by
 // GoodAgents). Shown on the dashboard (home) and the events/leaderboard page.
+// Phase-aware: the blurb reads "before it goes live" only while upcoming, and
+// the whole teaser hides once the Cup has ended (so a finished event never
+// lingers as a live headline).
 
 const T = {
   ink: "#ffffff",
@@ -17,6 +22,23 @@ const T = {
 };
 
 export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean }) {
+  // Mounted clock so the phase is stable (SSR has no reliable time). Before
+  // mount we assume "live" so the teaser renders during the event without a
+  // flash; once mounted we hide it only if the Cup has truly ended.
+  const [phase, setPhase] = useState<CupPhase>("live");
+  useEffect(() => {
+    const tick = () => setPhase(cupPhase(Date.now()));
+    tick();
+    const t = setInterval(tick, 30_000);
+    return () => clearInterval(t);
+  }, []);
+  if (phase === "ended") return null;
+
+  const blurb =
+    phase === "upcoming"
+      ? "The top 5 players split a $150 pool, paid in G$. Lock a spot before it goes live."
+      : "It's live. The top 5 players split a $150 pool, paid in G$. Keep playing to lock your spot.";
+
   return (
     <Link href="/leaderboard/cup" style={{
       display: "block", textDecoration: "none", color: "inherit",
@@ -53,7 +75,7 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           </div>
 
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "9px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-            The top 5 players split a $150 pool, paid in G$. Keep playing to lock a spot before it goes live.
+            {blurb}
           </p>
 
           {/* GoodAgents supports the pool · credited, not the headline. */}
