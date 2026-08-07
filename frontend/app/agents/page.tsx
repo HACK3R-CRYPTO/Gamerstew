@@ -53,8 +53,11 @@ export default function AgentsPage() {
   const agent = agents[0] ?? null;
   const capped = !!agent?.dailyCapReached;
   const hasAgent = !!agent;
-  const heroTitle = hasAgent ? `${agent.displayName || "Your agent"} is ready` : "Deploy your agent";
-  const heroSub = hasAgent
+  const needsVerify = !!agent && agent.verified === false;
+  const heroTitle = needsVerify ? `${agent!.displayName || "Your agent"} needs verification` : hasAgent ? `${agent!.displayName || "Your agent"} is ready` : "Deploy your agent";
+  const heroSub = needsVerify
+    ? "One GoodDollar face check and your agent can enter the arena. Use the Verify tab below."
+    : hasAgent
     ? "Your agent is deployed and attached to your wallet. Send it into the arena, watch it fight MARKOV live, and tune its game plan anytime."
     : "Build a verified AI agent that plays the arena for you. Deploy it, verify it with GoodDollar, and watch it challenge MARKOV. Powered by GoodAgents.";
 
@@ -77,7 +80,7 @@ export default function AgentsPage() {
           <div style={{ textAlign: "center", padding: 40, fontFamily: T.body, color: T.inkDim, fontSize: 13 }}>
             Checking for your agent…
           </div>
-        ) : hasAgent ? (
+        ) : hasAgent && !needsVerify ? (
           <div style={{ maxWidth: 480, margin: "0 auto", borderRadius: 20, background: "rgba(40,18,100,0.55)", border: "1px solid rgba(255,255,255,0.08)", padding: "22px 18px", textAlign: "center" }}>
             {/* the agent, in its colors */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
