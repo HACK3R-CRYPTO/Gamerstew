@@ -4309,27 +4309,45 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
       .eq('week_key', week);
     if (error) throw error;
 
-    // Distinct weeks with any matches (cheap at this scale) — newest first.
-    let weeks = [currentWeek];
-    try {
-      const { data: wk } = await supabase
-        .from('arena_free_matches')
-        .select('week_key')
-        .order('week_key', { ascending: false })
-        .limit(2000);
-      const seen = new Set([currentWeek]);
-      for (const r of wk || []) seen.add(r.week_key);
-      // Newest first. Season keys ('S<n>') sort by number so S100 > S24; any
-      // legacy ISO keys fall back to string order below the season keys.
-      const seasonNum = k => (/^S(\d+)$/.test(k) ? parseInt(k.slice(1), 10) : -1);
-      weeks = [...seen].sort((a, b) => {
-        const an = seasonNum(a), bn = seasonNum(b);
-        if (an >= 0 && bn >= 0) return bn - an;
-        if (an >= 0) return -1;
-        if (bn >= 0) return 1;
-        return a < b ? 1 : -1;
-      }).slice(0, 12);
-    } catch { /* keep current-only */ }
+    // Past weeks — newest first. DON'T sample arena_free_matches ordered by
+    // week_key: the CURRENT season's grind (agents play thousands of matches)
+    // fills any row-limited sample, truncating every finished season out of the
+    // window — which is why the PAST tab showed "no finished weeks" despite ~26
+    // sealed seasons. Instead derive the candidate season keys from the SAME
+    // clock arenaWeekKey uses (like the skill-game leaderboards do), and keep
+    // the ones that actually have matches. Cached — the list only changes on a
+    // season rollover, and it's identical for every caller (no wallet in it).
+    const seasonNum = k => (/^S(\d+)$/.test(k) ? parseInt(k.slice(1), 10) : -1);
+    let weeks = cacheGet('arena:weeks');
+    if (!weeks) {
+      weeks = [currentWeek];
+      try {
+        const seen = new Set([currentWeek]);
+        const curN = seasonNum(currentWeek);
+        if (curN > 1) {
+          // Existence check per finished season · the current season (the only
+          // high-volume key) is excluded by construction, so no truncation.
+          const candidates = [];
+          for (let n = curN - 1; n >= Math.max(1, curN - 12); n--) candidates.push(`S${n}`);
+          const hits = await Promise.all(candidates.map(async (k) => {
+            const { data } = await supabase.from('arena_free_matches').select('week_key').eq('week_key', k).limit(1);
+            return data && data.length ? k : null;
+          }));
+          for (const k of hits) if (k) seen.add(k);
+        }
+        // Legacy ISO week keys (rows from before the season-aligned switch).
+        const { data: legacy } = await supabase.from('arena_free_matches').select('week_key').like('week_key', '%-W%').limit(500);
+        for (const r of legacy || []) seen.add(r.week_key);
+        weeks = [...seen].sort((a, b) => {
+          const an = seasonNum(a), bn = seasonNum(b);
+          if (an >= 0 && bn >= 0) return bn - an;
+          if (an >= 0) return -1;
+          if (bn >= 0) return 1;
+          return a < b ? 1 : -1;
+        }).slice(0, 12);
+      } catch { weeks = [currentWeek]; }
+      cacheSet('arena:weeks', weeks, 5 * 60 * 1000);
+    }
 
     const agg = new Map();
     for (const row of data || []) {
