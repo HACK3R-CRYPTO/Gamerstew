@@ -2942,45 +2942,52 @@ app.get('/api/cup', async (req, res) => {
       // ── Skill + Consistency, from the subgraph (per-run timestamps) ──
       const rows = phase === 'upcoming' ? [] : await cupWindowScores(startSec, Math.min(nowSec, endSec));
 
-      // ── Agent Cup (agent_match_state, windowed) · computed FIRST so we know
-      // the agent address set. Deployed agents are bots: their Challenge AI
-      // matches leave on-chain gameType-3 scores under the agent address, so
-      // without this they'd pollute the Human ladder's consistency lane. ──
+      // ── Agent Cup (arena_free_matches, windowed) · computed FIRST so we know
+      // the agent address set. Deployed agents fight MARKOV through the free
+      // Challenge-AI arena, so each match is a row in arena_free_matches keyed
+      // by the agent's wallet (outcome player_won = agent beat MARKOV). Those
+      // matches also leave an on-chain gameType-3 score under the agent address,
+      // so we must pull agents OUT of the Human ladder (consistency lane) too.
+      // Who is an agent is decided on-chain via getAgent — the same gate the
+      // in-app arena board uses — NOT by "played Challenge-AI" (humans play it
+      // too). NOTE: the retired staked-PvP flow (agent_match_state) stopped
+      // writing on Jul 22; arena_free_matches is the live source of truth. ──
       let agent = [];
       const agentSet = new Set();
+      const agentOwner = new Map(); // agentWalletLower -> ownerWalletLower
       try {
-        const { data: arows } = await supabase.from('agent_match_state')
-          .select('challenger, outcome, resolved_at')
-          .gte('resolved_at', startIso).lt('resolved_at', endIso).limit(10000);
+        const { data: arows } = await supabase.from('arena_free_matches')
+          .select('wallet, outcome, created_at')
+          .gte('created_at', startIso).lt('created_at', endIso).limit(20000);
         const astats = new Map();
         for (const r of arows || []) {
-          const c = r.challenger?.toLowerCase(); if (!c) continue;
-          agentSet.add(c);
-          if (!astats.has(c)) astats.set(c, { matches: 0, wins: 0, ties: 0 });
-          const s = astats.get(c); s.matches++;
+          const w = r.wallet?.toLowerCase(); if (!w) continue;
+          if (!astats.has(w)) astats.set(w, { matches: 0, wins: 0, ties: 0 });
+          const s = astats.get(w); s.matches++;
           if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
         }
-        agent = Array.from(astats.entries()).map(([w, s]) => ({
-          wallet: w, matches: s.matches, wins: s.wins, ties: s.ties,
-          losses: s.matches - s.wins - s.ties,
-          net: s.wins - (s.matches - s.wins - s.ties),
-          winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
-        })).sort((a, b) => b.net - a.net || b.winRate - a.winRate || b.matches - a.matches).slice(0, 50);
-        // Attach the human owner of each agent (agentVault operator) so the
-        // Agent Cup shows who's behind the bot. agentVault is a module-level
-        // const defined later in the file — available at request time.
+        // On-chain gate: keep only the wallets that are registered agents. One
+        // multicall over every Challenge-AI player in the window.
+        const agentToOwner = await classifyAgents([...astats.keys()]);
+        for (const [w, ow] of agentToOwner) { agentSet.add(w); agentOwner.set(w, ow); }
+        agent = [...agentSet].map((w) => {
+          const s = astats.get(w);
+          return {
+            wallet: w, matches: s.matches, wins: s.wins, ties: s.ties,
+            losses: s.matches - s.wins - s.ties,
+            net: s.wins - (s.matches - s.wins - s.ties),
+            winRate: s.matches ? Math.round((s.wins / s.matches) * 100) : 0,
+          };
+        // Rank by wins vs MARKOV first (the whole point is beating it), then
+        // win-rate, then net — so grinding out real wins is what climbs, and a
+        // single lucky win can't leapfrog a player who beat MARKOV many times.
+        }).sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.net - a.net).slice(0, 50);
+        // Owner (agentVault operator) is already known from classifyAgents, so
+        // the Agent Cup can show who's behind the bot with no extra RPC.
         await Promise.all(agent.map(async (e) => {
           e.username = (await resolveUsername(e.wallet)) || null; // on-chain pass name (usually null for the play address)
-          e.owner = null;
-          try {
-            if (agentVault) {
-              const [operator] = await agentVault.getAgent(e.wallet);
-              if (operator && !/^0x0+$/.test(operator)) {
-                const ow = operator.toLowerCase();
-                e.owner = { wallet: ow, username: (await resolveUsername(ow)) || null };
-              }
-            }
-          } catch { /* leave owner null on RPC hiccup */ }
+          const ow = agentOwner.get(e.wallet);
+          e.owner = ow ? { wallet: ow, username: (await resolveUsername(ow)) || null } : null;
         }));
         // The agent's display name lives in GoodAgents' partner data, keyed by
         // owner (one agent per owner). Fill it in where the on-chain pass name
@@ -4197,6 +4204,44 @@ const AGENT_VAULT_ADDRESS = '0x0409042B55e99Df8c0Feb7525A770838f3A47090';
 const agentVault = provider ? new ethers.Contract(AGENT_VAULT_ADDRESS, [
   'function getAgent(address) view returns (address operator, uint256 stakeAmount, uint256 unlockAt)',
 ], provider) : null;
+
+// Batch agent classification · one RPC round-trip for a whole leaderboard.
+// getAgent(wallet) returns a non-zero operator only for a deployed GoodAgents
+// agent; humans get the zero address. The Cup uses this to (a) pull agents out
+// of the Human ladder and (b) build the Agent ladder — the same on-chain gate
+// the in-app arena board uses (useAgentOperators), so the two boards agree.
+const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+const multicall3 = provider ? new ethers.Contract(MULTICALL3_ADDRESS, [
+  'function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)',
+], provider) : null;
+const _vaultIface = new ethers.Interface([
+  'function getAgent(address) view returns (address operator, uint256 stakeAmount, uint256 unlockAt)',
+]);
+// wallets -> Map(agentWalletLower -> ownerWalletLower), agents only.
+async function classifyAgents(wallets) {
+  const out = new Map();
+  const list = [...new Set((wallets || []).map((w) => (w || '').toLowerCase()).filter(Boolean))];
+  if (!multicall3 || !list.length) return out;
+  const CHUNK = 400;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const chunk = list.slice(i, i + CHUNK);
+    const calls = chunk.map((w) => ({
+      target: AGENT_VAULT_ADDRESS, allowFailure: true,
+      callData: _vaultIface.encodeFunctionData('getAgent', [w]),
+    }));
+    let results;
+    try { results = await multicall3.aggregate3(calls); }
+    catch (e) { console.warn('classifyAgents multicall:', e?.shortMessage || e?.message || e); continue; }
+    results.forEach((r, j) => {
+      if (!r.success) return;
+      try {
+        const [operator] = _vaultIface.decodeFunctionResult('getAgent', r.returnData);
+        if (operator && !/^0x0+$/.test(operator)) out.set(chunk[j], operator.toLowerCase());
+      } catch { /* undecodable · treat as human */ }
+    });
+  }
+  return out;
+}
 
 // On-chain gate: a real agent has a non-zero operator on the vault. Blocks
 // random wallets from posing as agents on the board. Returns null if OK,
