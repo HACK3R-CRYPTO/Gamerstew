@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@celo/attribution-tags": "^0.3.0",
-    "@goodagent/widget": "0.3.4",
+    "@goodagent/widget": "0.3.5",
     "@goodsdks/citizen-sdk": "^1.2.3",
     "@goodsdks/identity-sdk": "^1.0.5",
     "@privy-io/react-auth": "^3.21.2",
