@@ -900,20 +900,23 @@ function Lobby({
               const busyAi = agentLaunchPhase !== "idle";
               const capped = !!agent?.dailyCapReached;
               const checking = !agent && !agentKnownAbsent; // lookup still in flight · never pitch deploy yet
+              const unverified = !!agent && agent.verified === false;
               const label = checking ? "CHECKING YOUR AGENT…"
                 : !agent ? "🤖 DEPLOY YOUR AGENT"
+                : unverified ? "✅ VERIFY YOUR AGENT"
                 : agentLaunchPhase === "signing" ? "CONFIRM IN YOUR WALLET…"
                 : agentLaunchPhase === "waking" ? "WAKING YOUR AGENT…"
                 : agentLaunchPhase === "starting" ? "SENDING AGENT IN…"
                 : capped ? "⚙️ RAISE DAILY CAP"
                 : `⚔️ SEND ${(agent.displayName || "YOUR AI").toUpperCase()} IN`;
               const sub = checking ? "" : !agent ? "ONE-TIME SETUP ON GOODAGENTS"
+                : unverified ? "ONE FACE CHECK · THEN IT CAN FIGHT"
                 : capped && !busyAi ? `${agent.matchesToday ?? ""}/${agent.dailyMatchCap ?? ""} MATCHES TODAY · RESETS DAILY`
                 : "IT FIGHTS · YOU WATCH LIVE";
               return (
                 <div
                   role="button"
-                  onClick={busyAi || checking ? undefined : !agent ? onDeploy : capped ? onAgentSettings : onAgent}
+                  onClick={busyAi || checking ? undefined : !agent || unverified ? onDeploy : capped ? onAgentSettings : onAgent}
                   style={{ cursor: busyAi || checking ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#083344", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,211,238,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
                   onMouseDown={(e) => { if (!busyAi) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                   onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
