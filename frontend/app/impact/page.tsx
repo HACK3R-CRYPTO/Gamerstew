@@ -228,8 +228,11 @@ export default function ImpactPage() {
   const verified = vstats && vstats.verifiedPlayers > 0 ? vstats.verifiedPlayers : VERIFIED_FALLBACK;
   // Live perk figures, falling back to the last known estimate only if the
   // endpoint is unreachable (so the page never renders blank).
-  const perkSpendG = perks?.perkSpendG ?? PERKS.spendG;
-  const perkPurchases = perks?.perkPurchases ?? PERKS.purchases;
+  // Chain truth first: perkShopStat from the same subgraph fetch as the flow
+  // panel (the /api/impact-stats figure mixes in MARKOV refills, which fund
+  // the prize pool, not the 20/80 split — different economy, wrong tile).
+  const perkSpendG = flow?.perkSpendG ?? perks?.perkSpendG ?? PERKS.spendG;
+  const perkPurchases = flow?.perkPurchases ?? perks?.perkPurchases ?? PERKS.purchases;
 
   // Epoch-3 momentum is measured from the Demo Day 2 baseline.
   const playersDelta = Math.round(((players - DD2.players) / DD2.players) * 100);
