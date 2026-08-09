@@ -11,7 +11,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
   try {
-    const r = await fetch(`${backend}/api/impact-stats`, { cache: "no-store" });
+    // Server-to-server call has no browser Origin, so the backend's origin gate
+    // requires the internal secret — without it the endpoint 403s and the page
+    // silently falls back to its pinned estimate (why it showed a stale count).
+    const r = await fetch(`${backend}/api/impact-stats`, {
+      cache: "no-store",
+      headers: { "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+    });
     if (!r.ok) throw new Error(`backend ${r.status}`);
     const j = await r.json();
     return NextResponse.json(j, {

@@ -449,7 +449,7 @@ export default function ImpactPage() {
 
         {/* ── footer note ── */}
         <div className="impact-reveal" style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", lineHeight: 1.5, animationDelay: "420ms" }}>
-          Live figures read from the GameArena subgraph on Celo. Perk, baseline &amp; loyalty figures pinned to their on-chain events.
+          Live figures read from the GameArena subgraph and in-app purchase records on Celo. Baseline &amp; loyalty figures pinned to their on-chain events.
         </div>
       </div>
 
