@@ -2865,6 +2865,37 @@ app.get('/api/verified-stats', async (_, res) => {
   }
 });
 
+// ─── GET /api/impact-stats — live perk economy figures ──────────────────────
+// The impact page's "perk spend / purchases" used to be a hardcoded estimate
+// backsolved from UBI, so it never moved and drifted from the truth. These are
+// the real, auditable totals straight from arena_purchases (every row is a G$
+// perk transaction on Celo). Cached 1h — the impact page is not real-time.
+app.get('/api/impact-stats', async (_, res) => {
+  const cached = cacheGet('impact:perks');
+  if (cached) return res.json(cached);
+  try {
+    let purchases = 0, spendWei = 0n;
+    for (let off = 0; off < 200000; off += 1000) { // hard ceiling, breaks early
+      const { data, error } = await supabase.from('arena_purchases')
+        .select('amount_wei').range(off, off + 999);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) { purchases++; if (r.amount_wei) spendWei += BigInt(r.amount_wei); }
+      if (data.length < 1000) break;
+    }
+    const payload = {
+      perkPurchases: purchases,
+      perkSpendG: Math.round(Number(spendWei / 10n ** 12n) / 1e6), // wei → G$, whole units
+      updatedAt: new Date().toISOString(),
+    };
+    cacheSet('impact:perks', payload, 60 * 60 * 1000); // 1h
+    res.json(payload);
+  } catch (e) {
+    console.warn('impact-stats failed:', e?.message || e);
+    res.status(200).json({ perkPurchases: null, perkSpendG: null, updatedAt: null });
+  }
+});
+
 // ─── Arena Cup ──────────────────────────────────────────────────────────────
 // The 14-day skill event: two ladders (humans + their AIs) + a community pot.
 // PHASE 1 (this): the HUMAN ladder from two lanes — Skill (best run per game)
@@ -3097,7 +3128,8 @@ app.get('/api/cup', async (req, res) => {
 
       payload = {
         human: top, humanAll, agent, crowns,
-        pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones },
+        pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones,
+               humanPlayers: humanAll.length, agents: agent.length },
       };
       cacheSet('cup:payload', payload, 60_000);
     } catch (e) {

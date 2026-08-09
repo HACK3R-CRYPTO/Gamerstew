@@ -29,6 +29,7 @@ const T = {
   accent: "#a78bfa",
   green: "#34d399",
   amber: "#fbbf24",
+  gold: "#fde68a",
   cyan: "#22d3ee",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -172,6 +173,11 @@ export default function ImpactPage() {
   // GoodDollar-verified count · true humans, not just pass minters. Live from
   // /api/verified-stats (on-chain isWhitelisted per wallet).
   const [vstats, setVstats] = useState<{ totalPlayers: number; verifiedPlayers: number } | null>(null);
+  // Live perk economy · real totals from arena_purchases (/api/impact-stats),
+  // replacing the old hardcoded estimate so the figure actually moves.
+  const [perks, setPerks] = useState<{ perkPurchases: number; perkSpendG: number } | null>(null);
+  // Live Arena Cup · $150 in G$ event, its community pot and who's competing.
+  const [cup, setCup] = useState<{ phase: string; pot: { plays: number; agentMatches: number; bonusG: number; humanPlayers: number; agents: number } } | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -198,6 +204,19 @@ export default function ImpactPage() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/impact-stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && d.perkSpendG != null) setPerks({ perkPurchases: Number(d.perkPurchases) || 0, perkSpendG: Number(d.perkSpendG) || 0 }); })
+      .catch(() => {});
+    fetch("/api/cup")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && d.pot) setCup({ phase: d.phase, pot: d.pot }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const players = live?.players ?? NOW_FALLBACK.players;
   const games = live?.games ?? NOW_FALLBACK.games;
   const ubi = live?.ubi ?? NOW_FALLBACK.ubi;
@@ -205,6 +224,10 @@ export default function ImpactPage() {
   // returns 0 — treat any non-positive value as "no data yet" and show the
   // confirmed on-chain floor instead of a misleading zero.
   const verified = vstats && vstats.verifiedPlayers > 0 ? vstats.verifiedPlayers : VERIFIED_FALLBACK;
+  // Live perk figures, falling back to the last known estimate only if the
+  // endpoint is unreachable (so the page never renders blank).
+  const perkSpendG = perks?.perkSpendG ?? PERKS.spendG;
+  const perkPurchases = perks?.perkPurchases ?? PERKS.purchases;
 
   // Epoch-3 momentum is measured from the Demo Day 2 baseline.
   const playersDelta = Math.round(((players - DD2.players) / DD2.players) * 100);
@@ -224,7 +247,7 @@ export default function ImpactPage() {
   const ubiC = useCountUp(ubi);
   const verifiedC = useCountUp(verified);
   const gamesC = useCountUp(games);
-  const spendC = useCountUp(PERKS.spendG);
+  const spendC = useCountUp(perkSpendG);
   const poolC = useCountUp(CONSISTENCY.poolG);
 
   return (
@@ -284,7 +307,7 @@ export default function ImpactPage() {
 
         {/* ── KPI supporting row ── */}
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(3, 1fr)" : "1fr", gap: 12 }}>
-          <KPI delay={120} label="Perk spend" value={fmtG(spendC)} unit="G$" tint={T.amber} sub={`${fmtInt(PERKS.purchases)}+ purchases · real G$ spent in-app`} />
+          <KPI delay={120} label="Perk spend" value={fmtG(spendC)} unit="G$" tint={T.amber} sub={`${fmtInt(perkPurchases)} purchases · real G$ spent in-app`} />
           <KPI delay={160} label="Bots that won a prize" value="0" tint={T.green} sub="GoodDollar verification gates every payout" />
           <KPI delay={200} label="Gas paid by players" value="0" tint={T.cyan} sub="Fully gasless · we sponsor every write" />
         </div>
@@ -302,7 +325,7 @@ export default function ImpactPage() {
           </div>
           <MomentumRow label="Players" dd1={fmtInt(DD1.players)} dd2={fmtInt(DD2.players)} now={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD2.players / players) * 100} />
           <MomentumRow label="Games on-chain" dd1={fmtG(DD1.games)} dd2={fmtG(DD2.games)} now={fmtG(games)} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD2.games / games) * 100} />
-          <MomentumRow label="Perk spend" dd1="—" dd2={fmtG(PERKS.dd2SpendG)} now={fmtG(PERKS.spendG)} delta={`+${Math.round(((PERKS.spendG - PERKS.dd2SpendG) / PERKS.dd2SpendG) * 100)}%`} tint={T.amber} basePct={(PERKS.dd2SpendG / PERKS.spendG) * 100} />
+          <MomentumRow label="Perk spend" dd1="—" dd2={fmtG(PERKS.dd2SpendG)} now={fmtG(perkSpendG)} delta={`+${Math.round(((perkSpendG - PERKS.dd2SpendG) / PERKS.dd2SpendG) * 100)}%`} tint={T.amber} basePct={(PERKS.dd2SpendG / perkSpendG) * 100} />
           <MomentumRow label="G$ to UBI · organic" dd1={fmtG(DD1.ubi)} dd2={fmtG(DD2.ubi)} now={fmtG(organicUbi)} delta={`+${organicUbiDelta}%`} tint={T.accent} basePct={(DD2.ubi / organicUbi) * 100} />
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontFamily: T.body, fontSize: 11.5, color: T.inkSoft }}>
@@ -328,8 +351,8 @@ export default function ImpactPage() {
             {/* IN */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.amber}18, transparent)`, border: `1px solid ${T.amber}3a` }}>
               <span style={{ fontFamily: T.body, fontSize: 10, color: T.amber, fontWeight: 800, letterSpacing: "0.12em" }}>IN · PERK SPEND</span>
-              <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{fmtG(PERKS.spendG)} <span style={{ fontSize: 16, color: T.amber }}>G$</span></span>
-              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>Continues, revives &amp; cosmetics · {fmtInt(PERKS.purchases)} purchases</span>
+              <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{fmtG(perkSpendG)} <span style={{ fontSize: 16, color: T.amber }}>G$</span></span>
+              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>Continues, revives &amp; cosmetics · {fmtInt(perkPurchases)} purchases</span>
             </div>
 
             {/* SPLIT */}
@@ -386,6 +409,43 @@ export default function ImpactPage() {
             <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>G$ TO LOYAL PLAYERS</div>
           </div>
         </Card>
+
+        {/* ── Arena Cup · live event impact ── */}
+        {cup && cup.phase === "live" && (
+          <Card delay={390} style={{
+            display: "flex", flexDirection: "column", gap: 14, position: "relative", overflow: "hidden",
+            background: `radial-gradient(130% 150% at 100% 0%, ${T.gold}22 0%, transparent 55%), ${T.surface}`,
+            borderColor: `${T.gold}33`,
+          }}>
+            <div style={{ display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16, alignItems: isDesktop ? "center" : "flex-start" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <Eyebrow tint={T.gold}>Arena Cup · live now</Eyebrow>
+                <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>$150 in G$ to players and their AIs</span>
+                <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
+                  A two-week event routing $150 in G$ to the top verified players and, for the first time, to the AI agents they deploy to fight MARKOV. Skill decides it, not grinding. Supported by GoodAgents.
+                </span>
+              </div>
+              <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
+                <div style={{ fontFamily: T.display, fontSize: 46, color: T.gold, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.gold}55` }}>$150</div>
+                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>IN G$ ON THE LINE</div>
+              </div>
+            </div>
+            {/* live participation strip */}
+            <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "repeat(2, 1fr)", gap: 10, paddingTop: 12, borderTop: `1px solid ${T.hairline}` }}>
+              {[
+                { v: fmtInt(cup.pot.humanPlayers), l: "PLAYERS" },
+                { v: fmtInt(cup.pot.agents), l: "AI AGENTS" },
+                { v: fmtInt(cup.pot.plays), l: "GAMES PLAYED" },
+                { v: `${fmtG(cup.pot.bonusG)} G$`, l: "COMMUNITY BONUS" },
+              ].map((s) => (
+                <div key={s.l} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{s.v}</span>
+                  <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em" }}>{s.l}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* ── footer note ── */}
         <div className="impact-reveal" style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", lineHeight: 1.5, animationDelay: "420ms" }}>
