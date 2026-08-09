@@ -178,7 +178,7 @@ export default function CupPage() {
                 <span style={{ fontFamily: T.display, fontSize: 24, color: T.gold }}>{me.cupPoints.toLocaleString()}<span style={{ fontSize: 11, color: T.inkSoft }}> pts</span></span>
               </Card>
             ) : address ? (
-              <div style={{ fontSize: 11.5, color: T.inkSoft, textAlign: "center" }}>Play 5 verified games to join the board.</div>
+              <div style={{ fontSize: 11.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.5 }}>Play a game to join the board. Scores can take a minute to appear.</div>
             ) : null}
 
             {/* tabs */}
@@ -319,8 +319,8 @@ function Expandable({ title, tint, defaultOpen, children }: { title: string; tin
 
 function HowBody() {
   const lanes = [
-    ["Skill", "your best run in each game"],
-    ["Consistency", "play on separate days"],
+    ["Skill", "your best run in Rhythm, Simon and Stack"],
+    ["Consistency", "play any game on separate days"],
     ["Referrals", "friends who verify and play"],
     ["G$ spend", "perks, on a curve"],
   ];
