@@ -4391,11 +4391,41 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     // past weeks stay viewable through the transition.
     const week = /^(S\d+|\d{4}-W\d{2})$/.test(reqWeek) ? reqWeek : currentWeek;
     const wallet = (req.query.wallet || '').toString().toLowerCase();
-    const { data, error } = await supabase
-      .from('arena_free_matches')
-      .select('wallet, points, outcome')
-      .eq('week_key', week);
-    if (error) throw error;
+
+    // Full standings for the week, cached briefly. CRITICAL: page through EVERY
+    // row. PostgREST caps a single response at 1000 rows, and one agent can
+    // grind 900+ matches in a season, so an unpaginated read silently drops
+    // other players off the ladder — they "stop counting" the moment weekly
+    // volume passes 1000. Aggregate to per-wallet totals so the cache is tiny.
+    const ladderKey = `arena:ladder:${week}`;
+    let standings = cacheGet(ladderKey);
+    if (!standings) {
+      const PAGE = 1000;
+      const agg = new Map();
+      for (let from = 0; ; from += PAGE) {
+        const { data: chunk, error } = await supabase
+          .from('arena_free_matches')
+          .select('wallet, points, outcome')
+          .eq('week_key', week)
+          .order('created_at', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!chunk || chunk.length === 0) break;
+        for (const row of chunk) {
+          const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
+          a.points += row.points || 0;
+          a.matches += 1;
+          if (row.outcome === 'player_won') a.wins += 1;
+          agg.set(row.wallet, a);
+        }
+        if (chunk.length < PAGE) break;
+      }
+      standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+      standings.forEach((s, i) => { s.rank = i + 1; });
+      // Usernames for the visible slice (GamePass on-chain names, LRU-cached).
+      await Promise.all(standings.slice(0, 20).map(async (s) => { s.username = await resolveUsername(s.wallet); }));
+      cacheSet(ladderKey, standings, 30_000);
+    }
 
     // Past weeks — newest first. DON'T sample arena_free_matches ordered by
     // week_key: the CURRENT season's grind (agents play thousands of matches)
@@ -4436,22 +4466,6 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
       } catch { weeks = [currentWeek]; }
       cacheSet('arena:weeks', weeks, 5 * 60 * 1000);
     }
-
-    const agg = new Map();
-    for (const row of data || []) {
-      const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
-      a.points += row.points || 0;
-      a.matches += 1;
-      if (row.outcome === 'player_won') a.wins += 1;
-      agg.set(row.wallet, a);
-    }
-    const standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
-    standings.forEach((s, i) => { s.rank = i + 1; });
-
-    // Usernames for the visible slice (GamePass on-chain names, LRU-cached).
-    await Promise.all(standings.slice(0, 20).map(async (s) => {
-      s.username = await resolveUsername(s.wallet);
-    }));
 
     const me = wallet ? standings.find((s) => s.wallet === wallet) || null : null;
     if (me && me.username === undefined) me.username = await resolveUsername(me.wallet);
