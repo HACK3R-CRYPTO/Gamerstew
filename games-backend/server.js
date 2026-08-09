@@ -3581,6 +3581,49 @@ function arenaWeekKey(d = new Date()) {
   return `S${season}`;
 }
 
+// Per-wallet standings for one ladder week, sorted best-first.
+//
+// Fast path: a Postgres aggregate (arena_ladder_standings) does the GROUP BY
+// server-side and returns one row per wallet — small, bounded, index-scanned,
+// and immune to the 1000-row response cap no matter how many matches exist.
+// Fallback: if that function isn't migrated yet, page through the raw rows so
+// the ladder is still correct (just less efficient) until the migration lands.
+async function arenaLadderStandings(week) {
+  try {
+    const { data, error } = await supabase.rpc('arena_ladder_standings', { p_week: week });
+    if (error) throw error;
+    return (data || []).map((r) => ({
+      wallet: r.wallet,
+      points: Number(r.points) || 0,   // bigint arrives as a string over the wire
+      matches: Number(r.matches) || 0,
+      wins: Number(r.wins) || 0,
+    })).sort((x, y) => y.points - x.points || y.wins - x.wins);
+  } catch (e) {
+    console.warn('arena_ladder_standings rpc unavailable, paging raw rows:', e?.message || e);
+    const PAGE = 1000;
+    const agg = new Map();
+    for (let from = 0; ; from += PAGE) {
+      const { data: chunk, error } = await supabase
+        .from('arena_free_matches')
+        .select('wallet, points, outcome')
+        .eq('week_key', week)
+        .order('created_at', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!chunk || chunk.length === 0) break;
+      for (const row of chunk) {
+        const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
+        a.points += row.points || 0;
+        a.matches += 1;
+        if (row.outcome === 'player_won') a.wins += 1;
+        agg.set(row.wallet, a);
+      }
+      if (chunk.length < PAGE) break;
+    }
+    return [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+  }
+}
+
 // Ladder points per match. Wins pay, participation trickles, sweeps bonus.
 // Points are infinite; G$ is budgeted — the weekly pool pays ranks, so the
 // per-match formula can be generous without any treasury risk.
@@ -4392,35 +4435,20 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
     const week = /^(S\d+|\d{4}-W\d{2})$/.test(reqWeek) ? reqWeek : currentWeek;
     const wallet = (req.query.wallet || '').toString().toLowerCase();
 
-    // Full standings for the week, cached briefly. CRITICAL: page through EVERY
-    // row. PostgREST caps a single response at 1000 rows, and one agent can
-    // grind 900+ matches in a season, so an unpaginated read silently drops
-    // other players off the ladder — they "stop counting" the moment weekly
-    // volume passes 1000. Aggregate to per-wallet totals so the cache is tiny.
+    // Full standings for the week, cached briefly.
+    //
+    // Aggregate in the DATABASE, not the app. Postgres GROUP BY returns one row
+    // per wallet — a set bounded by the player count (hundreds), never by the
+    // match count (unbounded as agents grind). This is what keeps the ladder
+    // correct forever: there is no raw-row scan in the app, so PostgREST's
+    // 1000-row response cap can never truncate the board again, and the work
+    // stays flat no matter how many millions of matches a season accumulates.
+    // (History: an unpaginated raw read silently dropped players once weekly
+    // volume passed 1000 — a single agent's grind filled the whole window.)
     const ladderKey = `arena:ladder:${week}`;
     let standings = cacheGet(ladderKey);
     if (!standings) {
-      const PAGE = 1000;
-      const agg = new Map();
-      for (let from = 0; ; from += PAGE) {
-        const { data: chunk, error } = await supabase
-          .from('arena_free_matches')
-          .select('wallet, points, outcome')
-          .eq('week_key', week)
-          .order('created_at', { ascending: true })
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        if (!chunk || chunk.length === 0) break;
-        for (const row of chunk) {
-          const a = agg.get(row.wallet) || { wallet: row.wallet, points: 0, matches: 0, wins: 0 };
-          a.points += row.points || 0;
-          a.matches += 1;
-          if (row.outcome === 'player_won') a.wins += 1;
-          agg.set(row.wallet, a);
-        }
-        if (chunk.length < PAGE) break;
-      }
-      standings = [...agg.values()].sort((x, y) => y.points - x.points || y.wins - x.wins);
+      standings = await arenaLadderStandings(week);
       standings.forEach((s, i) => { s.rank = i + 1; });
       // Usernames for the visible slice (GamePass on-chain names, LRU-cached).
       await Promise.all(standings.slice(0, 20).map(async (s) => { s.username = await resolveUsername(s.wallet); }));
