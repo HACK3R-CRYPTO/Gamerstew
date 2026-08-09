@@ -3068,9 +3068,13 @@ app.get('/api/cup', async (req, res) => {
         return { wallet: w, verified: p.verified, lanes: { skill, consist, referrals, spendG: Math.round(spendG), spendPts }, cupPoints };
       });
       entries.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (b.cupPoints - a.cupPoints));
+      entries.forEach((e, i) => { e.rank = i + 1; }); // rank the whole field, not just the top 50
       const top = entries.slice(0, 50);
       await Promise.all(top.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
-      top.forEach((e, i) => { e.rank = i + 1; });
+      // Lightweight full-field lookup so a player outside the top 50 can still be
+      // shown their own rank (the "Your rank" card) instead of a misleading
+      // "you're not on the board" message.
+      const humanAll = entries.map((e) => ({ wallet: e.wallet, cupPoints: e.cupPoints, rank: e.rank, verified: e.verified }));
 
       // ── Crowns (separate ladders so one strength can't sweep the board) ──
       const vEntries = entries.filter((e) => e.verified);
@@ -3092,7 +3096,7 @@ app.get('/api/cup', async (req, res) => {
       const next = CUP.potMilestones.find((m) => totalPlays < m.at) || null;
 
       payload = {
-        human: top, agent, crowns,
+        human: top, humanAll, agent, crowns,
         pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones },
       };
       cacheSet('cup:payload', payload, 60_000);
@@ -3103,12 +3107,19 @@ app.get('/api/cup', async (req, res) => {
   }
 
   const meWallet = (req.query.wallet || '').toString().toLowerCase();
-  const me = meWallet ? (payload.human.find((e) => e.wallet === meWallet) || null) : null;
+  let me = meWallet ? (payload.human.find((e) => e.wallet === meWallet) || null) : null;
+  // Outside the top 50 but still ranked → surface their own row with a username.
+  if (!me && meWallet && Array.isArray(payload.humanAll)) {
+    const row = payload.humanAll.find((e) => e.wallet === meWallet);
+    if (row) me = { ...row, username: (await resolveUsername(row.wallet)) || null };
+  }
 
+  // humanAll is an internal lookup, not for the wire.
+  const { humanAll: _all, ...pub } = payload;
   res.json({
     phase, startsAt: CUP.startsAt, endsAt: CUP.endsAt,
     weights: CUP.weights, humanSplit: CUP.humanSplit, agentSplit: CUP.agentSplit,
-    ...payload, me,
+    ...pub, me,
   });
 });
 
@@ -4582,6 +4593,19 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
     }
 
     const amountWei = ethers.parseEther(FAUCET_DRIP_CELO);
+
+    // Faucet self-balance gate · if the faucet WALLET itself can't cover the
+    // drip (+ a little gas), surface a clear `faucet_empty` reason instead of
+    // letting sendTransaction throw a generic error — which on Celo/Forno can
+    // even masquerade as a fake contract revert. This lets the client show a
+    // friendly "gas top-up temporarily unavailable" and stops players from
+    // spamming the admin for gas. The loud log line is the low-balance alert.
+    const faucetBal = await faucetSigner.provider.getBalance(faucetSigner.address);
+    if (faucetBal < amountWei + ethers.parseEther('0.02')) {
+      console.warn(`⛽ FAUCET LOW: ${ethers.formatEther(faucetBal)} CELO left — refusing drip to ${lower}. TOP UP ${faucetSigner.address}`);
+      return res.status(503).json({ success: false, reason: 'faucet_empty' });
+    }
+
     const tx = await faucetSigner.sendTransaction({ to: address, value: amountWei });
     await tx.wait();
 
