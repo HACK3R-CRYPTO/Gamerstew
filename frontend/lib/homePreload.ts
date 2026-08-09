@@ -16,8 +16,20 @@ const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
   "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn";
 
+export type GFlow = {
+  inG: number;          // everything players have spent (perks + habitats)
+  ubiG: number;         // 20% side, both contracts
+  treasuryG: number;    // 80% side, both contracts
+  ubiShare: number;     // computed live, not assumed
+  treasuryShare: number;
+  perkSpendG: number;
+  perkPurchases: number;
+  habitatSpendG: number;
+  habitatUnlocks: number;
+};
+
 export type HomePreload = {
-  stat: { totalPlayers: number; totalScores: number; totalUbiDonatedG: number } | null;
+  stat: { totalPlayers: number; totalScores: number; totalUbiDonatedG: number; flow?: GFlow } | null;
   top3: AllTimeEntry[];
   climb: { phase: string; endsAt: string } | null;
 };
@@ -30,18 +42,37 @@ export async function fetchGlobalStat(): Promise<HomePreload["stat"]> {
       // totalUbiDonatedG shown on /home is the WHOLE community pool: habitats
       // (globalStat) + perks (perkShopStat). Both handlers are disjoint, so we
       // sum them. Keeps /home and /shop showing the same single UBI figure.
-      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG } perkShopStat(id: "global") { totalUbiG } }` }),
+      body: JSON.stringify({ query: `{ globalStat(id: "global") { totalPlayers totalScores totalUbiDonatedG totalTreasuryG totalHabitatUnlocks } perkShopStat(id: "global") { totalUbiG totalTreasuryG totalPurchases } }` }),
     });
     if (!r.ok) return null;
     const j = await r.json();
     const g = j?.data?.globalStat;
     if (!g) return null;
-    const habitatUbi = BigInt(g.totalUbiDonatedG || "0");
-    const perkUbi    = j?.data?.perkShopStat ? BigInt(j.data.perkShopStat.totalUbiG) : 0n;
+    const ps = j?.data?.perkShopStat;
+    const toG = (v?: string) => Math.round(Number(BigInt(v || "0")) / 1e18);
+    const habitatUbi = toG(g.totalUbiDonatedG);
+    const habitatTreasury = toG(g.totalTreasuryG);
+    const perkUbi = toG(ps?.totalUbiG);
+    const perkTreasury = toG(ps?.totalTreasuryG);
+    const ubiG = habitatUbi + perkUbi;
+    const treasuryG = habitatTreasury + perkTreasury;
+    const inG = ubiG + treasuryG;
+    const flow: GFlow = {
+      inG,
+      ubiG,
+      treasuryG,
+      ubiShare: inG > 0 ? Math.round((ubiG / inG) * 100) : 20,
+      treasuryShare: inG > 0 ? Math.round((treasuryG / inG) * 100) : 80,
+      perkSpendG: perkUbi + perkTreasury,
+      perkPurchases: Number(ps?.totalPurchases || 0),
+      habitatSpendG: habitatUbi + habitatTreasury,
+      habitatUnlocks: Number(g.totalHabitatUnlocks || 0),
+    };
     return {
       totalPlayers: Number(g.totalPlayers),
       totalScores: Number(g.totalScores),
-      totalUbiDonatedG: Math.round(Number(habitatUbi + perkUbi) / 1e18),
+      totalUbiDonatedG: ubiG,
+      flow,
     };
   } catch {
     return null;

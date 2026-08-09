@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
-import { fetchGlobalStat } from "@/lib/homePreload";
+import { fetchGlobalStat, type GFlow } from "@/lib/homePreload";
 
 // ─── tokens (mirror the app) ──────────────────────────────────────────────
 const T = {
@@ -170,6 +170,7 @@ function MomentumRow({ label, dd1, dd2, now, delta, tint, basePct }: { label: st
 export default function ImpactPage() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [live, setLive] = useState<{ players: number; games: number; ubi: number } | null>(null);
+  const [flow, setFlow] = useState<GFlow | null>(null);
   // GoodDollar-verified count · true humans, not just pass minters. Live from
   // /api/verified-stats (on-chain isWhitelisted per wallet).
   const [vstats, setVstats] = useState<{ totalPlayers: number; verifiedPlayers: number } | null>(null);
@@ -191,6 +192,7 @@ export default function ImpactPage() {
     fetchGlobalStat().then((s) => {
       if (!alive || !s) return;
       setLive({ players: s.totalPlayers, games: s.totalScores, ubi: s.totalUbiDonatedG });
+      if (s.flow) setFlow(s.flow);
     });
     return () => { alive = false; };
   }, []);
@@ -240,8 +242,13 @@ export default function ImpactPage() {
 
   // Flow split · of every G$ spent on a perk, ~20% routes to the GoodDollar UBI pool
   // UBI and ~80% goes to the treasury that funds operations.
-  const ubiShare = 20;
-  const treasuryShare = 80;
+  // Shares computed from the live totals, not assumed. Falls back to the
+  // contract constants (20/80) only until the subgraph answers.
+  const ubiShare = flow?.ubiShare ?? 20;
+  const treasuryShare = flow?.treasuryShare ?? 80;
+  const flowInG = flow?.inG ?? perkSpendG;
+  const flowUbiG = flow?.ubiG ?? ubi;
+  const flowTreasuryG = flow?.treasuryG ?? 0;
 
   // animated counters
   const ubiC = useCountUp(ubi);
@@ -350,9 +357,13 @@ export default function ImpactPage() {
           <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr auto 1fr" : "1fr", gap: 14, alignItems: "stretch" }}>
             {/* IN */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.amber}18, transparent)`, border: `1px solid ${T.amber}3a` }}>
-              <span style={{ fontFamily: T.body, fontSize: 10, color: T.amber, fontWeight: 800, letterSpacing: "0.12em" }}>IN · PERK SPEND</span>
-              <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{fmtG(perkSpendG)} <span style={{ fontSize: 16, color: T.amber }}>G$</span></span>
-              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>Continues, revives &amp; cosmetics · {fmtInt(perkPurchases)} purchases</span>
+              <span style={{ fontFamily: T.body, fontSize: 10, color: T.amber, fontWeight: 800, letterSpacing: "0.12em" }}>IN · PLAYER SPEND</span>
+              <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{fmtG(flowInG)} <span style={{ fontSize: 16, color: T.amber }}>G$</span></span>
+              <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, lineHeight: 1.4 }}>
+                {flow
+                  ? <>Perks {fmtG(flow.perkSpendG)} G$ · {fmtInt(flow.perkPurchases)} buys<br />Habitats {fmtG(flow.habitatSpendG)} G$ · {fmtInt(flow.habitatUnlocks)} unlocks</>
+                  : <>Continues, revives &amp; cosmetics · {fmtInt(perkPurchases)} purchases</>}
+              </span>
             </div>
 
             {/* SPLIT */}
@@ -371,7 +382,7 @@ export default function ImpactPage() {
                 <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${ubiShare}%`, background: T.accent, borderRadius: 999, boxShadow: `0 0 12px ${T.accent}` }} />
                 </div>
-                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{fmtG(ubi)} G$ routed to date</span>
+                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{fmtG(flowUbiG)} G$ routed to date</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7, padding: 16, borderRadius: 16, background: `linear-gradient(160deg, ${T.green}16, transparent)`, border: `1px solid ${T.green}3a` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -381,7 +392,7 @@ export default function ImpactPage() {
                 <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${treasuryShare}%`, background: T.green, borderRadius: 999, boxShadow: `0 0 12px ${T.green}` }} />
                 </div>
-                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>Funds operations</span>
+                <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{flowTreasuryG > 0 ? `${fmtG(flowTreasuryG)} G$ to date · funds prizes & operations` : "Funds prizes & operations"}</span>
               </div>
             </div>
           </div>
