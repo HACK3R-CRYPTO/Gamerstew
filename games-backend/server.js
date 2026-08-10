@@ -3998,7 +3998,11 @@ app.post('/api/arena/start', requireSecret, gameSubmitLimiter, async (req, res) 
       remaining: 0,
       refill: {
         sku: 'refill_5',
-        priceGs: 2,
+        // Display price only. The actual charge is PerkShop perk #6 "Match Pack"
+        // (frontend buys it via buyPerk), so this MUST match that perk's price
+        // (50 G$). It was left at the retired 2 G$ direct-refill value, which
+        // showed "pay 2 G$" while 50 G$ was deducted.
+        priceGs: 50,
         grants: 5,
         poolWallet: ARENA_POOL_WALLET,
         gToken: ARENA_G_TOKEN,
