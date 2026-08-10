@@ -575,6 +575,15 @@ function Lobby({
   // lobby screen (segmented control = same context, instant switch).
   const [mode, setMode] = useState<"you" | "ai">("you");
   const aiMode = mode === "ai" && showAgentOption;
+  // Refill price shown MUST match what's actually charged. The refill buys the
+  // Match Pack perk (#6) via buyPerk, so read the price from that perk itself
+  // rather than trusting the backend offer's priceGs (which drifted: it showed
+  // 2 G$ while 50 G$ was charged). Falls back to the offer only if the perk is
+  // somehow missing.
+  const refillPriceGs = (() => {
+    const mp = getPerk(6);
+    return mp ? Number(mp.priceG$ / 10n ** 18n) : refillOffer?.priceGs;
+  })();
   // NEW badge on the YOUR AI segment · self-clears the first time the player
   // flips there (persistent badges become wallpaper — red-dot blindness).
   const [seenAiMode, setSeenAiMode] = useState(() => {
@@ -797,7 +806,7 @@ function Lobby({
           <div style={{ textAlign: "center" }}>
             <div style={{ fontFamily: T.display, fontSize: 14, color: RIM, letterSpacing: "0.03em" }}>OUT OF MATCHES FOR TODAY</div>
             <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, margin: "5px 0 8px" }}>
-              🎟 0 left → pay {refillOffer.priceGs} G$ → play {refillOffer.grants} more right now
+              🎟 0 left → pay {refillPriceGs} G$ → play {refillOffer.grants} more right now
             </div>
             <div
               role="button"
@@ -807,7 +816,7 @@ function Lobby({
               <div style={{ borderRadius: "16px 16px 12px 12px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
                 <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
                 <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 16, color: "#fff", letterSpacing: "0.04em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
-                  {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillOffer.priceGs} G$`}
+                  {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillPriceGs} G$`}
                 </span>
               </div>
             </div>
