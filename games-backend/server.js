@@ -1358,27 +1358,37 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     // wallet prompt, no CELO. Serialized with all other signer writes. If the
     // submit fails, fall through to the legacy voucher so the score still saves.
     if (GASLESS_SKILL_GAMES) {
-      try {
-        const tx = await enqueueScoreWrite(playerAddress, gameType, serverScore);
-        // The BACKEND submitted this tx, so it's trusted: remember the hash so
-        // /api/submit-score credits the score without re-verifying it on-chain
-        // (that avoids waiting for a Celo mine, which varies and would either
-        // stall the save or false-fail). The on-chain write is best-effort, same
-        // as Challenge AI — the score always saves off-chain regardless. A failed
-        // submit throws here and falls through to the legacy player-pays voucher.
-        _rememberGaslessTx(tx.hash);
-        console.log(`⛽ Gasless ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${tx.hash}`);
-        return res.json({
-          success: true,
-          gasless: true,
-          txHash:  tx.hash,
-          gameType,
-          score:   serverScore, // ← client uses this number, not their claim
-        });
-      } catch (gErr) {
-        console.warn(`⚠️  Gasless ${game} submit failed, falling back to voucher · ${playerAddress.slice(0, 10)}…:`, gErr?.message);
-        // fall through to the legacy voucher below
+      // Retry the submit a few times before giving up. The signer is well
+      // funded, so a failure here is almost always a transient RPC/nonce
+      // hiccup — retrying keeps the player on the gasless path instead of
+      // dropping them onto player-pays (which, for a low-CELO wallet, means a
+      // dead-end "GAS NEEDED" screen). Only after all retries fail do we fall
+      // through to the legacy voucher.
+      let lastGErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const tx = await enqueueScoreWrite(playerAddress, gameType, serverScore);
+          // The BACKEND submitted this tx, so it's trusted: remember the hash so
+          // /api/submit-score credits the score without re-verifying it on-chain
+          // (that avoids waiting for a Celo mine, which varies and would either
+          // stall the save or false-fail). The on-chain write is best-effort, same
+          // as Challenge AI — the score always saves off-chain regardless.
+          _rememberGaslessTx(tx.hash);
+          console.log(`⛽ Gasless ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${tx.hash}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+          return res.json({
+            success: true,
+            gasless: true,
+            txHash:  tx.hash,
+            gameType,
+            score:   serverScore, // ← client uses this number, not their claim
+          });
+        } catch (gErr) {
+          lastGErr = gErr;
+          console.warn(`⚠️  Gasless ${game} submit attempt ${attempt}/3 failed · ${playerAddress.slice(0, 10)}…:`, gErr?.message);
+        }
       }
+      console.warn(`⚠️  Gasless ${game} exhausted retries, falling back to voucher · ${playerAddress.slice(0, 10)}…:`, lastGErr?.message);
+      // fall through to the legacy voucher below
     }
 
     // ── LEGACY path · player pays gas (recordScoreWithBackendSig) ─────────────
@@ -4586,7 +4596,12 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
 // When ON, only Self-verified wallets get the drip · strongest sybil
 // gate but adds onboarding friction (player must verify first).
 const FAUCET_DRIP_CELO        = process.env.FAUCET_DRIP_CELO || '0.7';
-const FAUCET_FRESH_THRESHOLD  = process.env.FAUCET_FRESH_THRESHOLD_CELO || '0.001';
+// A wallet under this CELO balance is treated as "out of gas" and eligible for
+// a drip. Was 0.001, which left a dead zone: a wallet holding dust (e.g. 0.005
+// CELO) was above the line so the faucet refused it, yet it had far too little
+// to actually save scores → the player hit "GAS NEEDED" with no way to get
+// topped up. 0.05 covers real score-saving gas.
+const FAUCET_FRESH_THRESHOLD  = process.env.FAUCET_FRESH_THRESHOLD_CELO || '0.05';
 const FAUCET_MAX_PER_IP_DAY   = Number(process.env.FAUCET_MAX_PER_IP_DAY || '5');
 const FAUCET_MAX_PER_DAY      = Number(process.env.FAUCET_MAX_PER_DAY || '50');
 const FAUCET_REQUIRE_GOODDOLLAR = process.env.FAUCET_REQUIRE_GOODDOLLAR === 'true';
