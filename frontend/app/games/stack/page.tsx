@@ -45,6 +45,7 @@ import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { LowGasBanner } from "@/components/LowGasBanner";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -499,8 +500,18 @@ export default function StackTowerPage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
-      setGasHelpOpen(true);
-      return;
+      // Low on gas · try a one-tap faucet top-up before sending them to beg for
+      // CELO in Telegram. If the drip lands, the wallet now has gas so the score
+      // will save — proceed into play. Only if it can't help do we open the sheet.
+      let topped = false;
+      try {
+        const token = await getAccessToken();
+        if (token && address) topped = !!(await claimGas(token, address)).success;
+      } catch { /* fall through to the help sheet */ }
+      if (!topped) {
+        setGasHelpOpen(true);
+        return;
+      }
     }
     startingRef.current = true;
 
