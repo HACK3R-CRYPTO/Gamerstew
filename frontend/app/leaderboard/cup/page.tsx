@@ -32,7 +32,7 @@ const T = {
 const PAGE_SIZE = 10;
 
 type Lane = { skill: number; consist: number; referrals: number; spendG: number; spendPts: number };
-type HumanRow = { rank: number; wallet: string; username: string | null; verified: boolean; cupPoints: number; lanes: Lane };
+type HumanRow = { rank: number; wallet: string; username: string | null; verified: boolean; cupPoints: number; lanes: Lane; prizeRank?: number | null };
 type AgentRow = { rank: number; wallet: string; username: string | null; matches: number; wins: number; losses: number; ties: number; winRate: number; net: number; owner: { wallet: string; username: string | null } | null };
 type Crown = { wallet: string; username: string | null; referrals?: number; days?: number } | null;
 type Pot = { plays: number; agentMatches: number; bonusG: number; next: { at: number; bonusG: number } | null; milestones: { at: number; bonusG: number }[] } | null;
@@ -45,7 +45,21 @@ type CupData = {
   pot: Pot;
   me: HumanRow | null;
 };
-type Entry = { rank: number; wallet: string; name: string; sub?: string; value: string; unit: string; verified: boolean; mine: boolean };
+type Entry = { rank: number; wallet: string; name: string; sub?: string; value: string; unit: string; verified: boolean; mine: boolean; lanes?: Lane; prizeRank?: number | null };
+
+// Self-explaining point breakdown: each lane's POINT contribution, biggest
+// first, so a row reads "why am I here" at a glance (recognition over recall).
+// Labels are the source, numbers are points — and they sum to the row total.
+function laneBreakdown(l: Lane): string {
+  const parts: [string, number][] = [
+    ["skill", l.skill],
+    ["streak", l.consist * 8],
+    ["referrals", l.referrals * 25],
+    ["spend", l.spendPts],
+  ];
+  const on = parts.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  return on.length ? on.map(([k, v]) => `${v} ${k}`).join(" · ") : "just getting started";
+}
 
 const short = (a: string) => a.slice(0, 4) + "…" + a.slice(-4);
 const fmtG = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
@@ -99,10 +113,16 @@ export default function CupPage() {
 
   // ── ladder → common entries, podium + pagination ──
   const entries: Entry[] = !board || !data ? [] : tab === "human"
-    ? data.human.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), value: r.cupPoints.toLocaleString(), unit: "pts", verified: r.verified, mine: r.wallet === meLower }))
+    ? data.human.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), value: r.cupPoints.toLocaleString(), unit: "pts", verified: r.verified, mine: r.wallet === meLower, lanes: r.lanes, prizeRank: r.prizeRank }))
     : data.agent.map((r) => ({ rank: r.rank, wallet: r.wallet, name: r.username || short(r.wallet), sub: r.owner ? `by ${r.owner.username || short(r.owner.wallet)}` : undefined, value: String(r.wins), unit: "wins", verified: true, mine: false }));
-  const podium = entries.slice(0, 3);
-  const rest = entries.slice(3);
+  // Podium = the real prize contenders. Human: top-3 VERIFIED (by prizeRank), so
+  // an unverified high-scorer never appears to "win" a prize they can't get.
+  // Agent: top-3. The list below ranks by points, so the numbers read correctly.
+  const podium = tab === "human"
+    ? ([1, 2, 3].map((pr) => entries.find((e) => e.prizeRank === pr)).filter(Boolean) as Entry[])
+    : entries.slice(0, 3);
+  const podiumWallets = new Set(podium.map((e) => e.wallet));
+  const rest = entries.filter((e) => !podiumWallets.has(e.wallet));
   const totalPages = Math.max(1, Math.ceil(rest.length / PAGE_SIZE));
   const pageC = Math.min(page, totalPages - 1);
   const pageRows = rest.slice(pageC * PAGE_SIZE, (pageC + 1) * PAGE_SIZE);
@@ -171,9 +191,11 @@ export default function CupPage() {
 
             {me ? (
               <Card style={{ borderColor: `${T.accent}55`, background: `radial-gradient(120% 140% at 100% 0%, ${T.accent}22, transparent 55%), ${T.surface}`, padding: "12px 15px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <Eyebrow tint={T.accent}>Your rank</Eyebrow>
                   <div style={{ fontFamily: T.display, fontSize: 20, marginTop: 2 }}>#{me.rank} · {me.username || short(me.wallet)}</div>
+                  {me.lanes && <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 3 }}>{laneBreakdown(me.lanes)}</div>}
+                  {me.verified === false && <div style={{ fontSize: 10.5, color: "#fbbf24", fontWeight: 800, marginTop: 3 }}>Verify to qualify for prizes →</div>}
                 </div>
                 <span style={{ fontFamily: T.display, fontSize: 24, color: T.gold }}>{me.cupPoints.toLocaleString()}<span style={{ fontSize: 11, color: T.inkSoft }}> pts</span></span>
               </Card>
@@ -191,6 +213,20 @@ export default function CupPage() {
                 }}>{o.label}</button>
               ))}
             </div>
+
+            {/* Win condition · label how the lane ranks so players know how to
+                climb (recognition over recall). Agent Cup ranks by total wins
+                vs MARKOV — see the sort in games-backend /api/cup. */}
+            {tab === "agent" && (
+              <div style={{ fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", alignSelf: "center" }}>
+                Ranked by wins vs MARKOV
+              </div>
+            )}
+            {tab === "human" && (
+              <div style={{ fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", alignSelf: "center", textAlign: "center", padding: "0 12px" }}>
+                Ranked by points · only verified players win prizes
+              </div>
+            )}
 
             {loading ? (
               <Empty>Loading…</Empty>
@@ -290,13 +326,21 @@ function Podium({ entries }: { entries: Entry[] }) {
 }
 
 function Row({ e, tint }: { e: Entry; tint: string }) {
+  const unverified = e.verified === false;
+  // Sub line answers "how did they get here": explicit sub (agent owner) wins,
+  // else the point breakdown. Dimming + the amber chip make prize-ineligibility
+  // legible without hiding the player or their real points.
+  const sub = e.sub ?? (e.lanes ? laneBreakdown(e.lanes) : undefined);
   return (
-    <div style={{ borderRadius: 999, padding: 2, background: `linear-gradient(135deg, ${tint} 0%, ${tint}55 100%)`, boxShadow: `0 0 10px ${tint}40, 0 5px 14px rgba(0,0,0,0.45)` }}>
+    <div style={{ borderRadius: 999, padding: 2, background: `linear-gradient(135deg, ${tint} 0%, ${tint}55 100%)`, boxShadow: `0 0 10px ${tint}40, 0 5px 14px rgba(0,0,0,0.45)`, opacity: unverified ? 0.74 : 1 }}>
       <div style={{ borderRadius: 999, background: e.mine ? `linear-gradient(90deg, ${tint}2e 0%, rgba(20,10,50,0.92) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${tint}22`, border: `1px solid ${tint}66`, fontFamily: T.display, fontSize: 12.5, color: T.ink }}>{e.rank}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.mine ? `You · ${e.name}` : e.name}</div>
-          {e.sub && <div style={{ fontSize: 10, color: T.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.sub}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.mine ? `You · ${e.name}` : e.name}</span>
+            {unverified && <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.03em", color: "#fbbf24", background: "#fbbf2422", border: "1px solid #fbbf2455", borderRadius: 999, padding: "1.5px 7px", whiteSpace: "nowrap", textTransform: "uppercase" }}>Verify to qualify</span>}
+          </div>
+          {sub && <div style={{ fontSize: 10, color: T.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
         </div>
         <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{e.value}<span style={{ fontSize: 9, color: T.inkSoft }}> {e.unit}</span></span>
       </div>

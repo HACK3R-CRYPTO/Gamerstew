@@ -3113,14 +3113,23 @@ app.get('/api/cup', async (req, res) => {
         );
         return { wallet: w, verified: p.verified, lanes: { skill, consist, referrals, spendG: Math.round(spendG), spendPts }, cupPoints };
       });
-      entries.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (b.cupPoints - a.cupPoints));
-      entries.forEach((e, i) => { e.rank = i + 1; }); // rank the whole field, not just the top 50
+      // Rank the whole field by POINTS — what players expect. Verified is only a
+      // prize-eligibility flag (see prizeRank below), NOT a sort key: sinking an
+      // 87-pt unverified player beneath a 14-pt verified one read as a broken
+      // board. Verified breaks exact ties so an eligible player edges a twin.
+      entries.sort((a, b) => (b.cupPoints - a.cupPoints) || (Number(b.verified) - Number(a.verified)));
+      entries.forEach((e, i) => { e.rank = i + 1; }); // display rank over the whole field
+      // Prize rank: position among verified players only, in points order. The
+      // podium and $ prizes use THIS, so the list can rank by points while the
+      // prize race stays verified-only. null = not eligible until they verify.
+      let pr = 0;
+      entries.forEach((e) => { e.prizeRank = e.verified ? (++pr) : null; });
       const top = entries.slice(0, 50);
       await Promise.all(top.map(async (e) => { e.username = (await resolveUsername(e.wallet)) || null; }));
       // Lightweight full-field lookup so a player outside the top 50 can still be
       // shown their own rank (the "Your rank" card) instead of a misleading
       // "you're not on the board" message.
-      const humanAll = entries.map((e) => ({ wallet: e.wallet, cupPoints: e.cupPoints, rank: e.rank, verified: e.verified }));
+      const humanAll = entries.map((e) => ({ wallet: e.wallet, cupPoints: e.cupPoints, rank: e.rank, verified: e.verified, prizeRank: e.prizeRank }));
 
       // ── Crowns (separate ladders so one strength can't sweep the board) ──
       const vEntries = entries.filter((e) => e.verified);
