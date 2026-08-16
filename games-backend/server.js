@@ -2925,6 +2925,11 @@ const CUP = {
   // Cup Points lane weights (tune after a dry run).
   weights: { skill: 1.0, consist: 8, ref: 25, spend: 1.0 },
   kSpend: 1.0,
+  // Cap the spend lane so G$ spend stays a nudge, not a way to buy rank. The
+  // √ curve alone let one player convert ~35,850 G$ into 189 points and take
+  // #1 over skill-elite grinders. 60 pts ≈ √3,600 G$ — spend past that adds
+  // nothing. Env-overridable so it can be retuned without a deploy.
+  maxSpendPts: Number(process.env.CUP_MAX_SPEND_PTS || 60),
   // Community pot: total plays (human + agent) unlock bonus G$ for everyone.
   potMilestones: [
     { at: 2_000,  bonusG: 20_000 },
@@ -3101,7 +3106,7 @@ app.get('/api/cup', async (req, res) => {
         const consist = Math.min(14, p.days.size);
         const referrals = refByWallet.get(w) || 0;
         const spendG = spendByWallet.get(w) || 0;
-        const spendPts = Math.round(CUP.kSpend * Math.sqrt(spendG));
+        const spendPts = Math.min(CUP.maxSpendPts, Math.round(CUP.kSpend * Math.sqrt(spendG)));
         const cupPoints = Math.round(
           CUP.weights.skill * skill + CUP.weights.consist * consist +
           CUP.weights.ref * referrals + CUP.weights.spend * spendPts,
