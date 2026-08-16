@@ -3002,15 +3002,28 @@ app.get('/api/cup', async (req, res) => {
       const agentSet = new Set();
       const agentOwner = new Map(); // agentWalletLower -> ownerWalletLower
       try {
-        const { data: arows } = await supabase.from('arena_free_matches')
-          .select('wallet, outcome, created_at')
-          .gte('created_at', startIso).lt('created_at', endIso).limit(20000);
+        // Page through arena_free_matches. Supabase caps a single response at
+        // ~1,000 rows, so the old `.limit(20000)` silently returned only the
+        // OLDEST ~1,000 matches of the whole Cup and froze high-volume agents
+        // (e.g. an agent with 2,676 real wins showed 52). Range-paginate by
+        // created_at so every match in the window is counted, per the rules.
         const astats = new Map();
-        for (const r of arows || []) {
-          const w = r.wallet?.toLowerCase(); if (!w) continue;
-          if (!astats.has(w)) astats.set(w, { matches: 0, wins: 0, ties: 0 });
-          const s = astats.get(w); s.matches++;
-          if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
+        const PAGE = 1000;
+        for (let from = 0; from < 500000; from += PAGE) {
+          const { data: arows, error } = await supabase.from('arena_free_matches')
+            .select('wallet, outcome')
+            .gte('created_at', startIso).lt('created_at', endIso)
+            .order('created_at', { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) { console.warn('cup agent page:', error.message); break; }
+          if (!arows || arows.length === 0) break;
+          for (const r of arows) {
+            const w = r.wallet?.toLowerCase(); if (!w) continue;
+            if (!astats.has(w)) astats.set(w, { matches: 0, wins: 0, ties: 0 });
+            const s = astats.get(w); s.matches++;
+            if (r.outcome === 'player_won') s.wins++; else if (r.outcome === 'tie') s.ties++;
+          }
+          if (arows.length < PAGE) break;
         }
         // On-chain gate: keep only the wallets that are registered agents. One
         // multicall over every Challenge-AI player in the window.
