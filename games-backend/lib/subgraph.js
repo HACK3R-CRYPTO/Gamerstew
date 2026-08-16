@@ -97,6 +97,46 @@ async function recentActivity(limit = 20, player = null) {
   }));
 }
 
+// ─── Per-player play counts within a window ──────────────────────────────────
+// Counts on-chain score submissions per player in [startUnix, endUnix],
+// EXCLUDING agent/MARKOV matches (gameType 3) so the weekly community pool
+// credits human skill games only. The on-chain scores entity is the source
+// of truth — the old Supabase `activity` count silently dropped rows, which
+// undercounted the pool and under-paid real players.
+//
+// Pagination walks an ascending blockTimestamp cursor (the-graph caps skip at
+// 5000). Human plays are seconds apart, so >pageSize scores sharing one exact
+// timestamp never happens — a strict blockTimestamp_gt cursor is safe here.
+async function playCountsInWindow(startUnix, endUnix, { excludeGameType = 3, pageSize = 1000 } = {}) {
+  const byWallet = new Map(); // wallet → { username, count }
+  let cursor = Number(startUnix) - 1;
+  const end = Number(endUnix);
+  for (let guard = 0; guard < 200; guard++) {
+    const data = await gql(
+      `query CC($gt: BigInt!, $end: BigInt!, $ex: Int!, $n: Int!) {
+        scores(first: $n, orderBy: blockTimestamp, orderDirection: asc,
+               where: { blockTimestamp_gt: $gt, blockTimestamp_lte: $end, gameType_not: $ex }) {
+          player { id username }
+          blockTimestamp
+        }
+      }`,
+      { gt: cursor.toString(), end: end.toString(), ex: excludeGameType, n: pageSize },
+    );
+    const rows = data.scores || [];
+    if (rows.length === 0) break;
+    for (const s of rows) {
+      const w = s.player.id.toLowerCase();
+      const cur = byWallet.get(w) || { username: s.player.username || null, count: 0 };
+      cur.count += 1;
+      if (!cur.username && s.player.username) cur.username = s.player.username;
+      byWallet.set(w, cur);
+    }
+    if (rows.length < pageSize) break;
+    cursor = Number(rows[rows.length - 1].blockTimestamp);
+  }
+  return byWallet;
+}
+
 // ─── Player record (best scores, ownership, totals) ──────────────────────────
 async function playerProfile(address) {
   const data = await gql(
@@ -161,6 +201,7 @@ module.exports = {
   gql,
   leaderboard,
   recentActivity,
+  playCountsInWindow,
   playerProfile,
   globalStats,
   seasonRank,
