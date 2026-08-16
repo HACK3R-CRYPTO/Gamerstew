@@ -3186,18 +3186,28 @@ app.get('/api/weekly-challenge', async (req, res) => {
   ));
   const sunday = new Date(monday.getTime() + 7 * 86400000 - 1);
 
-  const { data: rows } = await supabase
-    .from('activity')
-    .select('wallet_address')
-    .gte('created_at', monday.toISOString())
-    .lte('created_at', sunday.toISOString());
+  // Count human skill-game plays from the on-chain subgraph (source of truth),
+  // excluding agent/MARKOV matches (gameType 3). The old Supabase `activity`
+  // count silently dropped rows — it undercounted the pool (showed 945 when the
+  // real human total was 1,273) and under-credited real players. Cached briefly;
+  // once agent plays are filtered out a full window rebuild is only ~2 pages.
+  const winStart = Math.floor(monday.getTime() / 1000);
+  const winEnd   = Math.floor(sunday.getTime() / 1000);
+  const cacheKey = `weekly-challenge:${winStart}`;
+  let byWallet = cacheGet(cacheKey);
+  if (!byWallet) {
+    const counts = await subgraph.playCountsInWindow(winStart, winEnd);
+    byWallet = {};
+    for (const [w, v] of counts) byWallet[w] = { username: v.username, count: v.count };
+    cacheSet(cacheKey, byWallet, MEM_TTL.leaderboard);
+  }
 
-  // Count per player, cap at PER_PLAYER_CAP
-  const perPlayer = new Map();
-  for (const r of (rows || [])) {
-    const w = r.wallet_address?.toLowerCase();
-    if (!w) continue;
-    perPlayer.set(w, (perPlayer.get(w) || 0) + 1);
+  // Rebuild raw-count + on-chain-username maps from the cached window snapshot.
+  const perPlayer = new Map(); // wallet → raw play count
+  const onchainName = new Map(); // wallet → on-chain username (avoids a resolve call)
+  for (const [w, v] of Object.entries(byWallet)) {
+    perPlayer.set(w, v.count);
+    if (v.username) onchainName.set(w, v.username);
   }
 
   const totalCapped = Array.from(perPlayer.values())
@@ -3227,7 +3237,7 @@ app.get('/api/weekly-challenge', async (req, res) => {
   const topContributors = await Promise.all(
     topContributorWallets.map(async ([w, count]) => ({
       wallet:   w,
-      username: await resolveUsername(w),
+      username: onchainName.get(w) || await resolveUsername(w),
       games:    Math.min(WEEKLY_CHALLENGE_CAP, count),
     })),
   );
@@ -3500,17 +3510,19 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
     ));
     const sunday = new Date(monday.getTime() + 7 * 86400000 - 1);
 
-    const { data: rows } = await supabase
-      .from('activity')
-      .select('wallet_address')
-      .gte('created_at', monday.toISOString())
-      .lte('created_at', sunday.toISOString());
-
+    // Count from the on-chain subgraph (source of truth), excluding agent/MARKOV
+    // matches (gameType 3). Matches /api/weekly-challenge so the payout list can
+    // never diverge from what the pool card shows. The old Supabase `activity`
+    // count dropped rows and under-paid real players.
+    const counts = await subgraph.playCountsInWindow(
+      Math.floor(monday.getTime() / 1000),
+      Math.floor(sunday.getTime() / 1000),
+    );
     const rawCount = new Map();
-    for (const r of (rows || [])) {
-      const w = r.wallet_address?.toLowerCase();
-      if (!w) continue;
-      rawCount.set(w, (rawCount.get(w) || 0) + 1);
+    const onchainName = new Map();
+    for (const [w, v] of counts) {
+      rawCount.set(w, v.count);
+      if (v.username) onchainName.set(w, v.username);
     }
 
     const totalCapped = Array.from(rawCount.values())
@@ -3529,7 +3541,7 @@ app.get('/api/weekly-challenge/payout-list', requireSecret, async (_, res) => {
         const verified = await isVerified(w);
         return {
           wallet:      w,
-          username:    await resolveUsername(w) || null,
+          username:    onchainName.get(w) || await resolveUsername(w) || null,
           gamesPlayed: rawCount.get(w),
           countedGames,
           verified,
