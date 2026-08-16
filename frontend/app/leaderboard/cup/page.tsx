@@ -362,22 +362,27 @@ function Expandable({ title, tint, defaultOpen, children }: { title: string; tin
 }
 
 function HowBody() {
-  const lanes = [
-    ["Skill", "your best run in Rhythm, Simon and Stack"],
-    ["Consistency", "play any game on separate days"],
-    ["Referrals", "friends who verify and play"],
-    ["G$ spend", "perks, on a curve"],
+  // Teach the actual math — the labels here match the per-row breakdown
+  // (skill / streak / referrals / spend) so the board reads as self-explaining.
+  const lanes: [string, string, string][] = [
+    ["Skill", "your best", "Your BEST score in Rhythm, Simon and Stack. Only your top run in each counts, so you climb by BEATING your best, not by replaying it."],
+    ["Consistency", "+8 / new day", "Play any game on a new day. Every separate day is +8 points, up to 14 days. This is the steady climb most people miss."],
+    ["Referrals", "+25 / friend", "Each friend who verifies and plays is +25 points. Your username is your code."],
+    ["G$ spend", "small, capped", "Shop items only (revives, match packs) add a small bonus on a curve, capped at 60. Habitats do NOT count toward Cup points."],
   ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {lanes.map(([t, d]) => (
-        <div key={t} style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: T.accent, flexShrink: 0, transform: "translateY(-1px)" }} />
-          <span style={{ fontSize: 12.5, color: T.ink, fontWeight: 700 }}>{t}</span>
-          <span style={{ fontSize: 11.5, color: T.inkSoft }}>{d}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ fontSize: 11.5, color: T.inkSoft, lineHeight: 1.5 }}>Your points add up from four lanes:</div>
+      {lanes.map(([t, pts, d]) => (
+        <div key={t} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 12.5, color: T.ink, fontWeight: 800 }}>{t}</span>
+            <span style={{ fontSize: 10, fontWeight: 800, color: T.accent, background: `${T.accent}1e`, border: `1px solid ${T.accent}44`, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" }}>{pts}</span>
+          </div>
+          <span style={{ fontSize: 11.5, color: T.inkSoft, lineHeight: 1.45 }}>{d}</span>
         </div>
       ))}
-      <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 3, lineHeight: 1.5 }}>Verified players only. Scores are checked server-side, so grinding and bots earn nothing.</div>
+      <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 1, lineHeight: 1.5 }}>Only verified players win prizes. Scores are checked on-chain, so grinding and bots earn nothing.</div>
     </div>
   );
 }
