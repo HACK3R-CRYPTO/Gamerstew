@@ -3094,15 +3094,19 @@ app.get('/api/cup', async (req, res) => {
         }
       } catch (e) { console.warn('cup spend lane:', e?.message || e); }
 
-      // ── Referral lane (season_v1_players.referrer_wallet, windowed) ──
-      // Counts a referral only if the referred wallet verified AND played in-window.
+      // ── Referral lane (season_v1_referrer_intent) ──
+      // The referral link lives in season_v1_referrer_intent — set when a friend
+      // enters your code — which is the SAME table the passport counts. The old
+      // code read season_v1_players.referrer_wallet, a near-dead table (3 rows vs
+      // 20 real referrals), so EVERY player showed 0 referral points all Cup.
+      // Rule is unchanged: a referral counts only when the referred friend is
+      // verified AND played in-window (byPlayer is already window-scoped).
       const refByWallet = new Map();
       try {
-        const { data: joins } = await supabase.from('season_v1_players')
-          .select('wallet, referrer_wallet, joined_at')
-          .gte('joined_at', startIso).lt('joined_at', endIso)
-          .not('referrer_wallet', 'is', null);
-        for (const j of joins || []) {
+        const { data: intents } = await supabase.from('season_v1_referrer_intent')
+          .select('wallet, referrer_wallet')
+          .limit(10000);
+        for (const j of intents || []) {
           const ref = j.referrer_wallet?.toLowerCase();
           const referred = j.wallet?.toLowerCase();
           if (!ref || !referred) continue;
