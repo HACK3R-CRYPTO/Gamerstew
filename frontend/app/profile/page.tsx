@@ -527,7 +527,7 @@ export default function ProfilePage() {
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
                 My passport & referrals
-                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} verified</span>}
+                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} joined</span>}
               </span>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>
                 {chainUsername

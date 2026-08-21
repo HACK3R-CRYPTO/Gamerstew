@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// How many people this wallet has referred. A referral counts when the
-// referred player MINTS their GamePass (mint requires GoodDollar
-// verification) — that's when /api/season/intent writes the first-write-wins
-// row. Not tied to any season event.
+// How many people JOINED through this wallet's code (minted a GamePass via the
+// first-write-wins row in season_v1_referrer_intent). This is a lifetime
+// "joined" count — NOT a live verified count and NOT event-scoped. GoodDollar
+// verification can lapse after mint, so surface this as "joined", never
+// "verified" (event referral POINTS separately require the friend to be
+// verified AND to have played the event — see the Cup referral lane).
 
 export const dynamic = "force-dynamic";
 
