@@ -19,6 +19,7 @@
 //                arena-wide ladder.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
@@ -174,7 +175,16 @@ type UnifiedPastEvent = {
   tertiary?: DetailRow;
   myMedal?: { color: string; medal: string };
   accent: string;
-  raw: SelectedEvent;
+  raw?: SelectedEvent;   // opens a detail modal
+  href?: string;         // OR navigates (the Arena Cup opens its full sealed board)
+};
+
+// Minimal shape of /api/cup needed to render the sealed Arena Cup in the past grid.
+type CupPastData = {
+  phase: string;
+  startsAt: string;
+  endsAt: string;
+  human: { rank: number; wallet: string; username: string | null; verified: boolean; cupPoints: number; prizeRank?: number | null }[];
 };
 
 function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => void }) {
@@ -425,7 +435,9 @@ export default function EventsPage() {
   const [meta, setMeta] = useState<SeasonsMeta | null>(null);
   const [comp, setComp] = useState<CompetitionData | null>(null);
   const [community, setCommunity] = useState<WeeklyChallengeData | null>(null);
+  const router = useRouter();
   const [climb, setClimb] = useState<MarkovClimbData | null>(null);
+  const [cup, setCup] = useState<CupPastData | null>(null); // Arena Cup · shown in PAST once ended
   const [pastSeasons, setPastSeasons] = useState<PastSeasonV1[] | null>(null);
   const [pastCups, setPastCups] = useState<PastCompetition[] | null>(null);
   const [pastChallenges, setPastChallenges] = useState<PastChallenge[] | null>(null);
@@ -461,6 +473,13 @@ export default function EventsPage() {
     fetch("/api/markov-climb", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d) setClimb(d as MarkovClimbData); })
+      .catch(() => {});
+    // Arena Cup · once it ends, /api/cup keeps serving the sealed board. We
+    // push it into the PAST grid below (like the MARKOV climb) so a finished
+    // Cup doesn't vanish from both tabs.
+    fetch("/api/cup", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setCup(d as CupPastData); })
       .catch(() => {});
 
     fetch("/api/season/past", { cache: "no-store" })
@@ -608,9 +627,35 @@ export default function EventsPage() {
         raw: { type: "climb", data: climb },
       });
     }
+    // ─── Sealed Arena Cup ───────────────────────────────────────────────────
+    // Same treatment as the closed climb: once the Cup ends it drops out of the
+    // live tab (EventTeaser hides itself) and belongs here. Tapping it opens the
+    // full sealed board at /leaderboard/cup rather than a modal.
+    if (cup && cup.phase === "ended" && (cup.human?.length ?? 0) > 0) {
+      const champ = cup.human.find(h => h.prizeRank === 1);
+      const second = cup.human.find(h => h.prizeRank === 2);
+      const third = cup.human.find(h => h.prizeRank === 3);
+      const endsAt = safeDate(cup.endsAt);
+      const startsAt = safeDate(cup.startsAt);
+      const myPr = address ? (cup.human.find(h => h.wallet.toLowerCase() === address.toLowerCase())?.prizeRank ?? 0) : 0;
+      const myMedalCup = myPr === 1 ? { color: "#fbbf24", medal: "🥇" } : myPr === 2 ? { color: "#e2e8f0", medal: "🥈" } : myPr === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      out.push({
+        key: "arena-cup-sealed",
+        kind: "cup",
+        sortTs: endsAt ? endsAt.getTime() : 0,
+        title: "ARENA CUP · SEALED",
+        dateRange: fmtDateRange(startsAt, endsAt),
+        primary: champ ? { label: "CHAMPION", name: fmtName(champ.wallet, champ.username), value: `${champ.cupPoints} pts`, tint: "#fbbf24", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.cupPoints} pts`, tint: "#e2e8f0", icon: "🥈" } : undefined,
+        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.cupPoints} pts`, tint: "#f97316", icon: "🥉" } : undefined,
+        myMedal: myMedalCup,
+        accent: "#fde68a",
+        href: "/leaderboard/cup",
+      });
+    }
     out.sort((a, b) => b.sortTs - a.sortTs);
     return out;
-  }, [pastSeasons, pastCups, pastChallenges, climb, address]);
+  }, [pastSeasons, pastCups, pastChallenges, climb, cup, address]);
 
   // ALL-TIME pagination
   const podium = (allEntries ?? []).slice(0, 3);
@@ -732,7 +777,7 @@ export default function EventsPage() {
             )}
             {pastUnified.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-                {pastUnified.map(ev => <PastEventCard key={ev.key} ev={ev} onClick={() => setSelectedEvent(ev.raw)} />)}
+                {pastUnified.map(ev => <PastEventCard key={ev.key} ev={ev} onClick={() => { if (ev.href) router.push(ev.href); else if (ev.raw) setSelectedEvent(ev.raw); }} />)}
               </div>
             )}
           </>
