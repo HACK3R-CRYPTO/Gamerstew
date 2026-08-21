@@ -30,12 +30,17 @@ export default function PassportActions({ address, name, refCode }: { address: s
   // Your referral scoreboard · a referral counts when the friend gets
   // VERIFIED (mints their GamePass) — not tied to any season event.
   const [refCount, setRefCount] = useState<number | null>(null);
+  const [refVerified, setRefVerified] = useState<number | null>(null);
   useEffect(() => {
     if (!isOwner) return;
     let cancelled = false;
     fetch(`/api/ref/count?wallet=${address}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && typeof d?.count === "number") setRefCount(d.count); })
+      .then((d) => {
+        if (cancelled) return;
+        if (typeof d?.count === "number") setRefCount(d.count);
+        if (typeof d?.verified === "number") setRefVerified(d.verified);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isOwner, address]);
@@ -113,7 +118,7 @@ export default function PassportActions({ address, name, refCode }: { address: s
           </button>
           <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
             {refCount !== null && refCount > 0 ? (
-              <span style={{ color: "#86efac" }}>🎉 {refCount} friend{refCount === 1 ? "" : "s"} joined through you{refCode ? <> · your code: <strong>{refCode}</strong></> : null}</span>
+              <span style={{ color: "#86efac" }}>🎉 {refCount} joined through you{refVerified !== null ? <> · <strong>{refVerified} verified now</strong></> : null}{refCode ? <> · code: <strong>{refCode}</strong></> : null}</span>
             ) : refCode ? (
               <>Your code is <strong style={{ color: "#c4b5fd" }}>{refCode}</strong> — a referral counts once your friend verifies</>
             ) : (

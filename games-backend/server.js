@@ -2812,6 +2812,33 @@ async function isVerified(wallet) {
   }
 }
 
+// ─── GET /api/ref/summary/:wallet — honest referral tally ───────────────────
+// "joined"   = friends who minted a GamePass through your code
+//              (season_v1_referrer_intent, a lifetime count).
+// "verified" = how many of those are GoodDollar-verified RIGHT NOW. Verification
+//              lapses after mint, so this is the real number — the passport used
+//              to show the join count mislabelled as "verified", which overstated
+//              it (e.g. 7 shown while only 3 still verify). isVerified is cached,
+//              so repeat referrals across profiles are cheap; result cached 10 min.
+app.get('/api/ref/summary/:wallet', async (req, res) => {
+  const ref = String(req.params.wallet || '').toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(ref)) return res.status(400).json({ error: 'bad wallet' });
+  const cached = cacheGet(`refsum:${ref}`);
+  if (cached) return res.json(cached);
+  try {
+    const { data } = await supabase.from('season_v1_referrer_intent')
+      .select('wallet').ilike('referrer_wallet', ref).limit(10000);
+    const wallets = [...new Set((data || []).map((r) => r.wallet?.toLowerCase()).filter(Boolean))];
+    const flags = await mapLimit(wallets, 12, (w) => isVerified(w));
+    const payload = { joined: wallets.length, verified: flags.filter(Boolean).length };
+    cacheSet(`refsum:${ref}`, payload, 10 * 60 * 1000);
+    res.json(payload);
+  } catch (e) {
+    console.warn('ref summary:', e?.message || e);
+    res.json({ joined: 0, verified: 0 });
+  }
+});
+
 // ─── GET /api/verified-stats — how many real humans, not just pass minters ──
 // The subgraph's totalPlayers counts everyone who ever minted a GamePass. That
 // is NOT the same as GoodDollar-verified humans: a wallet can hold a pass and

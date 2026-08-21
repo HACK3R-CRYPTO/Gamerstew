@@ -1,32 +1,32 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-// How many people JOINED through this wallet's code (minted a GamePass via the
-// first-write-wins row in season_v1_referrer_intent). This is a lifetime
-// "joined" count — NOT a live verified count and NOT event-scoped. GoodDollar
-// verification can lapse after mint, so surface this as "joined", never
-// "verified" (event referral POINTS separately require the friend to be
-// verified AND to have played the event — see the Cup referral lane).
+// Referral tally for a wallet. Proxies the backend, which returns BOTH:
+//   count    = friends who JOINED through your code (lifetime, minted a pass)
+//   verified = how many of those are GoodDollar-verified RIGHT NOW
+// Verification lapses after mint, so `verified` is usually lower than `count` —
+// the passport used to show `count` mislabelled as "verified", overstating it.
+// Event referral POINTS are separate: the Cup requires a friend to be verified
+// AND to have played the event (see the Cup referral lane).
 
 export const dynamic = "force-dynamic";
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 export async function GET(req: Request) {
   const wallet = new URL(req.url).searchParams.get("wallet")?.toLowerCase().trim() ?? "";
   if (!/^0x[0-9a-f]{40}$/.test(wallet)) {
     return NextResponse.json({ error: "wallet required" }, { status: 400 });
   }
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return NextResponse.json({ count: 0 });
+  const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { count } = await supabase
-      .from("season_v1_referrer_intent")
-      .select("wallet", { count: "exact", head: true })
-      .ilike("referrer_wallet", wallet);
-    return NextResponse.json({ count: count ?? 0 });
+    // Server-to-server call has no browser Origin, so the backend origin gate
+    // needs the internal secret.
+    const r = await fetch(`${backend}/api/ref/summary/${wallet}`, {
+      cache: "no-store",
+      headers: { "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+    });
+    if (!r.ok) throw new Error(`backend ${r.status}`);
+    const j = (await r.json()) as { joined?: number; verified?: number };
+    return NextResponse.json({ count: j.joined ?? 0, verified: j.verified ?? 0 });
   } catch {
-    return NextResponse.json({ count: 0 });
+    return NextResponse.json({ count: 0, verified: 0 });
   }
 }

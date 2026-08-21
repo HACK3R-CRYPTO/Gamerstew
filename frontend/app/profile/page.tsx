@@ -237,12 +237,17 @@ export default function ProfilePage() {
 
   // Referral scoreboard · verified-referee count for the passport banner.
   const [refCount, setRefCount] = useState<number | null>(null);
+  const [refVerified, setRefVerified] = useState<number | null>(null);
   useEffect(() => {
-    if (!address) { setRefCount(null); return; }
+    if (!address) { setRefCount(null); setRefVerified(null); return; }
     let cancelled = false;
     fetch(`/api/ref/count?wallet=${address.toLowerCase()}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && typeof d?.count === "number") setRefCount(d.count); })
+      .then((d) => {
+        if (cancelled) return;
+        if (typeof d?.count === "number") setRefCount(d.count);
+        if (typeof d?.verified === "number") setRefVerified(d.verified);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [address]);
@@ -527,7 +532,7 @@ export default function ProfilePage() {
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
                 My passport & referrals
-                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} joined</span>}
+                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} joined{refVerified !== null ? ` · ${refVerified} verified` : ""}</span>}
               </span>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>
                 {chainUsername
