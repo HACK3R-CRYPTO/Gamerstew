@@ -189,6 +189,11 @@ export default function CupPage() {
               </div>
             )}
 
+            {/* Sealed → name every prize winner, not just the amounts. */}
+            {phase === "ended" && data && (
+              <Expandable title="Champions · $150" tint={T.gold} defaultOpen><WinnersBody data={data} /></Expandable>
+            )}
+
             {me ? (
               <Card style={{ borderColor: `${T.accent}55`, background: `radial-gradient(120% 140% at 100% 0%, ${T.accent}22, transparent 55%), ${T.surface}`, padding: "12px 15px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ minWidth: 0 }}>
@@ -383,6 +388,48 @@ function HowBody() {
         </div>
       ))}
       <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 1, lineHeight: 1.5 }}>Only verified players win prizes. Scores are checked on-chain, so grinding and bots earn nothing.</div>
+    </div>
+  );
+}
+
+// Sealed-cup winners · maps every prize slot to who actually won it, with the
+// amount. Players Cup = top-3 by prizeRank + the two crowns; Agent Cup = the
+// top 3 agents. This is the "who won what" the amounts table can't show.
+function WinnersBody({ data }: { data: CupData }) {
+  const byPr = (pr: number) => data.human?.find((r) => r.prizeRank === pr) || null;
+  const nm = (w: { username: string | null; wallet: string } | null | undefined) => (w ? (w.username || short(w.wallet)) : "—");
+
+  const players = (data.humanSplit ?? []).map((s) => {
+    if (s.key === "champion") { const w = byPr(1); return { label: s.label, usd: s.usd, name: nm(w), sub: w ? `${w.cupPoints.toLocaleString()} pts` : "" }; }
+    if (s.key === "second")   { const w = byPr(2); return { label: s.label, usd: s.usd, name: nm(w), sub: w ? `${w.cupPoints.toLocaleString()} pts` : "" }; }
+    if (s.key === "third")    { const w = byPr(3); return { label: s.label, usd: s.usd, name: nm(w), sub: w ? `${w.cupPoints.toLocaleString()} pts` : "" }; }
+    if (s.key === "connector"){ const c = data.crowns?.connector; return { label: s.label, usd: s.usd, name: nm(c), sub: c?.referrals != null ? `${c.referrals} invites` : "" }; }
+    if (s.key === "streak")   { const c = data.crowns?.streak; return { label: s.label, usd: s.usd, name: nm(c), sub: c?.days != null ? `${c.days}/14 days` : "" }; }
+    return { label: s.label, usd: s.usd, name: "—", sub: "" };
+  });
+  const agents = (data.agentSplit ?? []).map((s, i) => {
+    const a = data.agent?.[i];
+    return { label: s.label, usd: s.usd, name: a ? (a.username || short(a.wallet)) : "—", sub: a ? `${a.wins} wins${a.owner ? ` · by ${a.owner.username || short(a.owner.wallet)}` : ""}` : "" };
+  });
+
+  const Group = ({ title, tint, rows }: { title: string; tint: string; rows: { label: string; usd: number; name: string; sub: string }[] }) => (
+    <div>
+      <div style={{ fontSize: 10, color: tint, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>{title}</div>
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "5px 0", borderBottom: `1px solid ${T.hairline}` }}>
+          <span style={{ fontSize: 10.5, color: T.inkSoft, minWidth: 88, flexShrink: 0 }}>{r.label}</span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name === "—" ? <span style={{ color: T.inkSoft }}>—</span> : r.name}{r.sub ? <span style={{ color: T.inkSoft, fontWeight: 500 }}> · {r.sub}</span> : null}</span>
+          <span style={{ fontFamily: T.display, fontSize: 13, color: T.gold, flexShrink: 0 }}>${r.usd}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <Group title="Players Cup" tint={T.green} rows={players} />
+      <Group title="Agent Cup" tint={T.cyan} rows={agents} />
+      <div style={{ fontSize: 10.5, color: T.inkSoft, lineHeight: 1.5 }}>Paid in G$. Congrats to every winner.</div>
     </div>
   );
 }
