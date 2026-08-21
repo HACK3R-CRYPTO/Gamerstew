@@ -199,7 +199,42 @@ const LINES = {
     'my model saw that coming two rounds ago',
     'that was in the forecast. literally',
   ],
+  // ── situational tiers · MARKOV reacts to the actual match state ──
+  suddenDeath: [
+    'sudden death. my favorite dataset',
+    'last round. i priced this in three rounds ago',
+    'one round decides it. i already ran the simulation',
+    'this is where your pattern betrays you',
+  ],
+  playerStreak: [
+    'two in a row. anomaly. correcting now',
+    'hot streak. statistically due for a correction',
+    'you found a seam. i am closing it',
+    'enjoy the variance. it regresses',
+  ],
+  markovStreak: [
+    'this is just me reading a file now',
+    'three straight. you are on rails',
+    'i own this match. you are playing my replay',
+    'every round you confirm the model',
+  ],
+  // {n} = how many exact reads MARKOV has landed this match
+  readEscalation: [
+    'that is {n} reads. open book, cover torn off',
+    'called you {n} times. embarrassing for both of us',
+    '{n} for {n}. change literally anything',
+    '{n} correct predictions. i am not even trying',
+  ],
 };
+
+// Trailing run of the same result at the end of the rounds log.
+function trailingStreak(rounds, result) {
+  let n = 0;
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    if (rounds[i].result === result) n++; else break;
+  }
+  return n;
+}
 
 function pickLine(rand, arr) {
   return arr[Math.floor(rand() * arr.length)];
@@ -258,11 +293,22 @@ class ArenaMatchEngine {
   // the committed seed, so even the bluffing is verifiable post-match.
   _mindGame(s) {
     const p = this.model.predictNext(s.wallet);
-    if (!p) return null;
-    const honest = s.rand() < 0.55;
+    // Honest only when there's a real read AND the coin says so; otherwise
+    // MARKOV bluffs a guess. No read at all => pure bluff (still calls a move),
+    // so the "truth or bluff" mind game is always on, never a blank round.
+    const honest = p && s.rand() < 0.55;
     const shown = honest ? p.move : Math.floor(s.rand() * 3);
+    const move = MOVES[shown];
+    // Framing reflects how well MARKOV actually reads you right now: menace on
+    // the decider, certainty on a strong read, bluster when it's cold.
+    const decider = s.playerWins === WINS_NEEDED - 1 && s.aiWins === WINS_NEEDED - 1;
+    let text;
+    if (decider) text = `last round. i can see ${move} coming`;
+    else if (p && p.confidence >= 0.6) text = `i can already see ${move}`;
+    else if (!p) text = `no read on you yet. i will say ${move}`;
+    else text = `i'm expecting ${move} from you next`;
     return {
-      text: `i'm expecting ${MOVES[shown]} from you next`,
+      text,
       // truth stored server-side only in the seed replay — never sent live
     };
   }
@@ -296,13 +342,32 @@ class ArenaMatchEngine {
 
     s.rounds.push({ playerMove, aiMove, result, mode: decision.mode, called });
 
-    const line =
-      called && result === 'loss' ? pickLine(s.rand, LINES.calledIt)
-      : result === 'win' ? pickLine(s.rand, LINES.roundLoss)
-      : result === 'loss' ? pickLine(s.rand, LINES.roundWin)
-      : pickLine(s.rand, LINES.roundTie);
-
     const suddenDeath = s.playerWins === WINS_NEEDED - 1 && s.aiWins === WINS_NEEDED - 1;
+    const streak = trailingStreak(s.rounds, result);
+
+    // Situational voice — the big moments get flagged (emphasis) so the client
+    // speaks them; ordinary rounds fall back to the generic pools and stay
+    // text-only, so MARKOV's voice lands on beats that matter, not every round.
+    let line, emphasis = false;
+    if (suddenDeath) {
+      line = pickLine(s.rand, LINES.suddenDeath); emphasis = true;
+    } else if (called && result === 'loss') {
+      const n = s.calledCount || 0;
+      line = n >= 3
+        ? pickLine(s.rand, LINES.readEscalation).replace(/\{n\}/g, String(n))
+        : pickLine(s.rand, LINES.calledIt);
+      emphasis = true;
+    } else if (result === 'win' && streak >= 2) {
+      line = pickLine(s.rand, LINES.playerStreak); emphasis = true;
+    } else if (result === 'loss' && streak >= 2) {
+      line = pickLine(s.rand, LINES.markovStreak); emphasis = true;
+    } else if (result === 'win') {
+      line = pickLine(s.rand, LINES.roundLoss);
+    } else if (result === 'loss') {
+      line = pickLine(s.rand, LINES.roundWin);
+    } else {
+      line = pickLine(s.rand, LINES.roundTie);
+    }
 
     const response = {
       round: s.rounds.length,
@@ -315,6 +380,7 @@ class ArenaMatchEngine {
       mindGame: this._mindGame(s),
       score: { player: s.playerWins, ai: s.aiWins, ties: s.ties },
       markovLine: line,
+      emphasis, // client voices this round's line when true (big moments)
     };
 
     // Match end: someone reached the win target, or bo5 rounds exhausted

@@ -39,6 +39,7 @@ export type RoundResult = {
   mindGame?: { text: string } | null; // MARKOV's pre-round psych-out for the next round
   score: { player: number; ai: number; ties: number };
   markovLine: string;
+  emphasis?: boolean;        // this round's line is a big moment · client voices it
   final?: {
     outcome: 'player_won' | 'ai_won' | 'tie';
     seed: string;

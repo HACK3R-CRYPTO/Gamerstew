@@ -190,8 +190,37 @@ const LINES = {
     "my model saw that coming two rounds ago",
     "that was in the forecast. literally",
   ],
+  suddenDeath: [
+    "sudden death. my favorite dataset",
+    "last round. i priced this in three rounds ago",
+    "one round decides it. i already ran the simulation",
+    "this is where your pattern betrays you",
+  ],
+  playerStreak: [
+    "two in a row. anomaly. correcting now",
+    "hot streak. statistically due for a correction",
+    "you found a seam. i am closing it",
+    "enjoy the variance. it regresses",
+  ],
+  markovStreak: [
+    "this is just me reading a file now",
+    "three straight. you are on rails",
+    "i own this match. you are playing my replay",
+    "every round you confirm the model",
+  ],
+  readEscalation: [
+    "that is {n} reads. open book, cover torn off",
+    "called you {n} times. embarrassing for both of us",
+    "{n} for {n}. change literally anything",
+    "{n} correct predictions. i am not even trying",
+  ],
 };
 const pickLine = (rand: () => number, arr: string[]) => arr[Math.floor(rand() * arr.length)];
+const trailingStreak = (rounds: { result: string }[], result: string) => {
+  let n = 0;
+  for (let i = rounds.length - 1; i >= 0; i--) { if (rounds[i].result === result) n++; else break; }
+  return n;
+};
 
 // ─── Demo session ────────────────────────────────────────────────────────────
 // The model persists ACROSS the guest's demo matches, exactly like the server
@@ -288,20 +317,44 @@ export function throwDemoMove(matchId: string, playerMove: number): RoundResult 
 
   s.rounds.push({ playerMove, aiMove, result, mode: decision.mode, called });
 
-  const line =
-    called && result === "loss" ? pickLine(s.rand, LINES.calledIt)
-      : result === "win" ? pickLine(s.rand, LINES.roundLoss)
-        : result === "loss" ? pickLine(s.rand, LINES.roundWin)
-          : pickLine(s.rand, LINES.roundTie);
+  const suddenDeath = s.playerWins === WINS_NEEDED - 1 && s.aiWins === WINS_NEEDED - 1;
+  const streak = trailingStreak(s.rounds, result);
+
+  // Situational voice (mirrors backend): big moments get flagged so the client
+  // speaks them; ordinary rounds stay generic + text-only.
+  let line: string, emphasis = false;
+  if (suddenDeath) {
+    line = pickLine(s.rand, LINES.suddenDeath); emphasis = true;
+  } else if (called && result === "loss") {
+    const n = s.calledCount || 0;
+    line = n >= 3 ? pickLine(s.rand, LINES.readEscalation).replace(/\{n\}/g, String(n)) : pickLine(s.rand, LINES.calledIt);
+    emphasis = true;
+  } else if (result === "win" && streak >= 2) {
+    line = pickLine(s.rand, LINES.playerStreak); emphasis = true;
+  } else if (result === "loss" && streak >= 2) {
+    line = pickLine(s.rand, LINES.markovStreak); emphasis = true;
+  } else if (result === "win") {
+    line = pickLine(s.rand, LINES.roundLoss);
+  } else if (result === "loss") {
+    line = pickLine(s.rand, LINES.roundWin);
+  } else {
+    line = pickLine(s.rand, LINES.roundTie);
+  }
 
   const prediction = model.predictNext();
   const readLevel = !prediction
     ? 8
     : Math.min(97, Math.round(prediction.confidence * (prediction.source === "markov2" ? 1 : prediction.source === "markov1" ? 0.8 : 0.55) * 100));
 
-  const mindGame = prediction
-    ? { text: `i'm expecting ${MOVES[s.rand() < 0.55 ? prediction.move : Math.floor(s.rand() * 3)]} from you next` }
-    : null;
+  // Read-aware psych (mirrors backend _mindGame): menace on the decider,
+  // certainty on a strong read, bluster when cold. Never a blank round.
+  const honest = prediction && s.rand() < 0.55;
+  const psychMove = MOVES[honest ? prediction!.move : Math.floor(s.rand() * 3)];
+  const mindText = suddenDeath ? `last round. i can see ${psychMove} coming`
+    : prediction && prediction.confidence >= 0.6 ? `i can already see ${psychMove}`
+    : !prediction ? `no read on you yet. i will say ${psychMove}`
+    : `i'm expecting ${psychMove} from you next`;
+  const mindGame = { text: mindText };
 
   const res: RoundResult = {
     round: s.rounds.length,
@@ -310,10 +363,11 @@ export function throwDemoMove(matchId: string, playerMove: number): RoundResult 
     result,
     called,
     readLevel,
-    suddenDeath: s.playerWins === WINS_NEEDED - 1 && s.aiWins === WINS_NEEDED - 1,
+    suddenDeath,
     mindGame,
     score: { player: s.playerWins, ai: s.aiWins, ties: s.ties },
     markovLine: line,
+    emphasis,
   };
 
   const decided = s.playerWins >= WINS_NEEDED || s.aiWins >= WINS_NEEDED;
