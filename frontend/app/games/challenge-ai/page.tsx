@@ -41,6 +41,7 @@ import {
   playCalledIt, playSuddenDeath, playWhooshIn,
 } from "@/hooks/useAppAudio";
 import { startArenaMatch, throwArenaMove, getArenaLadder, getArenaMatchReceipt, type RoundResult, type LadderData, type RefillOffer } from "@/app/actions/arena";
+import { useMarkovVoice, rankTier, intro as markovIntro } from "@/hooks/useMarkovVoice";
 import { grantPerk } from "@/app/actions/perks";
 import { usePerks } from "@/hooks/usePerks";
 import { getPerk } from "@/lib/perks";
@@ -182,6 +183,9 @@ export default function ChallengeAiPage() {
   const [phase, setPhase] = useState<Phase>("lobby");
   const [pet, setPet] = useState<PetStage>(PET_STAGES[0]!);
   const { record, update: updateRecord } = useLocalRecord();
+  // MARKOV's voice · speaks its existing taunt text at 3+ moments per match.
+  const { speak: markovSpeak, stop: markovStop } = useMarkovVoice();
+  const [level, setLevel] = useState(1); // player level · feeds the rank tier
 
   // Match state
   const [matchId, setMatchId] = useState<string | null>(null);
@@ -214,7 +218,7 @@ export default function ChallengeAiPage() {
     const base = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
     fetch(`${base}/api/user/${address}`)
       .then((r) => r.json())
-      .then((d) => setPet(petForLevel(Number(d?.level) || 1)))
+      .then((d) => { const lv = Number(d?.level) || 1; setLevel(lv); setPet(petForLevel(lv)); })
       .catch(() => {});
   }, [address]);
 
@@ -229,6 +233,20 @@ export default function ChallengeAiPage() {
       if (typeof l.remainingToday === "number") setRemaining(l.remainingToday);
     }).catch(() => {});
   }, [phase, address]);
+
+  // ── Voice · the "truth or bluff" psych-out ──
+  // The moment a round arms, MARKOV shows a line predicting your throw (honest
+  // ~55% of the time, a bluff otherwise). That is its signature mind game and
+  // it lands hardest spoken, so we voice it right as it appears on screen —
+  // low and slow, like it's reading you. Speaking cancels any prior line, so it
+  // never overlaps the round or match taunts.
+  useEffect(() => {
+    if (phase === "match" && beat === "armed" && lastRound?.mindGame?.text) {
+      // Speak the full on-screen line including the "truth or bluff?" tag (which
+      // is layout decoration on the text, so we append it here to match).
+      markovSpeak(`${lastRound.mindGame.text}. Truth or bluff?`, { pitch: 0.55, rate: 0.9 });
+    }
+  }, [phase, beat, lastRound, markovSpeak]);
 
   // On-chain receipt polling — once a REAL match ends (result screen, not the
   // guest demo), poll the backend for the GamePass tx it wrote fire-and-forget.
@@ -338,11 +356,21 @@ export default function ChallengeAiPage() {
     setBeat("banner");
     setPhase("vs");
     playFightSlam();
+    // ── Voice moment 1/3+ · rank-aware opening taunt ──
+    const introRank = ladder?.me?.rank
+      ?? (ladder && address ? ladder.top.find((e) => e.wallet === address.toLowerCase())?.rank : null)
+      ?? null;
+    const tier = rankTier(introRank, level);
+    markovStop();
+    later(() => markovSpeak(
+      markovIntro(tier, introRank, record.w + record.l + record.t),
+      tier === "rookie" ? { pitch: 0.55, rate: 1.0 } : undefined,
+    ), 750);
     later(() => {
       setPhase("match");
       later(() => setBeat("armed"), BANNER_MS);
     }, 1700);
-  }, [address, authed, busy, later]);
+  }, [address, authed, busy, later, ladder, level, record, markovSpeak, markovStop]);
 
   // ─── Throw: fire request + run the shake in parallel ───────────────────────
   const throwMove = useCallback(
@@ -383,6 +411,13 @@ export default function ChallengeAiPage() {
           else playRoundTie();
         }, 120);
         if (res.called) later(() => playCalledIt(), 300);
+        // ── Voice · big-moment reactions. The backend/demo flag the lines worth
+        // speaking (a read, a streak, sudden death) as `emphasis`; ordinary
+        // rounds stay text-only so the per-round psych-out (mindGame) carries
+        // the chatter and MARKOV's voice lands on beats that matter. ──
+        if (res.markovLine && (res.emphasis || res.called)) {
+          later(() => markovSpeak(res.markovLine), 520);
+        }
 
         if (res.final) {
           const fin = res.final;
@@ -398,6 +433,9 @@ export default function ChallengeAiPage() {
             if (fin.outcome === "player_won") playWin();
             else if (fin.outcome === "ai_won") playLose();
             else playTie();
+            // ── Voice moment 3/3+ · MARKOV's closing line. Rides after the
+            // stinger; louder machine when it wins, flatter when it loses. ──
+            if (fin.matchLine) later(() => markovSpeak(fin.matchLine, fin.outcome === "ai_won" ? { pitch: 0.45 } : { pitch: 0.6 }), 650);
             throwLock.current = false;
           }, IMPACT_HOLD_MS);
         } else {
@@ -526,7 +564,7 @@ export default function ChallengeAiPage() {
             score={score}
             record={record}
             onRematch={startMatch}
-            onLobby={() => setPhase("lobby")}
+            onLobby={() => { markovStop(); setPhase("lobby"); }}
             busy={busy}
             isGuest={!authed && !authPending}
             needsMint={!!needsMint}

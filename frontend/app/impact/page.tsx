@@ -72,6 +72,11 @@ const PERKS = { purchases: 617, spendG: 6772, dd2SpendG: 3766 };
 // Surprise loyalty payout to the 5 most consistent players (one-off, kept out
 // of the recurring economy so it doesn't distort the flow figures).
 const CONSISTENCY = { players: 5, poolG: 320000 };
+// Community pool · the recurring games-milestone pool. When the community hits
+// the games target it unlocks and pays every verified contributor their share.
+// Last round: 105,000 G$ to 15 verified players, sent on-chain (verified via
+// the disperse tx on Celo). Not placement-based — everyone who played + verified.
+const COMMUNITY_POOL = { paidG: 105000, players: 15 };
 // GoodDollar-verified humans · fallback only. The live figure comes from
 // /api/verified-stats, which checks isWhitelisted on-chain for every player —
 // the true verified set, not just GamePass minters. This floor matches the
@@ -259,6 +264,7 @@ export default function ImpactPage() {
   const gamesC = useCountUp(games);
   const spendC = useCountUp(perkSpendG);
   const poolC = useCountUp(CONSISTENCY.poolG);
+  const communityC = useCountUp(COMMUNITY_POOL.paidG);
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
@@ -424,8 +430,28 @@ export default function ImpactPage() {
           </div>
         </Card>
 
-        {/* ── Arena Cup · live event impact ── */}
-        {cup && cup.phase === "live" && (
+        {/* ── community pool payout ── */}
+        <Card delay={375} style={{
+          display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16,
+          alignItems: isDesktop ? "center" : "flex-start", position: "relative", overflow: "hidden",
+          background: `radial-gradient(120% 140% at 0% 100%, ${T.green}22 0%, transparent 55%), ${T.surface}`,
+          borderColor: `${T.green}33`,
+        }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+            <Eyebrow tint={T.green}>Community pool · paid out</Eyebrow>
+            <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>The whole community played, the whole community got paid</span>
+            <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
+              A shared pool that unlocks when the community hits its games target. The last round paid {fmtG(COMMUNITY_POOL.paidG)} G$ straight to {COMMUNITY_POOL.players} verified players&apos; wallets — no placement, no gatekeeping, everyone who showed up and verified got a share.
+            </span>
+          </div>
+          <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
+            <div style={{ fontFamily: T.display, fontSize: 46, color: T.green, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.green}55` }}>{fmtG(communityC)}</div>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>G$ TO VERIFIED PLAYERS</div>
+          </div>
+        </Card>
+
+        {/* ── Arena Cup · live OR just-finished event impact ── */}
+        {cup && (cup.phase === "live" || cup.phase === "ended") && (
           <Card delay={390} style={{
             display: "flex", flexDirection: "column", gap: 14, position: "relative", overflow: "hidden",
             background: `radial-gradient(130% 150% at 100% 0%, ${T.gold}22 0%, transparent 55%), ${T.surface}`,
@@ -433,15 +459,17 @@ export default function ImpactPage() {
           }}>
             <div style={{ display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16, alignItems: isDesktop ? "center" : "flex-start" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                <Eyebrow tint={T.gold}>Arena Cup · live now</Eyebrow>
-                <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>$150 in G$ to players and their AIs</span>
+                <Eyebrow tint={T.gold}>Arena Cup · {cup.phase === "ended" ? "just finished" : "live now"}</Eyebrow>
+                <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>$150 in G$ {cup.phase === "ended" ? "went to players and their AIs" : "to players and their AIs"}</span>
                 <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
-                  A two-week event routing $150 in G$ to the top verified players and, for the first time, to the AI agents they deploy to fight MARKOV. Skill decides it, not grinding. Supported by GoodAgents.
+                  {cup.phase === "ended"
+                    ? "A two-week event that routed $150 in G$ to the top verified players and, for the first time, to the AI agents they deployed to fight MARKOV. Skill decided it, not grinding. Supported by GoodAgents."
+                    : "A two-week event routing $150 in G$ to the top verified players and, for the first time, to the AI agents they deploy to fight MARKOV. Skill decides it, not grinding. Supported by GoodAgents."}
                 </span>
               </div>
               <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
                 <div style={{ fontFamily: T.display, fontSize: 46, color: T.gold, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.gold}55` }}>$150</div>
-                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>IN G$ ON THE LINE</div>
+                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>{cup.phase === "ended" ? "IN G$ PAID OUT" : "IN G$ ON THE LINE"}</div>
               </div>
             </div>
             {/* live participation strip */}

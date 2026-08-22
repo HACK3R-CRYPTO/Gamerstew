@@ -114,6 +114,19 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Public read-only stats · the /impact page (and partners) read these. They're
+  // cached, non-sensitive aggregates — the same numbers shown publicly on-site —
+  // so they bypass the origin/secret gate with permissive CORS. Without this the
+  // frontend's server-side fetch (no browser origin) hit the secret branch below
+  // and, when the prod secret wasn't wired, got a 403 → the page fell back to a
+  // stale hardcoded verified count instead of the live on-chain figure.
+  if (req.path === '/api/verified-stats') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
   if (!origin) {
     if (req.headers['x-internal-secret'] === INTERNAL_SECRET) return next();
     return res.status(403).json({ error: 'Forbidden' });
