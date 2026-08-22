@@ -50,25 +50,24 @@ const KEYFRAMES = `
 `;
 
 // ─── pinned baselines · each traceable on-chain ───────────────────────────
-// EPOCH 3 = Demo Day 2 → Demo Day 3 (Jul 29 → Aug 11). Current epoch momentum
-// runs from the DD2 snapshot (frozen) to live now — but we KEEP the full track
-// (DD1 → DD2 → now) on the page so the progression across every demo day stays
-// visible for analysis.
-// Demo Day 1 snapshot (Jul 15) — kept for the full historical track.
+// EPOCH 4 = Demo Day 3 → Demo Day 4. Current epoch momentum runs from the DD3
+// snapshot (frozen from chain at DD3) to live now — and we KEEP the full track
+// (DD1 → DD2 → DD3 → now) on the page so progression across every demo day
+// stays visible for analysis.
+// Demo Day 1 snapshot (Jul 15) — historical track.
 const DD1 = { players: 227, games: 12483, ubi: 385, perkSpendG: 0 };
-// Demo Day 2 snapshot (Jul 28) — the current-epoch baseline.
-const DD2 = { players: 392, games: 14416, ubi: 1217 };
+// Demo Day 2 snapshot (Jul 28) — historical track.
+const DD2 = { players: 392, games: 14416, ubi: 1217, perkSpendG: 3766 };
+// Demo Day 3 snapshot (Aug 11) — the current-epoch baseline, frozen from the
+// subgraph on the day. Includes Epoch 3's one-time 10,000 G$ habitat unlock
+// (Aug 6) — baked into the baseline so Epoch-4 deltas are purely organic.
+// Chain state at Demo Day 3 (Aug 11, 2026 15:00 UTC · block 74559642).
+const DD3 = { players: 487, games: 20448, ubi: 13029, perkSpendG: 12722, perkPurchases: 1821 };
 // "Now" fallback — used only if the live subgraph fetch fails, so the page
 // never renders empty. Live values override these on load.
-const NOW_FALLBACK = { players: 455, games: 17101, ubi: 11739 };
-// One-off this epoch: a single ~50k G$ habitat unlock on Aug 6 sent 10,000 G$
-// to UBI (verified on-chain: DailyStat 2026-08-06, 1 habitatUnlock, 10,000 G$;
-// every other Epoch-3 day = 0). It's real G$ but NOT organic momentum, so we
-// separate it from the epoch growth story rather than headline it as "10x".
-const HABITAT_ONE_OFF_UBI = 10000;
-// Perk shop · perk spend derived from perkShopStat.totalUbiG (20% of spend
-// routes to UBI): ~1,354 G$ UBI ⇒ ~6,772 G$ spend. DD2 spend was 3,766 G$.
-const PERKS = { purchases: 617, spendG: 6772, dd2SpendG: 3766 };
+const NOW_FALLBACK = { players: DD3.players, games: DD3.games, ubi: DD3.ubi };
+// Perk shop fallbacks (live perkShopStat overrides on load).
+const PERKS = { purchases: DD3.perkPurchases, spendG: DD3.perkSpendG };
 // Surprise loyalty payout to the 5 most consistent players (one-off, kept out
 // of the recurring economy so it doesn't distort the flow figures).
 const CONSISTENCY = { players: 5, poolG: 320000 };
@@ -150,13 +149,13 @@ function KPI({ label, value, unit, tint, sub, delay }: { label: string; value: s
   );
 }
 
-// Full-track momentum row: DD1 → DD2 → now, plus this-epoch Δ. The bar keeps
-// the two-tone read — dim = where we stood at the start of THIS epoch (DD2),
-// bright = growth added since. basePct = DD2 / current.
-function MomentumRow({ label, dd1, dd2, now, delta, tint, basePct }: { label: string; dd1: string; dd2: string; now: string; delta: string; tint: string; basePct: number }) {
+// Full-track momentum row: DD1 → DD2 → DD3 → now, plus this-epoch Δ. The bar
+// keeps the two-tone read — dim = where we stood at the start of THIS epoch
+// (DD3), bright = growth added since. basePct = DD3 / current.
+function MomentumRow({ label, dd1, dd2, dd3, now, delta, tint, basePct }: { label: string; dd1: string; dd2: string; dd3: string; now: string; delta: string; tint: string; basePct: number }) {
   const clamped = Math.max(0, Math.min(100, basePct));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.55fr 0.55fr 0.7fr 0.6fr", alignItems: "center", gap: 6, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 0.45fr 0.45fr 0.5fr 0.65fr 0.55fr", alignItems: "center", gap: 6, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 700 }}>{label}</span>
         <div className="impact-barfill" style={{ display: "flex", height: 6, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
@@ -164,8 +163,9 @@ function MomentumRow({ label, dd1, dd2, now, delta, tint, basePct }: { label: st
           <div style={{ flex: 1, background: tint, boxShadow: `0 0 12px ${tint}99` }} />
         </div>
       </div>
-      <span style={{ fontFamily: T.display, fontSize: 13, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd1}</span>
-      <span style={{ fontFamily: T.display, fontSize: 14, color: T.inkDim, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd2}</span>
+      <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd1}</span>
+      <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd2}</span>
+      <span style={{ fontFamily: T.display, fontSize: 14, color: T.inkDim, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd3}</span>
       <span style={{ fontFamily: T.display, fontSize: 17, color: T.ink, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{now}</span>
       <span style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: tint, textAlign: "right" }}>{delta}</span>
     </div>
@@ -239,14 +239,12 @@ export default function ImpactPage() {
   const perkSpendG = flow?.perkSpendG ?? perks?.perkSpendG ?? PERKS.spendG;
   const perkPurchases = flow?.perkPurchases ?? perks?.perkPurchases ?? PERKS.purchases;
 
-  // Epoch-3 momentum is measured from the Demo Day 2 baseline.
-  const playersDelta = Math.round(((players - DD2.players) / DD2.players) * 100);
-  const gamesDelta = games - DD2.games;
-  // Organic UBI = total minus the one-off habitat unlock, so the momentum
-  // story reflects play, not a single large transaction. Clamped to baseline.
-  const organicUbi = Math.max(DD2.ubi, ubi - HABITAT_ONE_OFF_UBI);
-  const organicUbiDelta = Math.round(((organicUbi - DD2.ubi) / DD2.ubi) * 100);
-  const oneOffPresent = ubi - organicUbi >= HABITAT_ONE_OFF_UBI - 1;
+  // Epoch-4 momentum is measured from the Demo Day 3 baseline. Epoch 3's
+  // one-time 10,000 G$ habitat unlock is baked into DD3.ubi, so every delta
+  // below is purely organic — no special-casing needed this epoch.
+  const playersDelta = Math.round(((Math.max(players, DD3.players) - DD3.players) / DD3.players) * 100);
+  const gamesDelta = Math.max(0, games - DD3.games);
+  const ubiDelta = Math.round(((Math.max(ubi, DD3.ubi) - DD3.ubi) / DD3.ubi) * 100);
 
   // Flow split · of every G$ spent on a perk, ~20% routes to the GoodDollar UBI pool
   // UBI and ~80% goes to the treasury that funds operations.
@@ -275,7 +273,7 @@ export default function ImpactPage() {
 
         {/* ── header ── */}
         <div className="impact-reveal">
-          <Eyebrow tint={T.accent}>The G$ Economy · Epoch 3</Eyebrow>
+          <Eyebrow tint={T.accent}>The G$ Economy · Epoch 4</Eyebrow>
           <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 38 : 28, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em", lineHeight: 1.04, textWrap: "balance" } as React.CSSProperties}>
             Where real G$ moves in the arena
           </h1>
@@ -300,11 +298,11 @@ export default function ImpactPage() {
               <span style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.accent }}>G$</span>
             </div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, padding: "5px 12px", borderRadius: 999, background: `${T.accent}1f`, border: `1px solid ${T.accent}55` }}>
-              <span style={{ fontFamily: T.display, fontSize: 13, color: T.accent }}>EPOCH 3</span>
-              <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>Demo Day 2 → Demo Day 3</span>
+              <span style={{ fontFamily: T.display, fontSize: 13, color: T.accent }}>EPOCH 4</span>
+              <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>Demo Day 3 → Demo Day 4</span>
             </div>
             <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-              Cumulative GoodDollar in the UBI pool — funded by play, not by us.{oneOffPresent ? " Includes a one-time 10,000 G$ habitat unlock (Aug 6); organic perk UBI grew " + fmtG(organicUbi - DD2.ubi) + " G$ this epoch." : ""}
+              Cumulative GoodDollar in the UBI pool — funded by play, not by us. Epoch-4 growth is measured from the Demo Day 3 snapshot, all organic.
             </p>
           </div>
           {/* inline supporting stats */}
@@ -330,29 +328,24 @@ export default function ImpactPage() {
 
         {/* ── epoch momentum ── */}
         <Card delay={240}>
-          <Eyebrow>Momentum · Demo Day 1 → 2 → 3</Eyebrow>
+          <Eyebrow>Momentum · Demo Day 1 → 2 → 3 → 4</Eyebrow>
           <div style={{ marginTop: 4, marginBottom: 10 }}>
             <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>The full track</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.55fr 0.55fr 0.7fr 0.6fr", gap: 6, paddingBottom: 6 }}>
-            {["Metric", "DD1", "DD2", "Now", "Δ ep3"].map((h, i) => (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 0.45fr 0.45fr 0.5fr 0.65fr 0.55fr", gap: 6, paddingBottom: 6 }}>
+            {["Metric", "DD1", "DD2", "DD3", "Now", "Δ ep4"].map((h, i) => (
               <span key={h} style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
             ))}
           </div>
-          <MomentumRow label="Players" dd1={fmtInt(DD1.players)} dd2={fmtInt(DD2.players)} now={fmtInt(players)} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD2.players / players) * 100} />
-          <MomentumRow label="Games on-chain" dd1={fmtG(DD1.games)} dd2={fmtG(DD2.games)} now={fmtG(games)} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD2.games / games) * 100} />
-          <MomentumRow label="Perk spend" dd1="—" dd2={fmtG(PERKS.dd2SpendG)} now={fmtG(perkSpendG)} delta={`+${Math.round(((perkSpendG - PERKS.dd2SpendG) / PERKS.dd2SpendG) * 100)}%`} tint={T.amber} basePct={(PERKS.dd2SpendG / perkSpendG) * 100} />
-          <MomentumRow label="G$ to UBI · organic" dd1={fmtG(DD1.ubi)} dd2={fmtG(DD2.ubi)} now={fmtG(organicUbi)} delta={`+${organicUbiDelta}%`} tint={T.accent} basePct={(DD2.ubi / organicUbi) * 100} />
+          <MomentumRow label="Players" dd1={fmtInt(DD1.players)} dd2={fmtInt(DD2.players)} dd3={fmtInt(DD3.players)} now={fmtInt(Math.max(players, DD3.players))} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD3.players / Math.max(players, DD3.players)) * 100} />
+          <MomentumRow label="Games on-chain" dd1={fmtG(DD1.games)} dd2={fmtG(DD2.games)} dd3={fmtG(DD3.games)} now={fmtG(Math.max(games, DD3.games))} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD3.games / Math.max(games, DD3.games)) * 100} />
+          <MomentumRow label="Perk spend" dd1="—" dd2={fmtG(DD2.perkSpendG)} dd3={fmtG(DD3.perkSpendG)} now={fmtG(Math.max(perkSpendG, DD3.perkSpendG))} delta={`+${Math.round(((Math.max(perkSpendG, DD3.perkSpendG) - DD3.perkSpendG) / DD3.perkSpendG) * 100)}%`} tint={T.amber} basePct={(DD3.perkSpendG / Math.max(perkSpendG, DD3.perkSpendG)) * 100} />
+          <MomentumRow label="G$ to UBI" dd1={fmtG(DD1.ubi)} dd2={fmtG(DD2.ubi)} dd3={fmtG(DD3.ubi)} now={fmtG(Math.max(ubi, DD3.ubi))} delta={`+${ubiDelta}%`} tint={T.accent} basePct={(DD3.ubi / Math.max(ubi, DD3.ubi)) * 100} />
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontFamily: T.body, fontSize: 11.5, color: T.inkSoft }}>
-              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, opacity: 0.35 }} /> baseline (DD2)
+              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, opacity: 0.35 }} /> baseline (DD3)
               <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, marginLeft: 8 }} /> growth this epoch
             </span>
-            {oneOffPresent && (
-              <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
-                Plus one-time: a single 10,000 G$ habitat unlock landed Aug 6 (in the cumulative total above, kept out of the organic line so momentum reflects play).
-              </span>
-            )}
           </div>
         </Card>
 
