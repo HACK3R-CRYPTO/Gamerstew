@@ -15,6 +15,7 @@
 //   require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validator, isVerified, requireSecret });
 
 const { ethers } = require('ethers');
+const { gql } = require('./subgraph');
 
 const DUEL_ESCROW_ADDRESS = (process.env.DUEL_ESCROW_ADDRESS || '').trim();
 
@@ -24,10 +25,52 @@ const DUEL_ABI = [
   'function getPlayers(uint256) view returns (address[])',
   'function getRoom(uint256) view returns (tuple(address creator,uint256 stake,uint256 seed,uint256 targetScore,uint8 gameType,uint16 capacity,uint16 feeBps,bool useAllowlist,uint8 status,uint64 createdAt,uint64 deadline,bytes32 joinCodeHash,address[] players))',
   'function resolveRoom(uint256 id, uint256[] scores)',
+  'function refundAll(uint256 id)',
 ];
 
 const STATUS = ['open', 'resolved', 'refunded'];
 const ZERO_HASH = '0x' + '0'.repeat(64);
+
+// Cross-game normalisation (same scale the Arena Cup uses), so a room spanning
+// several games is fair: a player's room score = Σ floor(bestRun_game / divisor).
+const DUEL_DIVISOR = { 0: 100, 1: 20, 2: 5, 3: 20 };
+
+// Best validated run per (player, game) in a window, from the subgraph (the same
+// immutable Score rows the Cup reads). Returns Map(playerLower -> Map(game -> best)).
+async function bestRunsInWindow(players, games, startSec, endSec) {
+  const out = new Map();
+  if (!players.length || !games.length || endSec <= startSec) return out;
+  try {
+    const data = await gql(
+      `query($p:[String!],$g:[Int!],$s:BigInt!,$e:BigInt!){
+        scores(first:1000, where:{ player_in:$p, gameType_in:$g, blockTimestamp_gte:$s, blockTimestamp_lt:$e }){
+          player{ id } gameType score
+        }
+      }`,
+      { p: players, g: games, s: String(startSec), e: String(endSec) },
+    );
+    for (const row of (data && data.scores) || []) {
+      const w = row.player.id.toLowerCase();
+      const g = Number(row.gameType);
+      const sc = Number(row.score);
+      if (!out.has(w)) out.set(w, new Map());
+      const m = out.get(w);
+      if (!m.has(g) || sc > m.get(g)) m.set(g, sc);
+    }
+  } catch (e) { console.warn('duel bestRuns:', e?.message || e); }
+  return out;
+}
+
+// A player's normalised room score across the room's games.
+function normalisedScore(bestByGame, games) {
+  if (!bestByGame) return 0;
+  let total = 0;
+  for (const g of games) {
+    const best = bestByGame.get(g) || 0;
+    total += Math.floor(best / (DUEL_DIVISOR[g] || 20));
+  }
+  return total;
+}
 
 function registerDuelRoutes(app, deps) {
   const { supabase, provider, validator, requireSecret } = deps;
@@ -148,44 +191,94 @@ function registerDuelRoutes(app, deps) {
     }
   });
 
-  // ── POST /api/duel/resolve/:id · validator submits the scoreboard ──
-  // Internal (requireSecret). Reads each participant's validated best score in
-  // on-chain player order, submits resolveRoom, then mirrors the result +
-  // updates the head-to-head rivalry for 2-player duels.
+  // ── Resolve a room · compute normalised scores from the subgraph, pay out ──
+  // The player just plays normally (their runs are recorded on-chain and
+  // indexed), so there's no separate "duel mode": here we read each player's
+  // best runs in the room's games during the room window, normalise across
+  // games, and submit the scoreboard. If nobody scored, refund instead of
+  // handing the pot to an arbitrary entrant. Returns a small status object.
+  async function resolveRoomById(id) {
+    if (!writeContract) return { skip: 'no_validator' };
+    const r = await readContract.getRoom(id);
+    if (r.creator === ethers.ZeroAddress) return { skip: 'no_room' };
+    if (Number(r.status) !== 0) return { skip: 'not_open' };
+    const players = r.players.map((p) => p.toLowerCase());
+    if (players.length < 2) return { skip: 'need_2' };
+    const nowSec = Math.floor(Date.now() / 1000);
+    const deadline = Number(r.deadline);
+    const resolvable = nowSec > deadline || players.length === Number(r.capacity);
+    if (!resolvable) return { skip: 'still_live' };
+
+    // The room's games (off-chain set, else the single on-chain game).
+    const { data: mirror } = await supabase.from('duel_rooms').select('games').eq('id', id).maybeSingle();
+    const games = (mirror && Array.isArray(mirror.games) && mirror.games.length)
+      ? mirror.games.map(Number) : [Number(r.gameType)];
+
+    // Score window: the room's lifetime, capped at now.
+    const startSec = Number(r.createdAt);
+    const endSec = Math.min(nowSec, deadline) + (players.length === Number(r.capacity) && nowSec <= deadline ? 1 : 0);
+    const best = await bestRunsInWindow(players, games, startSec, Math.max(startSec + 1, endSec));
+    const scoresNum = players.map((w) => normalisedScore(best.get(w), games));
+
+    // Nobody posted a score → refund everyone rather than crown a non-player.
+    if (scoresNum.every((s) => s === 0)) {
+      const tx = await writeContract.refundAll(id);
+      const rc = await tx.wait();
+      await supabase.from('duel_rooms').update({ status: 'refunded', resolve_tx: rc.hash, updated_at: new Date().toISOString() }).eq('id', id);
+      return { refunded: true, txHash: rc.hash };
+    }
+
+    const tx = await writeContract.resolveRoom(id, scoresNum.map((s) => BigInt(s)));
+    const rc = await tx.wait();
+
+    // Winner = highest score, ties → earliest entrant (same as the contract).
+    let bestIdx = 0;
+    for (let i = 1; i < scoresNum.length; i++) if (scoresNum[i] > scoresNum[bestIdx]) bestIdx = i;
+    const winner = players[bestIdx];
+    await supabase.from('duel_rooms').update({ status: 'resolved', winner, resolve_tx: rc.hash, updated_at: new Date().toISOString() }).eq('id', id);
+    // Persist each player's final score for the room UI.
+    await Promise.all(players.map((w, i) => supabase.from('duel_participants').update({ score: scoresNum[i] }).eq('room_id', id).eq('wallet', w)));
+    if (players.length === 2) await bumpRivalry(supabase, players[0], players[1], winner, id);
+    return { resolved: true, winner, txHash: rc.hash };
+  }
+
+  // ── POST /api/duel/resolve/:id · manual trigger (internal) ──
   app.post('/api/duel/resolve/:id', requireSecret, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
-    if (!writeContract) return res.status(503).json({ error: 'validator_unavailable' });
     try {
-      // On-chain player order is authoritative for aligning the scoreboard.
-      const onchainPlayers = (await readContract.getPlayers(id)).map((p) => p.toLowerCase());
-      if (onchainPlayers.length < 2) return res.status(409).json({ error: 'not_enough_players' });
-
-      const { data: parts } = await supabase.from('duel_participants')
-        .select('wallet, score').eq('room_id', id);
-      const scoreByWallet = new Map((parts || []).map((p) => [p.wallet.toLowerCase(), Number(p.score) || 0]));
-      const scores = onchainPlayers.map((w) => BigInt(scoreByWallet.get(w) || 0));
-
-      const tx = await writeContract.resolveRoom(id, scores);
-      const receipt = await tx.wait();
-
-      // Mirror the outcome (winner = highest score, ties → earliest entrant —
-      // same rule the contract enforces, computed here for the mirror).
-      let bestIdx = 0;
-      for (let i = 1; i < scores.length; i++) if (scores[i] > scores[bestIdx]) bestIdx = i;
-      const winner = onchainPlayers[bestIdx];
-      await supabase.from('duel_rooms').update({ status: 'resolved', winner, resolve_tx: receipt.hash, updated_at: new Date().toISOString() }).eq('id', id);
-
-      // Head-to-head rivalry: only meaningful for a 1v1.
-      if (onchainPlayers.length === 2) {
-        await bumpRivalry(supabase, onchainPlayers[0], onchainPlayers[1], winner, id);
-      }
-      res.json({ ok: true, winner, txHash: receipt.hash });
+      const out = await resolveRoomById(id);
+      if (out.skip) return res.status(409).json({ error: out.skip });
+      res.json({ ok: true, ...out });
     } catch (e) {
       console.warn('duel resolve:', e?.shortMessage || e?.message || e);
       res.status(502).json({ error: 'resolve_failed' });
     }
   });
+
+  // ── Auto-resolve cron · every ~2 min, settle any room that's full or past
+  // its deadline. Best-effort; failures are logged and retried next tick. ──
+  if (writeContract) {
+    const sweep = async () => {
+      try {
+        const nowIso = new Date().toISOString();
+        // Candidates: open rooms that are past deadline (full-room early resolve
+        // is handled on the next tick too — cheap to re-check on-chain).
+        const { data: rooms } = await supabase.from('duel_rooms')
+          .select('id').eq('status', 'open').lt('deadline', nowIso).limit(50);
+        for (const room of rooms || []) {
+          try {
+            const out = await resolveRoomById(room.id);
+            if (out.resolved) console.log(`⚔️  Duel room ${room.id} resolved · winner ${out.winner.slice(0, 10)}… · ${out.txHash}`);
+            else if (out.refunded) console.log(`⚔️  Duel room ${room.id} refunded (no scores) · ${out.txHash}`);
+          } catch (e) { console.warn(`duel sweep room ${room.id}:`, e?.shortMessage || e?.message || e); }
+        }
+      } catch (e) { console.warn('duel sweep:', e?.message || e); }
+    };
+    const _t = setInterval(sweep, 2 * 60 * 1000);
+    if (_t.unref) _t.unref();
+    setTimeout(sweep, 20 * 1000); // one pass shortly after boot
+  }
 
   // ── GET /api/duel/rivalry?a=&b= · head-to-head record ──
   app.get('/api/duel/rivalry', async (req, res) => {
