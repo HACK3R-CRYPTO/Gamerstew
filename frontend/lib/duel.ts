@@ -28,7 +28,8 @@ export type DuelRoom = {
   seed_wei: string;
   fee_bps: number;
   capacity: number;
-  deadline: string; // ISO
+  starts_at?: string | null; // ISO · when scoring opens (off-chain)
+  deadline: string;          // ISO · when it ends (on-chain)
   status: "open" | "resolved" | "refunded";
   winner?: string | null;
 };
@@ -141,10 +142,12 @@ export const DUEL_ESCROW_ABI = [
 
 export const ZERO_BYTES32 = ("0x" + "0".repeat(64)) as `0x${string}`;
 
-// Duel room state (mirrors the cup phase helper): a room is live until its
-// deadline, then sealed.
-export function duelPhase(room: Pick<DuelRoom, "deadline" | "status">, now: number): "live" | "sealed" {
+// Duel room state: upcoming (before the start time) → live (scoring open) →
+// sealed (past the end, or already resolved/refunded).
+export function duelPhase(room: Pick<DuelRoom, "deadline" | "status" | "starts_at">, now: number): "upcoming" | "live" | "sealed" {
   if (room.status !== "open") return "sealed";
+  const starts = room.starts_at ? Date.parse(room.starts_at) : 0;
+  if (starts && now < starts) return "upcoming";
   return now < Date.parse(room.deadline) ? "live" : "sealed";
 }
 

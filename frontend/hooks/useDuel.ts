@@ -27,7 +27,8 @@ export type CreateRoomInput = {
   seedWei: bigint;       // creator-seeded prize (0 = none)
   feeBps: number;        // 0 for community pools
   capacity: number;
-  deadlineSec: bigint;   // unix seconds
+  startsAtSec?: bigint;  // unix seconds · when scoring opens (default: now)
+  deadlineSec: bigint;   // unix seconds · when it ends (on-chain)
   code?: string;         // private join-code (empty = no code)
   useAllowlist?: boolean;
   targetScore?: bigint;
@@ -72,12 +73,15 @@ export function useDuel() {
 
   // Mirror the room into the backend so the hub/detail reflect it fast. Carries
   // the off-chain `games` set (the contract only stores one representative game).
-  const sync = useCallback(async (id: number, games?: number[]) => {
+  const sync = useCallback(async (id: number, games?: number[], startsAtSec?: bigint) => {
     try {
       await fetch(`/api/duel/sync/${id}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ games: games && games.length ? games : undefined }),
+        body: JSON.stringify({
+          games: games && games.length ? games : undefined,
+          startsAt: startsAtSec ? Number(startsAtSec) : undefined,
+        }),
       });
     } catch { /* best-effort */ }
   }, []);
@@ -112,7 +116,7 @@ export function useDuel() {
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     const [ev] = parseEventLogs({ abi: DUEL_ESCROW_ABI, logs: receipt.logs, eventName: "RoomCreated" });
     const id = Number((ev as { args: { id: bigint } }).args.id);
-    await sync(id, input.games && input.games.length ? input.games : [input.gameType]);
+    await sync(id, input.games && input.games.length ? input.games : [input.gameType], input.startsAtSec);
     return id;
   }, [address, publicClient, signPermit, writeContractAsync, isMiniPay, sync]);
 

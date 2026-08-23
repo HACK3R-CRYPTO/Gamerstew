@@ -12,7 +12,7 @@ import { useAccount } from "wagmi";
 import { formatEther } from "viem";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
-import { gameLabel, type DuelRoom } from "@/lib/duel";
+import { gameLabel, duelPhase, type DuelRoom } from "@/lib/duel";
 
 const T = {
   bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
@@ -32,8 +32,9 @@ function fmtLeft(ms: number): string {
 function RoomCard({ room, now }: { room: DuelRoom; now: number }) {
   const isPool = Number(room.seed_wei) > 0 && Number(room.stake_wei) === 0;
   const prize = formatEther(BigInt(room.seed_wei) + BigInt(room.stake_wei) * BigInt(room.capacity));
-  const left = Date.parse(room.deadline) - now;
-  const sealed = room.status !== "open" || left <= 0;
+  const phase = duelPhase(room, now);
+  const timeLabel = phase === "upcoming" ? `starts in ${fmtLeft(Date.parse(room.starts_at!) - now)}`
+    : phase === "live" ? fmtLeft(Date.parse(room.deadline) - now) : "sealed";
   return (
     <Link href={`/duel/${room.id}`} style={{ textDecoration: "none", color: "inherit" }}>
       <div style={{ background: T.surface, border: `1px solid ${isPool ? `${T.gold}44` : T.hairline}`, borderRadius: 16, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -43,8 +44,8 @@ function RoomCard({ room, now }: { room: DuelRoom; now: number }) {
           <div style={{ fontSize: 11.5, color: T.inkDim, marginTop: 1 }}>{gameLabel(room.game_type)}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: sealed ? T.inkSoft : T.green, letterSpacing: "0.04em" }}>{sealed ? "sealed" : fmtLeft(left)}</div>
-          <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 3 }}>{room.status === "resolved" ? "winner set" : "open"} ›</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: phase === "live" ? T.green : phase === "upcoming" ? T.cyan : T.inkSoft, letterSpacing: "0.04em" }}>{timeLabel}</div>
+          <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 3 }}>{room.status === "resolved" ? "winner set" : phase === "upcoming" ? "join now" : "open"} ›</div>
         </div>
       </div>
     </Link>

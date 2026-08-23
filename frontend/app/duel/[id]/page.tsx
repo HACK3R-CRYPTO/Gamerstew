@@ -120,8 +120,10 @@ export default function RoomPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.14em", color: T.gold, textTransform: "uppercase" }}>{isPool ? "Prize pool" : "Duel"}</span>
-            <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", color: phase === "live" ? T.green : T.inkSoft, textTransform: "uppercase" }}>
-              {phase === "live" ? `• ends in ${fmtLeft(Date.parse(room.deadline) - now)}` : room.status === "resolved" ? "• sealed" : "• closed"}
+            <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.12em", color: phase === "live" ? T.green : phase === "upcoming" ? T.cyan : T.inkSoft, textTransform: "uppercase" }}>
+              {phase === "upcoming" ? `• starts in ${fmtLeft(Date.parse(room.starts_at!) - now)}`
+                : phase === "live" ? `• ends in ${fmtLeft(Date.parse(room.deadline) - now)}`
+                : room.status === "resolved" ? "• sealed" : "• closed"}
             </span>
           </div>
           <h1 style={{ fontFamily: T.display, fontSize: 30, margin: "6px 0 0", color: T.gold }}>{prizeG} G$</h1>
@@ -156,24 +158,27 @@ export default function RoomPage() {
         </Card>
 
         {/* actions */}
-        {phase === "live" && (
+        {(phase === "upcoming" || phase === "live") && (
           <>
             {!joined && !full && (
               <button onClick={onJoin} disabled={busy} style={{ padding: "15px", borderRadius: 16, border: "none", cursor: busy ? "wait" : "pointer", background: `linear-gradient(160deg, ${T.green}, #16a34a)`, color: "#04121a", fontFamily: T.display, fontSize: 16 }}>
                 {busy ? "Confirming on Celo…" : isPool ? "Join (free)" : `Join · stake ${stakeG} G$`}
               </button>
             )}
-            {joined && (
+            {joined && phase === "live" && (
               <button onClick={() => router.push(`/games/${gameKey(room.game_type)}`)} style={{ padding: "15px", borderRadius: 16, border: "none", cursor: "pointer", background: `linear-gradient(160deg, ${T.gold}, #f59e0b)`, color: "#150a2e", fontFamily: T.display, fontSize: 16 }}>
                 Play your run →
               </button>
+            )}
+            {joined && phase === "upcoming" && (
+              <div style={{ textAlign: "center", fontSize: 13, color: T.cyan, fontWeight: 700 }}>You&apos;re in ✓ · scoring opens in {fmtLeft(Date.parse(room.starts_at!) - now)}</div>
             )}
             {full && !joined && <div style={{ textAlign: "center", fontSize: 12.5, color: T.inkSoft }}>Room is full.</div>}
           </>
         )}
 
         {/* share (code rooms) */}
-        {urlCode && phase === "live" && (
+        {urlCode && (phase === "upcoming" || phase === "live") && (
           <Card>
             <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Invite link</div>
             <div style={{ fontSize: 11.5, color: T.inkDim, wordBreak: "break-all", marginBottom: 10 }}>{shareUrl}</div>
@@ -185,7 +190,7 @@ export default function RoomPage() {
         )}
 
         {/* admin allowlist */}
-        {isCreator && room.gating === "allowlist" && phase === "live" && (
+        {isCreator && room.gating === "allowlist" && (phase === "upcoming" || phase === "live") && (
           <Card>
             <div style={{ fontSize: 11, color: T.cyan, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Admin · approve wallets</div>
             <div style={{ fontSize: 11.5, color: T.inkSoft, marginBottom: 8, lineHeight: 1.5 }}>Paste the wallets that may join (your voted + verified list), one per line or comma-separated.</div>

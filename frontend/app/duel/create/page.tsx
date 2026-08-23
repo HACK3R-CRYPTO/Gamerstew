@@ -23,6 +23,10 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
+const STARTS = [
+  { label: "Now", hrs: 0 }, { label: "In 1 hour", hrs: 1 }, { label: "In 6 hours", hrs: 6 },
+  { label: "In 1 day", hrs: 24 }, { label: "In 2 days", hrs: 48 }, { label: "In 3 days", hrs: 72 },
+];
 const DURATIONS = [
   { label: "1 hour", hrs: 1 }, { label: "6 hours", hrs: 6 }, { label: "1 day", hrs: 24 },
   { label: "3 days", hrs: 72 }, { label: "7 days", hrs: 168 },
@@ -50,7 +54,8 @@ export default function CreateRoomPage() {
   const [games, setGames] = useState<number[]>([2]);       // Stack default, multi-select
   const [amount, setAmount] = useState("50");
   const [capacity, setCapacity] = useState(20);
-  const [hrs, setHrs] = useState(24);
+  const [startsInHrs, setStartsInHrs] = useState(0); // 0 = start now
+  const [runsHrs, setRunsHrs] = useState(24);
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [gating, setGating] = useState<"code" | "allowlist">("code");
   const [code] = useState(randomCode());
@@ -76,6 +81,9 @@ export default function CreateRoomPage() {
       const wei = parseEther(String(g));
       const useAllowlist = isPrivate && gating === "allowlist";
       const useCode = isPrivate && gating === "code";
+      const nowSec = Math.floor(Date.now() / 1000);
+      const startsAtSec = nowSec + startsInHrs * 3600;
+      const deadlineSec = startsAtSec + runsHrs * 3600;
       const id = await createRoom({
         gameType: games[0],
         games,
@@ -83,7 +91,8 @@ export default function CreateRoomPage() {
         seedWei: isPool ? wei : 0n,
         feeBps: isPool ? 0 : 1000,
         capacity,
-        deadlineSec: BigInt(Math.floor(Date.now() / 1000) + hrs * 3600),
+        startsAtSec: startsInHrs > 0 ? BigInt(startsAtSec) : undefined,
+        deadlineSec: BigInt(deadlineSec),
         code: useCode ? code : "",
         useAllowlist,
       });
@@ -145,18 +154,29 @@ export default function CreateRoomPage() {
           {games.length > 1 && <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 8, lineHeight: 1.5 }}>Players compete across all {games.length} games. Scores are normalised per game so it&apos;s fair.</div>}
         </div>
 
-        {/* players + duration */}
+        {/* starts + runs */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <Label>Players</Label>
-            <input value={capacity} onChange={(e) => setCapacity(Math.max(2, Number(e.target.value.replace(/[^0-9]/g, "")) || 2))} inputMode="numeric" style={{ ...inputBox, fontSize: 15 }} />
+            <Label>Starts</Label>
+            <select value={startsInHrs} onChange={(e) => setStartsInHrs(Number(e.target.value))} style={{ ...inputBox, fontSize: 15 }}>
+              {STARTS.map((d) => <option key={d.hrs} value={d.hrs} style={{ color: "#000" }}>{d.label}</option>)}
+            </select>
           </div>
-          <div style={{ flex: 1.4 }}>
-            <Label>Ends in</Label>
-            <select value={hrs} onChange={(e) => setHrs(Number(e.target.value))} style={{ ...inputBox, fontSize: 15 }}>
+          <div style={{ flex: 1 }}>
+            <Label>Runs for</Label>
+            <select value={runsHrs} onChange={(e) => setRunsHrs(Number(e.target.value))} style={{ ...inputBox, fontSize: 15 }}>
               {DURATIONS.map((d) => <option key={d.hrs} value={d.hrs} style={{ color: "#000" }}>{d.label}</option>)}
             </select>
           </div>
+          <div style={{ flex: 0.8 }}>
+            <Label>Players</Label>
+            <input value={capacity} onChange={(e) => setCapacity(Math.max(2, Number(e.target.value.replace(/[^0-9]/g, "")) || 2))} inputMode="numeric" style={{ ...inputBox, fontSize: 15 }} />
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: T.inkSoft, marginTop: -6, lineHeight: 1.5 }}>
+          {startsInHrs > 0
+            ? `People can join now. Scoring opens ${STARTS.find((s) => s.hrs === startsInHrs)?.label.toLowerCase()} and runs ${DURATIONS.find((d) => d.hrs === runsHrs)?.label}.`
+            : `Live immediately. Runs ${DURATIONS.find((d) => d.hrs === runsHrs)?.label}, then the winner is paid automatically.`}
         </div>
 
         {/* visibility */}

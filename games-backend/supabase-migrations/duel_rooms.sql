@@ -16,6 +16,7 @@ create table if not exists duel_rooms (
   seed_wei      numeric     not null default 0,
   fee_bps       integer     not null default 0,  -- 0 for sponsored pools
   capacity      integer     not null,
+  starts_at     timestamptz,                     -- when scoring opens (off-chain; null = at creation)
   deadline      timestamptz not null,
   status        text        not null default 'open', -- 'open' | 'resolved' | 'refunded'
   winner        text,                            -- filled on resolve

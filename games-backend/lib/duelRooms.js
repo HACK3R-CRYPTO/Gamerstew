@@ -122,11 +122,17 @@ function registerDuelRoutes(app, deps) {
         ? [...new Set(req.body.games.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 3))]
         : null;
       if (games && games.length) row.games = games;
+      // Off-chain start time (when scoring opens). Only accept a value inside the
+      // room's own lifetime; otherwise treat "start = created" (live immediately).
+      const startsAtNum = Number(req.body?.startsAt);
+      if (Number.isFinite(startsAtNum) && startsAtNum > Number(r.createdAt) && startsAtNum < Number(r.deadline)) {
+        row.starts_at = new Date(startsAtNum * 1000).toISOString();
+      }
       let { error: upErr } = await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' });
-      if (upErr && row.games) {
-        // Most likely the optional `games` column hasn't been added yet — retry
-        // without it so room creation never breaks on a pending migration.
-        delete row.games;
+      // Optional columns (games / starts_at) may not be migrated yet — retry
+      // without them so room creation never breaks on a pending migration.
+      if (upErr && (row.games || row.starts_at)) {
+        delete row.games; delete row.starts_at;
         ({ error: upErr } = await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' }));
       }
       if (upErr) throw upErr;
@@ -206,17 +212,21 @@ function registerDuelRoutes(app, deps) {
     if (players.length < 2) return { skip: 'need_2' };
     const nowSec = Math.floor(Date.now() / 1000);
     const deadline = Number(r.deadline);
-    const resolvable = nowSec > deadline || players.length === Number(r.capacity);
-    if (!resolvable) return { skip: 'still_live' };
 
-    // The room's games (off-chain set, else the single on-chain game).
-    const { data: mirror } = await supabase.from('duel_rooms').select('games').eq('id', id).maybeSingle();
+    // The room's games + off-chain start time.
+    const { data: mirror } = await supabase.from('duel_rooms').select('games, starts_at').eq('id', id).maybeSingle();
     const games = (mirror && Array.isArray(mirror.games) && mirror.games.length)
       ? mirror.games.map(Number) : [Number(r.gameType)];
+    const startSec = mirror && mirror.starts_at ? Math.floor(Date.parse(mirror.starts_at) / 1000) : Number(r.createdAt);
 
-    // Score window: the room's lifetime, capped at now.
-    const startSec = Number(r.createdAt);
-    const endSec = Math.min(nowSec, deadline) + (players.length === Number(r.capacity) && nowSec <= deadline ? 1 : 0);
+    // Resolve only after the end, or when full AND scoring has already started
+    // (never crown a full room before its start time).
+    const full = players.length === Number(r.capacity);
+    const resolvable = nowSec > deadline || (full && nowSec >= startSec);
+    if (!resolvable) return { skip: 'still_live' };
+
+    // Score window: start time → end (capped at now).
+    const endSec = Math.min(nowSec, deadline) + (full && nowSec <= deadline ? 1 : 0);
     const best = await bestRunsInWindow(players, games, startSec, Math.max(startSec + 1, endSec));
     const scoresNum = players.map((w) => normalisedScore(best.get(w), games));
 
