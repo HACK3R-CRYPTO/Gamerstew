@@ -5427,6 +5427,10 @@ setInterval(sealCompletedSeasons, 60 * 60 * 1000);
 indexOnChainScores();
 setInterval(indexOnChainScores, 5 * 60 * 1000);
 
+// Duel Rooms (P2) · create/join happen on-chain from the player's own wallet;
+// this module mirrors rooms for the hub and lets the validator resolve payouts.
+require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validator, isVerified, requireSecret });
+
 app.listen(PORT, () => {
   console.log(`🎮 Games backend on http://localhost:${PORT} — Season ${currentSeasonNumber()}`);
   // Surface whether on-chain addresses came from env or a hardcoded fallback,
