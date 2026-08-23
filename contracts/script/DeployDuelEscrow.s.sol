@@ -18,7 +18,7 @@ import {DuelEscrow} from "../src/DuelEscrow.sol";
  * Env vars:
  *   G_TOKEN_ADDRESS   — G$ token (defaults to Celo mainnet G$ below; set this to
  *                       deploy against a testnet/mock token)
- *   UBI_POOL_ADDRESS  — recipient of the 20% UBI cut (defaults to deployer)
+ *   TREASURY_ADDRESS  — recipient of the per-room fee (defaults to deployer)
  *   BACKEND_VALIDATOR — address that submits scoreboards (defaults to deployer)
  */
 contract DeployDuelEscrow is Script {
@@ -27,16 +27,16 @@ contract DeployDuelEscrow is Script {
 
     function run() external returns (DuelEscrow) {
         address gToken    = vm.envOr("G_TOKEN_ADDRESS", G_TOKEN_DEFAULT);
-        address ubiPool   = vm.envOr("UBI_POOL_ADDRESS", msg.sender);
+        address treasury  = vm.envOr("TREASURY_ADDRESS", msg.sender);
         address validator = vm.envOr("BACKEND_VALIDATOR", msg.sender);
 
         vm.startBroadcast();
-        DuelEscrow escrow = new DuelEscrow(gToken, ubiPool, validator);
+        DuelEscrow escrow = new DuelEscrow(gToken, treasury, validator);
         vm.stopBroadcast();
 
         console.log("DuelEscrow deployed at:", address(escrow));
         console.log("  gToken   :", gToken);
-        console.log("  ubiPool  :", ubiPool);
+        console.log("  treasury :", treasury);
         console.log("  validator:", validator);
         return escrow;
     }
