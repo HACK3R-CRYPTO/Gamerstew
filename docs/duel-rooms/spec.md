@@ -43,9 +43,13 @@ No manual list-keeping: the allowlist *is* the list, on-chain.
 
 ## 4. Prizes & payout
 - **Pot = seeded prize + all stakes.**
-- **UBI cut is per-room.** Community/sponsored pools = **0% (winner takes the
-  full prize)**. Stake-vs-stake duels can keep a cut if we ever want one, set per
-  room. (Change from the old global 20%.)
+- **Fee is per-room and goes to the TREASURY (platform revenue).**
+  - **Community / sponsored pools → 0% fee** (winner takes the FULL prize) and
+    the room is **private / unlisted** (nobody else can see or find it).
+  - **Stake-vs-stake duels → a fee to the treasury** (the platform's cut on
+    real-money bets). Default proposed **10%**, owner-configurable, capped.
+  - (This replaces the old "20% to UBI" global. Fee recipient = treasury; a UBI
+    portion can be layered later if wanted, but default routing is treasury.)
 - **Payout mode (per room):**
   - **Winner-takes-all** (default).
   - **Top-3 split** (optional, e.g. 60/25/15) for bigger rooms so more people win.
