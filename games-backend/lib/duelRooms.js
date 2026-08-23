@@ -101,6 +101,24 @@ function registerDuelRoutes(app, deps) {
     }
   });
 
+  // ── GET /api/duel/my?wallet= · rooms this player is in (public + private) ──
+  // Surfaces a player's own rooms — including private pools they've joined that
+  // never appear in the public hub. This is how the community sees "their" event.
+  app.get('/api/duel/my', async (req, res) => {
+    const wallet = String(req.query.wallet || '').toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return res.status(400).json({ error: 'wallet required' });
+    try {
+      const { data: parts } = await supabase.from('duel_participants').select('room_id').eq('wallet', wallet);
+      const ids = [...new Set((parts || []).map((p) => p.room_id))];
+      if (!ids.length) return res.json({ rooms: [] });
+      const { data: rooms } = await supabase.from('duel_rooms').select('*').in('id', ids).order('created_at', { ascending: false });
+      res.json({ rooms: rooms || [] });
+    } catch (e) {
+      console.warn('duel my:', e?.message || e);
+      res.json({ rooms: [] });
+    }
+  });
+
   // ── GET /api/duel/room/:id · one room's detail + its participants ──
   app.get('/api/duel/room/:id', async (req, res) => {
     const id = Number(req.params.id);
