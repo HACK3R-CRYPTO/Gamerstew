@@ -73,6 +73,12 @@ function registerDuelRoutes(app, deps) {
       if (r.creator === ethers.ZeroAddress) return res.status(404).json({ error: 'no such room' });
       const row = toRow(id, r);
       row.created_at = new Date(Number(r.createdAt) * 1000).toISOString();
+      // Off-chain: the full set of games this room spans (the contract only stores
+      // one representative gameType). Sent by the client at create time.
+      const games = Array.isArray(req.body?.games)
+        ? [...new Set(req.body.games.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 3))]
+        : null;
+      if (games && games.length) row.games = games;
       await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' });
 
       // Participants in on-chain order (join_index aligns the scoreboard later).

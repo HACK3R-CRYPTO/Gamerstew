@@ -8,7 +8,8 @@
 create table if not exists duel_rooms (
   id            bigint primary key,              -- on-chain roomId
   creator       text        not null,
-  game_type     smallint    not null,            -- 0 rhythm · 1 simon · 2 stack · 3 challenge-ai
+  game_type     smallint    not null,            -- on-chain representative game
+  games         smallint[],                      -- full set of games the room spans (off-chain)
   visibility    text        not null,            -- 'public' | 'private'
   gating        text        not null default 'open', -- 'open' | 'code' | 'allowlist'
   stake_wei     numeric     not null default 0,

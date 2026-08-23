@@ -45,6 +45,8 @@ export default function RoomPage() {
   const [err, setErr] = useState<string | null>(null);
   const [allowText, setAllowText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => { const u = () => setIsDesktop(window.innerWidth >= 900); u(); window.addEventListener("resize", u); return () => window.removeEventListener("resize", u); }, []);
 
   const load = async () => {
     try {
@@ -103,8 +105,8 @@ export default function RoomPage() {
     return (
       <div style={{ minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: T.body }}>
         <AppHeader />
-        <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 16px", textAlign: "center", color: T.inkSoft }}>Loading room…</div>
-        <AppBottomNav wide={false} />
+        <div style={{ maxWidth: isDesktop ? 640 : 480, margin: "0 auto", padding: "40px 16px", textAlign: "center", color: T.inkSoft }}>Loading room…</div>
+        <AppBottomNav wide={isDesktop} />
       </div>
     );
   }
@@ -112,7 +114,7 @@ export default function RoomPage() {
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: T.body }}>
       <AppHeader />
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "12px 16px 120px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ maxWidth: isDesktop ? 640 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 12 }}>
 
         {/* hero */}
         <div>
@@ -197,7 +199,7 @@ export default function RoomPage() {
 
         {err && <div style={{ color: "#fca5a5", fontSize: 12.5, fontWeight: 700, textAlign: "center" }}>{err}</div>}
       </div>
-      <AppBottomNav wide={false} />
+      <AppBottomNav wide={isDesktop} />
     </div>
   );
 }

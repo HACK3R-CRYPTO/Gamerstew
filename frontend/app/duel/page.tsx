@@ -57,7 +57,9 @@ export default function DuelHubPage() {
   const [open, setOpen] = useState<DuelRoom[]>([]);
   const [mine, setMine] = useState<DuelRoom[]>([]);
   const [now, setNow] = useState(Date.now());
+  const [isDesktop, setIsDesktop] = useState(false);
 
+  useEffect(() => { const u = () => setIsDesktop(window.innerWidth >= 900); u(); window.addEventListener("resize", u); return () => window.removeEventListener("resize", u); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     fetch("/api/duel/rooms", { cache: "no-store" }).then((r) => r.json()).then((j) => setOpen(j.rooms || [])).catch(() => {});
@@ -77,7 +79,7 @@ export default function DuelHubPage() {
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: T.body }}>
       <AppHeader />
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "12px 16px 120px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ maxWidth: isDesktop ? 640 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 18 }}>
 
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
           <div>
@@ -104,7 +106,7 @@ export default function DuelHubPage() {
             : <div style={{ fontSize: 12.5, color: T.inkSoft, lineHeight: 1.5 }}>No open rooms right now. Create one, or if you were invited to a private pool, open the link your host shared.</div>}
         </Section>
       </div>
-      <AppBottomNav wide={false} />
+      <AppBottomNav wide={isDesktop} />
     </div>
   );
 }

@@ -21,6 +21,7 @@ export type DuelRoom = {
   id: number;
   creator: string;
   game_type: number;
+  games?: number[] | null;
   visibility: Visibility;
   gating: Gating;
   stake_wei: string;
