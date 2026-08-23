@@ -79,7 +79,14 @@ function registerDuelRoutes(app, deps) {
         ? [...new Set(req.body.games.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0 && n <= 3))]
         : null;
       if (games && games.length) row.games = games;
-      await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' });
+      let { error: upErr } = await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' });
+      if (upErr && row.games) {
+        // Most likely the optional `games` column hasn't been added yet — retry
+        // without it so room creation never breaks on a pending migration.
+        delete row.games;
+        ({ error: upErr } = await supabase.from('duel_rooms').upsert(row, { onConflict: 'id' }));
+      }
+      if (upErr) throw upErr;
 
       // Participants in on-chain order (join_index aligns the scoreboard later).
       const players = r.players.map((p) => p.toLowerCase());
