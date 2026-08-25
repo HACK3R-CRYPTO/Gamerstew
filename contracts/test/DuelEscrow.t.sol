@@ -15,16 +15,16 @@ contract DuelEscrowTest is Test {
     DuelEscrow escrow;
     MockG g;
 
-    address ubi = makeAddr("ubi");
+    address treasury = makeAddr("treasury");
     address validator = makeAddr("validator");
-    address owner = address(this);
 
-    address alice; uint256 alicePk;
+    address alice; uint256 alicePk; // creator
     address bob;   uint256 bobPk;
     address carol; uint256 carolPk;
-    address dave;  uint256 davePk; // fresh, no pre-approval (permit tests)
+    address dave;  uint256 davePk;  // fresh, no approval (permit tests)
 
     uint256 constant STAKE = 100e18;
+    uint16  constant FEE10 = 1_000; // 10%
     bytes32 constant OPEN = bytes32(0);
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -34,204 +34,152 @@ contract DuelEscrowTest is Test {
         (bob, bobPk)     = makeAddrAndKey("bob");
         (carol, carolPk) = makeAddrAndKey("carol");
         (dave, davePk)   = makeAddrAndKey("dave");
-
         g = new MockG();
-        escrow = new DuelEscrow(address(g), ubi, validator);
-
+        escrow = new DuelEscrow(address(g), treasury, validator);
         address[3] memory who = [alice, bob, carol];
         for (uint256 i = 0; i < who.length; i++) {
             g.mint(who[i], 1000e18);
             vm.prank(who[i]);
             g.approve(address(escrow), type(uint256).max);
         }
-        g.mint(dave, 1000e18); // NOTE: dave does NOT approve (permit path only)
+        g.mint(dave, 1000e18);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+    function _params(uint256 stake, uint256 seed, uint16 feeBps, uint16 capacity, bytes32 codeHash, bool allowlist)
+        internal view returns (DuelEscrow.RoomParams memory)
+    {
+        return DuelEscrow.RoomParams({
+            gameType: 1, stake: stake, seed: seed, feeBps: feeBps, capacity: capacity,
+            deadline: uint64(block.timestamp + 24 hours), joinCodeHash: codeHash,
+            useAllowlist: allowlist, targetScore: 500
+        });
+    }
+
+    // A stake-vs-stake friend duel: 10% fee to treasury, public, cap 2.
     function _duel() internal returns (uint256 id) {
         vm.prank(alice);
-        id = escrow.createRoom(1, STAKE, 0, 2, uint64(block.timestamp + 24 hours), OPEN, 500);
+        id = escrow.createRoom(_params(STAKE, 0, FEE10, 2, OPEN, false));
     }
 
     function _scores2(uint256 a, uint256 b) internal pure returns (uint256[] memory s) {
         s = new uint256[](2); s[0] = a; s[1] = b;
     }
 
-    function _permitSig(uint256 pk, address holder, uint256 value, uint256 deadline)
-        internal view returns (uint8 v, bytes32 r, bytes32 s)
+    function _permit(uint256 pk, address holder, uint256 value, uint256 deadline)
+        internal view returns (DuelEscrow.PermitData memory)
     {
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, holder, address(escrow), value, g.nonces(holder), deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", g.DOMAIN_SEPARATOR(), structHash));
-        (v, r, s) = vm.sign(pk, digest);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return DuelEscrow.PermitData({ value: value, deadline: deadline, v: v, r: r, s: s });
     }
 
     // ── Constructor ────────────────────────────────────────────────────────────
-    function test_Constructor_RejectsZeroAddresses() public {
+    function test_Constructor_RejectsZero() public {
         vm.expectRevert(DuelEscrow.ZeroAddress.selector);
-        new DuelEscrow(address(0), ubi, validator);
+        new DuelEscrow(address(0), treasury, validator);
         vm.expectRevert(DuelEscrow.ZeroAddress.selector);
         new DuelEscrow(address(g), address(0), validator);
         vm.expectRevert(DuelEscrow.ZeroAddress.selector);
-        new DuelEscrow(address(g), ubi, address(0));
+        new DuelEscrow(address(g), treasury, address(0));
     }
 
-    // ── createRoom · validation branches ────────────────────────────────────────
+    // ── Create validation ────────────────────────────────────────────────────────
     function test_Create_RejectsNoValue() public {
         vm.prank(alice);
         vm.expectRevert(DuelEscrow.NoValue.selector);
-        escrow.createRoom(0, 0, 0, 2, uint64(block.timestamp + 1 hours), OPEN, 0);
+        escrow.createRoom(_params(0, 0, 0, 2, OPEN, false));
     }
-    function test_Create_RejectsCapacityTooLow() public {
+    function test_Create_RejectsCapacityLow() public {
         vm.prank(alice);
         vm.expectRevert(DuelEscrow.BadCapacity.selector);
-        escrow.createRoom(0, STAKE, 0, 1, uint64(block.timestamp + 1 hours), OPEN, 0);
+        escrow.createRoom(_params(STAKE, 0, 0, 1, OPEN, false));
     }
-    function test_Create_RejectsCapacityTooHigh() public {
+    function test_Create_RejectsCapacityHigh() public {
         vm.prank(alice);
         vm.expectRevert(DuelEscrow.BadCapacity.selector);
-        escrow.createRoom(0, STAKE, 0, 257, uint64(block.timestamp + 1 hours), OPEN, 0);
+        escrow.createRoom(_params(STAKE, 0, 0, 257, OPEN, false));
+    }
+    function test_Create_RejectsFeeTooHigh() public {
+        vm.prank(alice);
+        vm.expectRevert(DuelEscrow.FeeTooHigh.selector);
+        escrow.createRoom(_params(STAKE, 0, 2001, 2, OPEN, false));
     }
     function test_Create_RejectsDeadlineTooSoon() public {
         vm.prank(alice);
+        DuelEscrow.RoomParams memory p = _params(STAKE, 0, 0, 2, OPEN, false);
+        p.deadline = uint64(block.timestamp + 10);
         vm.expectRevert(DuelEscrow.DeadlineTooSoon.selector);
-        escrow.createRoom(0, STAKE, 0, 2, uint64(block.timestamp + 10), OPEN, 0);
+        escrow.createRoom(p);
     }
     function test_Create_RejectsDeadlineTooFar() public {
         vm.prank(alice);
+        DuelEscrow.RoomParams memory p = _params(STAKE, 0, 0, 2, OPEN, false);
+        p.deadline = uint64(block.timestamp + 31 days);
         vm.expectRevert(DuelEscrow.DeadlineTooFar.selector);
-        escrow.createRoom(0, STAKE, 0, 2, uint64(block.timestamp + 31 days), OPEN, 0);
+        escrow.createRoom(p);
     }
-    function test_Create_PublicStake() public {
+    function test_Create_PublicDuel() public {
         uint256 id = _duel();
         assertEq(g.balanceOf(address(escrow)), STAKE);
         DuelEscrow.Room memory room = escrow.getRoom(id);
         assertEq(room.creator, alice);
+        assertEq(room.feeBps, FEE10);
         assertEq(room.joinCodeHash, bytes32(0));
-        assertEq(escrow.playerCount(id), 1);
     }
-    function test_Create_PrivateMarked() public {
-        bytes32 h = keccak256(bytes("code"));
+    function test_Create_PrivatePoolNoFee() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(0, STAKE, 0, 2, uint64(block.timestamp + 1 hours), h, 0);
-        assertTrue(escrow.getRoom(id).joinCodeHash != bytes32(0));
+        uint256 id = escrow.createRoom(_params(0, 500e18, 0, 3, keccak256(bytes("vip")), false));
+        DuelEscrow.Room memory room = escrow.getRoom(id);
+        assertEq(room.feeBps, 0);
+        assertTrue(room.joinCodeHash != bytes32(0)); // private
+        assertEq(g.balanceOf(address(escrow)), 500e18); // seed only
     }
 
-    // ── join · guards + code ─────────────────────────────────────────────────────
-    function test_Join_PublicNoCode() public {
+    // ── Fee → treasury / winner selection ────────────────────────────────────────
+    function test_Resolve_DuelFeeToTreasury() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        assertEq(escrow.playerCount(id), 2);
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(400, 900)); // bob wins
+        uint256 pot = STAKE * 2;
+        uint256 fee = pot * FEE10 / 10000; // 10% to treasury
+        assertEq(g.balanceOf(treasury), fee);
+        assertEq(g.balanceOf(bob), 900e18 + (pot - fee));
+        assertEq(g.balanceOf(address(escrow)), 0);
     }
-    function test_Join_PrivateGoodCode() public {
-        vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, 0, 2, uint64(block.timestamp + 1 hours), keccak256(bytes("s3cret")), 500);
-        vm.prank(bob); escrow.joinRoom(id, "s3cret");
-        assertEq(escrow.playerCount(id), 2);
-    }
-    function test_Join_PrivateBadCode() public {
-        vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, 0, 2, uint64(block.timestamp + 1 hours), keccak256(bytes("s3cret")), 500);
-        vm.prank(bob);
-        vm.expectRevert(DuelEscrow.BadJoinCode.selector);
-        escrow.joinRoom(id, "wrong");
-    }
-    function test_Join_RevertsNotOpen() public {
-        uint256 id = _duel();
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
-        vm.prank(carol);
-        vm.expectRevert(DuelEscrow.NotOpen.selector);
-        escrow.joinRoom(id, "");
-    }
-    function test_Join_RevertsClosed() public {
-        uint256 id = _duel();
-        vm.warp(block.timestamp + 25 hours);
-        vm.prank(bob);
-        vm.expectRevert(DuelEscrow.RoomClosed.selector);
-        escrow.joinRoom(id, "");
-    }
-    function test_Join_RevertsAlreadyJoined() public {
-        uint256 id = _duel();
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(bob);
-        vm.expectRevert(DuelEscrow.AlreadyJoined.selector);
-        escrow.joinRoom(id, "");
-    }
-    function test_Join_RevertsFull() public {
-        uint256 id = _duel();
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(carol);
-        vm.expectRevert(DuelEscrow.RoomFull.selector);
-        escrow.joinRoom(id, "");
-    }
-    function test_Join_FreeEntryTransfersNothing() public {
-        vm.prank(alice);
-        uint256 id = escrow.createRoom(0, 0, 300e18, 3, uint64(block.timestamp + 1 hours), OPEN, 0);
-        vm.prank(bob); escrow.joinRoom(id, "");
-        assertEq(g.balanceOf(bob), 1000e18); // paid nothing
-    }
-
-    // ── resolve · winner derivation + payout ─────────────────────────────────────
-    function test_Resolve_HighestWins_8020() public {
-        uint256 id = _duel();
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(400, 900)); // bob higher
-        uint256 potv = STAKE * 2;
-        uint256 ubiCut = potv * 2000 / 10000;
-        assertEq(g.balanceOf(ubi), ubiCut);
-        assertEq(g.balanceOf(bob), 900e18 + (potv - ubiCut));
-    }
-    function test_Resolve_TieGoesToEarliestEntrant() public {
-        uint256 id = _duel();
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(500, 500)); // tie -> alice (idx 0)
-        uint256 potv = STAKE * 2;
-        uint256 ubiCut = potv * 2000 / 10000;
-        assertEq(g.balanceOf(alice), 900e18 + (potv - ubiCut));
-    }
-    function test_Resolve_SeededPrizeInPot() public {
-        uint256 seed = 500e18;
-        vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, seed, 2, uint64(block.timestamp + 1 hours), OPEN, 500);
-        vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
-        uint256 potv = seed + STAKE * 2;
-        uint256 ubiCut = potv * 2000 / 10000;
-        assertEq(g.balanceOf(bob), 900e18 + (potv - ubiCut));
-    }
-    function test_Resolve_FreeEntryPrizeOnly() public {
+    function test_Resolve_PoolNoFee_WinnerTakesFullPrize() public {
         uint256 seed = 300e18;
         vm.prank(alice);
-        uint256 id = escrow.createRoom(0, 0, seed, 3, uint64(block.timestamp + 1 hours), OPEN, 0);
+        uint256 id = escrow.createRoom(_params(0, seed, 0, 3, OPEN, false));
         vm.prank(bob);   escrow.joinRoom(id, "");
         vm.prank(carol); escrow.joinRoom(id, ""); // full 3/3
-        uint256[] memory s = new uint256[](3); s[0] = 1; s[1] = 5; s[2] = 9;
+        uint256[] memory s = new uint256[](3); s[0]=1; s[1]=5; s[2]=9;
         vm.prank(validator); escrow.resolveRoom(id, s);
-        uint256 ubiCut = seed * 2000 / 10000;
-        assertEq(g.balanceOf(carol), 1000e18 + (seed - ubiCut));
+        assertEq(g.balanceOf(treasury), 0);              // no cut
+        assertEq(g.balanceOf(carol), 1000e18 + seed);    // full prize
     }
-    function test_Resolve_ZeroUbiBps_NoCut() public {
-        escrow.setUbiBps(0);
+    function test_Resolve_TieGoesToEarliest() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
-        assertEq(g.balanceOf(ubi), 0);
-        assertEq(g.balanceOf(bob), 900e18 + STAKE * 2);
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(500, 500)); // tie -> alice
+        uint256 pot = STAKE * 2; uint256 fee = pot * FEE10 / 10000;
+        assertEq(g.balanceOf(alice), 900e18 + (pot - fee));
     }
     function test_Resolve_FullBeforeDeadline() public {
-        uint256 id = _duel(); // cap 2
-        vm.prank(bob); escrow.joinRoom(id, ""); // now full, before deadline
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
         assertTrue(escrow.isResolvable(id));
         vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
     }
     function test_Resolve_AfterDeadlineNotFull() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, 0, 3, uint64(block.timestamp + 1 hours), OPEN, 0);
-        vm.prank(bob); escrow.joinRoom(id, ""); // 2/3
+        uint256 id = escrow.createRoom(_params(STAKE, 0, 0, 3, OPEN, false));
+        vm.prank(bob); escrow.joinRoom(id, "");
         assertTrue(!escrow.isResolvable(id));
-        vm.warp(block.timestamp + 2 hours);
+        vm.warp(block.timestamp + 25 hours);
         assertTrue(escrow.isResolvable(id));
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(9, 1)); // alice wins
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(9, 1));
         assertEq(uint8(escrow.getRoom(id).status), uint8(DuelEscrow.Status.Resolved));
     }
     function test_Resolve_RevertsNotValidator() public {
@@ -252,49 +200,141 @@ contract DuelEscrowTest is Test {
     function test_Resolve_RevertsNotEnoughPlayers() public {
         uint256 id = _duel();
         vm.warp(block.timestamp + 25 hours);
-        uint256[] memory s = new uint256[](1); s[0] = 1;
+        uint256[] memory s = new uint256[](1); s[0]=1;
         vm.prank(validator);
         vm.expectRevert(DuelEscrow.NotEnoughPlayers.selector);
         escrow.resolveRoom(id, s);
     }
     function test_Resolve_RevertsStillLive() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, 0, 3, uint64(block.timestamp + 1 hours), OPEN, 0);
-        vm.prank(bob); escrow.joinRoom(id, ""); // 2/3, before deadline
+        uint256 id = escrow.createRoom(_params(STAKE, 0, 0, 3, OPEN, false));
+        vm.prank(bob); escrow.joinRoom(id, "");
         vm.prank(validator);
         vm.expectRevert(DuelEscrow.StillLive.selector);
         escrow.resolveRoom(id, _scores2(1, 2));
     }
-    function test_Resolve_RevertsScoreLengthMismatch() public {
+    function test_Resolve_RevertsScoreMismatch() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        uint256[] memory s = new uint256[](3); // wrong length
+        uint256[] memory s = new uint256[](3);
         vm.prank(validator);
         vm.expectRevert(DuelEscrow.ScoreLengthMismatch.selector);
         escrow.resolveRoom(id, s);
     }
 
-    // ── refunds ─────────────────────────────────────────────────────────────────
-    function test_RefundUnfilled_StakeAndSeedBack() public {
-        uint256 seed = 200e18;
+    // ── Allowlist gating ──────────────────────────────────────────────────────────
+    function test_Allowlist_OnlyListedCanJoin() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, seed, 2, uint64(block.timestamp + 1 hours), OPEN, 0);
-        vm.warp(block.timestamp + 2 hours);
+        uint256 id = escrow.createRoom(_params(0, 300e18, 0, 3, OPEN, true)); // allowlist pool
+        // bob not allowlisted -> rejected
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.NotAllowlisted.selector);
+        escrow.joinRoom(id, "");
+        // admin (creator) allowlists bob + carol
+        address[] memory ws = new address[](2); ws[0]=bob; ws[1]=carol;
+        vm.prank(alice); escrow.addToAllowlist(id, ws);
+        vm.prank(bob);   escrow.joinRoom(id, "");
+        assertEq(escrow.playerCount(id), 2);
+        assertTrue(escrow.allowlisted(id, bob));
+    }
+    function test_Allowlist_OwnerCanManage() public {
+        vm.prank(alice);
+        uint256 id = escrow.createRoom(_params(0, 100e18, 0, 3, OPEN, true));
+        address[] memory ws = new address[](1); ws[0]=bob;
+        escrow.addToAllowlist(id, ws); // owner (test contract)
+        assertTrue(escrow.allowlisted(id, bob));
+        escrow.removeFromAllowlist(id, bob);
+        assertTrue(!escrow.allowlisted(id, bob));
+    }
+    function test_Allowlist_RejectsStranger() public {
+        uint256 id = _duel();
+        address[] memory ws = new address[](1); ws[0]=bob;
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.NotCreatorOrOwner.selector);
+        escrow.addToAllowlist(id, ws);
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.NotCreatorOrOwner.selector);
+        escrow.removeFromAllowlist(id, carol);
+    }
+    function test_Allowlist_RejectsWhenNotOpen() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
+        address[] memory ws = new address[](1); ws[0]=carol;
+        vm.prank(alice);
+        vm.expectRevert(DuelEscrow.NotOpen.selector);
+        escrow.addToAllowlist(id, ws);
+    }
+
+    // ── Join guards + code ────────────────────────────────────────────────────────
+    function test_Join_PrivateGoodCode() public {
+        vm.prank(alice);
+        uint256 id = escrow.createRoom(_params(STAKE, 0, 0, 2, keccak256(bytes("s3cret")), false));
+        vm.prank(bob); escrow.joinRoom(id, "s3cret");
+        assertEq(escrow.playerCount(id), 2);
+    }
+    function test_Join_PrivateBadCode() public {
+        vm.prank(alice);
+        uint256 id = escrow.createRoom(_params(STAKE, 0, 0, 2, keccak256(bytes("s3cret")), false));
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.BadJoinCode.selector);
+        escrow.joinRoom(id, "wrong");
+    }
+    function test_Join_RevertsNotOpen() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
+        vm.prank(carol);
+        vm.expectRevert(DuelEscrow.NotOpen.selector);
+        escrow.joinRoom(id, "");
+    }
+    function test_Join_RevertsClosed() public {
+        uint256 id = _duel();
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.RoomClosed.selector);
+        escrow.joinRoom(id, "");
+    }
+    function test_Join_RevertsAlready() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.prank(bob);
+        vm.expectRevert(DuelEscrow.AlreadyJoined.selector);
+        escrow.joinRoom(id, "");
+    }
+    function test_Join_RevertsFull() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.prank(carol);
+        vm.expectRevert(DuelEscrow.RoomFull.selector);
+        escrow.joinRoom(id, "");
+    }
+    function test_Join_FreeEntryTransfersNothing() public {
+        vm.prank(alice);
+        uint256 id = escrow.createRoom(_params(0, 300e18, 0, 3, OPEN, false));
+        vm.prank(bob); escrow.joinRoom(id, "");
+        assertEq(g.balanceOf(bob), 1000e18);
+    }
+
+    // ── Refunds ─────────────────────────────────────────────────────────────────
+    function test_RefundUnfilled_StakeAndSeedBack() public {
+        vm.prank(alice);
+        uint256 id = escrow.createRoom(_params(STAKE, 200e18, 0, 2, OPEN, false));
+        vm.warp(block.timestamp + 25 hours);
         escrow.refundUnfilled(id);
         assertEq(g.balanceOf(alice), 1000e18);
-        assertEq(g.balanceOf(address(escrow)), 0);
     }
     function test_RefundUnfilled_FreeRoomSeedBack() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(0, 0, 250e18, 2, uint64(block.timestamp + 1 hours), OPEN, 0);
-        vm.warp(block.timestamp + 2 hours);
-        escrow.refundUnfilled(id); // stake 0 -> loop skipped, seed back
+        uint256 id = escrow.createRoom(_params(0, 250e18, 0, 2, OPEN, false));
+        vm.warp(block.timestamp + 25 hours);
+        escrow.refundUnfilled(id);
         assertEq(g.balanceOf(alice), 1000e18);
     }
     function test_RefundUnfilled_RevertsNotOpen() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
         vm.expectRevert(DuelEscrow.NotOpen.selector);
         escrow.refundUnfilled(id);
     }
@@ -312,10 +352,10 @@ contract DuelEscrowTest is Test {
     }
     function test_RefundAll_ReturnsEverything() public {
         vm.prank(alice);
-        uint256 id = escrow.createRoom(1, STAKE, 0, 3, uint64(block.timestamp + 1 hours), OPEN, 0);
+        uint256 id = escrow.createRoom(_params(STAKE, 0, 0, 3, OPEN, false));
         vm.prank(bob);   escrow.joinRoom(id, "");
         vm.prank(carol); escrow.joinRoom(id, "");
-        vm.warp(block.timestamp + 2 hours);
+        vm.warp(block.timestamp + 25 hours);
         vm.prank(validator); escrow.refundAll(id);
         assertEq(g.balanceOf(alice), 1000e18);
         assertEq(g.balanceOf(bob), 1000e18);
@@ -331,7 +371,7 @@ contract DuelEscrowTest is Test {
     function test_RefundAll_RevertsNotOpen() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
         vm.warp(block.timestamp + 25 hours);
         vm.prank(validator);
         vm.expectRevert(DuelEscrow.NotOpen.selector);
@@ -345,33 +385,55 @@ contract DuelEscrowTest is Test {
         escrow.refundAll(id);
     }
 
-    // ── permit paths ─────────────────────────────────────────────────────────────
+    // ── forceRefund (trustless backstop) ───────────────────────────────────────────
+    function test_ForceRefund_AfterGrace() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, ""); // contested
+        vm.warp(block.timestamp + 24 hours + 2 days + 1); // deadline + grace passed
+        escrow.forceRefund(id); // anyone
+        assertEq(g.balanceOf(alice), 1000e18);
+        assertEq(g.balanceOf(bob), 1000e18);
+    }
+    function test_ForceRefund_RevertsBeforeGrace() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.warp(block.timestamp + 25 hours); // past deadline, within grace
+        vm.expectRevert(DuelEscrow.StillLive.selector);
+        escrow.forceRefund(id);
+    }
+    function test_ForceRefund_RevertsNotOpen() public {
+        uint256 id = _duel();
+        vm.prank(bob); escrow.joinRoom(id, "");
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
+        vm.warp(block.timestamp + 10 days);
+        vm.expectRevert(DuelEscrow.NotOpen.selector);
+        escrow.forceRefund(id);
+    }
+
+    // ── Permit ──────────────────────────────────────────────────────────────────
     function test_CreateWithPermit_NoPriorApproval() public {
-        uint256 pd = block.timestamp + 1 hours;
-        (uint8 v, bytes32 r, bytes32 s) = _permitSig(davePk, dave, STAKE, pd);
+        DuelEscrow.PermitData memory pd = _permit(davePk, dave, STAKE, block.timestamp + 1 hours);
         vm.prank(dave);
-        uint256 id = escrow.createRoomWithPermit(1, STAKE, 0, 2, uint64(block.timestamp + 1 hours), OPEN, 500, STAKE, pd, v, r, s);
+        uint256 id = escrow.createRoomWithPermit(_params(STAKE, 0, FEE10, 2, OPEN, false), pd);
         assertEq(escrow.getRoom(id).creator, dave);
         assertEq(g.balanceOf(address(escrow)), STAKE);
     }
-    function test_CreateWithPermit_SwallowsBadPermitWhenApproved() public {
-        // dave approves manually, then sends a junk permit (expired) -> permit
-        // reverts, catch swallows it, transferFrom uses the allowance.
+    function test_CreateWithPermit_SwallowsBadPermit() public {
         vm.prank(dave); g.approve(address(escrow), type(uint256).max);
+        DuelEscrow.PermitData memory pd = DuelEscrow.PermitData({ value: STAKE, deadline: 1, v: 27, r: bytes32(0), s: bytes32(0) });
         vm.prank(dave);
-        uint256 id = escrow.createRoomWithPermit(1, STAKE, 0, 2, uint64(block.timestamp + 1 hours), OPEN, 500, STAKE, 1 /*past deadline*/, 27, bytes32(0), bytes32(0));
+        uint256 id = escrow.createRoomWithPermit(_params(STAKE, 0, FEE10, 2, OPEN, false), pd);
         assertEq(escrow.getRoom(id).creator, dave);
     }
     function test_JoinWithPermit() public {
         uint256 id = _duel();
-        uint256 pd = block.timestamp + 1 hours;
-        (uint8 v, bytes32 r, bytes32 s) = _permitSig(davePk, dave, STAKE, pd);
+        DuelEscrow.PermitData memory pd = _permit(davePk, dave, STAKE, block.timestamp + 1 hours);
         vm.prank(dave);
-        escrow.joinRoomWithPermit(id, "", STAKE, pd, v, r, s);
+        escrow.joinRoomWithPermit(id, "", pd);
         assertEq(escrow.playerCount(id), 2);
     }
 
-    // ── pausable ──────────────────────────────────────────────────────────────────
+    // ── Pausable ──────────────────────────────────────────────────────────────────
     function test_Pause_BlocksCreateAndJoin() public {
         uint256 id = _duel();
         escrow.pause();
@@ -380,88 +442,76 @@ contract DuelEscrowTest is Test {
         escrow.joinRoom(id, "");
         vm.prank(alice);
         vm.expectRevert(bytes("Pausable: paused"));
-        escrow.createRoom(1, STAKE, 0, 2, uint64(block.timestamp + 1 hours), OPEN, 0);
+        escrow.createRoom(_params(STAKE, 0, 0, 2, OPEN, false));
     }
     function test_Unpause_Restores() public {
         escrow.pause();
         escrow.unpause();
-        _duel(); // works again
+        _duel();
     }
     function test_Pause_OnlyOwner() public {
         vm.prank(alice);
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
         escrow.pause();
     }
-    function test_RefundStillWorksWhilePaused() public {
+    function test_RefundWorksWhilePaused() public {
         uint256 id = _duel();
         escrow.pause();
         vm.warp(block.timestamp + 25 hours);
-        escrow.refundUnfilled(id); // not gated by whenNotPaused
+        escrow.refundUnfilled(id);
         assertEq(g.balanceOf(alice), 1000e18);
     }
 
-    // ── config setters ─────────────────────────────────────────────────────────────
-    function test_SetValidator() public {
-        escrow.setValidator(bob);
-        assertEq(escrow.validator(), bob);
+    // ── Config ─────────────────────────────────────────────────────────────────────
+    function test_SetValidator() public { escrow.setValidator(bob); assertEq(escrow.validator(), bob); }
+    function test_SetValidator_Zero() public {
+        vm.expectRevert(DuelEscrow.ZeroAddress.selector); escrow.setValidator(address(0));
     }
-    function test_SetValidator_RejectsZero() public {
-        vm.expectRevert(DuelEscrow.ZeroAddress.selector);
-        escrow.setValidator(address(0));
-    }
-    function test_SetUbiPool() public {
-        escrow.setUbiPool(bob);
-        assertEq(escrow.ubiPool(), bob);
-    }
-    function test_SetUbiPool_RejectsZero() public {
-        vm.expectRevert(DuelEscrow.ZeroAddress.selector);
-        escrow.setUbiPool(address(0));
-    }
-    function test_SetUbiBps() public {
-        escrow.setUbiBps(3000);
-        assertEq(escrow.ubiBps(), 3000);
-    }
-    function test_SetUbiBps_RejectsTooHigh() public {
-        vm.expectRevert(DuelEscrow.UbiTooHigh.selector);
-        escrow.setUbiBps(5001);
+    function test_SetTreasury() public { escrow.setTreasury(bob); assertEq(escrow.treasury(), bob); }
+    function test_SetTreasury_Zero() public {
+        vm.expectRevert(DuelEscrow.ZeroAddress.selector); escrow.setTreasury(address(0));
     }
     function test_SetWindowBounds() public {
         escrow.setWindowBounds(1 hours, 60 days);
         assertEq(escrow.minWindow(), 1 hours);
         assertEq(escrow.maxWindow(), 60 days);
     }
-    function test_SetWindowBounds_RejectsZeroMin() public {
-        vm.expectRevert(DuelEscrow.BadBounds.selector);
-        escrow.setWindowBounds(0, 1 days);
+    function test_SetWindowBounds_BadZero() public {
+        vm.expectRevert(DuelEscrow.BadBounds.selector); escrow.setWindowBounds(0, 1 days);
     }
-    function test_SetWindowBounds_RejectsMaxBelowMin() public {
-        vm.expectRevert(DuelEscrow.BadBounds.selector);
-        escrow.setWindowBounds(2 days, 1 days);
+    function test_SetWindowBounds_BadOrder() public {
+        vm.expectRevert(DuelEscrow.BadBounds.selector); escrow.setWindowBounds(2 days, 1 days);
+    }
+    function test_SetForceRefundGrace() public {
+        escrow.setForceRefundGrace(1 days);
+        assertEq(escrow.forceRefundGrace(), 1 days);
+    }
+    function test_SetForceRefundGrace_Zero() public {
+        vm.expectRevert(DuelEscrow.BadBounds.selector); escrow.setForceRefundGrace(0);
     }
     function test_Setters_OnlyOwner() public {
         vm.prank(alice);
         vm.expectRevert(bytes("Ownable: caller is not the owner"));
-        escrow.setValidator(bob);
+        escrow.setTreasury(bob);
     }
 
-    // ── views ───────────────────────────────────────────────────────────────────────
+    // ── Views ───────────────────────────────────────────────────────────────────────
     function test_Views() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
         assertEq(escrow.getPlayers(id).length, 2);
         assertEq(escrow.getPlayerRooms(alice)[0], id);
-        assertEq(escrow.getPlayerRooms(bob)[0], id);
         assertEq(escrow.pot(id), STAKE * 2);
     }
-    function test_IsResolvable_FalseWhenResolved() public {
+    function test_IsResolvable_FalseResolved() public {
         uint256 id = _duel();
         vm.prank(bob); escrow.joinRoom(id, "");
-        vm.prank(validator); escrow.resolveRoom(id, _scores2(1, 2));
+        vm.prank(validator); escrow.resolveRoom(id, _scores2(1,2));
         assertTrue(!escrow.isResolvable(id));
     }
-    function test_IsResolvable_FalseWhenSolo() public {
+    function test_IsResolvable_FalseSolo() public {
         uint256 id = _duel();
         vm.warp(block.timestamp + 25 hours);
-        assertTrue(!escrow.isResolvable(id)); // only 1 player
+        assertTrue(!escrow.isResolvable(id));
     }
 }

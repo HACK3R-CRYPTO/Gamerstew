@@ -28,7 +28,7 @@ function activeId(pathname: string): string {
   if (pathname.startsWith("/dashboard")) return "home";
   if (pathname.startsWith("/games")) return "play";
   if (pathname.startsWith("/shop")) return "shop";
-  if (pathname.startsWith("/leaderboard") || pathname.startsWith("/events")) return "events";
+  if (pathname.startsWith("/leaderboard") || pathname.startsWith("/events") || pathname.startsWith("/duel")) return "events";
   if (pathname.startsWith("/profile")) return "pet";
   return "";
 }

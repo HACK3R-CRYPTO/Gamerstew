@@ -24,6 +24,7 @@ import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import EventTeaser from "@/components/EventTeaser";
+import Link from "next/link";
 import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 import { AgentBadge } from "@/components/AgentBadge";
 import { useAgentAddresses } from "@/hooks/useAgentAddresses";
@@ -679,6 +680,21 @@ export default function EventsPage() {
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>EVENTS</div>
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
         </div>
+
+        {/* Challenge rooms · native entry point into the rooms hub (create /
+            join prize pools + duels). Private pools you're invited to show up
+            under "Your rooms" inside. */}
+        <Link href="/duel" style={{ textDecoration: "none", color: "inherit" }}>
+          <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            background: "linear-gradient(115deg, rgba(120,53,15,0.5) 0%, rgba(30,14,74,0.7) 60%, rgba(20,8,52,0.9) 100%)", border: "1px solid rgba(251,191,36,0.35)" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em", color: "#fde68a", textTransform: "uppercase" }}>Challenge rooms · New</div>
+              <div style={{ fontFamily: T.display, fontSize: isDesktop ? 22 : 19, color: T.ink, marginTop: 4 }}>Create or join a prize pool</div>
+              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 3 }}>Stake a duel, or put up a prize. Highest score wins, paid in G$.</div>
+            </div>
+            <span style={{ flexShrink: 0, fontFamily: T.display, fontSize: 24, color: "#fde68a" }}>→</span>
+          </div>
+        </Link>
 
         {/* LIVE / PAST / ALL-TIME tab switcher */}
         <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
