@@ -2987,6 +2987,20 @@ async function cupWindowScores(startSec, endSec) {
   return out;
 }
 
+// Immutable final-board snapshot. Once the Cup ends, the FIRST call computes
+// the board one last time and freezes it here; every later call serves this
+// copy untouched. This does two jobs at once:
+//   1. Correctness — the ended Cup stops drifting. It used to recompute every
+//      60s against CURRENT verification, so as referred friends verified or
+//      lapsed after the deadline the "final" standings kept reshuffling (the
+//      "is this a glitch?" reports). Frozen = winners locked at the deadline.
+//   2. Cost — recomputing paged the full arena_free_matches table (tens of
+//      thousands of rows) every 60s forever, which blew the Supabase egress
+//      quota. A frozen board does ZERO Supabase reads.
+// In-memory (recomputes once per cold start) — no migration needed; the
+// referral set_at<=deadline bound below keeps that recompute deterministic.
+let cupFrozenPayload = null;
+
 app.get('/api/cup', async (req, res) => {
   const startSec = Math.floor(Date.parse(CUP.startsAt) / 1000);
   const endSec   = Math.floor(Date.parse(CUP.endsAt) / 1000);
@@ -2995,7 +3009,7 @@ app.get('/api/cup', async (req, res) => {
   const startIso = new Date(startSec * 1000).toISOString();
   const endIso   = new Date(Math.min(nowSec, endSec) * 1000).toISOString();
 
-  let payload = cacheGet('cup:payload');
+  let payload = (phase === 'ended' && cupFrozenPayload) ? cupFrozenPayload : cacheGet('cup:payload');
   if (!payload) {
     try {
       // ── Skill + Consistency, from the subgraph (per-run timestamps) ──
@@ -3118,6 +3132,7 @@ app.get('/api/cup', async (req, res) => {
       try {
         const { data: intents } = await supabase.from('season_v1_referrer_intent')
           .select('wallet, referrer_wallet')
+          .lte('set_at', endIso) // only referrals made on/before the deadline count
           .limit(10000);
         for (const j of intents || []) {
           const ref = j.referrer_wallet?.toLowerCase();
@@ -3185,7 +3200,11 @@ app.get('/api/cup', async (req, res) => {
         pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones,
                humanPlayers: humanAll.length, agents: agent.length },
       };
-      cacheSet('cup:payload', payload, 60_000);
+      // Ended → freeze permanently (no more recompute, no more Supabase reads).
+      // Live → 5-min cache (was 60s): cuts the live-event egress ~5x since the
+      // agent lane pages the whole arena_free_matches table on every rebuild.
+      if (phase === 'ended') cupFrozenPayload = payload;
+      else cacheSet('cup:payload', payload, 300_000);
     } catch (e) {
       console.warn('cup failed:', e?.message || e);
       payload = { human: [], agent: [], crowns: { connector: null, streak: null }, pot: null };
