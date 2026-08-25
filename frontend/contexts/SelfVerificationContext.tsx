@@ -275,11 +275,24 @@ export function SelfVerificationProvider({ children }: { children: React.ReactNo
       toast.dismiss(toastId);
       if (finalLink) {
         setFvLink(finalLink);
+        // Mobile browsers and in-wallet browsers (MiniPay) block or break
+        // popups: the face scan runs in a stranded window, passes, but never
+        // returns to finalize the on-chain whitelist — so the player looks
+        // verified in the widget yet isWhitelisted stays false and they get
+        // asked to verify again on next sign-in. On those clients, navigate
+        // SAME-TAB. generateFVLink's callback (this page) returns the user
+        // here, where the on-return / focus / poll checks re-read
+        // getWhitelistedRoot and light the badge. Desktop keeps the popup.
+        const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+        const isMiniPay = typeof window !== 'undefined' && (window as any).ethereum?.isMiniPay;
+        const isMobile = /Android|iPhone|iPad|iPod|Mobile|MiniPay/i.test(ua);
+        if (isMiniPay || isMobile) {
+          toast('Opening Face Verification…', { icon: '👤' });
+          window.location.href = finalLink; // page navigates away; returns via callback
+          return;
+        }
         toast('Opening GoodDollar Face Verification...', { icon: '👤' });
-        // Popup blockers (Safari default, Chrome on many setups) return
-        // null here and the player gets stuck on an infinite "verifying"
-        // spinner with no explanation. Detect it and let the UI offer a
-        // same-tab continue link + unblock instructions.
+        // Desktop popup — with the popup-blocked fallback (same-tab link) below.
         const popup = window.open(finalLink, '_blank', 'width=800,height=800');
         setPopupBlocked(!popup);
       }
