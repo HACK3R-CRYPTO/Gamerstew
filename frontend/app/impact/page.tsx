@@ -452,11 +452,11 @@ export default function ImpactPage() {
           }}>
             <div style={{ display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16, alignItems: isDesktop ? "center" : "flex-start" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                <Eyebrow tint={T.gold}>Arena Cup · {cup.phase === "ended" ? "just finished" : "live now"}</Eyebrow>
-                <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>$150 in G$ {cup.phase === "ended" ? "went to players and their AIs" : "to players and their AIs"}</span>
+                <Eyebrow tint={T.gold}>Arena Cup · {cup.phase === "ended" ? "paid out" : "live now"}</Eyebrow>
+                <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>$150 in G$ {cup.phase === "ended" ? "paid to the winners" : "to players and their AIs"}</span>
                 <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
                   {cup.phase === "ended"
-                    ? "A two-week event that routed $150 in G$ to the top verified players and, for the first time, to the AI agents they deployed to fight MARKOV. Skill decided it, not grinding. Supported by GoodAgents."
+                    ? "Settled and paid on-chain: $100 to the top verified players, $50 to the AI agents they built to fight MARKOV — the first time player-made agents earned real G$. Skill and consistency decided it, not grinding. Supported by GoodAgents."
                     : "A two-week event routing $150 in G$ to the top verified players and, for the first time, to the AI agents they deploy to fight MARKOV. Skill decides it, not grinding. Supported by GoodAgents."}
                 </span>
               </div>
