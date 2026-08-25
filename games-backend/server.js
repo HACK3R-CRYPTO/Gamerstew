@@ -3052,6 +3052,11 @@ app.get('/api/cup', async (req, res) => {
       // in-app arena board uses — NOT by "played Challenge-AI" (humans play it
       // too). NOTE: the retired staked-PvP flow (agent_match_state) stopped
       // writing on Jul 22; arena_free_matches is the live source of truth. ──
+      // Freeze health guard — if any Supabase-backed lane throws (e.g. the agent
+      // pagination or referral read times out on a cold start), the board is
+      // INCOMPLETE and must NOT be frozen, or we'd lock in wrong winners. Flipped
+      // false in each lane's catch; only a fully-successful board gets frozen.
+      let lanesComplete = true;
       let agent = [];
       const agentSet = new Set();
       const agentOwner = new Map(); // agentWalletLower -> ownerWalletLower
@@ -3069,7 +3074,7 @@ app.get('/api/cup', async (req, res) => {
             .gte('created_at', startIso).lt('created_at', endIso)
             .order('created_at', { ascending: true })
             .range(from, from + PAGE - 1);
-          if (error) { console.warn('cup agent page:', error.message); break; }
+          if (error) { lanesComplete = false; console.warn('cup agent page:', error.message); break; }
           if (!arows || arows.length === 0) break;
           for (const r of arows) {
             const w = r.wallet?.toLowerCase(); if (!w) continue;
@@ -3120,7 +3125,7 @@ app.get('/api/cup', async (req, res) => {
           if (!e.username && e.owner && nameByOwner.has(e.owner.wallet)) e.username = nameByOwner.get(e.owner.wallet);
           e.rank = i + 1;
         });
-      } catch (e) { console.warn('cup agent lane:', e?.message || e); }
+      } catch (e) { lanesComplete = false; console.warn('cup agent lane:', e?.message || e); }
 
       const byPlayer = new Map(); // wallet -> { best:{gt:score}, days:Set }
       for (const r of rows) {
@@ -3140,13 +3145,14 @@ app.get('/api/cup', async (req, res) => {
       // ── G$ spend lane (arena_purchases, windowed) · √ curve, uncapped ──
       const spendByWallet = new Map();
       try {
-        const { data: buys } = await supabase.from('arena_purchases')
+        const { data: buys, error: buysErr } = await supabase.from('arena_purchases')
           .select('wallet, amount_wei').gte('created_at', startIso).lt('created_at', endIso);
+        if (buysErr) { lanesComplete = false; throw buysErr; }
         for (const b of buys || []) {
           const w = b.wallet?.toLowerCase(); if (!w) continue;
           spendByWallet.set(w, (spendByWallet.get(w) || 0) + Number(b.amount_wei) / 1e18);
         }
-      } catch (e) { console.warn('cup spend lane:', e?.message || e); }
+      } catch (e) { lanesComplete = false; console.warn('cup spend lane:', e?.message || e); }
 
       // ── Referral lane (season_v1_referrer_intent) ──
       // The referral link lives in season_v1_referrer_intent — set when a friend
@@ -3157,10 +3163,11 @@ app.get('/api/cup', async (req, res) => {
       // verified AND played in-window (byPlayer is already window-scoped).
       const refByWallet = new Map();
       try {
-        const { data: intents } = await supabase.from('season_v1_referrer_intent')
+        const { data: intents, error: intentsErr } = await supabase.from('season_v1_referrer_intent')
           .select('wallet, referrer_wallet')
           .lte('set_at', endIso) // only referrals made on/before the deadline count
           .limit(10000);
+        if (intentsErr) { lanesComplete = false; throw intentsErr; }
         for (const j of intents || []) {
           const ref = j.referrer_wallet?.toLowerCase();
           const referred = j.wallet?.toLowerCase();
@@ -3169,7 +3176,7 @@ app.get('/api/cup', async (req, res) => {
             refByWallet.set(ref, (refByWallet.get(ref) || 0) + 1);
           }
         }
-      } catch (e) { console.warn('cup referral lane:', e?.message || e); }
+      } catch (e) { lanesComplete = false; console.warn('cup referral lane:', e?.message || e); }
 
       // ── Human Cup Points ──
       const entries = wallets.map((w) => {
@@ -3227,11 +3234,17 @@ app.get('/api/cup', async (req, res) => {
         pot: { plays: totalPlays, agentMatches, bonusG, next, milestones: CUP.potMilestones,
                humanPlayers: humanAll.length, agents: agent.length },
       };
-      // Ended → freeze permanently (no more recompute, no more Supabase reads).
-      // Live → 5-min cache (was 60s): cuts the live-event egress ~5x since the
-      // agent lane pages the whole arena_free_matches table on every rebuild.
-      if (phase === 'ended') cupFrozenPayload = payload;
-      else cacheSet('cup:payload', payload, 300_000);
+      // Ended → freeze permanently, but ONLY if every Supabase lane succeeded.
+      // A partial board (agent/referral read timed out on a cold start) must not
+      // be frozen — short-cache it and let the next call retry until it's clean,
+      // then freeze the correct final board. Live → 5-min cache (was 60s), ~5x
+      // less egress since the agent lane pages the whole matches table.
+      if (phase === 'ended') {
+        if (lanesComplete) cupFrozenPayload = payload;
+        else cacheSet('cup:payload', payload, 15_000); // incomplete → retry soon
+      } else {
+        cacheSet('cup:payload', payload, 300_000);
+      }
     } catch (e) {
       console.warn('cup failed:', e?.message || e);
       payload = { human: [], agent: [], crowns: { connector: null, streak: null }, pot: null };
