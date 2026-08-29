@@ -630,8 +630,12 @@ const MISSION_TEMPLATES = [
   { id: 'stack_60',   cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: ({ game, score }) => game === 'stack' && score >= 60 ? 1 : 0 },
   // ── SPECIAL · improve, or explore the arcade ───────────────────────────────
   { id: 'beat_personal_best', cat: 'special', label: 'Beat a personal best',        target: 1, reward: 35, match: ({ isNewPb }) => isNewPb ? 1 : 0 },
-  { id: 'variety_2',          cat: 'special', label: 'Play 2 different games today', target: 2, reward: 25, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
-  { id: 'variety_3',          cat: 'special', label: 'Play 3 different games today', target: 3, reward: 40, match: ({ game, _seenGamesToday }) => _seenGamesToday && !_seenGamesToday.has(game) ? 1 : 0 },
+  // ABSOLUTE progress = how many DISTINCT games played today (the set's size),
+  // not an increment. The old incremental version was stuck at 0: the current
+  // play is already in today's activity when this runs, so "!has(game)" was
+  // always false and it never counted.
+  { id: 'variety_2',          cat: 'special', absolute: true, label: 'Play 2 different games today', target: 2, reward: 25, match: ({ _seenGamesToday }) => _seenGamesToday ? _seenGamesToday.size : 0 },
+  { id: 'variety_3',          cat: 'special', absolute: true, label: 'Play 3 different games today', target: 3, reward: 40, match: ({ _seenGamesToday }) => _seenGamesToday ? _seenGamesToday.size : 0 },
 ];
 
 // Deterministic 3-mission pick per (wallet, date) so a player gets the SAME 3 missions all day.
@@ -694,9 +698,14 @@ async function updateMissionProgress(wallet, ctx) {
     if (m.completed) continue;
     const tpl = MISSION_TEMPLATES.find(t => t.id === m.mission_id);
     if (!tpl) continue;
-    const delta = tpl.match({ ...ctx, _seenGamesToday: seenGamesToday });
-    if (!delta) continue;
-    const newProgress = Math.min(m.target, m.progress + delta);
+    const value = tpl.match({ ...ctx, _seenGamesToday: seenGamesToday });
+    // Absolute missions (e.g. "play N different games") report the true count;
+    // everything else accumulates a per-play delta.
+    const newProgress = tpl.absolute
+      ? Math.min(m.target, value)
+      : Math.min(m.target, m.progress + value);
+    if (!tpl.absolute && !value) continue;         // no delta → nothing changed
+    if (newProgress === m.progress) continue;      // absolute but unchanged
     const completed = newProgress >= m.target;
     await supabase
       .from('daily_missions')
