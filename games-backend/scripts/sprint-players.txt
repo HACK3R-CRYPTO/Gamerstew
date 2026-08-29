@@ -1,0 +1,19 @@
+# GameArena private sprint — allowlisted players (Play + Verify + Vote roster)
+# One wallet per line. Names are comments; only the 0x addresses are read.
+# Resolved from on-chain GamePass usernames via the subgraph.
+
+0xea9491496f509b30d53b976dc5e105ca5d46c47b  # Queeneth
+0x4e7239e491d8fd6d8903ee498b97270351b88385  # Dean
+0x8d4b5ce45838961444d8b047ed03bb863dad5904  # chloe
+0x31937f5351802e690b645eb75772909dd6b2f277  # ibrahim
+0x6a2b0b3620ab3188b5c81f405e7f717558abb2a1  # Azoofiriy
+0x76c54be23ba83fd428e891ed68845b179cd14008  # damian_vall
+0x206ba17ac36df2e30cacb636b3f6a9ba1e960516  # Malik
+0x05d69592ecf20055b351316bd05a08f4a87e6e93  # temmy
+0x4d36bc58c7ade1a749d57fb9131835c106dedb19  # oscarkratus
+0x531e42b0f25eafc52e500627fb817422cdd78ada  # Detalented
+0x134f9177d89fd42feb461c3819863304267e1312  # Hermes
+0x9e8cf64c2bd532d0aca7dd93844c93b04c6c21fe  # Emmaz
+0xf658e08bf31cd37f684e17cf3cee89a4a2572ac0  # rodiyah
+0xfb12e3d5137b594aea064448bb2a29533612323e  # Ppp
+# Danny — NOT matched on-chain (closest: Daniel, Daniel001). Add the correct wallet or exact username.

@@ -21,8 +21,14 @@
  *  SAT_START         event start, ISO e.g. 2026-08-29T09:00:00Z (required)
  *  SAT_END           event end,   ISO                           (required)
  *  WINNERS           how many top players share it (default 10)
- *  ELIGIBLE_FILE     path to a text file of voted+verified wallets, one per line
- *                    (optional — if set, only these wallets can win; blank = all)
+ *  ELIGIBLE_FILE     path to a text file of allowed wallets, one per line (the private
+ *                    roster). Optional — if set, only these wallets can win; blank = all.
+ *  GAMES             which games count, e.g. 0,1,2 (Rhythm,Simon,Stack — no Challenge AI).
+ *                    Blank = every game counts.
+ *  VERIFY            'onchain' (default) checks GoodDollar isWhitelisted live; 'roster'
+ *                    trusts the ELIGIBLE_FILE as the verification (for a hand-vetted private
+ *                    list whose on-chain identity may have since expired).
+ *  MIN_SCORE         minimum normalised score to be eligible (default 1 — drops 0-score).
  *  SPLIT             'equal' (default) or 'graduated' (top-weighted)
  *
  * USAGE
@@ -51,9 +57,14 @@ const SPLIT     = (process.env.SPLIT || 'equal').toLowerCase();
 const SAT_START = process.env.SAT_START || '';
 const SAT_END   = process.env.SAT_END || '';
 const ELIGIBLE_FILE = process.env.ELIGIBLE_FILE || '';
+// Restrict which games count, e.g. GAMES=0,1,2 (Rhythm, Simon, Stack — no Challenge AI).
+// Blank = every game counts.
+const GAMES = new Set((process.env.GAMES || '').split(',').map((s) => s.trim()).filter((s) => s !== '').map(Number));
 
 // Cross-game normalisation — same divisors the Arena Cup uses.
+// 0 rhythm rush · 1 simon memory · 2 stack · 3 challenge AI (MARKOV)
 const DIVISOR = { 0: 100, 1: 20, 2: 5, 3: 20 };
+const GAME_NAME = { 0: 'Rhythm Rush', 1: 'Simon Memory', 2: 'Stack', 3: 'Challenge AI' };
 
 const ERC20 = [
   'function balanceOf(address) view returns (uint256)',
@@ -85,6 +96,7 @@ async function rankPlayers(startSec, endSec) {
     if (!rows.length) break;
     for (const row of rows) {
       const w = row.player.id.toLowerCase(); const g = Number(row.gameType); const sc = Number(row.score);
+      if (GAMES.size && !GAMES.has(g)) continue; // game not part of this sprint
       if (!best.has(w)) best.set(w, new Map());
       const m = best.get(w); if (!m.has(g) || sc > m.get(g)) m.set(g, sc);
     }
@@ -130,13 +142,21 @@ async function main() {
   const provider = new ethers.JsonRpcProvider(RPC);
   const id = new ethers.Contract(IDENTITY, ID_ABI, provider);
 
-  console.log(`\nSaturday pool — window ${SAT_START} → ${SAT_END}`);
+  const gamesLabel = GAMES.size ? [...GAMES].map((g) => GAME_NAME[g] || `game ${g}`).join(', ') : 'all games';
+  console.log(`\nSprint pool — window ${SAT_START} → ${SAT_END}`);
+  console.log(`Games counted: ${gamesLabel}`);
   console.log(`Pool: ${TOTAL_G.toLocaleString()} G$  ·  top ${WINNERS}  ·  split: ${SPLIT}`);
   console.log(SEND ? '>>> LIVE MODE (--send): transactions WILL be sent\n' : '>>> DRY RUN (no --send)\n');
 
   // Rank everyone who played in the window.
   let ranked = await rankPlayers(startSec, endSec);
   console.log(`Players with a score in the window: ${ranked.length}`);
+
+  // Must actually put up a score — a 0 means they opened a game but never scored.
+  const MIN_SCORE = Number(process.env.MIN_SCORE || 1);
+  const beforeMin = ranked.length;
+  ranked = ranked.filter((r) => r.score >= MIN_SCORE);
+  if (beforeMin !== ranked.length) console.log(`Dropped ${beforeMin - ranked.length} with score < ${MIN_SCORE} (opened a game, never scored).`);
 
   // Optional voted/eligible gate.
   if (ELIGIBLE_FILE) {
@@ -145,15 +165,26 @@ async function main() {
     console.log(`After the eligible/voted list (${set.size} wallets): ${ranked.length}`);
   }
 
-  // Verified only — walk down the ranking until we have WINNERS verified players.
+  // Verification gate. Two modes:
+  //  VERIFY=onchain (default) — check GoodDollar isWhitelisted live; drops lapsed identities.
+  //  VERIFY=roster           — trust the eligible list itself as the verification (for a
+  //                            private, hand-vetted roster where on-chain status may have expired).
+  const VERIFY = (process.env.VERIFY || 'onchain').toLowerCase();
   const winners = [];
-  for (const r of ranked) {
-    if (winners.length >= WINNERS) break;
-    let ok = false;
-    try { ok = await id.isWhitelisted(r.wallet); } catch { ok = false; }
-    if (ok) winners.push(r); else console.log(`  skip (unverified) ${r.wallet}  (${r.score} pts)`);
+  if (VERIFY === 'roster') {
+    if (!ELIGIBLE_FILE) { console.error('ERROR: VERIFY=roster needs an ELIGIBLE_FILE to trust.'); process.exit(1); }
+    console.log('Verification: trusting the roster (on-chain whitelist check skipped).');
+    for (const r of ranked) { if (winners.length >= WINNERS) break; winners.push(r); }
+  } else {
+    // Walk down the ranking until we have WINNERS currently-whitelisted players.
+    for (const r of ranked) {
+      if (winners.length >= WINNERS) break;
+      let ok = false;
+      try { ok = await id.isWhitelisted(r.wallet); } catch { ok = false; }
+      if (ok) winners.push(r); else console.log(`  skip (unverified) ${r.wallet}  (${r.score} pts)`);
+    }
   }
-  if (!winners.length) { console.error('\nNo eligible verified players scored in the window. Nothing to pay.'); process.exit(1); }
+  if (!winners.length) { console.error('\nNo eligible players scored in the window. Nothing to pay.'); process.exit(1); }
 
   const amounts = splitPool(winners.length);
   console.log(`\nWinners (${winners.length}):`);
