@@ -448,6 +448,7 @@ export default function EventsPage() {
   const [myAllRank, setMyAllRank] = useState<{ rank: number; peak: number } | null>(null);
   // Detail modal · opens when a past event card is tapped.
   const [selectedEvent, setSelectedEvent] = useState<SelectedEvent | null>(null);
+  const [sprintAllowed, setSprintAllowed] = useState(false); // private sprint entry, only for roster/host
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -455,6 +456,14 @@ export default function EventsPage() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+
+  // Private sprint entry card — the backend decides if this wallet is on the
+  // roster (or is the host), so the roster never ships to the client.
+  useEffect(() => {
+    if (!address) { setSprintAllowed(false); return; }
+    fetch(`/api/sprint?wallet=${address}`, { cache: "no-store" })
+      .then((r) => r.json()).then((j) => setSprintAllowed(!!j?.viewer?.allowed)).catch(() => setSprintAllowed(false));
+  }, [address]);
 
   // LIVE + PAST data — pulled from the same endpoints the legacy /leaderboard uses.
   useEffect(() => {
@@ -680,6 +689,22 @@ export default function EventsPage() {
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>EVENTS</div>
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
         </div>
+
+        {/* Private Sprint · only rendered when the backend confirms this wallet
+            is on the roster (or is the host). Invisible to everyone else. */}
+        {sprintAllowed && (
+          <Link href="/sprint" style={{ textDecoration: "none", color: "inherit" }}>
+            <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+              background: "linear-gradient(115deg, rgba(16,109,87,0.55) 0%, rgba(30,14,74,0.7) 60%, rgba(20,8,52,0.9) 100%)", border: "1px solid rgba(52,211,153,0.4)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em", color: "#34d399", textTransform: "uppercase" }}>Private Sprint · Invite only</div>
+                <div style={{ fontFamily: T.display, fontSize: isDesktop ? 22 : 19, color: T.ink, marginTop: 4 }}>You're in — open the room</div>
+                <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 3 }}>$50 in G$ · top 10 · 5 days. See the live board and your rank.</div>
+              </div>
+              <span style={{ flexShrink: 0, fontFamily: T.display, fontSize: 24, color: "#34d399" }}>→</span>
+            </div>
+          </Link>
+        )}
 
         {/* Challenge rooms · native entry point into the rooms hub (create /
             join prize pools + duels). Private pools you're invited to show up

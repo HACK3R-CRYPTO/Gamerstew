@@ -5499,6 +5499,9 @@ setInterval(indexOnChainScores, 5 * 60 * 1000);
 // this module mirrors rooms for the hub and lets the validator resolve payouts.
 require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validator, isVerified, requireSecret });
 
+// Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
+require('./lib/sprint').registerSprintRoutes(app);
+
 app.listen(PORT, () => {
   console.log(`🎮 Games backend on http://localhost:${PORT} — Season ${currentSeasonNumber()}`);
   // Surface whether on-chain addresses came from env or a hardcoded fallback,
