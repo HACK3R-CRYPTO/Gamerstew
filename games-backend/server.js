@@ -5502,6 +5502,11 @@ require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validat
 // Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
 require('./lib/sprint').registerSprintRoutes(app);
 
+// Partner Game SDK · lets approved third-party games (e.g. BlockSlide) push scores
+// onto GameArena boards + read GoodDollar verification. Inert until PARTNER_GAMES +
+// PARTNER_KEY_* env are set. See lib/partner.js and /sdk.
+require('./lib/partner')(app, { supabase, saveScore, ethers });
+
 app.listen(PORT, () => {
   console.log(`🎮 Games backend on http://localhost:${PORT} — Season ${currentSeasonNumber()}`);
   // Surface whether on-chain addresses came from env or a hardcoded fallback,
