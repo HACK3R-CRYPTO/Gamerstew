@@ -41,12 +41,18 @@ export class GameArena {
    * is kept automatically. Call this server-side (keeps your key private).
    * @param {string} wallet  0x address
    * @param {number} score   final score for the run
-   * @param {string} [txHash] optional on-chain tx hash for proof
+   * @param {object} [opts]
+   * @param {string} [opts.name]   the player's name on YOUR side — shown on
+   *                               GameArena boards so players who joined through
+   *                               your site still appear named (not a bare wallet)
+   * @param {string} [opts.txHash] optional on-chain tx hash for proof
    */
-  submitScore(wallet, score, txHash) {
+  submitScore(wallet, score, opts = {}) {
+    // Back-compat: submitScore(wallet, score, "0xtx") still works.
+    const { name, txHash } = typeof opts === "string" ? { txHash: opts } : opts;
     return this._req("/api/partner/score", {
       method: "POST",
-      body: JSON.stringify({ wallet, score, txHash }),
+      body: JSON.stringify({ wallet, score, name, txHash }),
     });
   }
 
@@ -59,6 +65,17 @@ export class GameArena {
   async isVerified(wallet) {
     const r = await this._req(`/api/partner/verified/${wallet}`);
     return !!r.verified;
+  }
+
+  /**
+   * "Sign in with GamePass" lookup. Connect the player's wallet on your side,
+   * then resolve their GameArena identity for it. Use hasPass to let them in as
+   * their GamePass username; if false, send them to joinUrl to mint one.
+   * @param {string} wallet 0x address
+   * @returns {Promise<{ wallet: string, hasPass: boolean, username: string|null, verified: boolean, joinUrl: string }>}
+   */
+  profile(wallet) {
+    return this._req(`/api/partner/profile/${wallet}`);
   }
 
   /**
