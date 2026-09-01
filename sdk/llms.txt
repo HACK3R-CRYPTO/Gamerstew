@@ -1,0 +1,119 @@
+# GameArena Partner API — llms.txt
+
+Integration spec for third-party games (e.g. BlockSlide) plugging into GameArena.
+GameArena is the distribution + identity layer. You keep your game, your contract,
+your rewards, and your own player names. The WALLET is the shared join key: the same
+wallet is the same player on both sides, whichever site they joined through.
+
+## Base
+- Base URL: https://game-backend-production-6130.up.railway.app
+- Auth: header `x-partner-key: <YOUR_KEY>` on every request. GameArena issues one key
+  per game. Keep it server-side. Never ship it in client code.
+- Content-Type: application/json
+- Rate limit: 120 requests / minute / key.
+- Wallet format: 0x + 40 hex chars.
+
+## Identity model (read this first)
+- A player can join through YOUR site (you give them a name) or through GameArena
+  (they get a GamePass name). You do not adopt each other's usernames.
+- You already have the player's name + wallet from your own signup. Send BOTH with
+  every score. That is all "getting their name" requires on your side.
+- GameArena stores the name you send per wallet, so a player who never minted a
+  GamePass still shows up NAMED on GameArena's boards (not a bare address).
+- To greet a GameArena player by their GamePass name inside your game, call /profile.
+
+## Endpoints
+
+### POST /api/partner/score
+Record a score onto GameArena. Call from YOUR server when a run ends.
+Request body:
+  {
+    "wallet":  "0x...",        // required, the player's wallet
+    "score":   41280,          // required, integer >= 0
+    "name":    "neo",          // optional but RECOMMENDED — the player's name on your side
+    "txHash":  "0x..."         // optional — your on-chain proof of the run
+  }
+Response 200:
+  {
+    "success": true,
+    "game":    "blockslide",
+    "onchain": true,           // true if GameArena also mirrored the score on-chain
+    "txHash":  "0x..."         // the GameArena on-chain tx hash if onchain=true, else your txHash/null
+  }
+Notes:
+- Best score per wallet is kept automatically. Lower scores still log activity.
+- `name` is capped at 32 chars and sanitised. Send it whenever you have it.
+- If GameArena has set your game up as an on-chain partner, this call also records
+  the score on-chain on GameArena (GameArena sponsors the gas). Your own game and
+  settlement are never touched.
+
+### GET /api/partner/profile/:wallet
+Resolve a wallet's GameArena identity. Use for "the same player on both sides".
+Response 200:
+  {
+    "wallet":   "0x...",
+    "hasPass":  true,          // does this wallet own a GameArena GamePass
+    "username": "neo",         // their GamePass name, or null
+    "verified": true,          // GoodDollar proof-of-humanity
+    "joinUrl":  "https://gamearenahq.xyz"  // send here if hasPass=false to mint one
+  }
+Use: if hasPass, greet them by username. If not, offer joinUrl (they become a
+GameArena user — good for both of us).
+
+### GET /api/partner/verified/:wallet
+GoodDollar proof-of-humanity only. Use to gate rewards or show a verified badge.
+Response 200: { "wallet": "0x...", "verified": true }
+
+### GET /api/partner/leaderboard?limit=20
+Read your game's board back from GameArena. limit 1-100 (default 20).
+Response 200:
+  {
+    "game": "blockslide",
+    "rows": [
+      { "rank": 1, "wallet": "0x...", "username": "neo", "score": 41280 }
+      // username = the name you sent, else their GamePass name, else null
+    ]
+  }
+
+## Errors
+- 401 { "error": "missing partner key" }   — no x-partner-key header
+- 403 { "error": "invalid partner key" }   — unknown/disabled key
+- 400 { "error": "invalid wallet" | "invalid score" }
+- 429 — rate limited (120/min/key)
+- 5xx { "error": "..." } — transient, safe to retry
+
+## Minimal integration (Node, server-side)
+```js
+const BASE = "https://game-backend-production-6130.up.railway.app";
+const KEY  = process.env.GAMEARENA_KEY; // your partner key, server-side only
+
+async function ga(path, opts = {}) {
+  const r = await fetch(BASE + path, {
+    ...opts,
+    headers: { "x-partner-key": KEY, "content-type": "application/json", ...(opts.headers || {}) },
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`GameArena ${r.status}: ${body.error || r.statusText}`);
+  return body;
+}
+
+// When a BlockSlide run ends — send wallet + your player's name + score:
+await ga("/api/partner/score", {
+  method: "POST",
+  body: JSON.stringify({ wallet, score, name: playerName, txHash }),
+});
+
+// Optional: recognise a GameArena player inside BlockSlide:
+const profile = await ga(`/api/partner/profile/${wallet}`);
+if (profile.hasPass) greet(profile.username);
+```
+
+## Zero-dependency client
+Copy sdk/gamearena.js (browser + Node 18+):
+```js
+import { GameArena } from "./gamearena.js";
+const arena = new GameArena({ apiKey: process.env.GAMEARENA_KEY });
+await arena.submitScore(wallet, score, { name, txHash });
+const p = await arena.profile(wallet);
+const board = await arena.leaderboard(20);
+```
