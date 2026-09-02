@@ -19,7 +19,7 @@ const SUBGRAPH = process.env.SUBGRAPH_URL ||
 const SPRINT = {
   title: 'Private Sprint',
   startsAt: process.env.SPRINT_STARTS_AT || '2026-09-01T00:00:00Z',
-  endsAt:   process.env.SPRINT_ENDS_AT   || '2026-09-06T00:00:00Z',
+  endsAt:   process.env.SPRINT_ENDS_AT   || '2026-09-06T21:00:00Z', // Sun 22:00 WAT — friendly end time + fair to latecomers
   games: [0, 1, 2],                    // rhythm, simon, stack
   poolG: Number(process.env.SPRINT_POOL_G || 430000),
   usd: 50,

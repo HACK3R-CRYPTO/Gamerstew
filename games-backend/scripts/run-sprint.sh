@@ -14,7 +14,7 @@
 #   • Verify:  trust the roster (GoodDollar whitelist may have lapsed)
 #   • Winners: top 10, graduated split (climb higher = win more)
 #   • Pool:    430,000 G$  (~$50 at ~$0.000117/G$)
-#   • Window:  Mon 1 Sep 00:00 UTC → Sat 6 Sep 00:00 UTC (5 days)
+#   • Window:  Tue 1 Sep 00:00 UTC → Sun 6 Sep 21:00 UTC (Sun 22:00 WAT)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,6 +25,6 @@ WINNERS=10 \
 MIN_SCORE=1 \
 POOL_TOTAL_G=430000 \
 SAT_START=2026-09-01T00:00:00Z \
-SAT_END=2026-09-06T00:00:00Z \
+SAT_END=2026-09-06T21:00:00Z \
 ELIGIBLE_FILE=scripts/sprint-players.txt \
 node scripts/payout-saturday-pool.js "$@"
