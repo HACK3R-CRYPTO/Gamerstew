@@ -13,3 +13,4 @@ frontend/design-prototype/
 
 # never commit env secrets (any dir)
 **/.env
+.vercel

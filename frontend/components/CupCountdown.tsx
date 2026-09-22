@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CUP_STARTS_MS, CUP_ENDS_MS, cupPhase, fmtCupCountdown } from "@/lib/cup";
+import { CUP_STARTS_MS, CUP_ENDS_MS, cupPhase, cupIsStale, fmtCupCountdown } from "@/lib/cup";
 
 // Self-ticking Arena Cup countdown. Renders "STARTS IN 2d 04h 11m" before the
 // event, "ENDS IN …" during, "LIVE NOW" / "ENDED" at the edges. Guards SSR
@@ -23,6 +23,7 @@ export default function CupCountdown({
   }, []);
   if (now === null) return null;
 
+  if (cupIsStale(now)) return null;
   const phase = cupPhase(now);
   const label = phase === "upcoming" ? "Starts in" : phase === "live" ? "Ends in" : "Cup ended";
   const target = phase === "upcoming" ? CUP_STARTS_MS : CUP_ENDS_MS;

@@ -285,7 +285,7 @@ export default function ProfilePage() {
   // connected-but-unverified players. Verified players see the green ✓
   // on their avatar (top-left header) plus the verified pill on their
   // hero · no card here.
-  const { isVerified } = useSelfVerification();
+  const { isVerified, isVerificationResolved, hasLapsed } = useSelfVerification();
   const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
 
   // Level / XP / streak / games-this-week all live in games-backend
@@ -549,7 +549,7 @@ export default function ProfilePage() {
             players never see lingering "go verify" CTAs · the badge on
             their avatar + the pills on their hero are the reward. Routes
             to /verify which already owns the actual flow. */}
-        {connected && !isVerified && (
+        {connected && isVerificationResolved && !isVerified && (
           <button
             onClick={() => router.push("/verify?next=/profile")}
             style={{
@@ -577,10 +577,12 @@ export default function ProfilePage() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: T.display, fontSize: 15, color: T.ink, lineHeight: 1.15 }}>
-                Verify your humanity
+                {hasLapsed ? "Your check expired" : "Verify your humanity"}
               </div>
               <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, marginTop: 3, lineHeight: 1.4 }}>
-                Unlock the green check next to your name. Takes 60 seconds. Free.
+                {hasLapsed
+                  ? "GoodDollar expires a first check after 3 days. One more and you're set for 180."
+                  : "Unlock the green check next to your name. Takes 60 seconds. Free."}
               </div>
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(134,239,172,0.85)" style={{ flexShrink: 0 }}>

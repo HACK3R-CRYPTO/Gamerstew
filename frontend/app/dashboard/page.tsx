@@ -16,6 +16,7 @@ import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import CupCountdown from "@/components/CupCountdown";
+import { cupIsStaleNow } from "@/lib/cup";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
 const T = {
@@ -86,7 +87,10 @@ type Game = {
   active: boolean;
   href: string;
   isNew?: boolean;
-  kind?: "event" | "aimode";   // "event" → gold teaser · "aimode" → cyan AI feature-drop
+  kind?: "event" | "aimode" | "tug"; // "event" → Arena Cup gold teaser (its copy is
+                                     // hardcoded, so it is NOT a generic event slide)
+                                     // "aimode" → cyan AI feature-drop
+                                     // "tug"    → Verified Tug of War
 };
 
 // AI-mode feature drop — the discovery surface for the new "build your own AI"
@@ -110,6 +114,10 @@ const AI_HERO: Game = {
 // G$ pool. GoodAgents supports the pool (their contribution folds in), credited
 // as a supporter, not the headline — this is the normal competition, not an
 // AI/agents event. Routes to the events/leaderboard page.
+// RETIRED — the $150 Challenge ran 2026-04-28 → 2026-05-01 and is over.
+// Not referenced by heroList any more; kept only as the shape to copy if a
+// fixed-prize event returns. Wire any revival to /api/challenge's live window,
+// never to a hardcoded subtitle.
 const EVENT_HERO: Game = {
   id: "event",
   kind: "event",
@@ -121,6 +129,23 @@ const EVENT_HERO: Game = {
   glow: "#f59e0b",
   active: true,
   href: "/leaderboard",
+};
+
+// Tug of War lives in the hero rail from the day it is announced, not from the
+// day it starts. The pre-event window is when a player has to get VERIFIED —
+// the bounty is first-come and a first-ever GoodDollar check is a real face
+// scan, so anyone who turns up on day one unverified has already lost slots.
+const TUG_HERO: Game = {
+  id: "tug",
+  title: "Tug of War",
+  subtitle: "Starts Wednesday",
+  desc: "Two sides, one rope, 1,000,000 G$. First 160 verified players get 2,500 G$ guaranteed.",
+  art: "/event-prize.png",
+  bg: "linear-gradient(115deg, #7f1d1d 0%, #2a1266 52%, #0e7490 100%)",
+  glow: "#dc2626",
+  active: true,
+  href: "/tug",
+  kind: "tug",
 };
 
 const STACK_ART = (
@@ -356,7 +381,13 @@ export default function DashboardPage() {
   // falls back to the first game when nothing is flagged.
   const heroes = GAMES.filter(g => g.isNew);
   // Event teaser leads the rotation, then the new-game heroes cycle after it.
-  const heroList = [AI_HERO, EVENT_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
+  // EVENT_HERO deliberately removed from the rail: it is hardcoded to the $150
+  // Challenge, which ended 2026-05-01 (backend CHALLENGE_END, /api/challenge
+  // reports active:false) yet still rendered "Coming soon" four months later.
+  // A dead promise on the app's busiest surface costs more trust than an empty
+  // slot. If a fixed-prize event runs again, drive this from /api/challenge
+  // rather than a constant so it can never outlive its own window again.
+  const heroList = [TUG_HERO, AI_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -427,7 +458,9 @@ export default function DashboardPage() {
           <>
             {/* Hero (with the event) leads; the daily claim stays prominent right after. */}
             <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
-            <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
+            <VerificationExpiryBanner router={router} />
+            <VerificationExpiryBanner router={router} />
+      <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
             <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
             <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
             <GamesGrid onPlayGame={onPlayGame} />
@@ -637,15 +670,52 @@ function ViewAll({ onClick }: { onClick: () => void }) {
 
 // G$ claim card — mirrors the main-branch profile pattern exactly:
 //   1. Not signed in  → "Sign in to claim" → /home
-//   2. !isVerified    → "Verify to unlock" → /verify
-//   3. entitlement>0  → "Claim X G$" CTA  → triggers claimG$() inline
-//   4. else (verified, no entitlement) → "Claimed today" dimmed
-// No "checking" intermediate — the main branch never had one and the
-// SDK status call hydrates isVerified within a second on the happy path.
-// A cache hit (gd_verified_<addr> in localStorage) makes step 2 invisible
-// for returning players; cold-start users see it for a beat.
+//   2. whitelist still resolving → dimmed "Checking..." placeholder
+//   3. !isVerified    → "Verify to unlock" → /verify
+//   4. entitlement>0  → "Claim X G$" CTA  → triggers claimG$() inline
+//   5. else (verified, no entitlement) → "Claimed today" dimmed
+// Step 2 exists so a verified player never sees "Verify to unlock" flash
+// before the on-chain read lands. A cache hit (gd_verified_<addr> in
+// localStorage) resolves it before paint for returning players; cold-start
+// users see the placeholder for a beat instead of a wrong CTA.
+// ─── Verification expiry warning ─────────────────────────────────────────────
+// GoodDollar expires a player's FIRST verification after 3 days; the second one
+// lasts 180. Players were never told, so they simply stopped counting as
+// verified — 313 of 752 are currently lapsed. This is the in-app half of the
+// warning (the cron sends the push / bell notification); it only appears inside
+// the last day, and only to someone who still has something to lose.
+function VerificationExpiryBanner({ router }: { router: ReturnType<typeof useRouter> }) {
+  const { isVerified, isVerificationResolved, identityExpiry } = useSelfVerification();
+  if (!isVerificationResolved || !isVerified) return null;
+  if (!identityExpiry.expiresAt || identityExpiry.daysLeft > 1) return null;
+  return (
+    <button
+      onClick={() => router.push(`/verify?next=${encodeURIComponent("/dashboard")}`)}
+      style={{
+        width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 14, cursor: "pointer",
+        background: "linear-gradient(135deg, rgba(251,191,36,0.16), rgba(120,53,15,0.35))",
+        border: "1px solid rgba(251,191,36,0.5)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 18 }}>🪪</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.body, fontSize: 10, color: "#fde68a", fontWeight: 800, letterSpacing: "0.12em" }}>
+            {identityExpiry.daysLeft <= 0 ? "EXPIRES TODAY" : "EXPIRES TOMORROW"}
+          </div>
+          <div style={{ fontFamily: T.display, fontSize: 15, color: T.ink, marginTop: 1 }}>Keep your verification</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
+            One 30-second check — this time it lasts 180 days.
+          </div>
+        </div>
+        <Icon name="chev" size={16} color={T.inkSoft} />
+      </div>
+    </button>
+  );
+}
+
 function ClaimCard({ connected, onConnect, router }: { connected: boolean; onConnect: () => void; router: ReturnType<typeof useRouter> }) {
-  const { isVerified, entitlement, claimG$ } = useSelfVerification();
+  const { isVerified, isVerificationResolved, hasLapsed, entitlement, claimG$ } = useSelfVerification();
   const [claiming, setClaiming] = useState(false);
 
   if (!connected) {
@@ -663,14 +733,34 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
     );
   }
 
+  // Whitelist read hasn't answered yet — show a neutral placeholder rather
+  // than guessing "unverified" and flipping a beat later.
+  if (!isVerificationResolved) {
+    return (
+      <div style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: "rgba(20,10,50,0.4)", border: `1px solid ${T.hairline}`, opacity: 0.6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 999, background: "rgba(134,239,172,0.12)" }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>FREE DAILY G$</div>
+            <div style={{ fontFamily: T.display, fontSize: 16, color: T.inkSoft, marginTop: 1 }}>Checking…</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isVerified) {
     return (
       <button onClick={() => router.push(`/verify?next=${encodeURIComponent("/dashboard")}`)} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: "linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(20,83,45,0.45) 100%)", border: "1px solid rgba(134,239,172,0.4)", cursor: "pointer" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ width: 30, height: 30, borderRadius: 999, background: "radial-gradient(circle at 35% 35%, #fde68a, #b45309)", boxShadow: "0 0 12px rgba(251,191,36,0.6)" }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: T.body, fontSize: 10, color: "#86efac", fontWeight: 800, letterSpacing: "0.12em" }}>FREE DAILY G$</div>
-            <div style={{ fontFamily: T.display, fontSize: 18, color: T.ink, marginTop: 1 }}>Verify to unlock</div>
+            <div style={{ fontFamily: T.body, fontSize: 10, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.12em" }}>
+              {hasLapsed ? "CHECK EXPIRED" : "FREE DAILY G$"}
+            </div>
+            <div style={{ fontFamily: T.display, fontSize: 18, color: T.ink, marginTop: 1 }}>
+              {hasLapsed ? "Re-check to keep claiming" : "Verify to unlock"}
+            </div>
           </div>
           <Icon name="chev" size={16} color={T.inkSoft} />
         </div>
@@ -840,7 +930,84 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
     );
   }
 
-  // Event slide — gold teaser variant of the hero.
+  // Tug of War slide. It needs its own branch rather than reusing "event":
+  // that branch's copy is hardcoded to the Arena Cup ($150, the cup countdown,
+  // the GoodAgents credit), so anything else routed through it silently renders
+  // as the Cup regardless of its own title and prize.
+  if (game.kind === "tug") {
+    return (
+      <button onClick={() => onPlayGame(game.id)} style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: 0, cursor: "pointer",
+        border: "1px solid rgba(220,38,38,0.45)", borderRadius: 20, textAlign: "left",
+        background: game.bg,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        {/* Generated key art, dimmed and pushed right so the copy stays legible
+            over it. The card previously carried no art at all while every other
+            slide had some, which made the newest event look the least finished. */}
+        <img
+          src="/tug/card.jpg"
+          alt=""
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "cover", objectPosition: "60% 50%", opacity: 0.55, pointerEvents: "none",
+          }}
+        />
+        <div aria-hidden style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          background: "linear-gradient(100deg, rgba(20,4,40,0.92) 0%, rgba(20,4,40,0.72) 42%, rgba(20,4,40,0.18) 100%)",
+        }} />
+
+        {/* The rope, as a one-glance motif, pinned to the base of the card.
+            It sat at top:50% first, which ran the stripe straight through the
+            headline and parked the medallion on top of the "G$" — the motif
+            fighting the copy instead of supporting it. Along the bottom edge it
+            reads as the contested line it is meant to be, and the medallion is
+            dropped at this size because a 24px disc on a 6px band is noise. */}
+        <div aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 6 }}>
+          <div style={{ position: "absolute", inset: 0, background: "#67e8f9", opacity: 0.85 }} />
+          <div style={{
+            position: "absolute", left: 0, top: 0, bottom: 0, width: "54%",
+            background: "repeating-linear-gradient(45deg, #dc2626 0 6px, #7f1d1d 6px 12px)",
+          }} />
+          {/* the seam where the two sides meet */}
+          <div style={{
+            position: "absolute", left: "54%", top: -3, bottom: -3, width: 2, marginLeft: -1,
+            background: "rgba(255,255,255,0.85)",
+          }} />
+        </div>
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
+          <Pill color="#fca5a5">🪢 TUG OF WAR</Pill>
+        </div>
+        <div style={{ padding: "8px 14px 18px", position: "relative", zIndex: 1, maxWidth: "80%" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fff", lineHeight: 1, textShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+              1,000,000
+            </span>
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 800, letterSpacing: "0.14em" }}>
+              G$
+            </span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 5, lineHeight: 1.35 }}>
+            {game.desc}
+          </div>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8,
+            padding: "4px 10px", borderRadius: 999,
+            background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.3)",
+          }}>
+            <span style={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(255,255,255,0.85)" }}>
+              {game.subtitle.toUpperCase()}
+            </span>
+          </div>
+        </div>
+      </button>
+    );
+  }
+
+  // Event slide — gold teaser variant of the hero. NOTE: its copy is specific
+  // to the Arena Cup, not generic.
   if (game.kind === "event") {
     return (
       <button onClick={() => onPlayGame(game.id)} style={{
@@ -1132,6 +1299,13 @@ function ClimbCard({ router }: {
   // NOT the ended June MARKOV Climb — which used to render as "BETA · LIVE ON
   // CELO" with a stale rank long after it finished. CupCountdown self-ticks and
   // handles upcoming → live → ended, so this reads like a real cup at every phase.
+  //
+  // The whole card retires with the cup. Hiding only the countdown inside it
+  // would leave a headless "ARENA CUP · $150 IN G$" row pointing at an event
+  // that finished a month ago.
+  // Pure read — see cupIsStaleNow in lib/cup. No state, no effect, no interval.
+  if (cupIsStaleNow()) return null;
+
   return (
     <button onClick={() => router.push("/leaderboard/cup")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 15, background: "linear-gradient(135deg, rgba(251,191,36,0.12), rgba(180,83,9,0.28))", border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", textAlign: "left" }}>
       <span style={{ fontSize: 20, flexShrink: 0 }}>🏆</span>

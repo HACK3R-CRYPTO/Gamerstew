@@ -9,6 +9,7 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contra
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { claimGas } from "@/app/actions/gas";
 import { captureReferralFromUrl, readPendingReferral, clearPendingReferral, resolveRefCode } from "@/lib/referral";
+import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 
 // ─── design tokens ──────────────────────────────────────────────────────
 const T = {
@@ -101,22 +102,12 @@ export default function Onboarding({
   });
 
   // Already GoodDollar-verified? Then the verify pitch is an insult —
-  // it reads as "we forgot you're verified". Direct on-chain whitelist
-  // read (same Identity contract the verification context uses).
-  const { data: whitelistRoot } = useReadContract({
-    address: "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42",
-    abi: [{
-      inputs: [{ name: "account", type: "address" }],
-      name: "getWhitelistedRoot",
-      outputs: [{ name: "", type: "address" }],
-      stateMutability: "view",
-      type: "function",
-    }] as const,
-    functionName: "getWhitelistedRoot",
-    args: address ? [address] : undefined,
-    query: { enabled: !!address },
-  });
-  const alreadyVerified = !!whitelistRoot && whitelistRoot !== "0x0000000000000000000000000000000000000000";
+  // it reads as "we forgot you're verified". Status comes from
+  // SelfVerificationContext, the app's single reader of the Identity
+  // contract; `verificationResolved` is false until that read lands, so the
+  // pitch waits rather than guessing "unverified" and flashing at someone
+  // who is already through.
+  const { isVerified: alreadyVerified, isVerificationResolved: verificationResolved } = useSelfVerification();
 
   const [phase, setPhase] = useState<Phase>("create");
   const [username, setUsername] = useState("");
@@ -151,15 +142,24 @@ export default function Onboarding({
 
   // Record the referral the moment the mint lands (mint = verified player →
   // that's when a referral counts). Manual code beats the banked link value.
-  const recordReferral = async () => {
+  // `mintTx` is how a MiniPay player proves they control this wallet — MiniPay
+  // cannot sign messages, so the mint transaction itself is the proof. Privy
+  // players send their token instead. /api/season/intent now requires one or
+  // the other; without it anyone could claim to have referred any wallet.
+  const recordReferral = async (mintTx?: string) => {
     const me = address?.toLowerCase();
     const referrer = refResolved?.address ?? bankedRef ?? readPendingReferral();
     if (!me || !referrer || referrer === me) return;
     try {
+      let auth = "";
+      try { auth = (await getAccessToken()) ?? ""; } catch { /* MiniPay has no Privy session */ }
       await fetch("/api/season/intent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: me, referrer }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+        },
+        body: JSON.stringify({ wallet: me, referrer, mintTx }),
       });
       clearPendingReferral();
     } catch { /* best-effort · first-write-wins server-side */ }
@@ -283,7 +283,7 @@ export default function Onboarding({
         } catch { /* drip failed · let mint proceed and surface the error */ }
       }
 
-      await writeContractAsync({
+      const mintTx = await writeContractAsync({
         dataSuffix: ATTRIBUTION_SUFFIX,
         address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
         abi: GAME_PASS_ABI,
@@ -292,7 +292,7 @@ export default function Onboarding({
         ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
       });
       await refetchPass();
-      void recordReferral(); // fire-and-forget · never blocks the flow
+      void recordReferral(mintTx); // fire-and-forget · never blocks the flow
       setPhase("verify");
     } catch (e: unknown) {
       const raw = e instanceof Error ? e.message : String(e);
@@ -401,7 +401,9 @@ export default function Onboarding({
 
   // ── VERIFY (you're in + GoodDollar claim or skip) ──────────────────────
   if (phase === "verify") {
-    if (alreadyVerified) return null; // completing via the effect above
+    // Verified players complete via the effect above; everyone else waits for
+    // the whitelist read before the pitch paints.
+    if (alreadyVerified || !verificationResolved) return null;
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: `radial-gradient(ellipse 95% 55% at 50% 16%, rgba(34,197,94,0.18) 0%, transparent 60%), ${T.bg}`, display: "flex", flexDirection: "column", animation: "ob-fadeIn 0.25s ease both", overflow: "hidden" }}>
         <style>{KEYFRAMES}</style>
