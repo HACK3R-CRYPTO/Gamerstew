@@ -21,6 +21,13 @@ export interface TugStandings {
   bounty: { slots: number; claimed: number; amountG: number };
   prizeTotalG: number;
   serverTime: string;
+  /** The referral contest running alongside the rope, on the same window. */
+  referral?: {
+    prizesG: number[];
+    totalG: number;
+    top: Array<{ name: string; recruits: number; rank: number; prizeG: number }>;
+    entrants: number;
+  };
 }
 
 export interface TugMe {
@@ -45,6 +52,8 @@ export interface TugMe {
    *  Duolingo's leagues work precisely because most people sit in a wide
    *  neutral band rather than at the bottom of one long list. */
   neighbours?: Array<{ rank: number; name: string; pulls: number; isMe?: boolean }>;
+  /** Your own standing in the referral contest. */
+  referral?: { recruits: number; rank: number | null; prizeG: number };
 }
 
 /** What the player should do next. Exactly one thing, never a list. */

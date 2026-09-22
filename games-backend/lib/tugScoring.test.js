@@ -297,3 +297,54 @@ test('T19: a root that pads to the zero address is never seated', () => {
   const winners = bountyWinners(rows, 160);
   assert.deepEqual(winners.map(w => w.wallet), ['0xreal']);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL SCORING — pulls come from how well you played, not how often you
+// pressed start. Counting games was farmable by quitting instantly on repeat.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { dayPoints, GAME_DIVISOR } = require('./tugScoring');
+
+test('quitting instantly earns nothing, however many times you do it', () => {
+  // 50 bailed runs: a score below the divisor floors to zero.
+  const quitter = [{ play_date: 'd1', best: new Map([[2, 4]]) }];   // stack, divisor 5
+  assert.equal(playPulls(quitter, 10), 0, 'sub-divisor scores must earn 0');
+});
+
+test('one good run beats fifty bad ones', () => {
+  const grinder = [{ play_date: 'd1', best: new Map([[2, 4]]) }];     // 50 quits, best 4
+  const player  = [{ play_date: 'd1', best: new Map([[2, 60]]) }];    // one real run
+  assert.equal(playPulls(grinder, 10), 0);
+  assert.equal(playPulls(player, 10), 10, 'capped at the daily limit');
+});
+
+test('only your BEST score that day counts, not the sum of attempts', () => {
+  // The caller keeps one best per game per day, so ten mediocre runs cannot add up.
+  const best = new Map([[2, 30]]);                 // 30 / 5 = 6
+  assert.equal(dayPoints(best), 6);
+});
+
+test('each game is normalised by its own divisor', () => {
+  assert.equal(dayPoints(new Map([[0, 1000]])), 10); // rhythm  /100
+  assert.equal(dayPoints(new Map([[1, 200]])),  10); // simon   /20
+  assert.equal(dayPoints(new Map([[2, 50]])),   10); // stack   /5
+  assert.deepEqual(GAME_DIVISOR, { 0: 100, 1: 20, 2: 5 });
+});
+
+test('playing several games in a day stacks before the cap applies', () => {
+  const day = [{ play_date: 'd1', best: new Map([[0, 300], [1, 60], [2, 15]]) }]; // 3+3+3
+  assert.equal(playPulls(day, 20), 9);
+  assert.equal(playPulls(day, 5), 5, 'the daily cap still binds');
+});
+
+test('an unknown game type earns nothing rather than crashing', () => {
+  assert.equal(dayPoints(new Map([[99, 100000]])), 0);
+});
+
+test('a negative or junk score is ignored', () => {
+  assert.equal(dayPoints(new Map([[2, -500], [1, NaN], [0, 'abc']])), 0);
+});
+
+test('the old count-only shape still works for callers without scores', () => {
+  assert.equal(playPulls([{ play_date: 'd1', games: 3 }], 5), 3);
+});

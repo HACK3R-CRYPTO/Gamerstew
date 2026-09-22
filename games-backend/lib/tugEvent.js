@@ -28,6 +28,13 @@ function tugConfig() {
     // (gameType 4, posted via a static partner key with no gameplay) qualify a
     // wallet.
     gameTypes:    (process.env.TUG_GAME_TYPES || '0,1,2').split(',').map(Number),
+    // ── Referral event ────────────────────────────────────────────────────
+    // Runs alongside the rope on the same window. Placement prizes, biggest
+    // first. A recruit only counts once they have VERIFIED and qualified, so
+    // every point here is a real human who actually played — you cannot farm
+    // this with wallets the way an ordinary referral contest can be farmed.
+    referralPrizesG: (process.env.TUG_REFERRAL_PRIZES_G || '500000,300000,200000')
+      .split(',').map((n) => Number(n.trim())).filter((n) => Number.isFinite(n) && n > 0),
   };
 }
 
@@ -85,7 +92,8 @@ function resolveTeam(wallet, identityRoot, referrerOf, rootOf, depth = 0) {
 // wrong the moment a burst lands many scores in one block, and it would drop
 // real players' games rather than the burst's.
 async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes) {
-  const byWallet = new Map(); // wallet -> { username, days: Map(YYYY-MM-DD -> n), total }
+  // wallet -> { username, total, days: Map(date -> { n, best: Map(gameType -> score) }) }
+  const byWallet = new Map();
   const seen = new Set();     // score ids already counted, guards the overlap
   let cursorTs = Number(startUnix) - 1;
 
@@ -97,6 +105,7 @@ async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes) {
            id
            blockTimestamp
            gameType
+           score
            player { id username }
          }
        }`,
@@ -115,7 +124,13 @@ async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes) {
       const day = new Date(Number(r.blockTimestamp) * 1000).toISOString().slice(0, 10);
       let e = byWallet.get(w);
       if (!e) { e = { username: r.player.username || null, days: new Map(), total: 0 }; byWallet.set(w, e); }
-      e.days.set(day, (e.days.get(day) || 0) + 1);
+      let d = e.days.get(day);
+      if (!d) { d = { n: 0, best: new Map() }; e.days.set(day, d); }
+      d.n += 1;
+      // Keep only the BEST score per game per day. This is what makes quitting
+      // worthless: a bailed run scores low and never displaces a real one.
+      const gt = Number(r.gameType), sc = Number(r.score) || 0;
+      if (!d.best.has(gt) || sc > d.best.get(gt)) d.best.set(gt, sc);
       e.total += 1;
     }
 
@@ -159,8 +174,12 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
 
   // Only wallets that could possibly qualify get an on-chain read. Checking all
   // 752 players every poll would be pointless traffic.
+  // Qualifying needs real runs, not three taps on start. Without the points
+  // check, quitting three times would claim a 2,500 G$ bounty slot.
+  const { dayPoints } = require('./tugScoring');
+  const earnedAny = (e) => [...e.days.values()].some((d) => dayPoints(d.best) > 0);
   const candidates = [...plays.entries()]
-    .filter(([, e]) => e.total >= cfg.qualifyGames)
+    .filter(([, e]) => e.total >= cfg.qualifyGames && earnedAny(e))
     .map(([w]) => w);
 
   const checked = await mapLimit(candidates, 10, async (w) => {
@@ -200,7 +219,7 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
   const dailyByWallet = new Map(
     quals.map((q) => {
       const e = plays.get(q.wallet);
-      return [q.wallet, [...e.days.entries()].map(([play_date, games]) => ({ play_date, games }))];
+      return [q.wallet, [...e.days.entries()].map(([play_date, d]) => ({ play_date, best: d.best, games: d.n }))];
     }),
   );
 
@@ -221,7 +240,57 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
   const byWallet = new Map(cumulative.players.map((p) => [p.wallet, p]));
   const bountyRank = new Map(winners.map((w) => [w.wallet, w.rank]));
 
-  return { standings, players: cumulative.players, byWallet, bountyRank, plays, cfg, todayStr, dailyByWallet };
+  // ── Referral leaderboard ────────────────────────────────────────────────
+  // Counted on QUALIFIED recruits only. Someone who clicks a link and never
+  // verifies is not growth, and paying for them is how referral contests get
+  // farmed. Ties break on who got there first on-chain, so placement is
+  // deterministic rather than whichever row the database happened to return.
+  const nameOf = new Map(quals.map((q) => [q.wallet, q.username]));
+  const recruitsBy = new Map();
+  for (const q of quals) {
+    if (!q.counted) continue;
+    const ref = referrerOf.get(q.wallet);
+    if (!ref || ref === q.wallet) continue;
+    if (!recruitsBy.has(ref)) recruitsBy.set(ref, []);
+    recruitsBy.get(ref).push(q.wallet);
+  }
+  const firstQualifiedAt = new Map(
+    cumulative.players.filter((p) => p.counted)
+      .map((p) => [p.wallet, Number(p.qualified_block) || 0]),
+  );
+  const referralBoard = [...recruitsBy.entries()]
+    .map(([wallet, recruits]) => ({
+      wallet,
+      username: nameOf.get(wallet) || null,
+      recruits: recruits.length,
+      tiebreak: firstQualifiedAt.get(wallet) ?? Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => b.recruits - a.recruits || a.tiebreak - b.tiebreak
+                 || String(a.wallet).localeCompare(String(b.wallet)))
+    .map((r, i) => ({
+      wallet: r.wallet,
+      username: r.username,
+      recruits: r.recruits,
+      rank: i + 1,
+      prizeG: cfg.referralPrizesG[i] ?? 0,
+    }));
+
+  standings.referral = {
+    prizesG: cfg.referralPrizesG,
+    totalG: cfg.referralPrizesG.reduce((a, n) => a + n, 0),
+    // Only the prize-winning places are public. Publishing the full board
+    // would expose every recruiter's wallet and recruit count to anyone.
+    top: referralBoard.slice(0, cfg.referralPrizesG.length)
+      .map(({ wallet, username, recruits, rank, prizeG }) => ({
+        name: username || String(wallet).slice(2, 8), recruits, rank, prizeG,
+      })),
+    entrants: referralBoard.length,
+  };
+
+  return {
+    standings, players: cumulative.players, byWallet, bountyRank,
+    plays, cfg, todayStr, dailyByWallet, referralBoard,
+  };
 }
 
 module.exports = {

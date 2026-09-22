@@ -5721,6 +5721,12 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
       verificationDaysLeft,
       teamPercentile,
       neighbours,
+      referral: (() => {
+        const row = (_tugCache.data?.referralBoard || []).find((r) => r.wallet === wallet);
+        return row
+          ? { recruits: row.recruits, rank: row.rank, prizeG: row.prizeG }
+          : { recruits: 0, rank: null, prizeG: 0 };
+      })(),
       _standingsAt: standings.serverTime,
     });
   } catch (e) {
