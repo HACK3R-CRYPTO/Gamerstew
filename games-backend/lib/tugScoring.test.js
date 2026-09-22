@@ -66,16 +66,21 @@ test('ordering is deterministic when timestamps collide', () => {
 });
 
 // ── Daily pull cap ───────────────────────────────────────────────────────────
-test('pulls are capped per DAY, not over the whole event', () => {
-  const rows = [
-    { play_date: '2026-09-23', games: 50 },
-    { play_date: '2026-09-24', games: 50 },
+test('the limit applies per DAY, not once over the whole event', () => {
+  const oneDay = [{ play_date: '2026-09-23', best: new Map([[2, 134]]) }];
+  const twoDays = [
+    { play_date: '2026-09-23', best: new Map([[2, 134]]) },
+    { play_date: '2026-09-24', best: new Map([[2, 134]]) },
   ];
-  assert.equal(playPulls(rows, 5), 10, 'two days at the cap, not one cap total');
+  // Within 1 of double, not exactly double: the total is rounded once at the
+  // end rather than per day, so two half-points can merge into one.
+  assert.ok(Math.abs(playPulls(twoDays, 5) - playPulls(oneDay, 5) * 2) <= 1,
+    `${playPulls(twoDays, 5)} should be about double ${playPulls(oneDay, 5)}`);
 });
 
 test('a grinder cannot outscore recruiting', () => {
-  const dailyByWallet = new Map([['0xgrinder', [{ play_date: '2026-09-23', games: 999 }]]]);
+  // The best single day seen in live data is a raw 38 points (lollyposh).
+  const dailyByWallet = new Map([['0xgrinder', [{ play_date: '2026-09-23', best: new Map([[2, 134], [1, 108], [0, 789]]) }]]]);
   const one = scoreTeams({
     qualifications: [q('0xgrinder', ROOT_A, '2026-09-23T09:00:00Z', 'red')],
     dailyByWallet, dailyCap: 5,
@@ -94,8 +99,8 @@ test('a grinder cannot outscore recruiting', () => {
 
 test('the one-off human bonus is excluded from the daily tick', () => {
   const dailyByWallet = new Map([['0xa', [
-    { play_date: '2026-09-23', games: 4 },
-    { play_date: '2026-09-24', games: 2 },
+    { play_date: '2026-09-23', best: new Map([[2, 20]]) },  // 4 pts
+    { play_date: '2026-09-24', best: new Map([[2, 10]]) },  // 2 pts
   ]]]);
   const quals = [q('0xa', ROOT_A, '2026-09-23T09:00:00Z', 'red')];
   const cumulative = scoreTeams({ qualifications: quals, dailyByWallet, dailyCap: 5 });
@@ -315,7 +320,7 @@ test('one good run beats fifty bad ones', () => {
   const grinder = [{ play_date: 'd1', best: new Map([[2, 4]]) }];     // 50 quits, best 4
   const player  = [{ play_date: 'd1', best: new Map([[2, 60]]) }];    // one real run
   assert.equal(playPulls(grinder, 10), 0);
-  assert.equal(playPulls(player, 10), 10, 'capped at the daily limit');
+  assert.ok(playPulls(player, 10) > 0, 'a real run must pay something');
 });
 
 test('only your BEST score that day counts, not the sum of attempts', () => {
@@ -333,8 +338,9 @@ test('each game is normalised by its own divisor', () => {
 
 test('playing several games in a day stacks before the cap applies', () => {
   const day = [{ play_date: 'd1', best: new Map([[0, 300], [1, 60], [2, 15]]) }]; // 3+3+3
-  assert.equal(playPulls(day, 20), 9);
-  assert.equal(playPulls(day, 5), 5, 'the daily cap still binds');
+  assert.equal(playPulls(day, 20), 9, 'under the cap, paid in full');
+  const overCap = playPulls(day, 5);
+  assert.ok(overCap >= 5 && overCap < 9, `over the cap, reduced but not clipped: got ${overCap}`);
 });
 
 test('an unknown game type earns nothing rather than crashing', () => {
@@ -345,6 +351,72 @@ test('a negative or junk score is ignored', () => {
   assert.equal(dayPoints(new Map([[2, -500], [1, NaN], [0, 'abc']])), 0);
 });
 
-test('the old count-only shape still works for callers without scores', () => {
-  assert.equal(playPulls([{ play_date: 'd1', games: 3 }], 5), 3);
+test('a row with no scores earns nothing, closing the old count-path hole', () => {
+  // The count fallback paid a point per started game. Beside a soft cap that
+  // turned 999 quits into 254 points against 20 for two recruits.
+  assert.equal(playPulls([{ play_date: 'd1', games: 999 }], 5), 0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOFT CAP — a hard clip cancelled out the skill scoring beside it. With a cap
+// of 5, a stack score of 25 already maxed the day, so scoring 134 paid the same
+// as scraping 25 and the correct play was to hit the cap and stop.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { applySoftCap } = require('./tugScoring');
+
+test('below the cap, every point is paid in full', () => {
+  assert.equal(applySoftCap(3, 5), 3);
+  assert.equal(applySoftCap(5, 5), 5);
+});
+
+test('above the cap, playing better still pays more', () => {
+  const scrape = applySoftCap(5, 5);
+  const good = applySoftCap(30, 5);
+  const great = applySoftCap(38, 5);
+  assert.ok(great > good && good > scrape, `${scrape} < ${good} < ${great}`);
+});
+
+test('the best real day in live data still pays less than one recruit', () => {
+  // This is the guard on the whole event design. 38 raw points is lollyposh's
+  // actual best day. If a day of playing ever out-earns bringing a person,
+  // nobody recruits and the event stops producing verified players.
+  const bestRealDay = applySoftCap(38, 5);
+  assert.ok(bestRealDay < POINTS_PER_QUALIFIED_HUMAN,
+    `a top day paid ${bestRealDay}, a recruit pays ${POINTS_PER_QUALIFIED_HUMAN}`);
+});
+
+test('the curve flattens rather than running away', () => {
+  // Ten times the raw points must not pay anywhere near ten times as much.
+  const low = applySoftCap(10, 5);
+  const huge = applySoftCap(100, 5);
+  assert.ok(huge < low * 5, `${low} -> ${huge} is too steep`);
+});
+
+test('zero and junk still earn nothing', () => {
+  for (const v of [0, -5, NaN, undefined]) assert.equal(applySoftCap(v, 5), 0);
+});
+
+test('an over-rate of 0 reproduces the old hard cap', () => {
+  assert.equal(applySoftCap(38, 5, 0), 5);
+});
+
+test('playPulls applies the soft cap per day, not across the week', () => {
+  const twoBigDays = [
+    { play_date: 'd1', best: new Map([[2, 134]]) },
+    { play_date: 'd2', best: new Map([[2, 134]]) },
+  ];
+  const oneBigDay = [{ play_date: 'd1', best: new Map([[2, 134]]) }];
+  assert.ok(Math.abs(playPulls(twoBigDays, 5) - playPulls(oneBigDay, 5) * 2) <= 1,
+    'a second big day adds about as much as the first, so the limit is daily');
+});
+
+
+test('small daily overages accumulate instead of rounding away', () => {
+  // A raw 9 day is 5.48 under the soft cap. Rounding per day made that 5, so a
+  // week of them paid 35 instead of 38.
+  const week = Array.from({ length: 7 }, (_, i) => ({
+    play_date: `d${i}`, best: new Map([[0, 300], [1, 60], [2, 15]]),   // raw 9
+  }));
+  assert.ok(playPulls(week, 5) > 7 * 5, `a week of above-cap days must beat ${7 * 5}`);
 });

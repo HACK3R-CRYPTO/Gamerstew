@@ -28,27 +28,44 @@ Last updated: 2026-08-25
 
 ---
 
-## The engagement loop (committed to GoodDollar)
+## The engagement loop (corrected per GoodDollar — Lewis, Aug 2026)
+
+**Constraint:** the GoodDollar engagement reward can be claimed **once per ~180 days per user**
+(tied to the identity/authentication period). So it is NOT a recurring daily payout — it is a
+**one-time activation reward** per user per period. The earlier "claim daily → repeat" design was
+wrong and has been removed.
 
 ```
-Sign up → Verify (GoodDollar) → Play 3 games in a day → eligible → Claim daily reward → repeat next day
+New user → Verify (GoodDollar) → complete first real engagement → engagement reward claimed ONCE
+                                                                    (for the user AND their inviter)
 ```
 
-**Eligibility rule a user must meet before a reward is claimable:**
-1. **Verified** — GoodDollar face verification (`isWhitelisted` = true). Hard gate; unverified
-   wallets earn nothing. Already enforced everywhere in GameArena today.
-2. **3 games in a day** — a real active session (~2–3 min), not a single tap. This is the
-   qualifying action per period.
+**Eligibility (one-time activation) — deliberately NOT instant, to stop farming:**
+1. **Verified** — GoodDollar face verification (`getWhitelistedRoot` non-zero). Hard sybil gate.
+2. **Engaged across time, not a single session** — the user must play on **at least 2 separate
+   days** (a minimum ~48h window between first play and unlock). A freshly-verified wallet cannot
+   verify and claim the same day. This is the anti-farming time-out GoodDollar asked for.
+3. **Real volume** — a minimum number of completed games (e.g. 5+), not one tap.
 
-**Cadence:** claimable **once per day** (daily cooldown). This is the value we gave GoodDollar
-— the daily rhythm is what drives retention. Do not make it claimable more often than once/day
-without re-confirming.
+Only when all three hold does GameArena trigger the engagement claim **once** for that user, plus
+the inviter's share. It is an **acquisition + activation** reward for turning a verified human into
+a genuinely engaged, returning player — which is inherently a once-per-user event.
 
-**Inviter:** earns their 15% automatically each day their referred, verified player hits the
-3-game threshold. Inviter is resolved from our existing referral data (`season_v1_referrer_intent`).
+**Why this resists farmers (the GoodDollar concern):** face-verification blocks sybils up front,
+and the multi-day + volume requirement means a reward can't be grabbed instantly on a fresh
+wallet — the user has to actually come back and play before anything unlocks. The reward tracks
+*engagement over time*, not a one-tap claim.
 
-> If the game-count threshold or the daily cadence changes, it MUST be re-communicated to
-> GoodDollar. These are commitments, not internal knobs.
+**Ongoing engagement is NOT this reward.** Retention and repeat play are driven by GameArena's
+OWN economy — Arena Cups, the community pool, loyalty payouts, prize rooms. Those recur; the
+GoodDollar engagement reward does not, and the design has no dependency on re-claiming within
+the 180-day window.
+
+**Inviter:** earns their 15% share at the same one-time activation moment (when their referred,
+verified friend activates). Resolved from `season_v1_referrer_intent`.
+
+> Cadence is a GoodDollar constraint (once / ~180 days / user), not our knob. Do not build any
+> flow that assumes more frequent claims.
 
 ---
 
@@ -79,7 +96,9 @@ without re-confirming.
 ## Guardrails (do not exceed what was told to admin)
 
 1. dApp share ≤ 70%.
-2. Claim cadence no more frequent than once per day.
-3. Verification gate is non-negotiable — no reward without `isWhitelisted`.
-4. Any change to the threshold (3 games) or cadence (daily) requires re-confirming with GoodDollar
-   before shipping.
+2. The engagement reward is claimable **once per ~180 days per user** — it is a one-time activation
+   reward, NOT recurring. Never build a flow that assumes daily/repeat claims.
+3. Verification gate is non-negotiable — no reward without a non-zero `getWhitelistedRoot`.
+4. Ongoing engagement/retention is funded by GameArena's own economy (Cups, community pool, prize
+   rooms), which is entirely separate from the GoodDollar engagement reward.
+5. Any change to the activation threshold (first N games) requires re-confirming with GoodDollar.

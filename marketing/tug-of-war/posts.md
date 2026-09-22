@@ -103,7 +103,69 @@ already gone.
 
 ---
 
-## 4. WhatsApp Status / Story (post tug-story.jpg)
+## 4. WhatsApp group (send with tug-square.jpg)
+
+WhatsApp bold is `*one asterisk*`, italic is `_one underscore_`. Markdown's
+`**` renders literally on WhatsApp, so copy the blocks below exactly as they
+are rather than reusing the Telegram copy, which does use `**`. Links
+auto-link, do not wrap them in brackets.
+
+```
+🪢 *TUG OF WAR* starts Wednesday
+
+*2,000,000 G$* in prizes. Red against Blue for seven days.
+
+*How it works*
+Verify once. Play 3 games. Now you are pulling for your side.
+
+Every verified human on your team is worth 10 points. Your best run each day is worth up to 5. So bringing one person beats a whole day of playing.
+
+*Get paid even if your side loses*
+The first *160* players to verify and play get *2,500 G$ each*. That part is a race, not a contest. Your team and your score do not matter, only how early you show up. Once the 160 are gone they are gone.
+
+*Top recruiter takes 500,000 G$*
+Second gets 300,000. Third gets 200,000. A recruit only counts once they verify and play, so bring real people.
+
+*Do this tonight*
+Verifying takes about 30 seconds and you only do it once. Turning up on Wednesday unverified means the early slots are already claimed.
+
+👉 gamearenahq.xyz/tug
+```
+
+### Shorter version, if the group is busy
+
+```
+🪢 *Tug of War* starts Wednesday. *2,000,000 G$*.
+
+First *160* to verify and play take *2,500 G$ each*. It is a race, not a draw, and you keep it even if your side loses.
+
+Verify tonight, it takes 30 seconds.
+gamearenahq.xyz/tug
+```
+
+### Launch hour
+
+```
+🪢 *The rope is live.*
+
+Play 3 games and you are pulling for your side. Anyone you bring joins _your_ team.
+
+gamearenahq.xyz/tug
+```
+
+### Last day
+
+```
+🪢 *Last day on the rope.* Closes tonight.
+
+Your best run today still counts. If you never claimed one of the 160 guaranteed slots, check whether any are left.
+
+gamearenahq.xyz/tug
+```
+
+---
+
+## 5. WhatsApp Status / Story (post tug-story.jpg)
 
 Tug of War. Wednesday.
 2,000,000 G$ in prizes.
@@ -113,7 +175,7 @@ gamearenahq.xyz/tug
 
 ---
 
-## 5. Day-before reminder (X + Telegram)
+## 6. Day-before reminder (X + Telegram)
 
 Tug of War opens tomorrow.
 
@@ -128,7 +190,7 @@ gamearenahq.xyz/tug
 
 ---
 
-## 6. Launch hour (X + Telegram)
+## 7. Launch hour (X + Telegram)
 
 The rope is live.
 
@@ -139,7 +201,7 @@ gamearenahq.xyz/tug
 
 ---
 
-## 7. Mid-event, only if one side is running away
+## 8. Mid-event, only if one side is running away
 
 Blue leads the rope. Red still wins today.
 
@@ -150,7 +212,112 @@ gamearenahq.xyz/tug
 
 ---
 
+---
+
+## 9. Push notification commands
+
+Paste these in your terminal. Same shape as the broadcast example in
+`games-backend/server.js`.
+
+Reach: ~29 push devices, plus **every player** sees it in the in-app bell next
+time they open the app (a broadcast writes one `notifications_feed` row with a
+null wallet, so it is not limited to push subscribers).
+
+---
+
+### Load the secret once per terminal session
+
+```bash
+export INTERNAL_SECRET=$(grep "^INTERNAL_SECRET=" "/Users/ogazboiz/code /hackathon/GameArenaCelo-/frontend/.env.local" | cut -d= -f2-)
+export BACKEND=https://game-backend-production-6130.up.railway.app
+```
+
+Check it loaded:
+
+```bash
+[ -n "$INTERNAL_SECRET" ] && echo "secret loaded" || echo "SECRET MISSING"
+```
+
+---
+
+### Announcement · send Tuesday evening, around 6-7pm WAT
+
+```bash
+curl -sS -X POST "$BACKEND/api/push/broadcast" \
+  -H "x-internal-secret: $INTERNAL_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "🪢 Tug of War starts Wednesday",
+    "body": "2,000,000 G$ in prizes. The first 160 to verify and play take 2,500 G$ each. Verify tonight.",
+    "url": "/tug",
+    "tag": "tug-announce"
+  }'
+```
+
+Evening matters. A "verify tonight" push read at work gets forgotten; read at
+9pm it gets acted on.
+
+---
+
+### Launch · Wednesday 6pm WAT, when the rope opens
+
+```bash
+curl -sS -X POST "$BACKEND/api/push/broadcast" \
+  -H "x-internal-secret: $INTERNAL_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "🪢 The rope is live",
+    "body": "Play 3 games and you are pulling for your side. Bring someone and they land on your team.",
+    "url": "/tug",
+    "tag": "tug-live"
+  }'
+```
+
+---
+
+### Last day · the 30th
+
+```bash
+curl -sS -X POST "$BACKEND/api/push/broadcast" \
+  -H "x-internal-secret: $INTERNAL_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "🪢 Last day on the rope",
+    "body": "It closes tonight. Your best run today still counts.",
+    "url": "/tug",
+    "tag": "tug-lastday"
+  }'
+```
+
+---
+
+### What a successful send looks like
+
+```json
+{"success":true,"sent":29,"skipped":0,"cleaned":0}
+```
+
+- `sent`: devices that took the push
+- `skipped`: players who muted promos
+- `cleaned`: dead subscriptions removed automatically
+
+---
+
 ## Notes for whoever posts this
+
+- **The cron sends these too.** `sendTugNotifications` in `games-backend`
+  fires the eve, launch, low-slots and last-day messages on its own once the
+  event window is set on Railway. Only run these by hand if you want to send
+  early, or if the backend is not deployed yet. Sending both is not harmful:
+  `sendToWallet` de-dupes per wallet per category per day, but a manual
+  broadcast uses a different path and WILL double up with the cron, so pick one.
+- Do not send more than one push a day. Push is the one channel a player
+  cannot mute selectively, and an event that pings daily gets muted before it
+  starts.
+- Check the prize figure is still correct before sending. Once it is out, it is
+  public and walking it back costs trust.
+
+---
 
 - Every number here is read live from the event API. If you change the prize or
   the slot count, update these posts too.
