@@ -141,8 +141,8 @@ export default function TugTeaser({ isDesktop = false }: { isDesktop?: boolean }
 
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "9px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
             {upcoming
-              ? "Verify before it opens and you're drawn onto a side. Every verified human on your team pulls the rope — and the first 160 verified players get 2,500 G$ guaranteed, whoever wins."
-              : "It's live. Every verified human on your side pulls the rope. The first 160 verified players get 2,500 G$ guaranteed, whoever wins."}
+              ? "Verify before it opens and you're drawn onto a side. Separately, the first 160 players to verify and play get 2,500 G$ each. That part is a race, and you keep it even if your side loses the rope."
+              : "It's live. Every verified human on your side pulls the rope. Separately, the first 160 players to verify and play get 2,500 G$ each, kept even if your side loses."}
           </p>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 10 }}>

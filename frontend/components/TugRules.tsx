@@ -104,8 +104,8 @@ export default function TugRules({
               <PointRow what="Most a day of playing can be worth" pts={`${dailyPullCap}`} muted />
             </div>
             <p style={{ ...p, marginTop: 10 }}>
-              So the most a day of playing can be worth is {dailyPullCap}. Bringing
-              one person is worth {pointsPerHuman}.{" "}
+              So the most a day of playing can be worth is {dailyPullCap}.{" "}
+              Bringing one person is worth {pointsPerHuman}.{" "}
               <strong style={{ color: T.ink }}>Recruiting beats grinding.</strong>
             </p>
             <p style={{ ...p, marginTop: 7 }}>
@@ -114,8 +114,8 @@ export default function TugRules({
               best run each day counts, so restarting to farm does not work.
             </p>
             <p style={{ ...p, marginTop: 7, color: T.inkSoft }}>
-              Play as much as you like. The daily maximum resets every day —
-              it isn&apos;t {dailyPullCap} for the whole week.
+              Play as much as you like. The daily maximum resets every day, it
+              isn&apos;t {dailyPullCap} for the whole week.
             </p>
           </Rule>
 
@@ -128,14 +128,19 @@ export default function TugRules({
 
           <Rule n="5" title={`${bountyAmountG.toLocaleString()} G$ guaranteed, first come`}>
             <p style={p}>
-              The first <strong style={{ color: T.gold }}>{bountySlots}</strong>{" "}
-              players to verify and play get{" "}
-              <strong style={{ color: T.gold }}>{bountyAmountG.toLocaleString()} G$ each</strong>. Flat.
-              Not a ranking, not a draw.
+              This is a <strong style={{ color: T.ink }}>race, not a contest</strong>. There are{" "}
+              <strong style={{ color: T.gold }}>{bountySlots}</strong> slots. You claim one by
+              verifying and playing, and each is worth{" "}
+              <strong style={{ color: T.gold }}>{bountyAmountG.toLocaleString()} G$</strong>.
             </p>
             <p style={{ ...p, marginTop: 7 }}>
-              <strong style={{ color: T.ink }}>It doesn&apos;t matter who wins the rope.</strong>{" "}
-              You can be on the losing side and still keep yours.
+              Your team doesn&apos;t matter here. Your score doesn&apos;t matter here. Only how
+              early you show up. Once the {bountySlots}{" "}
+              are gone, they&apos;re gone.
+            </p>
+            <p style={{ ...p, marginTop: 7 }}>
+              <strong style={{ color: T.ink }}>You keep it even if your side loses the rope.</strong>{" "}
+              These are two separate prizes.
             </p>
           </Rule>
 

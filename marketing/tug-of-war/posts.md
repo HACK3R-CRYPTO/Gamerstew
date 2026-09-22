@@ -15,8 +15,10 @@ Tug of War starts Wednesday.
 
 1,000,000 G$. Two sides. One rope.
 
-Every verified human on your side pulls. The first 160 players to verify and
-play get 2,500 G$ guaranteed, whoever wins.
+Every verified human on your side pulls.
+
+Separate from that: the first 160 players to verify and play get 2,500 G$ each.
+That one is a race, not a contest. You keep it even if your side loses the rope.
 
 Verify now so you are ready on day one.
 
@@ -74,9 +76,16 @@ Verify once. Play 3 games. Now you are pulling for your side.
 Every verified human on your team is worth 10 points. Your best run each day is
 worth up to 5. So bringing one person beats a whole day of playing.
 
-**Get paid even if your side loses**
-The first 160 players to verify and play get 2,500 G$ each. Guaranteed, not a
-draw, and it does not depend on who wins the rope.
+**There are two prizes, and they do not affect each other**
+
+1. **The race.** The first 160 players to verify and play get 2,500 G$ each.
+   Nothing to do with your team or your score. Only how early you show up.
+   Slot 161 gets nothing from this, so being early is the whole point.
+
+2. **The rope.** Your team's total after seven days. The winning side splits
+   more, the losing side still gets paid.
+
+You can win one, both, or neither. Lose the rope and you still keep your 2,500.
 
 **Top recruiter takes 500,000 G$**
 Second gets 300,000. Third gets 200,000. A recruit only counts once they verify
@@ -95,8 +104,8 @@ already gone.
 
 Tug of War. Wednesday.
 1,000,000 G$.
-First 160 verified players get 2,500 G$ guaranteed.
-Verify tonight so you are ready.
+First 160 to verify and play get 2,500 G$ each.
+It is a race. Verify tonight.
 gamearenahq.xyz/tug
 
 ---
@@ -105,8 +114,10 @@ gamearenahq.xyz/tug
 
 Tug of War opens tomorrow.
 
-The first 160 verified players take 2,500 G$ each, in order. Verifying takes
-about 30 seconds and you only do it once.
+The first 160 to verify and play take 2,500 G$ each, in order. Not a draw, not
+a ranking. Once the 160 are gone they are gone.
+
+Verifying takes about 30 seconds and you only do it once.
 
 Do it tonight, not tomorrow.
 
