@@ -68,11 +68,37 @@ function compareQualificationOrder(a, b) {
 }
 
 // ── Play pulls ───────────────────────────────────────────────────────────────
-// Capped PER DAY, not per event. A cumulative cap lets one player with a fast
-// phone bank the whole allowance on day one and make the rest of the week
-// decorative; a daily cap keeps every day live and pushes the marginal
-// incentive from grinding toward recruiting — which is the behaviour the event
-// actually wants, since a new verified human is worth far more than a game.
+// Pulls come from HOW WELL you played, not how many times you pressed start.
+//
+// Counting games was farmable in the dumbest possible way: start a run, quit
+// immediately, repeat. That is a point per second of effort and it rewards
+// exactly the behaviour the last tournament had to stamp out. So a day is worth
+// the sum of your BEST score in each game that day, divided by a per-game
+// divisor — the same shape the Arena Cup already uses (CUP_DIVISOR). A bailed
+// run scores near zero and never displaces a real one, so quitting earns
+// nothing at all.
+//
+// Still capped PER DAY, not per event. A cumulative cap lets one player bank
+// the whole allowance on day one and makes the rest of the week decorative; a
+// daily cap keeps every day live and keeps the marginal incentive pointed at
+// recruiting, since a verified human is worth far more than a good run.
+
+// Score needed for one point, per game. Mirrors CUP_DIVISOR in server.js:
+// rhythm scores run large, stack runs small, so they are normalised.
+const GAME_DIVISOR = { 0: 100, 1: 20, 2: 5 };
+
+/** Points earned on ONE day from that day's best score in each game. */
+function dayPoints(bestByGame) {
+  let pts = 0;
+  for (const [gt, score] of bestByGame) {
+    const div = GAME_DIVISOR[Number(gt)];
+    if (!div) continue;                       // unknown game type earns nothing
+    const s = Number(score);
+    if (!Number.isFinite(s) || s <= 0) continue;
+    pts += Math.floor(s / div);
+  }
+  return pts;
+}
 function assertDailyCap(dailyCap) {
   // Math.min(n, null) is 0 and Math.min(n, undefined) is NaN, so a cap that
   // failed to load silently zeroed every pull in the event (rope frozen at
@@ -83,12 +109,19 @@ function assertDailyCap(dailyCap) {
   }
 }
 
+/**
+ * @param dailyRows [{ play_date, best }] where `best` is a Map(gameType -> score).
+ *   The older shape [{ play_date, games }] is still accepted so callers that
+ *   only have counts keep working; it simply scores one point per game.
+ */
 function playPulls(dailyRows, dailyCap) {
   assertDailyCap(dailyCap);
   let total = 0;
   for (const r of dailyRows) {
-    const g = Number(r.games);
-    total += Math.min(Number.isFinite(g) && g > 0 ? g : 0, dailyCap);
+    const earned = r.best instanceof Map
+      ? dayPoints(r.best)
+      : (Number.isFinite(Number(r.games)) && Number(r.games) > 0 ? Number(r.games) : 0);
+    total += Math.min(earned, dailyCap);
   }
   return total;
 }
@@ -182,5 +215,6 @@ function bountyWinners(qualifications, slots) {
 module.exports = {
   POINTS_PER_QUALIFIED_HUMAN, ROPE_CAP, ROPE_CURVE,
   dedupeByIdentityRoot, compareQualificationOrder, playPulls, assertDailyCap,
+  dayPoints, GAME_DIVISOR,
   scoreTeams, ropeOffset, bountyWinners,
 };

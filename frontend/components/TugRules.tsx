@@ -100,15 +100,22 @@ export default function TugRules({
           <Rule n="3" title="What moves the rope">
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
               <PointRow what="Each verified human on your side" pts={`${pointsPerHuman} pts`} strong />
-              <PointRow what="Each game you play" pts="1 pt" />
-              <PointRow what={`Daily limit on games`} pts={`${dailyPullCap} a day`} muted />
+              <PointRow what="Your best score each day, per game" pts="points" />
+              <PointRow what="Most a day of playing can be worth" pts={`${dailyPullCap}`} muted />
             </div>
             <p style={{ ...p, marginTop: 10 }}>
-              A full day of playing is worth {dailyPullCap}. Bringing one person is worth {pointsPerHuman}.{" "}
+              So the most a day of playing can be worth is {dailyPullCap}. Bringing
+              one person is worth {pointsPerHuman}.{" "}
               <strong style={{ color: T.ink }}>Recruiting beats grinding.</strong>
             </p>
+            <p style={{ ...p, marginTop: 7 }}>
+              <strong style={{ color: T.ink }}>Quitting earns nothing.</strong> Points come from
+              how well you play, not how many times you press start — only your
+              best run each day counts, so restarting to farm does not work.
+            </p>
             <p style={{ ...p, marginTop: 7, color: T.inkSoft }}>
-              The daily limit resets every day — it isn&apos;t {dailyPullCap} for the whole week.
+              Play as much as you like. The daily maximum resets every day —
+              it isn&apos;t {dailyPullCap} for the whole week.
             </p>
           </Rule>
 

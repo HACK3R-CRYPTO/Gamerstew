@@ -365,6 +365,70 @@ export default function TugPage() {
           </span>
         </button>
 
+        {/* ── The referral contest ─────────────────────────────────────────
+            A second scoreboard on the same window, because "who recruited the
+            most" and "which side pulled hardest" are different achievements and
+            collapsing them into one number lets a big team carry a passenger.
+            A recruit only counts once they have verified and played, so every
+            point here is a real human. */}
+        {standings.referral && standings.referral.prizesG.length > 0 && (
+          <section style={{
+            padding: 14, borderRadius: 16,
+            background: "linear-gradient(135deg, rgba(167,139,250,0.16), rgba(76,29,149,0.3))",
+            border: "1px solid rgba(167,139,250,0.42)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.13em", color: T.accent }}>
+                RECRUITER CONTEST
+              </span>
+              <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.inkSoft }}>
+                {standings.referral.entrants} in the running
+              </span>
+            </div>
+            <div style={{ fontFamily: T.display, fontSize: 20, color: T.ink, marginTop: 3 }}>
+              {standings.referral.prizesG[0].toLocaleString()} G$ to the top recruiter
+            </div>
+            <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600, marginTop: 2 }}>
+              Runners-up take {standings.referral.prizesG.slice(1).map(n => `${n.toLocaleString()}`).join(" and ")} G$
+            </div>
+
+            <div style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 6 }}>
+              {standings.referral.top.length === 0 && (
+                <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, fontWeight: 600 }}>
+                  Nobody has a qualified recruit yet. First one takes the lead.
+                </div>
+              )}
+              {standings.referral.top.map((r) => (
+                <div key={r.rank} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10,
+                  background: r.rank === 1 ? "rgba(251,191,36,0.16)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${r.rank === 1 ? "rgba(251,191,36,0.45)" : T.hairline}`,
+                }}>
+                  <span style={{ width: 20, fontFamily: T.display, fontSize: 13, color: r.rank === 1 ? T.gold : T.inkSoft }}>
+                    {r.rank}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: T.body, fontSize: 13, fontWeight: 700, color: T.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    @{r.name}
+                  </span>
+                  <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    {r.recruits} brought
+                  </span>
+                  <span style={{ fontFamily: T.display, fontSize: 13, color: r.rank === 1 ? T.gold : T.inkDim, whiteSpace: "nowrap" }}>
+                    {(r.prizeG / 1000).toFixed(0)}k
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {me?.referral && me.referral.recruits > 0 && (
+              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.gold, fontWeight: 800, marginTop: 9 }}>
+                You&apos;ve brought {me.referral.recruits}
+                {me.referral.rank ? ` · currently #${me.referral.rank}` : ""}
+              </div>
+            )}
+          </section>
+        )}
+
         <TugRules
           prizeTotalG={standings.prizeTotalG}
           bountySlots={standings.bounty.slots}
@@ -612,7 +676,7 @@ function actionLabel(a: ReturnType<typeof nextAction>): string {
     case "verify": return "Verify — then you start pulling";
     case "reverify_soon": return `Your check expires in ${a.daysLeft}d`;
     case "play": return `${a.gamesLeft} more game${a.gamesLeft === 1 ? "" : "s"} to qualify`;
-    case "pull_more": return `${a.pullsLeft} pull${a.pullsLeft === 1 ? "" : "s"} left today`;
+    case "pull_more": return `${a.pullsLeft} scoring game${a.pullsLeft === 1 ? "" : "s"} left today`;
     case "bounty_locked": return `Bounty locked at #${a.rank}`;
     case "recruit": return "Done today — bring someone in";
   }
