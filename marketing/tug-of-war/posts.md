@@ -13,7 +13,7 @@ Link: https://gamearenahq.xyz/tug
 
 Tug of War starts Wednesday.
 
-1,000,000 G$. Two sides. One rope.
+2,000,000 G$ in total. Two sides, one rope, seven days.
 
 Every verified human on your side pulls.
 
@@ -68,7 +68,10 @@ gamearenahq.xyz/tug
 
 🪢 **Tug of War starts Wednesday**
 
-1,000,000 G$ on the line. Red against Blue for seven days.
+2,000,000 G$ across two prizes. Red against Blue for seven days.
+
+- 1,000,000 G$ on the rope
+- 1,000,000 G$ for the top recruiters
 
 **How it works**
 Verify once. Play 3 games. Now you are pulling for your side.
@@ -103,7 +106,7 @@ already gone.
 ## 4. WhatsApp Status / Story (post tug-story.jpg)
 
 Tug of War. Wednesday.
-1,000,000 G$.
+2,000,000 G$ in prizes.
 First 160 to verify and play get 2,500 G$ each.
 It is a race. Verify tonight.
 gamearenahq.xyz/tug

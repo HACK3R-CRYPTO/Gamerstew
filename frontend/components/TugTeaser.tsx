@@ -49,6 +49,7 @@ export default function TugTeaser({ isDesktop = false }: { isDesktop?: boolean }
   // Mounted clock — SSR has no reliable time. Assume "upcoming" before mount so
   // the card renders immediately rather than flashing in.
   const [win, setWin] = useState<{ startsMs: number; endsMs: number } | null>(null);
+  const [pools, setPools] = useState<{ ropeG: number; referralG: number; topG: number } | null>(null);
   useEffect(() => {
     let alive = true;
     // /api/tug is edge-cached and 310 bytes, so this is effectively free and
@@ -58,6 +59,11 @@ export default function TugTeaser({ isDesktop = false }: { isDesktop?: boolean }
       .then(d => {
         if (!alive || !d?.startsAt || !d?.endsAt) return;
         setWin({ startsMs: Date.parse(d.startsAt), endsMs: Date.parse(d.endsAt) });
+        setPools({
+          ropeG: Number(d.prizeTotalG) || 0,
+          referralG: Number(d?.referral?.totalG) || 0,
+          topG: Number(d?.referral?.prizesG?.[0]) || 0,
+        });
       })
       .catch(() => { /* fall back to the constants above */ });
     return () => { alive = false; };
@@ -121,12 +127,14 @@ export default function TugTeaser({ isDesktop = false }: { isDesktop?: boolean }
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 10 }}>
             <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 31, color: T.ink, lineHeight: 1, textShadow: "0 2px 16px rgba(0,0,0,0.6)" }}>
-              1,000,000
+              {((pools?.ropeG ?? 1_000_000) + (pools?.referralG ?? 0)).toLocaleString()}
             </span>
             <span style={{ fontFamily: T.body, fontSize: 12, fontWeight: 900, color: "rgba(255,255,255,0.82)", letterSpacing: "0.1em" }}>G$</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(224,215,255,0.72)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
-            Prize pool · two sides, one rope
+            {pools?.referralG
+              ? `Rope ${(pools.ropeG / 1000).toFixed(0)}k · Top recruiters ${(pools.referralG / 1000).toFixed(0)}k`
+              : "Prize pool · two sides, one rope"}
           </div>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 11, padding: "6px 13px", borderRadius: 999, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.28)" }}>

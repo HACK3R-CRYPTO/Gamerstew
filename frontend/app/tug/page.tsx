@@ -572,13 +572,38 @@ function Upcoming({ standings, me, preview }: { standings: TugStandings; me: Tug
           border: "1px solid rgba(251,191,36,0.45)",
         }}>
           <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.14em", color: T.gold }}>
-            PRIZE POOL
+            TOTAL PRIZES
           </div>
           <div style={{ fontFamily: T.display, fontSize: 34, color: T.ink, lineHeight: 1.1, marginTop: 2 }}>
-            {standings.prizeTotalG.toLocaleString()} G$
+            {(standings.prizeTotalG + (standings.referral?.totalG ?? 0)).toLocaleString()} G$
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, fontWeight: 600, marginTop: 4 }}>
-            {standings.bounty.amountG.toLocaleString()} G$ guaranteed to the first {standings.bounty.slots} verified players
+          {/* Two pools, stated separately. Headlining only the rope understated
+              the event by half once the recruiter contest was added, and a
+              player who reads "1,000,000" then finds a second 1,000,000 prize
+              has been told something untrue, even if generously. */}
+          <div style={{
+            display: "flex", gap: 8, marginTop: 11, textAlign: "left",
+          }}>
+            <div style={{ flex: 1, padding: "9px 11px", borderRadius: 11, background: "rgba(0,0,0,0.26)", border: `1px solid ${T.hairline}` }}>
+              <div style={{ fontFamily: T.body, fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", color: T.inkSoft }}>THE ROPE</div>
+              <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, marginTop: 2 }}>
+                {standings.prizeTotalG.toLocaleString()} G$
+              </div>
+              <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
+                incl. {standings.bounty.amountG.toLocaleString()} each to the first {standings.bounty.slots}
+              </div>
+            </div>
+            {standings.referral && standings.referral.totalG > 0 && (
+              <div style={{ flex: 1, padding: "9px 11px", borderRadius: 11, background: "rgba(167,139,250,0.14)", border: "1px solid rgba(167,139,250,0.4)" }}>
+                <div style={{ fontFamily: T.body, fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", color: T.accent }}>TOP RECRUITERS</div>
+                <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, marginTop: 2 }}>
+                  {standings.referral.totalG.toLocaleString()} G$
+                </div>
+                <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
+                  {standings.referral.prizesG[0].toLocaleString()} to the top
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
