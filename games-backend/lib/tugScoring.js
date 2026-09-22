@@ -109,21 +109,52 @@ function assertDailyCap(dailyCap) {
   }
 }
 
+// ── The daily limit is a SOFT cap ───────────────────────────────────────────
+// A hard clip cancelled out the skill scoring it sits next to. With a cap of 5,
+// a stack score of 25 already maxes the day, so lollyposh scoring 134 earned
+// exactly what someone scraping 25 earned. Above a very low bar, playing well
+// paid nothing and the correct move was to hit the cap and stop.
+//
+// Past the cap, points keep accruing at a reduced rate. Skill therefore always
+// pays something, while the curve still flattens hard enough that one player
+// cannot out-grind the recruiting that the event exists to drive. Same shape
+// Valor uses for its weekly earn cap, and for the same reason: a hard stop
+// tells a player who capped on Tuesday not to come back until Monday.
+// 0.12 tuned against live scores, not picked as a round number. The best real
+// day in the data is a raw 38 points (lollyposh: stack 134, simon 108, rhythm
+// 789), which pays 9 here. A recruit pays 10 and then plays as well, so
+// recruiting stays the better move while a great day still pays nearly double
+// a mediocre one. At 0.25 that same day paid 13 and playing beat recruiting,
+// which inverts the whole point of the event.
+const OVER_CAP_RATE = Number(process.env.TUG_OVER_CAP_RATE || 0.12);
+
+// Returns a FRACTIONAL value on purpose. Rounding each day separately threw
+// away every small overage: a raw 9 rounded back down to 5, so it paid exactly
+// what a raw 5 paid and a whole week of slightly-above-cap days lost several
+// points to rounding. playPulls rounds once, at the end, after summing.
+function applySoftCap(raw, cap, overRate = OVER_CAP_RATE) {
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  if (raw <= cap) return raw;
+  return cap + (raw - cap) * overRate;
+}
+
 /**
  * @param dailyRows [{ play_date, best }] where `best` is a Map(gameType -> score).
- *   The older shape [{ play_date, games }] is still accepted so callers that
- *   only have counts keep working; it simply scores one point per game.
+ *
+ * A row WITHOUT `best` scores zero. There used to be a fallback that took a
+ * plain game count and paid a point each, which was harmless beside a hard cap
+ * and became a hole the moment the cap went soft: 999 started-and-quit games
+ * would have paid 254 points, against 20 for two recruits. Points come from
+ * scores now, so a caller with no scores has nothing to score.
  */
 function playPulls(dailyRows, dailyCap) {
   assertDailyCap(dailyCap);
   let total = 0;
   for (const r of dailyRows) {
-    const earned = r.best instanceof Map
-      ? dayPoints(r.best)
-      : (Number.isFinite(Number(r.games)) && Number(r.games) > 0 ? Number(r.games) : 0);
-    total += Math.min(earned, dailyCap);
+    if (!(r.best instanceof Map)) continue;
+    total += applySoftCap(dayPoints(r.best), dailyCap);
   }
-  return total;
+  return Math.round(total);
 }
 
 /**
@@ -215,6 +246,6 @@ function bountyWinners(qualifications, slots) {
 module.exports = {
   POINTS_PER_QUALIFIED_HUMAN, ROPE_CAP, ROPE_CURVE,
   dedupeByIdentityRoot, compareQualificationOrder, playPulls, assertDailyCap,
-  dayPoints, GAME_DIVISOR,
+  dayPoints, GAME_DIVISOR, applySoftCap, OVER_CAP_RATE,
   scoreTeams, ropeOffset, bountyWinners,
 };

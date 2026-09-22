@@ -101,12 +101,14 @@ export default function TugRules({
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
               <PointRow what="Each verified human on your side" pts={`${pointsPerHuman} pts`} strong />
               <PointRow what="Your best score each day, per game" pts="points" />
-              <PointRow what="Most a day of playing can be worth" pts={`${dailyPullCap}`} muted />
+              <PointRow what={`Full rate up to ${dailyPullCap} a day`} pts="then slower" muted />
             </div>
             <p style={{ ...p, marginTop: 10 }}>
-              So the most a day of playing can be worth is {dailyPullCap}.{" "}
-              Bringing one person is worth {pointsPerHuman}.{" "}
-              <strong style={{ color: T.ink }}>Recruiting beats grinding.</strong>
+              Past {dailyPullCap} a day the points keep coming but slow down, so a
+              huge run always beats a small one and nobody can play their way to
+              the top alone. In practice the best day anyone has managed is worth
+              about {pointsPerHuman - 1}, against {pointsPerHuman} for bringing one person.{" "}
+              <strong style={{ color: T.ink }}>Recruiting still beats grinding.</strong>
             </p>
             <p style={{ ...p, marginTop: 7 }}>
               <strong style={{ color: T.ink }}>Quitting earns nothing.</strong> Points come from
@@ -114,8 +116,9 @@ export default function TugRules({
               best run each day counts, so restarting to farm does not work.
             </p>
             <p style={{ ...p, marginTop: 7, color: T.inkSoft }}>
-              Play as much as you like. The daily maximum resets every day, it
-              isn&apos;t {dailyPullCap} for the whole week.
+              Play as much as you like, and play as well as you like. There is no
+              hard ceiling, only a slower rate past {dailyPullCap}. It resets every
+              day, so it isn&apos;t {dailyPullCap} for the whole week.
             </p>
           </Rule>
 
