@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { PrivyClient } from "@privy-io/server-auth";
+import { verifyPrivyOwnership, verifyRecentGamePassMint, originAllowed } from "@/lib/walletProof";
 
 // Player joins the active season's team. Idempotent: if the wallet
 // already has a team, returns the existing assignment. Enforces the
@@ -11,49 +11,34 @@ import { PrivyClient } from "@privy-io/server-auth";
 //     wallet matches the claimed wallet. Without this, anyone with curl
 //     could put any wallet on any team — discovered during the Season 1
 //     reminder dry-run.
-//   - MiniPay users: no signing path (celopedia minipay-guide §"No
-//     message signing" forbids personal_sign), so we accept on the
-//     isMiniPay flag plus the Origin check below. Worst-case attacker
-//     can grief one wallet onto a team they didn't pick; no funds at
-//     stake, no game rewards leak.
+//   - MiniPay users: MiniPay genuinely cannot sign messages, so they prove
+//     ownership with the hash of their GamePass mint tx instead (see
+//     lib/walletProof.ts). Requests that prove nothing are still accepted —
+//     otherwise legacy MiniPay players could not join at all — but they land
+//     UNPROVEN (team_locked = false) and a later proven request from the real
+//     owner overwrites them. So a grief is always correctable and can never
+//     outrank the owner's own pick.
+//
+//     The previous version took `isMiniPay` straight from the request BODY and
+//     skipped the Privy check whenever it was true, so `{"isMiniPay":true}`
+//     disabled auth entirely. The Origin check behind it was `if (origin)`,
+//     which does not run at all when the header is absent — and curl omits it
+//     by default. Both are fixed: the body flag is gone and origin fails closed.
 
 export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-const privy = new PrivyClient(
-  process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  process.env.PRIVY_APP_SECRET!,
-);
-
-async function verifyPrivyOwnership(accessToken: string, claimedWallet: string): Promise<boolean> {
-  try {
-    const claims = await privy.verifyAuthToken(accessToken);
-    const user = await privy.getUser(claims.userId);
-    const wallets = user.linkedAccounts.filter(
-      (a: { type: string }) => a.type === "wallet",
-    ) as { type: string; address: string }[];
-    return wallets.some(w => w.address.toLowerCase() === claimedWallet.toLowerCase());
-  } catch {
-    return false;
-  }
-}
-
 type JoinBody = {
   wallet?: string;
   team?: string;
   referrerWallet?: string | null;
   accessToken?: string | null;
-  isMiniPay?: boolean;
+  mintTx?: string;
 };
 
 const VALID_TEAMS = new Set(["alpha", "nova", "pulse"]);
-const ALLOWED_ORIGINS = new Set([
-  "https://gamearenahq.xyz",
-  "https://www.gamearenahq.xyz",
-]);
-
 export async function POST(req: Request) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.json({ error: "supabase not configured" }, { status: 500 });
@@ -63,12 +48,8 @@ export async function POST(req: Request) {
   // Origin header set by the browser; curl-from-anywhere usually
   // doesn't (and spoofing it requires intent). Localhost stays open
   // for dev. Same posture the games-backend uses.
-  const origin = req.headers.get("origin");
-  if (origin) {
-    const isLocalhost = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
-    if (!isLocalhost && !ALLOWED_ORIGINS.has(origin)) {
-      return NextResponse.json({ error: "forbidden origin" }, { status: 403 });
-    }
+  if (!originAllowed(req)) {
+    return NextResponse.json({ error: "forbidden origin" }, { status: 403 });
   }
 
   let body: JoinBody;
@@ -78,7 +59,7 @@ export async function POST(req: Request) {
   const team = body.team?.toLowerCase().trim();
   let referrer = body.referrerWallet?.toLowerCase().trim() || null;
   const accessToken = body.accessToken?.trim();
-  const isMiniPay = body.isMiniPay === true;
+  const mintTx = typeof body.mintTx === "string" ? body.mintTx : "";
 
   if (!wallet || !/^0x[a-f0-9]{40}$/.test(wallet)) {
     return NextResponse.json({ error: "invalid wallet" }, { status: 400 });
@@ -90,17 +71,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid referrer" }, { status: 400 });
   }
 
-  // Auth gate. Browser users need a valid Privy JWT linking to the
-  // claimed wallet. MiniPay users pass on the isMiniPay marker (no
-  // signing path available to them).
-  if (!isMiniPay) {
-    if (!accessToken) {
-      return NextResponse.json({ error: "Sign in required to pick a team." }, { status: 401 });
-    }
-    const ownsWallet = await verifyPrivyOwnership(accessToken, wallet);
-    if (!ownsWallet) {
-      return NextResponse.json({ error: "Wallet does not match your session. Reconnect and try again." }, { status: 401 });
-    }
+  // Auth gate. A request is PROVEN when the caller demonstrated control of
+  // `wallet` — a Privy token, or a recent GamePass mint tx for MiniPay. An
+  // unproven request may still join (legacy MiniPay players have no proof to
+  // offer) but it cannot lock, and cannot displace a proven assignment.
+  // STRONG vs WEAK, kept separate on purpose (see lib/walletProof.ts).
+  // A mint tx hash is public on-chain and therefore replayable, so it may
+  // narrow an attack but must never produce an irreversible effect.
+  const strong = Boolean(accessToken && await verifyPrivyOwnership(accessToken, wallet));
+  const weak = Boolean(!strong && mintTx && await verifyRecentGamePassMint(wallet, mintTx));
+
+  // A presented Privy token that does not match the claimed wallet is always a
+  // hard failure. The previous condition was
+  // `if (accessToken && !proven && !mintTx)`, which any attacker defeated by
+  // sending a junk mintTx alongside — the one case it caught was the only one
+  // a real attacker never produces.
+  if (accessToken && !strong) {
+    return NextResponse.json({ error: "Wallet does not match your session. Reconnect and try again." }, { status: 401 });
+  }
+
+  // Only a strong proof may LOCK a team. A weak or absent proof can still join
+  // (legacy MiniPay players have nothing else to offer) but stays correctable.
+  const proven = strong;
+
+  // Referrer is contested state — it decides who gets credit, and under the
+  // event it decides team composition. An unproven caller must never be able to
+  // write it for somebody else's wallet. This was the remaining open door into
+  // season_v1_referrer_intent's sibling column after /api/season/intent was
+  // hardened: ~670 wallets had no row and /join wrote referrer_wallet with no
+  // proof at all, permanently.
+  if (referrer && !strong && !weak) {
+    referrer = null;
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -143,6 +144,22 @@ export async function POST(req: Request) {
     .eq("wallet", wallet)
     .maybeSingle();
   if (existing) {
+    // A proven owner may correct an assignment that was never proven — that is
+    // the escape hatch that makes the unproven path safe to keep open.
+    if (!existing.team_locked && proven && existing.team !== team) {
+      const { error: fixErr } = await supabase
+        .from("season_v1_players")
+        .update({ team, team_locked: true, ...(referrer ? { referrer_wallet: referrer } : {}) })
+        .eq("wallet", wallet)
+        .eq("team_locked", false); // no-op if someone proved it first
+      if (!fixErr) {
+        return NextResponse.json({ wallet, team, joinedAt: existing.joined_at, corrected: true });
+      }
+    }
+    // Proven request, same team already recorded — lock it so it can't be moved.
+    if (!existing.team_locked && proven) {
+      await supabase.from("season_v1_players").update({ team_locked: true }).eq("wallet", wallet);
+    }
     return NextResponse.json({
       wallet,
       team: existing.team,
@@ -174,7 +191,7 @@ export async function POST(req: Request) {
   // to it; re-read and return the now-existing row.
   const { error: insertErr } = await supabase
     .from("season_v1_players")
-    .insert({ wallet, team, referrer_wallet: referrer });
+    .insert({ wallet, team, referrer_wallet: referrer, team_locked: proven });
   if (insertErr) {
     if (insertErr.code === "23505") {
       const { data: after } = await supabase

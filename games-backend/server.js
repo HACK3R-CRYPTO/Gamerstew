@@ -61,6 +61,44 @@ const strictLimiter = rateLimit({
   message: { error: 'Rate limit exceeded. Please wait a few minutes.' }
 });
 
+// Tight per-wallet cap for the two endpoints on the GASLESS path. A human
+// cannot finish 12 skill games in a minute; a script trivially can, and every
+// one of those costs US gas (the backend signer submits recordScore itself).
+// Deliberately much tighter than gameSubmitLimiter, which guards an endpoint
+// that runs AFTER the on-chain write and so can't prevent the spend.
+const gaslessLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 12,
+  keyGenerator: walletKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many game sessions too quickly. Wait a moment and try again.' }
+});
+
+// NOTE — there is deliberately no per-IP limiter on the gasless endpoints.
+// They sit behind requireSecret and are only ever called by the Next.js server
+// action, so req.ip is Vercel's egress address for EVERY player. Keying on it
+// gives no per-attacker separation whatsoever and instead caps the whole
+// product at one shared bucket — a 60/min ceiling there is an outage waiting
+// for a traffic spike, which during a prize event is precisely when it fires.
+// The real controls are the per-wallet limiter below, the daily gasless budget,
+// and (above all) gating rewards on self-verification.
+
+// ── Gasless write budget ────────────────────────────────────────────────────
+// Rate limits bound the RATE; this bounds the TOTAL. Because the backend signer
+// pays for every gasless recordScore, an attacker rotating wallets and IPs can
+// otherwise drain the signer's CELO outright. These two ceilings make the
+// worst-case spend a known, bounded number rather than "however much is in the
+// wallet". Both reset at UTC midnight.
+// Implementation + regression tests live in lib/gaslessBudget.js.
+const { createGaslessBudget } = require('./lib/gaslessBudget');
+const _gaslessBudget = createGaslessBudget({
+  perWalletPerDay: Number(process.env.GASLESS_MAX_PER_WALLET_DAY || 60),
+  globalPerDay:    Number(process.env.GASLESS_MAX_GLOBAL_DAY || 3000),
+});
+const gaslessBudgetCheck   = (w) => _gaslessBudget.check(w);
+const gaslessBudgetConsume = (w) => _gaslessBudget.consume(w);
+
 const gameSubmitLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,           // 1 minute window
   max: 60,                            // 60 finished games per wallet per minute
@@ -1133,7 +1171,7 @@ app.post('/api/start-session', requireSecret, gameSubmitLimiter, async (req, res
 //
 // The session row also captures started_at, used later to enforce min/max
 // game duration. Single-use: marked used=true after sign-score consumes it.
-app.post('/api/start-game', requireSecret, async (req, res) => {
+app.post('/api/start-game', requireSecret, gaslessLimiter, async (req, res) => {
   const { wallet, game } = req.body;
   if (!wallet || !game) {
     return res.status(400).json({ error: 'Missing wallet or game' });
@@ -1171,7 +1209,7 @@ app.post('/api/start-game', requireSecret, async (req, res) => {
 // now, but requires the session ticket so direct PoC submissions are blocked).
 // The client-provided `score` field is no longer trusted; for rhythm, whatever
 // the replay computes is what gets signed.
-app.post('/api/sign-score', requireSecret, async (req, res) => {
+app.post('/api/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
   if (!validator || !passContract) {
     return res.status(503).json({ error: 'Validator not configured' });
   }
@@ -1379,7 +1417,14 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
     // signer) and returns the tx hash. The player does NOTHING on-chain — no
     // wallet prompt, no CELO. Serialized with all other signer writes. If the
     // submit fails, fall through to the legacy voucher so the score still saves.
-    if (GASLESS_SKILL_GAMES) {
+    const _budget = GASLESS_SKILL_GAMES ? gaslessBudgetCheck(playerAddress) : { ok: false };
+    if (!_budget.ok && GASLESS_SKILL_GAMES) {
+      // Over budget — do NOT spend signer gas. Fall through to the legacy
+      // voucher below so a genuine player can still record their score by
+      // paying their own gas, rather than losing the run entirely.
+      console.warn(`⛔ Gasless budget hit (${_budget.reason}) · ${String(playerAddress).slice(0, 10)}… — falling back to voucher`);
+    }
+    if (GASLESS_SKILL_GAMES && _budget.ok) {
       // Retry the submit a few times before giving up. The signer is well
       // funded, so a failure here is almost always a transient RPC/nonce
       // hiccup — retrying keeps the player on the gasless path instead of
@@ -1390,6 +1435,7 @@ app.post('/api/sign-score', requireSecret, async (req, res) => {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const tx = await enqueueScoreWrite(playerAddress, gameType, serverScore);
+          gaslessBudgetConsume(playerAddress);
           // The BACKEND submitted this tx, so it's trusted: remember the hash so
           // /api/submit-score credits the score without re-verifying it on-chain
           // (that avoids waiting for a Celo mine, which varies and would either
@@ -2809,28 +2855,85 @@ app.get('/api/challenges/past', async (_, res) => {
 });
 
 // ─── GoodDollar identity verification (cached) ───────────────────────────────
-// isWhitelisted on the GoodDollar identity contract = a face-verified human.
 // The community pool pays VERIFIED players only; unverified players are skipped
 // (stops the task-group farmers who play but never verify from taking money).
-// Verification is sticky (once whitelisted, it stays), so we cache `true`
-// forever and `false` for a few minutes so a just-verified wallet updates soon.
+//
+// Two things this MUST get right, both learned the hard way:
+//
+// 1. THE GATE IS isWhitelisted, NOT getWhitelistedRoot. This was briefly the
+//    other way round, on the reasoning that getWhitelistedRoot also resolves a
+//    wallet the player LINKED to their identity and so matches the frontend
+//    badge. That is a hole. getWhitelistedRoot(a) is
+//    `isWhitelisted(a) ? a : isWhitelisted(connectedAccounts[a]) ? ... : 0`,
+//    and `connectAccount(address)` on IdentityV4 is permissionless: a verified
+//    attacker can claim ANY address that is not currently whitelisted, with no
+//    signature or consent from its owner. So a resolved root proves only that
+//    SOMEBODY vouched for the address — possibly against its owner's interest.
+//    Measured on the live population: 649 of 752 player wallets are claimable
+//    that way right now. Gating on the root would let one attacker mark all of
+//    them as "verified" under a single identity, and then (with root dedupe)
+//    collapse every real player into a duplicate of themselves.
+//    getWhitelistedRoot stays — but ONLY as the dedupe key (identityRootOf),
+//    never as the gate.
+//
+// 2. Verification is NOT sticky. IdentityV4 expires it on a graduated
+//    schedule (reverifyDaysOptions, currently [3, 180] on Celo mainnet): a
+//    player's FIRST-EVER verification lapses after THREE DAYS, and only the
+//    second one buys 180. This cache used to keep `true` forever on that
+//    wrong assumption, which meant lapsed wallets kept passing the pool gate
+//    until the process restarted. Both outcomes are now time-bounded.
 const GD_IDENTITY_ADDR = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
 const _gdIdentity = provider
-  ? new ethers.Contract(GD_IDENTITY_ADDR, ['function isWhitelisted(address) view returns (bool)'], provider)
+  ? new ethers.Contract(
+      GD_IDENTITY_ADDR,
+      [
+        'function isWhitelisted(address) view returns (bool)',
+        'function getWhitelistedRoot(address) view returns (address)',
+        'function identities(address) view returns (uint256 dateAuthenticated, uint256 dateAdded, string did, uint256 whitelistedOnChainId, uint8 status, uint32 authCount)',
+        'function reverifyDaysOptions(uint256) view returns (uint32)',
+      ],
+      provider,
+    )
   : null;
 const _verifiedCache = new Map(); // wallet -> { verified, at }
-const VERIFIED_FALSE_TTL_MS = 10 * 60 * 1000;
+const VERIFIED_FALSE_TTL_MS = 10 * 60 * 1000;   // a just-verified wallet shows up soon
+const VERIFIED_TRUE_TTL_MS = 60 * 60 * 1000;    // bounded: verification can lapse
 async function isVerified(wallet) {
   if (!_gdIdentity || !wallet) return false;
   const w = String(wallet).toLowerCase();
   const c = _verifiedCache.get(w);
-  if (c && (c.verified || Date.now() - c.at < VERIFIED_FALSE_TTL_MS)) return c.verified;
+  if (c) {
+    const ttl = c.verified ? VERIFIED_TRUE_TTL_MS : VERIFIED_FALSE_TTL_MS;
+    if (Date.now() - c.at < ttl) return c.verified;
+  }
   try {
+    // Self-verification only. See the note above: a resolved root is not proof
+    // that THIS wallet's owner ever passed a face check.
     const v = await _gdIdentity.isWhitelisted(w);
     _verifiedCache.set(w, { verified: v, at: Date.now() });
     return v;
   } catch {
     return c ? c.verified : false; // best-effort: keep last known, else treat unverified
+  }
+}
+
+// The identity root — one per human — used ONLY to deduplicate scoring seats,
+// never to decide whether someone is verified. Returns null when unresolvable
+// so callers must handle "unknown" rather than silently treating it as a seat.
+const _rootCache = new Map();
+const ROOT_TTL_MS = 60 * 60 * 1000;
+async function identityRootOf(wallet) {
+  if (!_gdIdentity || !wallet) return null;
+  const w = String(wallet).toLowerCase();
+  const c = _rootCache.get(w);
+  if (c && Date.now() - c.at < ROOT_TTL_MS) return c.root;
+  try {
+    const root = await _gdIdentity.getWhitelistedRoot(w);
+    const r = !root || root === ethers.ZeroAddress ? null : String(root).toLowerCase();
+    _rootCache.set(w, { root: r, at: Date.now() });
+    return r;
+  } catch {
+    return c ? c.root : null;
   }
 }
 
@@ -2869,9 +2972,10 @@ app.get('/api/ref/summary/:wallet', async (req, res) => {
 // page can show the true verified count alongside total players.
 //
 // Heavy on first run (one on-chain read per uncached wallet), so the aggregate
-// is cached for an hour and the per-wallet `true` results are sticky forever in
-// _verifiedCache. Concurrency is bounded so we never fan out hundreds of RPCs
-// at once.
+// is cached for an hour and per-wallet results are cached in _verifiedCache —
+// time-bounded in BOTH directions, because GoodDollar verification expires (a
+// first-ever check lapses after 3 days). Concurrency is bounded so we never fan
+// out hundreds of RPCs at once.
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
@@ -4767,13 +4871,16 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
   // Layer 6 · per-IP rolling 24h cap
   if (ipHash) {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: ipRows } = await supabase
+    // `head: true` returns NO rows — the number comes back on `count`. Reading
+    // `data.length` here made ipCount permanently 0, so FAUCET_MAX_PER_IP_DAY
+    // had never once fired. (The global cap below always destructured `count`
+    // correctly, which is why only this layer was dead.)
+    const { count: ipCount } = await supabase
       .from('faucet_claims')
       .select('id', { count: 'exact', head: true })
       .eq('ip_hash', ipHash)
       .gte('claimed_at', since);
-    const ipCount = ipRows?.length ?? 0;
-    if (ipCount >= FAUCET_MAX_PER_IP_DAY) {
+    if ((ipCount ?? 0) >= FAUCET_MAX_PER_IP_DAY) {
       return res.json({ success: false, reason: 'ip_rate_limit' });
     }
   }
@@ -4800,11 +4907,9 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
 
     // Optional GoodDollar gate · off by default
     if (FAUCET_REQUIRE_GOODDOLLAR) {
-      const GOODDOLLAR_IDENTITY_ADDR = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
-      const ID_ABI = ['function isWhitelisted(address) view returns (bool)'];
-      const idContract = new ethers.Contract(GOODDOLLAR_IDENTITY_ADDR, ID_ABI, provider);
-      const isVerified = await idContract.isWhitelisted(address);
-      if (!isVerified) {
+      // Same semantics as the pool gate and the frontend: getWhitelistedRoot
+      // resolves linked wallets, plain isWhitelisted does not.
+      if (!(await isVerified(address))) {
         return res.status(403).json({ success: false, reason: 'unverified' });
       }
     }
@@ -5440,6 +5545,271 @@ async function sendDailyClaimPings() {
   }
 }
 setInterval(sendDailyClaimPings, 60 * 60 * 1000);
+
+// ─── Verified Tug of War ─────────────────────────────────────────────────────
+// Standings are COMPUTED, never stored: the subgraph says who played and when,
+// the GoodDollar Identity contract says who is a verified human and which human
+// they are. That means the event runs without a migration, and every number on
+// the page is re-derivable from the chain rather than trusted from a table.
+//
+// isVerified here is self-verification only; identityRootOf is the dedupe key.
+// Keeping those separate is what stops one face being counted as many players
+// (see the note on the identity cache above).
+const tugEvent = require('./lib/tugEvent');
+
+// Who referred whom. Reuses season_v1_referrer_intent — the same table the Cup
+// referral lane and the connector crown already read — so a recruit lands on
+// their recruiter's side without a new table.
+//
+// Cached for a few minutes: referrals are rare (82 in the project's lifetime)
+// and a recruit showing up on the right side a minute late costs nothing.
+let _refCache = { at: 0, map: null };
+const REF_TTL_MS = 3 * 60 * 1000;
+async function tugReferrerMap() {
+  if (_refCache.map && Date.now() - _refCache.at < REF_TTL_MS) return _refCache.map;
+  const map = new Map();
+  try {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from('season_v1_referrer_intent')
+        .select('wallet, referrer_wallet')
+        .range(from, from + 999);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) {
+        const w = r.wallet?.toLowerCase(), ref = r.referrer_wallet?.toLowerCase();
+        if (w && ref && w !== ref) map.set(w, ref);
+      }
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    _refCache = { at: Date.now(), map };
+  } catch (e) {
+    console.warn('tug referrer map failed:', e?.message || e);
+    return _refCache.map || map;   // stale beats empty: empty silently re-homes everyone
+  }
+  return map;
+}
+
+let _tugCache = { at: 0, data: null };
+let _tugInflight = null;                        // single-flight guard
+const TUG_TTL_MS = Number(process.env.TUG_TTL_MS || 30_000);
+
+// SINGLE FLIGHT. A rebuild pages the subgraph and reads the Identity contract
+// for every candidate wallet, so it is by far the most expensive thing here.
+// With a plain TTL cache, the moment it expires EVERY in-flight request misses
+// at once and they all rebuild together — the classic stampede, and it gets
+// worse exactly when the event is busiest. Concurrent callers now await the one
+// rebuild already running.
+//
+// Cost is therefore flat in traffic: at most one rebuild per TTL no matter
+// whether 5 people or 5,000 are watching the rope.
+async function getTugStandings() {
+  if (_tugCache.data && Date.now() - _tugCache.at < TUG_TTL_MS) return _tugCache.data;
+  if (_tugInflight) return _tugInflight;
+
+  _tugInflight = (async () => {
+    const _t0 = Date.now();
+    console.log('🪢 tug rebuild START');
+    try {
+      const data = await tugEvent.buildStandings(
+        { subgraph, isVerified, identityRootOf, mapLimit, referrerMap: tugReferrerMap },
+        tugEvent.tugConfig(),
+        Date.now(),
+      );
+      _tugCache = { at: Date.now(), data };
+      console.log(`🪢 tug rebuild DONE in ${Date.now() - _t0}ms`);
+      return data;
+    } catch (e) {
+      // Serve the last good standing rather than failing everyone. A rope that
+      // is 40 seconds stale beats a blank one during a prize event.
+      if (_tugCache.data) {
+        console.warn('tug rebuild failed, serving stale:', e?.message || e);
+        return _tugCache.data;
+      }
+      throw e;
+    } finally {
+      _tugInflight = null;
+    }
+  })();
+  return _tugInflight;
+}
+
+// Verification expiry moves once every few months, so re-reading identities()
+// on every /me poll was pure waste — one on-chain call per player per poll.
+const _expiryCache = new Map();
+const EXPIRY_TTL_MS = 6 * 60 * 60 * 1000;
+async function verificationDaysLeftCached(wallet) {
+  const w = String(wallet).toLowerCase();
+  const hit = _expiryCache.get(w);
+  if (hit && Date.now() - hit.at < EXPIRY_TTL_MS) return hit.days;
+  try {
+    const schedule = await getReverifySchedule();
+    if (!schedule || !_gdIdentity) return 0;
+    const idn = await _gdIdentity.identities(w);
+    const days = computeIdentityExpiry(idn, schedule).daysLeft;
+    _expiryCache.set(w, { days, at: Date.now() });
+    return days;
+  } catch {
+    return hit ? hit.days : 0;
+  }
+}
+
+app.get('/api/tug', requireSecret, async (_req, res) => {
+  try {
+    const { standings } = await getTugStandings();
+    res.json(standings);
+  } catch (e) {
+    console.warn('tug standings failed:', e?.message || e);
+    res.status(503).json({ error: 'standings unavailable' });
+  }
+});
+
+app.get('/api/tug/me', requireSecret, async (req, res) => {
+  const wallet = String(req.query.wallet || '').toLowerCase();
+  try {
+    const { standings, players, byWallet, bountyRank, plays, cfg, todayStr } = await getTugStandings();
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) {
+      return res.json({ wallet: null, team: null, qualified: false, bountyRank: null,
+        pullsToday: 0, dailyPullCap: cfg?.dailyPullCap ?? 5, pullsTotal: 0,
+        gamesToQualify: cfg?.qualifyGames ?? 3, gamesPlayed: 0,
+        verified: false, verificationDaysLeft: 0, teamPercentile: null });
+    }
+
+    const me = byWallet?.get(wallet) || null;
+    const play = plays?.get(wallet) || null;
+    const gamesPlayed = play?.total || 0;
+    const pullsToday = Math.min(play?.days?.get(todayStr) || 0, cfg.dailyPullCap);
+
+    // Percentile within YOUR OWN team, never a global rank — "4,112nd of 9,000"
+    // is a reason to close the tab.
+    let teamPercentile = null, neighbours = undefined;
+    if (me?.counted) {
+      const mates = (players || [])
+        .filter((p) => p.counted && p.team === me.team)
+        .sort((a, b) => b.pulls - a.pulls || String(a.wallet).localeCompare(String(b.wallet)));
+      const idx = mates.findIndex((p) => p.wallet === wallet);
+      if (idx >= 0) {
+        teamPercentile = Math.max(1, Math.round(((idx + 1) / mates.length) * 100));
+        const from = Math.max(0, idx - 2), to = Math.min(mates.length, idx + 3);
+        neighbours = mates.slice(from, to).map((p, i) => ({
+          rank: from + i + 1,
+          name: p.username || String(p.wallet).slice(2, 8),
+          pulls: p.pulls,
+          isMe: p.wallet === wallet,
+        }));
+      }
+    }
+
+    const verified = await isVerified(wallet);            // 60-min cached
+    const verificationDaysLeft = await verificationDaysLeftCached(wallet);  // 6-hr cached
+
+    res.json({
+      wallet,
+      // identityRootOf is itself cached; only reached for players not yet in
+      // the standings, so it costs nothing for the qualified majority.
+      team: me?.counted ? me.team : (verified ? tugEvent.assignTeam((await identityRootOf(wallet)) || wallet) : null),
+      qualified: Boolean(me?.counted),
+      bountyRank: bountyRank?.get(wallet) ?? null,
+      pullsToday,
+      dailyPullCap: cfg.dailyPullCap,
+      pullsTotal: me?.pulls ?? 0,
+      gamesToQualify: cfg.qualifyGames,
+      gamesPlayed,
+      verified,
+      verificationDaysLeft,
+      teamPercentile,
+      neighbours,
+      _standingsAt: standings.serverTime,
+    });
+  } catch (e) {
+    console.warn('tug me failed:', e?.message || e);
+    res.status(503).json({ error: 'unavailable' });
+  }
+});
+
+// ─── Identity-expiry warning cron ────────────────────────────────────────────
+// GoodDollar expires a player's FIRST-EVER verification after 3 days (the
+// second one buys 180 — see lib/identityExpiry.js). Nothing used to tell the
+// player, so they simply stopped counting as verified: 313 of 752 players are
+// currently lapsed, which is the whole reason the verified count falls.
+//
+// This fires one warning while they can still act on it. sendToWallet also
+// writes notifications_feed, so the warning lands in the in-app bell even for
+// the ~96% of players with no push subscription — they see it next time they
+// open the app, which is exactly when they can fix it.
+//
+// Runs hourly, acts once in the 09:00-10:00 UTC window (10-11am WAT).
+// sendToWallet de-dupes per (wallet, category, day) on top of that.
+const { computeIdentityExpiry } = require('./lib/identityExpiry');
+
+let _reverifySchedule = null;
+async function getReverifySchedule() {
+  if (_reverifySchedule) return _reverifySchedule;
+  if (!_gdIdentity) return null;
+  const out = [];
+  for (let i = 0; i < 8; i++) {
+    try { out.push(Number(await _gdIdentity.reverifyDaysOptions(i))); }
+    catch { break; } // past the end of the array — the read reverts
+  }
+  if (out.length === 0) return null;
+  _reverifySchedule = out;
+  console.log(`🪪 GoodDollar reverify schedule: [${out.join(', ')}] days`);
+  return out;
+}
+
+async function sendIdentityExpiryWarnings() {
+  try {
+    if (new Date().getUTCHours() !== 9) return;
+    if (!_gdIdentity) return;
+
+    const schedule = await getReverifySchedule();
+    if (!schedule) { console.warn('identity-expiry cron: no reverify schedule, skipping'); return; }
+
+    // Same player population the rest of the app counts.
+    const wallets = [];
+    let cursor = '';
+    for (let page = 0; page < 20; page++) {
+      const q = await subgraph.gql(
+        `query P($c: ID!) { players(first: 1000, where: { id_gt: $c }, orderBy: id, orderDirection: asc) { id } }`,
+        { c: cursor },
+      );
+      const batch = (q.players || []).map(p => p.id?.toLowerCase()).filter(Boolean);
+      if (batch.length === 0) break;
+      wallets.push(...batch);
+      cursor = batch[batch.length - 1];
+      if (batch.length < 1000) break;
+    }
+    if (wallets.length === 0) return;
+
+    const rows = await mapLimit(wallets, 8, async (w) => {
+      try {
+        const id = await _gdIdentity.identities(w);
+        return { wallet: w, exp: computeIdentityExpiry(id, schedule) };
+      } catch {
+        return null; // an unreadable wallet is skipped, never warned incorrectly
+      }
+    });
+
+    let sent = 0;
+    for (const r of rows) {
+      if (!r || !r.exp.verified) continue;        // lapsed players get the re-verify prompt in-app, not this
+      if (r.exp.daysLeft > 1) continue;           // only warn inside the last day
+      const ok = await push.sendToWallet(supabase, r.wallet, 'identity_expiry', {
+        title: '🪪 Your verification expires tomorrow',
+        body: "One 30-second face check keeps it — and this time it lasts 180 days.",
+        tag: 'identity-expiry',
+        url: '/verify',
+      });
+      if (ok) sent++;
+    }
+    if (sent > 0) console.log(`🪪 Identity-expiry warnings sent to ${sent} wallets`);
+  } catch (e) {
+    console.warn('identity expiry cron failed:', e?.message || e);
+  }
+}
+setInterval(sendIdentityExpiryWarnings, 60 * 60 * 1000);
 
 // ─── Re-engagement cron — lapsed-user pings ──────────────────────────────────
 // Runs every 6 hours. Targets users who last played exactly 1, 3, 7, or 14

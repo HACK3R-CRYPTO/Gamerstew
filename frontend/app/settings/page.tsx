@@ -237,7 +237,7 @@ export default function SettingsPage() {
     query: { enabled: connected, refetchInterval: 90_000 },
   });
 
-  const { isVerified } = useSelfVerification();
+  const { isVerified, isVerificationResolved, hasLapsed, identityExpiry } = useSelfVerification();
 
   // Real push subscribe/unsubscribe surface. Three terminal states:
   // - "denied" → browser-level block; open a help affordance instead of toggling
@@ -360,11 +360,16 @@ export default function SettingsPage() {
               <Row
                 icon="🪪"
                 label="GoodDollar verification"
-                sub={isVerified ? "Verified · daily G$ unlocked" : "Verify with face check to claim daily G$"}
-                onClick={isVerified ? undefined : () => router.push(`/verify?next=${encodeURIComponent("/settings")}`)}
+                sub={
+                  !isVerificationResolved ? "Checking your verification…"
+                  : isVerified ? (identityExpiry.daysLeft > 0 ? `Verified · re-check in ${identityExpiry.daysLeft}d` : "Verified · daily G$ unlocked")
+                  : hasLapsed ? "Your check expired · one re-check restores it"
+                  : "Verify with face check to claim daily G$"
+                }
+                onClick={isVerified || !isVerificationResolved ? undefined : () => router.push(`/verify?next=${encodeURIComponent("/settings")}`)}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: isVerified ? "rgba(34,197,94,0.14)" : "rgba(167,139,250,0.14)", border: `1px solid ${isVerified ? "rgba(134,239,172,0.45)" : `${T.accent}55`}`, color: isVerified ? "#86efac" : T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
-                  {isVerified ? "✓ VERIFIED" : "PENDING"}
+                  {!isVerificationResolved ? "CHECKING" : isVerified ? "✓ VERIFIED" : hasLapsed ? "EXPIRED" : "PENDING"}
                 </span>
               </Row>
             </div>

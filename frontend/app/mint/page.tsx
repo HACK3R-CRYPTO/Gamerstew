@@ -193,7 +193,7 @@ function MintInner() {
       // network fee in a Celo fee-currency adapter (USDC by default).
       // celoFeeSpread returns an empty spread for non-MiniPay callers so
       // wagmi falls back to the native gas token (CELO) on mainnet.
-      await writeContractAsync({
+      const mintTx = await writeContractAsync({
         dataSuffix: ATTRIBUTION_SUFFIX,
         address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
         abi: GAME_PASS_ABI,
@@ -210,10 +210,13 @@ function MintInner() {
       // recorded, no penalty.
       if (refOk && !refIsEmpty && address) {
         try {
+          // The mint tx proves control of this wallet — required now that
+          // /api/season/intent is authenticated (MiniPay cannot sign messages,
+          // so the transaction itself is the only proof available).
           await fetch("/api/season/intent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ wallet: address.toLowerCase(), referrer: refClean }),
+            body: JSON.stringify({ wallet: address.toLowerCase(), referrer: refClean, mintTx }),
           });
           // Server-side truth lands here; the localStorage bridge is no
           // longer needed for this player. Clear it so subsequent flows

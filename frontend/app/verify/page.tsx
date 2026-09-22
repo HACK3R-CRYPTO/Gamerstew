@@ -61,7 +61,7 @@ function VerifyInner() {
   const { authenticated } = usePrivy();
   const { address } = useAccount();
   const isMiniPay = useIsMiniPay();
-  const { isVerified, isVerifying, verifyIdentity, fvLink, popupBlocked } = useSelfVerification();
+  const { isVerified, isVerificationResolved, hasLapsed, isVerifying, verifyIdentity, fvLink, popupBlocked } = useSelfVerification();
 
   // GamePass username so the welcome line is real ("Welcome, @lyra!")
   // instead of generic. Reads only when minted; falls back to "player"
@@ -86,24 +86,13 @@ function VerifyInner() {
   // know who they were.
   const username = (chainUsername as string | undefined) || "";
 
-  // Direct on-chain whitelist read — the page must KNOW the answer before
-  // rendering anything. Without this, verified players saw the full
-  // "verify now" pitch flash for a second before the context hydrated and
-  // redirected — which reads as "the app forgot I'm verified".
-  const { data: whitelistRoot, isLoading: whitelistLoading } = useReadContract({
-    address: "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42",
-    abi: [{
-      inputs: [{ name: "account", type: "address" }],
-      name: "getWhitelistedRoot",
-      outputs: [{ name: "", type: "address" }],
-      stateMutability: "view",
-      type: "function",
-    }] as const,
-    functionName: "getWhitelistedRoot",
-    args: address ? [address] : undefined,
-    query: { enabled: !!address },
-  });
-  const chainVerified = !!whitelistRoot && whitelistRoot !== "0x0000000000000000000000000000000000000000";
+  // Whitelist status comes from SelfVerificationContext — the single reader
+  // of getWhitelistedRoot in the app. This page used to run its own
+  // useReadContract copy against wagmi's wallet-bound client, which meant a
+  // second answer that could disagree with the context's. `isVerified` and
+  // `isVerificationResolved` are that one answer: the page must KNOW it
+  // before rendering, or verified players see the full "verify now" pitch
+  // flash for a beat, which reads as "the app forgot I'm verified".
 
   // Auth guard: must be connected to be on this page.
   useEffect(() => {
@@ -113,13 +102,13 @@ function VerifyInner() {
     }
   }, [authenticated, address, isMiniPay, router]);
 
-  // Auto-advance when verified — from the context OR the direct chain
-  // read, whichever answers first.
+  // Auto-advance the moment the context says verified — that flag is already
+  // cache-hydrated before paint, so returning players bounce straight through.
   useEffect(() => {
-    if (isVerified || chainVerified) {
+    if (isVerified) {
       router.replace(next);
     }
-  }, [isVerified, chainVerified, next, router]);
+  }, [isVerified, next, router]);
 
   // Gate the pitch: never show "verify now" until the chain has answered
   // that this wallet is NOT whitelisted. While resolving (or when verified
@@ -135,7 +124,7 @@ function VerifyInner() {
     hasMinted === undefined ||
     (hasMinted === true && !chainUsername);
 
-  if (detailsLoading || whitelistLoading || chainVerified || isVerified) {
+  if (detailsLoading || !isVerificationResolved || isVerified) {
     return (
       <div style={{
         position: "fixed", inset: 0,
@@ -149,12 +138,16 @@ function VerifyInner() {
         }} />
         <style>{`@keyframes verify-spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: "rgba(220,210,255,0.6)" }}>
-          {chainVerified || isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "LOADING YOUR DETAILS…"}
+          {isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "LOADING YOUR DETAILS…"}
         </div>
       </div>
     );
   }
 
+  // A player whose GoodDollar identity lapsed did the face check already —
+  // GoodDollar just expires a first-ever verification after 3 days (the second
+  // one is good for 180). Showing them the first-timer pitch reads as "the app
+  // forgot me", which is exactly the complaint this page exists to avoid.
   const benefits = [
     { icon: "🪙", txt: "Claim free G$ every 24 hours" },
     { icon: "🏆", txt: "Enter prize pools & seasonal cups" },
@@ -188,8 +181,14 @@ function VerifyInner() {
         {/* Compact welcome — celebration folded in here, no separate
             "You're in → Continue" step. Lands directly on the choice. */}
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>YOU&apos;RE IN 🎉</div>
-          <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>{username ? `Welcome, @${username}!` : "Welcome!"}</h2>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>
+            {hasLapsed ? "QUICK RE-CHECK" : "YOU'RE IN 🎉"}
+          </div>
+          <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>
+            {hasLapsed
+              ? (username ? `Welcome back, @${username}!` : "Welcome back!")
+              : (username ? `Welcome, @${username}!` : "Welcome!")}
+          </h2>
         </div>
 
         {/* G$ coin hero — green gradient sphere with soft glow + sparkles */}
@@ -224,8 +223,12 @@ function VerifyInner() {
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.16em" }}>FREE DAILY REWARD</div>
-          <h2 style={{ fontFamily: T.display, fontSize: 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em" }}>Claim free G$ every day</h2>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.16em" }}>
+            {hasLapsed ? "YOUR CHECK EXPIRED" : "FREE DAILY REWARD"}
+          </div>
+          <h2 style={{ fontFamily: T.display, fontSize: 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em" }}>
+            {hasLapsed ? "Re-check to keep claiming" : "Claim free G$ every day"}
+          </h2>
         </div>
 
         {/* What verifying unlocks · three benefit rows */}
@@ -244,7 +247,9 @@ function VerifyInner() {
         </div>
 
         <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, textAlign: "center", marginTop: -6 }}>
-          One quick face check proves you&apos;re human. Takes ~30s.
+          {hasLapsed
+            ? "GoodDollar expires a first verification after 3 days. Do it once more and you're set for 180."
+            : "One quick face check proves you're human. Takes ~30s."}
         </div>
 
         {/* Primary CTA — Verify & claim G$ (green gradient pill) */}
@@ -270,7 +275,7 @@ function VerifyInner() {
             </>
           ) : (
             <>
-              <span style={{ fontSize: 17 }}>🌍</span> Verify &amp; claim G$
+              <span style={{ fontSize: 17 }}>🌍</span> {hasLapsed ? "Re-check & keep claiming" : "Verify & claim G$"}
             </>
           )}
         </button>

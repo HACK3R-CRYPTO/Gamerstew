@@ -24,6 +24,7 @@ import { useAccount } from "wagmi";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import EventTeaser from "@/components/EventTeaser";
+import TugTeaser from "@/components/TugTeaser";
 import Link from "next/link";
 import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 import { AgentBadge } from "@/components/AgentBadge";
@@ -744,8 +745,16 @@ export default function EventsPage() {
         {/* LIVE */}
         {tab === "live" && (
           <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 12 }}>
-            {/* Arena Cup · the headline live event, featured full-width at the top
-                of the list. Hides itself once the Cup has ended (EventTeaser). */}
+            {/* Tug of War leads while it is upcoming or live — it is the
+                headline event and the only one with an open window. Both
+                teasers hide themselves once their own window closes, so this
+                slot never shows a finished event as a live headline (which is
+                how "$150 · Coming soon" survived four months past its end). */}
+            <div style={{ gridColumn: isDesktop ? "1 / -1" : "auto" }}>
+              <TugTeaser isDesktop={isDesktop} />
+            </div>
+
+            {/* Arena Cup · hides itself once the Cup has ended (EventTeaser). */}
             <div style={{ gridColumn: isDesktop ? "1 / -1" : "auto" }}>
               <EventTeaser isDesktop={isDesktop} />
             </div>
