@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import TugRope, { TEAM_RED, TEAM_BLUE } from "@/components/TugRope";
 import TugRules from "@/components/TugRules";
 import { nextAction, type TugStandings, type TugMe } from "./types";
@@ -166,6 +167,12 @@ export default function TugPage() {
   }, [address]);
 
   const action = useMemo(() => nextAction(me), [me]);
+  // On a phone the rules sit in the flow, collapsed, because the screen is a
+  // single column and a player mid-event wants one instruction. On a desktop
+  // there is a whole empty half of the viewport either side of that column —
+  // so the rules live there, permanently open, where nobody has to go looking
+  // for them.
+  const isMobile = useIsMobile(1024);
 
   if (!standings) {
     return <main style={shell(0)}><div style={{ color: T.inkSoft, padding: 40 }}>Loading…</div></main>;
@@ -187,7 +194,7 @@ export default function TugPage() {
   const todayLead = Math.abs(standings.today.red - standings.today.blue);
 
   return (
-    <main style={shell(share)}>
+    <main style={shell(share, !isMobile)}>
       {/* Battlefield tint. Two static radial gradients anchored to each team's
           own edge, their strength following the score — so "who is winning" is
           answered by the screen itself before any number is read. Static
@@ -200,7 +207,14 @@ export default function TugPage() {
           `radial-gradient(ellipse 70% 52% at 100% 28%, rgba(103,232,249,${(0.10 + (1 - share) * 0.26).toFixed(3)}) 0%, transparent 62%)`,
       }} />
 
-      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 13 }}>
+      <div style={{
+        position: "relative", zIndex: 1,
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: "flex-start",
+        gap: isMobile ? 13 : 20,
+      }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 13 }}>
         {preview && (
           <div style={{
             padding: "6px 11px", borderRadius: 9,
@@ -429,15 +443,35 @@ export default function TugPage() {
           </section>
         )}
 
-        <TugRules
-          prizeTotalG={standings.prizeTotalG}
-          bountySlots={standings.bounty.slots}
-          bountyAmountG={standings.bounty.amountG}
-          dailyPullCap={me?.dailyPullCap ?? 5}
-          qualifyGames={me?.gamesToQualify ?? 3}
-        />
+        {/* On a phone the rules stay in the flow, collapsed. */}
+        {isMobile && (
+          <TugRules
+            prizeTotalG={standings.prizeTotalG}
+            bountySlots={standings.bounty.slots}
+            bountyAmountG={standings.bounty.amountG}
+            dailyPullCap={me?.dailyPullCap ?? 5}
+            qualifyGames={me?.gamesToQualify ?? 3}
+          />
+        )}
 
         <div style={{ height: 78 }} />
+      </div>
+
+      {/* Desktop: the rules get their own column, open, and stick as you
+          scroll — so nobody has to hunt for them or remember to tap. This is
+          the half of a wide viewport that was otherwise empty. */}
+      {!isMobile && (
+        <aside style={{ width: 360, flexShrink: 0, position: "sticky", top: 16, paddingBottom: 24 }}>
+          <TugRules
+            prizeTotalG={standings.prizeTotalG}
+            bountySlots={standings.bounty.slots}
+            bountyAmountG={standings.bounty.amountG}
+            dailyPullCap={me?.dailyPullCap ?? 5}
+            qualifyGames={me?.gamesToQualify ?? 3}
+            defaultOpen
+          />
+        </aside>
+      )}
       </div>
 
       {/* 6 · one instruction, always in thumb reach */}
@@ -640,13 +674,15 @@ function fixture(): { standings: TugStandings; me: TugMe } {
   return state === "upcoming" ? PREVIEW_UPCOMING : PREVIEW;
 }
 
-function shell(share: number): React.CSSProperties {
+function shell(share: number, wide = false): React.CSSProperties {
   void share;
   return {
     minHeight: "100vh", position: "relative",
     background: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 42%, #0a0226 100%)",
     color: T.ink, fontFamily: T.body,
-    padding: "16px 16px 0", maxWidth: 480, margin: "0 auto",
+    padding: "16px 16px 0",
+    maxWidth: wide ? 980 : 480,
+    margin: "0 auto",
     // The app's global layout makes <body> a flex container, so <main> is a
     // flex ITEM — and a flex item defaults to min-width:auto, meaning it
     // refuses to shrink below its min-content width. A few nowrap stat labels
