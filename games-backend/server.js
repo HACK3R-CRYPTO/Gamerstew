@@ -5735,6 +5735,91 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
   }
 });
 
+// ─── Tug of War notification cron ────────────────────────────────────────────
+// Four moments, and deliberately only four. Push is the one channel a player
+// cannot mute selectively without muting everything, so an event that pings
+// daily trains people to turn it off before it even starts.
+//
+//   T-24h   verify tonight — the bounty slots go in order and a first face
+//           check takes 30 seconds, so arriving unverified on day one means
+//           the early slots are already gone
+//   launch  the rope is live
+//   scarce  bounty slots nearly gone, sent ONCE, and only to people who have
+//           not claimed one — telling a player who already has a slot that
+//           slots are running out is noise
+//   T-24h   last day
+//
+// sendToWallet already de-dupes per (wallet, category, day) and writes
+// notifications_feed, so the message still reaches the ~96% of players with no
+// push subscription next time they open the app.
+function tugNotifyWindow(nowMs, startMs, endMs) {
+  const H = 3600 * 1000;
+  const toStart = startMs - nowMs;
+  const toEnd = endMs - nowMs;
+  if (toStart > 23 * H && toStart <= 25 * H) return 'tug_eve';
+  if (toStart <= 0 && toStart > -2 * H) return 'tug_live';
+  if (toEnd > 23 * H && toEnd <= 25 * H) return 'tug_lastday';
+  return null;
+}
+
+async function sendTugNotifications() {
+  try {
+    const cfg = tugEvent.tugConfig();
+    const startMs = Date.parse(cfg.startsAt), endMs = Date.parse(cfg.endsAt);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+    const now = Date.now();
+
+    const { data: subs } = await supabase.from('push_subscriptions').select('wallet_address');
+    const wallets = [...new Set((subs || []).map((r) => r.wallet_address?.toLowerCase()).filter(Boolean))];
+    if (wallets.length === 0) return;
+
+    const moment = tugNotifyWindow(now, startMs, endMs);
+    if (moment) {
+      const payload = {
+        tug_eve: {
+          title: '🪢 Tug of War opens tomorrow',
+          body: `Verify tonight. The first ${cfg.bountySlots} players to verify and play take ${cfg.bountyAmountG.toLocaleString()} G$ each, in order.`,
+        },
+        tug_live: {
+          title: '🪢 The rope is live',
+          body: 'Play 3 games and you are pulling for your side. Bring someone and they land on your team.',
+        },
+        tug_lastday: {
+          title: '🪢 Last day on the rope',
+          body: 'It closes in 24 hours. Your best run today still counts.',
+        },
+      }[moment];
+      let sent = 0;
+      for (const w of wallets) {
+        if (await push.sendToWallet(supabase, w, moment, { ...payload, tag: moment, url: '/tug' })) sent++;
+      }
+      if (sent > 0) console.log(`🪢 ${moment} sent to ${sent} wallets`);
+      return;
+    }
+
+    // Scarcity, mid-event only, and only to players without a slot.
+    if (now <= startMs || now >= endMs) return;
+    const { standings, bountyRank } = await getTugStandings();
+    const left = cfg.bountySlots - (standings?.bounty?.claimed ?? 0);
+    if (left > 30 || left <= 0) return;
+    let sent = 0;
+    for (const w of wallets) {
+      if (bountyRank?.has(w)) continue;   // already holds a slot
+      const ok = await push.sendToWallet(supabase, w, 'tug_bounty_low', {
+        title: `🪢 ${left} guaranteed slots left`,
+        body: `Verify and play 3 games to claim ${cfg.bountyAmountG.toLocaleString()} G$. Once they are gone they are gone.`,
+        tag: 'tug-bounty-low',
+        url: '/tug',
+      });
+      if (ok) sent++;
+    }
+    if (sent > 0) console.log(`🪢 bounty-low sent to ${sent} wallets (${left} left)`);
+  } catch (e) {
+    console.warn('tug notification cron failed:', e?.message || e);
+  }
+}
+setInterval(sendTugNotifications, 60 * 60 * 1000);
+
 // ─── Identity-expiry warning cron ────────────────────────────────────────────
 // GoodDollar expires a player's FIRST-EVER verification after 3 days (the
 // second one buys 180 — see lib/identityExpiry.js). Nothing used to tell the

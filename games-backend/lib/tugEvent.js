@@ -168,7 +168,19 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
     prizeTotalG: cfg.prizeTotalG,
     serverTime: new Date(nowMs).toISOString(),
   };
-  if (phase === 'scheduled') return { standings: base, players: [], byWallet: new Map() };
+  if (phase === 'scheduled') {
+    // The prize structure is known before the event opens, and the pre-event
+    // screen is precisely where it has to be visible — that screen exists to
+    // make people verify early. Returning bare `base` here meant the recruiter
+    // pool read as 0 and the biggest prize was invisible until launch.
+    base.referral = {
+      prizesG: cfg.referralPrizesG,
+      totalG: cfg.referralPrizesG.reduce((a, n) => a + n, 0),
+      top: [],
+      entrants: 0,
+    };
+    return { standings: base, players: [], byWallet: new Map(), cfg, referralBoard: [] };
+  }
 
   const plays = await fetchPlaysByWalletDay(subgraph, startUnix, endUnix, cfg.gameTypes);
 
