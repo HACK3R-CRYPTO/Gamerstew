@@ -40,7 +40,7 @@ export interface TugRulesProps {
 
 export default function TugRules({
   prizeTotalG, bountySlots, bountyAmountG, dailyPullCap, qualifyGames,
-  pointsPerHuman = 10, defaultOpen = false,
+  pointsPerHuman = 20, defaultOpen = false,
 }: TugRulesProps) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -105,13 +105,15 @@ export default function TugRules({
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
               <PointRow what="Each verified human you bring" pts={`${pointsPerHuman} pts`} strong />
               <PointRow what="Your best score each day, per game" pts="points" />
-              <PointRow what={`Full rate up to ${dailyPullCap} a day`} pts="then slower" muted />
+              <PointRow what={`Full rate up to ${dailyPullCap} points a day`} pts="then slower" muted />
             </div>
             <p style={{ ...p, marginTop: 10 }}>
-              Past {dailyPullCap} a day the points keep coming but slow down, so a
-              huge run always beats a small one and nobody can play their way to
-              the top alone. In practice the best day anyone has managed is worth
-              about {pointsPerHuman - 1}, against {pointsPerHuman} for bringing one person.{" "}
+              Points come from your score, never from how many games you play, so
+              there is no limit on playing. Past {dailyPullCap} points in a day they
+              keep coming but slow down, so a huge run always beats a small one and
+              nobody can play their way to the top alone. In practice the best day
+              anyone has managed is worth about {Math.round(dailyPullCap + (38 - dailyPullCap) * 0.12)},
+              against {pointsPerHuman} for bringing one person.{" "}
               <strong style={{ color: T.ink }}>Recruiting still beats grinding.</strong>
             </p>
             <p style={{ ...p, marginTop: 7 }}>
@@ -121,8 +123,9 @@ export default function TugRules({
             </p>
             <p style={{ ...p, marginTop: 7, color: T.inkSoft }}>
               Play as much as you like, and play as well as you like. There is no
-              hard ceiling, only a slower rate past {dailyPullCap}. It resets every
-              day, so it isn&apos;t {dailyPullCap} for the whole week.
+              hard ceiling and no limit on games, only a slower rate past{" "}
+              {dailyPullCap} points. It resets every day, so it isn&apos;t{" "}
+              {dailyPullCap} for the whole week.
             </p>
           </Rule>
 

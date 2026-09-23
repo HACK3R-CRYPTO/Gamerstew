@@ -31,8 +31,8 @@ gamearenahq.xyz/tug
 **2/**
 Here is the part that decides it.
 
-A verified human on your side is worth 10 points.
-Your best run of the day is worth up to 5.
+A verified human you bring is worth 20 points.
+Your best day of playing is worth about 13, and only your best score counts.
 
 Bringing one person beats a full day of playing. Recruiting wins this.
 
@@ -47,7 +47,7 @@ You do not pick your side.
 
 The system draws you Red or Blue and keeps the two sides even, so the teams
 never end up 10 against 2. Nobody can move you afterwards, and your friends may
-well be drawn against you. Bringing them still pays you 10 points either way.
+well be drawn against you. Bringing them still pays you 20 points either way.
 
 **5/**
 There is a second prize running alongside it.
@@ -77,8 +77,8 @@ gamearenahq.xyz/tug
 **How it works**
 Verify once. Play 3 games. Now you are pulling for your side.
 
-Every verified human on your team is worth 10 points. Your best run each day is
-worth up to 5. So bringing one person beats a whole day of playing.
+Every verified human you bring is worth 20 points. Your best run each day is
+worth about 13. So bringing one person beats a whole day of playing.
 
 **There are two prizes, and they do not affect each other**
 
@@ -119,7 +119,7 @@ auto-link, do not wrap them in brackets.
 *How it works*
 Verify once. Play 3 games. Now you are pulling for your side.
 
-Every verified human on your team is worth 10 points. Your best run each day is worth up to 5. So bringing one person beats a whole day of playing.
+Every verified human you bring is worth 20 points. Your best day of playing is worth about 13. So bringing one person beats a whole day of playing.
 
 *Get paid even if your side loses*
 The first *160* players to verify and play get *2,500 G$ each*. That part is a race, not a contest. Your team and your score do not matter, only how early you show up. Once the 160 are gone they are gone.
@@ -268,7 +268,7 @@ curl -sS -X POST "$BACKEND/api/push/broadcast" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "🪢 The rope is live",
-    "body": "Play 3 games and you are pulling for your side. Bring someone and you get 10 points, wherever they land.",
+    "body": "Play 3 games and you are pulling for your side. Bring someone and you get 20 points, wherever they land.",
     "url": "/tug",
     "tag": "tug-live"
   }'

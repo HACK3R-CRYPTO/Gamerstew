@@ -381,7 +381,8 @@ test('the best real day in live data still pays less than one recruit', () => {
   // This is the guard on the whole event design. 38 raw points is lollyposh's
   // actual best day. If a day of playing ever out-earns bringing a person,
   // nobody recruits and the event stops producing verified players.
-  const bestRealDay = applySoftCap(38, 5);
+  const { tugConfig } = require('./tugEvent');
+  const bestRealDay = applySoftCap(38, tugConfig().dailyPullCap);
   assert.ok(bestRealDay < POINTS_PER_QUALIFIED_HUMAN,
     `a top day paid ${bestRealDay}, a recruit pays ${POINTS_PER_QUALIFIED_HUMAN}`);
 });
@@ -419,4 +420,21 @@ test('small daily overages accumulate instead of rounding away', () => {
     play_date: `d${i}`, best: new Map([[0, 300], [1, 60], [2, 15]]),   // raw 9
   }));
   assert.ok(playPulls(week, 5) > 7 * 5, `a week of above-cap days must beat ${7 * 5}`);
+});
+
+test('the human bounty must stay above the daily cap', () => {
+  // The invariant the whole event rests on. Play points are paid in full up to
+  // dailyPullCap, so if the bounty ever sat at or below the cap, a player who
+  // simply maxed a day would match or beat someone who brought a real verified
+  // human, recruiting would stop paying and the event would stop growing.
+  // Raising TUG_DAILY_PULL_CAP without raising TUG_POINTS_PER_HUMAN is exactly
+  // how that happens, so it fails here rather than in production.
+  const { tugConfig } = require('./tugEvent');
+  const { dailyPullCap } = tugConfig();
+  assert.ok(POINTS_PER_QUALIFIED_HUMAN > dailyPullCap,
+    `cap ${dailyPullCap} >= bounty ${POINTS_PER_QUALIFIED_HUMAN}: grinding would beat recruiting`);
+
+  // And the realistic top day must lose to one recruit too, not just the cap.
+  assert.ok(applySoftCap(38, dailyPullCap) < POINTS_PER_QUALIFIED_HUMAN,
+    `a top day pays ${applySoftCap(38, dailyPullCap)} vs ${POINTS_PER_QUALIFIED_HUMAN} for a recruit`);
 });

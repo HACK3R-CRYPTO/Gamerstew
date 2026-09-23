@@ -39,6 +39,10 @@ export interface TugMe {
   bountyRank: number | null;
   pullsToday: number;
   dailyPullCap: number;
+  /** Points one verified recruit is worth. Server-driven so the rules copy
+   *  never drifts from the scoring. Must exceed dailyPullCap or grinding
+   *  out-earns recruiting. */
+  pointsPerHuman?: number;
   pullsTotal: number;
   gamesToQualify: number;
   gamesPlayed: number;
