@@ -66,10 +66,12 @@ export interface TugMe {
 }
 
 /** What the player should do next. Exactly one thing, never a list. */
-// NOTE: there is no "pick a team" step. Sides are drawn from your GoodDollar
-// identity, so one human is always on one side no matter how many wallets they
-// hold and nobody can be moved onto a team by someone else. You grow your side
-// by RECRUITING — anyone you bring inherits your team.
+// NOTE: there is no "pick a team" step. The system assigns every player, and it
+// keeps the two sides level as people join — a pure identity hash is fair only
+// in expectation and went 0/4 on live data. One human is always on one side no
+// matter how many wallets they hold, and nobody can be moved off it.
+// Recruiting does NOT move your friend onto your side. It pays your side: their
+// human bounty is credited to their recruiter's rope.
 export type NextAction =
   | { kind: "connect" }
   | { kind: "verify" }

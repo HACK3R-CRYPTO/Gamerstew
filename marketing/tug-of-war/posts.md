@@ -45,8 +45,9 @@ your best run each day counts. Restarting to farm does not work.
 **4/**
 You do not pick your side.
 
-Come through a friend's link and you join their team. Come on your own and you
-get drawn Red or Blue. Nobody can move you afterwards.
+The system draws you Red or Blue and keeps the two sides even, so the teams
+never end up 10 against 2. Nobody can move you afterwards, and your friends may
+well be drawn against you. Bringing them still pays you 10 points either way.
 
 **5/**
 There is a second prize running alongside it.
@@ -267,7 +268,7 @@ curl -sS -X POST "$BACKEND/api/push/broadcast" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "🪢 The rope is live",
-    "body": "Play 3 games and you are pulling for your side. Bring someone and they land on your team.",
+    "body": "Play 3 games and you are pulling for your side. Bring someone and you get 10 points, wherever they land.",
     "url": "/tug",
     "tag": "tug-live"
   }'
