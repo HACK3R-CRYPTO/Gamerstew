@@ -120,35 +120,63 @@ Post the thread, then send the link in Telegram. Referrals and votes are
 counted from the on-chain data, so nobody needs to screenshot anything and
 nobody can inflate a number.
 
-### Prize
+### Prize · 600,000 G$ across the top 6
 
-**To be set before announcing.** See the note below before you pick it.
+```
+1st  200,000 G$
+2nd  140,000 G$
+3rd  100,000 G$
+4th   70,000 G$
+5th   50,000 G$
+6th   40,000 G$
+```
+
+Six places rather than three on purpose. Referrals here are heavily
+concentrated: 16 people have ever referred anyone and the top three hold 54% of
+all 82 referrals. A top-3 prize pays the people who were going to recruit
+anyway. Paying six gives places four to six a realistic target and is how new
+names get onto that board.
+
+If you would rather keep a bigger headline, `300k / 200k / 100k` also totals
+600,000 and is the version already discussed. It concentrates the money on the
+same three wallets.
 
 ---
 
 ## Note for whoever runs the thread contest
 
-**Decide whether this is the same prize as the tournament recruiter contest.**
+**This contest and the in-app recruiter contest currently pay twice for the
+same action, and the committed total is 2.6M G$.**
 
-Tug of War already pays 500,000 G$ to whoever brings the most players, and it
-measures the same thing this contest measures: verified referrals. Run both
-scored purely on referral count and you pay twice for one action, and the same
-person wins both, since 16 people have ever referred anyone here and the top
-three hold 54% of all referrals.
+```
+Tug of War rope, including the 400k bounty     1,000,000
+In-app recruiter contest, 500k / 300k / 200k   1,000,000
+This thread contest                              600,000
+                                        TOTAL  2,600,000 G$
+```
 
-Three honest ways to handle it:
+Both contests measure verified referrals. Whoever wins one almost certainly
+wins the other, because 16 people have ever referred anyone here and the top
+three hold 54% of all 82 referrals.
 
-1. **Make them one prize.** The recruiter contest becomes the thread contest,
-   and a thread is how you enter. Cheapest and clearest.
-2. **Split the job.** The tournament prize rewards raw volume. The thread
+Three ways out, cheapest first:
+
+1. **Fold them together.** This thread contest BECOMES the referral prize. Set
+   `TUG_REFERRAL_PRIZES_G=200000,140000,100000,70000,50000,40000` on Railway
+   and the in-app board pays the same six places this brief advertises. One
+   prize, one leaderboard, one set of winners. **Total drops to 1.6M.**
+2. **Split the job.** The in-app prize rewards raw referral volume. The thread
    contest rewards the best thread among people who brought at least a few
-   verified players. Different winners, different skills, no double pay for the
-   same referral.
-3. **Stack them deliberately** and say so publicly, because stacked prizes do
-   drive harder. Just go in knowing you are paying twice for one referral.
+   verified players. Different winners, different skills. Still 2.6M.
+3. **Stack them deliberately** and announce that you are. Stacked prizes do
+   drive harder. Just go in knowing one referral is being paid for twice.
 
-Option 2 is the one to pick if you want new names on the leaderboard rather
-than the same three wallets winning everything again.
+**Option 1 is the recommendation.** It is the only one that does not pay the
+same person twice for the same referral, it matches what this brief already
+advertises, and it is a million G$ cheaper.
+
+Whichever is chosen, check the funding first. The wallet visible at the time of
+writing held 204,325 G$.
 
 **One thing creators must be told about voting.** Voting on Flow State needs
 the verified wallet, and for anyone who signed in with Google that means
