@@ -72,7 +72,9 @@ Anyone you bring counts as yours, and there are prizes for the top recruiters.
 3. Your link is `https://gamearenahq.xyz?ref=YOURUSERNAME`
 
 Share that link instead of the plain site address. When someone opens it,
-verifies and plays, they land on your team and count as your recruit.
+verifies and plays, they count as your recruit and their 10 points go to your
+side of the rope. The system still decides which team they play on, so they may
+be drawn against you. You get the points either way.
 
 A referral only counts once that person **verifies their face and plays**. A
 click or a signup on its own does not count, which is deliberate: it keeps the

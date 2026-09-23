@@ -53,36 +53,70 @@ function assignTeam(identityRoot) {
   return (h[0] & 1) === 0 ? 'red' : 'blue';
 }
 
-// ── A recruit joins their recruiter's side ──────────────────────────────────
-// Without this the event's central claim is simply false. If a recruit is
-// assigned a side by their own hash, they land on YOUR team only half the time
-// — so bringing someone in is worth 10 points to a coin flip, and the whole
-// "recruiting beats grinding" incentive that the scoring is built around
-// collapses. The UI said "they join your side when they verify"; this is what
-// makes that true.
+// ── Sides: the system assigns, recruiting pays the recruiter ────────────────
+// Teams are decided by the system alone. Nobody picks a side and a recruit does
+// NOT inherit their recruiter's side, because a pure hash is only fair in
+// expectation: it splits 50.1/49.9 across 20,000 identities and 0/4 across four,
+// and referral inheritance made it worse, since one recruiter with ten friends
+// dragged all ten onto one side. Measured live: red 0, blue 4.
 //
-// It reuses season_v1_referrer_intent, which already exists and already records
-// who referred whom, so no migration is needed.
+// Recruiting is still paid, just not in territory. A recruit's 10-point human
+// bounty is credited to their RECRUITER's side via bounty_team, so bringing a
+// friend always pulls your own rope even though your friend may be playing
+// against you. Their game pulls score for whichever side they were put on.
 //
-// Two guards, both load-bearing:
-//   · depth limit — A refers B refers A is a cycle, and an unbounded walk up
-//     the referral chain would hang the whole rebuild.
-//   · the chain always terminates at a root hash, never at "no team", so a
-//     player is never left unassigned because their referrer never qualified.
+// STABILITY MATTERS MORE THAN PERFECT BALANCE. A player must never change team
+// between one poll and the next. Assignment is therefore a pure function of
+// on-chain qualification order: your position is fixed the moment you qualify,
+// earlier players keep theirs, and a new qualifier only ever appends.
+// Recomputing from scratch always produces the same answer.
 const MAX_REFERRAL_DEPTH = 6;
 
-function resolveTeam(wallet, identityRoot, referrerOf, rootOf, depth = 0) {
-  const w = String(wallet).toLowerCase();
-  const ref = referrerOf.get(w);
-  if (ref && depth < MAX_REFERRAL_DEPTH) {
-    const refRoot = rootOf.get(ref);
-    // Only follow a referrer we can actually identify. An unverified or unknown
-    // referrer cannot lend a side they do not have.
-    if (refRoot && refRoot !== identityRoot) {
-      return resolveTeam(ref, refRoot, referrerOf, rootOf, depth + 1);
-    }
+function assignTeam(identityRoot) {
+  const h = crypto.createHash('sha256').update(String(identityRoot).toLowerCase()).digest();
+  return (h[0] & 1) === 0 ? 'red' : 'blue';
+}
+
+/**
+ * Assign every qualifier a side and a bounty recipient, in place.
+ * @param {Array}    quals       qualification rows, any order
+ * @param {Map}      referrerOf  wallet -> referrer wallet
+ * @param {Function} cmp         the on-chain ordering comparator
+ */
+function assignSides(quals, referrerOf, cmp) {
+  const ordered = [...quals].sort(cmp);
+  const teamOf = new Map();
+  const count = { red: 0, blue: 0 };
+
+  // Pass 1: balance. Ties break on the identity hash so the first player of an
+  // event is not always red.
+  for (const q of ordered) {
+    const side = count.red === count.blue
+      ? assignTeam(q.identity_root)
+      : (count.red < count.blue ? 'red' : 'blue');
+    q.team = side;
+    count[side] += 1;
+    teamOf.set(String(q.wallet).toLowerCase(), side);
   }
-  return assignTeam(identityRoot);
+
+  // Pass 2: route each recruit's bounty to their recruiter's side. Separate
+  // pass because a recruit can qualify BEFORE their recruiter does, so the
+  // recruiter's side is not yet known during pass 1.
+  for (const q of ordered) {
+    let ref = referrerOf.get(String(q.wallet).toLowerCase());
+    let depth = 0;
+    while (ref && depth < MAX_REFERRAL_DEPTH) {
+      const side = teamOf.get(String(ref).toLowerCase());
+      // An unqualified recruiter has no side to lend, so the bounty stays with
+      // the player. Walking further up would pay a grandparent for a recruit
+      // they never brought, so the chain is followed only through people who
+      // are themselves in the event.
+      if (side) { q.bounty_team = side; break; }
+      break;
+    }
+    if (!q.bounty_team) q.bounty_team = q.team;
+  }
+  return quals;
 }
 
 // ── Plays, per wallet per UTC day ───────────────────────────────────────────
@@ -217,16 +251,11 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
 
   const quals = checked.filter(Boolean);
 
-  // Re-home every qualified player onto their recruiter's side. Done after the
-  // on-chain pass so every root in the chain is already known and no extra
-  // lookups are needed.
+  // Decide sides once, in on-chain order, after the chain pass so every root is
+  // known. Recruits follow their recruiter; everyone else balances the sides.
   const referrerOf = referrerMap ? await referrerMap() : new Map();
-  if (referrerOf.size > 0) {
-    const rootOf = new Map(quals.map((q) => [q.wallet, q.identity_root]));
-    for (const q of quals) {
-      q.team = resolveTeam(q.wallet, q.identity_root, referrerOf, rootOf);
-    }
-  }
+  const { compareQualificationOrder } = require('./tugScoring');
+  assignSides(quals, referrerOf, compareQualificationOrder);
 
   const dailyByWallet = new Map(
     quals.map((q) => {
@@ -306,7 +335,7 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
 }
 
 module.exports = {
-  tugConfig, eventPhase, assignTeam, resolveTeam, fetchPlaysByWalletDay, buildStandings,
+  tugConfig, eventPhase, assignTeam, assignSides, fetchPlaysByWalletDay, buildStandings,
   // re-exported so callers never reach past this module for scoring
   dedupeByIdentityRoot,
 };

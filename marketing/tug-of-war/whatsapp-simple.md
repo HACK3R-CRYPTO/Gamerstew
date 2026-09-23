@@ -75,7 +75,7 @@ Bringing one person helps more than playing all day.
 
 **"How do I join a team?"**
 ```
-You do not pick. When you verify, you get Red or Blue automatically. If you came from a friend's link, you join their team.
+You do not pick. When you verify, the system gives you Red or Blue and keeps both sides even. Even a friend's link does not change your team. What it does change is points: anyone you bring adds 10 points to YOUR side, whichever side they end up on.
 ```
 
 **"Is the 2,500 G$ sure?"**

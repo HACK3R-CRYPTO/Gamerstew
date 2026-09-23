@@ -183,16 +183,22 @@ function scoreTeams({ qualifications, dailyByWallet, dailyCap, onlyDate }) {
     if (onlyDate) rows = rows.filter(r => r.play_date === onlyDate);
     const pulls = playPulls(rows, dailyCap);
 
+    // The human bounty is credited to bounty_team, which is the RECRUITER's
+    // side for a referred player. Teams are system-assigned and balanced, so
+    // recruiting no longer moves bodies onto your side; this is what keeps
+    // bringing a friend worth something to your own rope.
+    const bountyTeam = q.bounty_team === 'red' || q.bounty_team === 'blue' ? q.bounty_team : team;
+
     // The daily view is a pure comparison of today's effort, so the one-off
     // "you exist and are verified" bonus must not be counted into it — it would
     // make today's number a restatement of the cumulative one and the daily
     // tick would stop being winnable for the trailing side.
-    const points = onlyDate ? pulls : POINTS_PER_QUALIFIED_HUMAN + pulls;
-
     teams[team].humans += 1;
     teams[team].pulls += pulls;
-    teams[team].score += points;
-    players.push({ ...q, pulls, points });
+    teams[team].score += pulls;
+    if (!onlyDate) teams[bountyTeam].score += POINTS_PER_QUALIFIED_HUMAN;
+    const points = onlyDate ? pulls : POINTS_PER_QUALIFIED_HUMAN + pulls;
+    players.push({ ...q, pulls, points, bounty_team: bountyTeam });
   }
   return { teams, players };
 }

@@ -10,7 +10,8 @@ import { useState } from "react";
 //
 // The wording here is checked against what the code actually does. Two earlier
 // lines were not: the screens promised "pick your side" (there is no picking)
-// and "friends join your side" (before recruits inherited a team, they did not).
+// and "friends join your side" (they do not — the system balances the teams, and
+// recruiting pays the recruiter's rope instead of moving bodies onto it).
 // Anything claimed below is enforced in games-backend/lib/tugEvent.js.
 
 const T = {
@@ -73,21 +74,24 @@ export default function TugRules({
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9 }}>
               <SideRow
-                label="Came from a friend&apos;s link"
-                value="You join THEIR team"
-                tint="rgba(34,197,94,0.14)"
-                border="rgba(134,239,172,0.4)"
-              />
-              <SideRow
-                label="Came on your own"
+                label="Everyone, however you arrive"
                 value="The system draws you Red or Blue"
                 tint="rgba(167,139,250,0.13)"
                 border="rgba(167,139,250,0.38)"
               />
+              <SideRow
+                label="Each new player"
+                value="Goes to whichever side is smaller"
+                tint="rgba(34,197,94,0.14)"
+                border="rgba(134,239,172,0.4)"
+              />
             </div>
             <p style={{ ...p, marginTop: 9, color: T.inkSoft }}>
-              You can&apos;t choose your own side, and nobody can move you off it. That&apos;s
-              what stops one person stacking a team with spare wallets.
+              Nobody picks a side, including you, and nobody can move you off the one
+              you get. The sides are kept level as people join, so the teams never
+              end up 10 against 2 — and one person can&apos;t stack a team with spare
+              wallets. Your friends may well be drawn against you. You still get paid
+              for bringing them: see rule 4.
             </p>
           </Rule>
 
@@ -99,7 +103,7 @@ export default function TugRules({
 
           <Rule n="3" title="What moves the rope">
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
-              <PointRow what="Each verified human on your side" pts={`${pointsPerHuman} pts`} strong />
+              <PointRow what="Each verified human you bring" pts={`${pointsPerHuman} pts`} strong />
               <PointRow what="Your best score each day, per game" pts="points" />
               <PointRow what={`Full rate up to ${dailyPullCap} a day`} pts="then slower" muted />
             </div>
@@ -122,10 +126,17 @@ export default function TugRules({
             </p>
           </Rule>
 
-          <Rule n="4" title="Anyone you bring joins your side">
+          <Rule n="4" title={`Anyone you bring is worth ${pointsPerHuman} pts to YOUR side`}>
             <p style={p}>
-              Share your link. When they verify and play, they pull for your team — not a random one.
-              That&apos;s how you build a side you didn&apos;t pick.
+              Share your link. When they verify and play {qualifyGames} games, their{" "}
+              <strong style={{ color: T.ink }}>{pointsPerHuman} points go to your rope</strong>,
+              wherever the system happened to put them.
+            </p>
+            <p style={{ ...p, marginTop: 7, color: T.inkSoft }}>
+              So yes, your friend might be drawn Red while you&apos;re Blue. They pull
+              their own game scores for Red, and you still collect the{" "}
+              {pointsPerHuman} for bringing them. Nobody has to be on your team for
+              recruiting to pay.
             </p>
           </Rule>
 
