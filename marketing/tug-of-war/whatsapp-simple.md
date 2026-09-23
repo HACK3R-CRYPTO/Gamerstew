@@ -75,7 +75,7 @@ Bringing one person helps more than playing all day.
 
 **"How do I join a team?"**
 ```
-You do not pick. When you verify, the system gives you Red or Blue and keeps both sides even. Even a friend's link does not change your team. What it does change is points: anyone you bring adds 10 points to YOUR side, whichever side they end up on.
+You do not pick. When you verify, the system gives you Red or Blue and keeps both sides even. Even a friend's link does not change your team. What it does change is points: anyone you bring adds 20 points to YOUR side, whichever side they end up on.
 ```
 
 **"Is the 2,500 G$ sure?"**
@@ -122,6 +122,6 @@ One person, one player. The face check makes sure of that.
 - **Never explain points in the group.** Anyone who wants the full rules can
   open the app, they are on the event page.
 - **Lead with what they get, not how it works.** "Free 2,500 G$" gets read.
-  "Every verified human on your side is worth 10 points" does not.
+  "Every verified human you bring is worth 20 points" does not.
 - **Answer questions in one line.** A long answer in a group chat reads as a
   new set of rules and confuses the next person.

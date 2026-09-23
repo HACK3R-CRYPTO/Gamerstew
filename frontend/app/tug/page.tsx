@@ -51,7 +51,7 @@ const PREVIEW: { standings: TugStandings; me: TugMe } = {
   },
   me: {
     wallet: "0xabc", team: "red", qualified: true, bountyRank: 118,
-    pullsToday: 2, dailyPullCap: 5, pullsTotal: 47,
+    pullsToday: 2, dailyPullCap: 10, pullsTotal: 47,
     gamesToQualify: 3, gamesPlayed: 12,
     verified: true, verificationDaysLeft: 174, teamPercentile: 24,
     neighbours: [
@@ -505,7 +505,8 @@ export default function TugPage() {
             prizeTotalG={standings.prizeTotalG}
             bountySlots={standings.bounty.slots}
             bountyAmountG={standings.bounty.amountG}
-            dailyPullCap={me?.dailyPullCap ?? 5}
+            dailyPullCap={me?.dailyPullCap ?? 10}
+            pointsPerHuman={me?.pointsPerHuman ?? 20}
             qualifyGames={me?.gamesToQualify ?? 3}
           />
         )}
@@ -522,7 +523,8 @@ export default function TugPage() {
             prizeTotalG={standings.prizeTotalG}
             bountySlots={standings.bounty.slots}
             bountyAmountG={standings.bounty.amountG}
-            dailyPullCap={me?.dailyPullCap ?? 5}
+            dailyPullCap={me?.dailyPullCap ?? 10}
+            pointsPerHuman={me?.pointsPerHuman ?? 20}
             qualifyGames={me?.gamesToQualify ?? 3}
             defaultOpen
           />
@@ -692,7 +694,8 @@ function Upcoming({ standings, me, preview }: { standings: TugStandings; me: Tug
           prizeTotalG={standings.prizeTotalG}
           bountySlots={standings.bounty.slots}
           bountyAmountG={standings.bounty.amountG}
-          dailyPullCap={me?.dailyPullCap ?? 5}
+          dailyPullCap={me?.dailyPullCap ?? 10}
+            pointsPerHuman={me?.pointsPerHuman ?? 20}
           qualifyGames={me?.gamesToQualify ?? 3}
           defaultOpen
         />

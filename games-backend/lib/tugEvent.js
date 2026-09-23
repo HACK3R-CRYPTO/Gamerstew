@@ -11,7 +11,7 @@
 // root (see assignTeam), which is stable, balanced, and impossible to grief.
 
 const crypto = require('crypto');
-const { scoreTeams, bountyWinners, dedupeByIdentityRoot } = require('./tugScoring');
+const { scoreTeams, bountyWinners, dedupeByIdentityRoot, POINTS_PER_QUALIFIED_HUMAN } = require('./tugScoring');
 
 function tugConfig() {
   return {
@@ -21,8 +21,9 @@ function tugConfig() {
     prizeTotalG:  Number(process.env.TUG_PRIZE_G        || 1_000_000),
     bountySlots:  Number(process.env.TUG_BOUNTY_SLOTS   || 160),
     bountyAmountG:Number(process.env.TUG_BOUNTY_G       || 2_500),
-    dailyPullCap: Number(process.env.TUG_DAILY_PULL_CAP || 5),
+    dailyPullCap: Number(process.env.TUG_DAILY_PULL_CAP || 10),
     qualifyGames: Number(process.env.TUG_QUALIFY_GAMES  || 3),
+    pointsPerHuman: POINTS_PER_QUALIFIED_HUMAN,
     // Only real skill games count. Whitelisting is deliberate: excluding
     // gameType 3 (agent matches) would still let partner-sourced scores
     // (gameType 4, posted via a static partner key with no gameplay) qualify a

@@ -72,7 +72,7 @@ Anyone you bring counts as yours, and there are prizes for the top recruiters.
 3. Your link is `https://gamearenahq.xyz?ref=YOURUSERNAME`
 
 Share that link instead of the plain site address. When someone opens it,
-verifies and plays, they count as your recruit and their 10 points go to your
+verifies and plays, they count as your recruit and their 20 points go to your
 side of the rope. The system still decides which team they play on, so they may
 be drawn against you. You get the points either way.
 

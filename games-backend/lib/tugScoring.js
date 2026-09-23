@@ -4,7 +4,11 @@
 // same inputs. That matters: with a prize attached, "why was I #161" has to be
 // answerable.
 
-const POINTS_PER_QUALIFIED_HUMAN = 10;
+// Must stay ABOVE the daily cap. Points from play are capped at TUG_DAILY_PULL_CAP
+// before the slow tail kicks in, so if the bounty sat at or below the cap a
+// strong player would out-earn a recruiter and the event would stop producing
+// verified players, which is the entire point of running it.
+const POINTS_PER_QUALIFIED_HUMAN = Number(process.env.TUG_POINTS_PER_HUMAN || 20);
 
 // ── Identity dedupe ──────────────────────────────────────────────────────────
 // GoodDollar's connectAccount(address) is permissionless, uncapped, and needs

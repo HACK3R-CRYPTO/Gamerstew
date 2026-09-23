@@ -5672,7 +5672,8 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
     const { standings, players, byWallet, bountyRank, plays, cfg, todayStr } = await getTugStandings();
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) {
       return res.json({ wallet: null, team: null, qualified: false, bountyRank: null,
-        pullsToday: 0, dailyPullCap: cfg?.dailyPullCap ?? 5, pullsTotal: 0,
+        pullsToday: 0, dailyPullCap: cfg?.dailyPullCap ?? 10, pullsTotal: 0,
+        pointsPerHuman: cfg?.pointsPerHuman ?? 20,
         gamesToQualify: cfg?.qualifyGames ?? 3, gamesPlayed: 0,
         verified: false, verificationDaysLeft: 0, teamPercentile: null });
     }
@@ -5714,6 +5715,7 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
       bountyRank: bountyRank?.get(wallet) ?? null,
       pullsToday,
       dailyPullCap: cfg.dailyPullCap,
+      pointsPerHuman: cfg.pointsPerHuman,
       pullsTotal: me?.pulls ?? 0,
       gamesToQualify: cfg.qualifyGames,
       gamesPlayed,
