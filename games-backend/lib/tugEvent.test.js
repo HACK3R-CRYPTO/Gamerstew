@@ -96,3 +96,40 @@ test('sides are stable and split roughly evenly across identities', () => {
   }
   assert.ok(red > 400 && red < 600, `expected a near-even split, got ${red}/1000 red`);
 });
+
+test('the recruiter board counts real recruits, not zero', () => {
+  // REGRESSION. dedupeByIdentityRoot returns NEW rows carrying `counted`; it
+  // never mutates the rows handed to it. The board used to loop over the raw
+  // qualification rows and test q.counted, which was undefined on every one, so
+  // it skipped all of them and reported 0 entrants for the whole event while
+  // real recruits were being brought in. A live recruiter with 4 verified,
+  // qualified recruits showed as 0 recruited.
+  const now = Date.parse('2026-09-23T20:00:00Z');
+  const cfg = { ...require('./tugEvent').tugConfig(),
+    startsAt: '2026-09-23T17:00:00Z', endsAt: '2026-09-30T17:00:00Z' };
+
+  const ts = Math.floor(Date.parse('2026-09-23T18:00:00Z') / 1000);
+  const player = (w, n) => ({ id: w, username: n });
+  const scores = [];
+  let sid = 0;
+  // A recruiter plus three recruits, each with enough real runs to qualify.
+  for (const [w, name] of [['0xboss', 'Boss'], ['0xr1', 'R1'], ['0xr2', 'R2'], ['0xr3', 'R3']]) {
+    for (let i = 0; i < 4; i++) {
+      scores.push({ id: `s${sid++}`, blockTimestamp: String(ts + sid),
+        gameType: 2, score: 60, player: player(w, name) });
+    }
+  }
+  const deps = {
+    subgraph: { gql: async (_q, v) => (Number(v.gte) <= ts ? { scores } : { scores: [] }) },
+    isVerified: async () => true,
+    identityRootOf: async (w) => w,                 // one human per wallet
+    mapLimit: async (items, _n, fn) => { const o = []; for (const x of items) o.push(await fn(x)); return o; },
+    referrerMap: async () => new Map([['0xr1', '0xboss'], ['0xr2', '0xboss'], ['0xr3', '0xboss']]),
+  };
+
+  return require('./tugEvent').buildStandings(deps, cfg, now).then((r) => {
+    assert.equal(r.standings.referral.entrants, 1, 'the recruiter must appear on the board');
+    assert.equal(r.standings.referral.top[0].recruits, 3, 'all three recruits must count');
+    assert.equal(r.standings.referral.top[0].name, 'Boss');
+  });
+});
