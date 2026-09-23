@@ -83,6 +83,82 @@ that is what makes it work.
 
 ---
 
+## Thread contest (runs alongside Amplify)
+
+A creator contest where the thread is the vehicle and **verified referrals are
+the point**. Anyone can enter, not only Amplify creators.
+
+### What a qualifying thread must do
+
+All three, or it does not count:
+
+1. **Talk about GameArena properly.** What the games are, why the arena is
+   humans only, what it is actually like to play. A thread that is just a
+   referral link is not an entry.
+2. **Carry your referral link.** `gamearenahq.xyz?ref=YOURUSERNAME`
+3. **Cover the tournament** that is running or about to run, and **ask people
+   to vote.** Vote link and the reason: verified votes on Flow State fund
+   roughly a quarter of what pays these prize pools, so a vote is not a
+   favour, it is how the next tournament gets funded.
+
+### How entries are ranked
+
+In this order:
+
+1. **Verified referrals driven.** Not clicks, not sign ups. A referral counts
+   when that person verifies their face and plays. This is the main measure.
+2. **Votes driven.** Verified votes cast for GameArena on Flow State.
+3. **The thread itself.** Written properly, accurate, in the creator's own
+   voice, not copy pasted.
+
+Threads that pull referrals but say nothing real about the product do not win.
+Threads that read beautifully and bring nobody do not win either.
+
+### Submitting
+
+Post the thread, then send the link in Telegram. Referrals and votes are
+counted from the on-chain data, so nobody needs to screenshot anything and
+nobody can inflate a number.
+
+### Prize
+
+**To be set before announcing.** See the note below before you pick it.
+
+---
+
+## Note for whoever runs the thread contest
+
+**Decide whether this is the same prize as the tournament recruiter contest.**
+
+Tug of War already pays 500,000 G$ to whoever brings the most players, and it
+measures the same thing this contest measures: verified referrals. Run both
+scored purely on referral count and you pay twice for one action, and the same
+person wins both, since 16 people have ever referred anyone here and the top
+three hold 54% of all referrals.
+
+Three honest ways to handle it:
+
+1. **Make them one prize.** The recruiter contest becomes the thread contest,
+   and a thread is how you enter. Cheapest and clearest.
+2. **Split the job.** The tournament prize rewards raw volume. The thread
+   contest rewards the best thread among people who brought at least a few
+   verified players. Different winners, different skills, no double pay for the
+   same referral.
+3. **Stack them deliberately** and say so publicly, because stacked prizes do
+   drive harder. Just go in knowing you are paying twice for one referral.
+
+Option 2 is the one to pick if you want new names on the leaderboard rather
+than the same three wallets winning everything again.
+
+**One thing creators must be told about voting.** Voting on Flow State needs
+the verified wallet, and for anyone who signed in with Google that means
+exporting their embedded wallet into MetaMask or Rabby first. MiniPay users
+already have a standalone wallet and can skip that. The app walks people
+through it at gamearenahq.xyz/vote. A creator who tells people "just go vote"
+without that context will send a wave of confused users.
+
+---
+
 ## Assets for creators
 
 In `marketing/tug-of-war/`:
