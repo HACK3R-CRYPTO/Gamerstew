@@ -434,10 +434,27 @@ export default function TugPage() {
               ))}
             </div>
 
-            {me?.referral && me.referral.recruits > 0 && (
-              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.gold, fontWeight: 800, marginTop: 9 }}>
-                You&apos;ve brought {me.referral.recruits}
-                {me.referral.rank ? ` · currently #${me.referral.rank}` : ""}
+            {/* Your own line. A board without it is just a list of people
+                beating you; the gap to the place above is what turns it into
+                something you can act on. */}
+            {me?.referral && (
+              <div style={{
+                marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.hairline}`,
+                display: "flex", alignItems: "center", gap: 9,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: me.referral.inTheMoney ? T.gold : T.ink }}>
+                    {me.referral.recruits > 0
+                      ? `You've brought ${me.referral.recruits}${me.referral.rank ? ` · #${me.referral.rank}` : ""}`
+                      : "You haven't brought anyone yet"}
+                    {me.referral.inTheMoney && " ✓ in the money"}
+                  </div>
+                  {me.referral.nextUp && (
+                    <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
+                      {me.referral.nextUp.need} more to pass @{me.referral.nextUp.name} at #{me.referral.nextUp.rank}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </section>

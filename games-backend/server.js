@@ -5722,10 +5722,36 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
       teamPercentile,
       neighbours,
       referral: (() => {
-        const row = (_tugCache.data?.referralBoard || []).find((r) => r.wallet === wallet);
-        return row
-          ? { recruits: row.recruits, rank: row.rank, prizeG: row.prizeG }
-          : { recruits: 0, rank: null, prizeG: 0 };
+        const board = _tugCache.data?.referralBoard || [];
+        const row = board.find((r) => r.wallet === wallet);
+        const paidPlaces = (cfg.referralPrizesG || []).length;
+
+        // "How far off am I" is the number a recruiter actually wants, and
+        // without it the board is just a list of people beating them. Knowing
+        // it takes two more people to reach a paid place is what makes someone
+        // go and get two more people.
+        const gapTo = (targetRank) => {
+          const target = board[targetRank - 1];
+          if (!target) return null;
+          const mine = row?.recruits ?? 0;
+          return { rank: targetRank, name: target.username || String(target.wallet).slice(2, 8),
+                   need: Math.max(1, target.recruits - mine + 1) };
+        };
+
+        if (!row) {
+          // Not on the board yet: show what the last paid place is holding.
+          return { recruits: 0, rank: null, prizeG: 0, paidPlaces,
+                   nextUp: paidPlaces ? gapTo(paidPlaces) : null, inTheMoney: false };
+        }
+        return {
+          recruits: row.recruits,
+          rank: row.rank,
+          prizeG: row.prizeG,
+          paidPlaces,
+          inTheMoney: row.rank <= paidPlaces,
+          // Chasing the place above; already first means nothing to chase.
+          nextUp: row.rank > 1 ? gapTo(row.rank - 1) : null,
+        };
       })(),
       _standingsAt: standings.serverTime,
     });
