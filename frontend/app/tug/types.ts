@@ -53,7 +53,16 @@ export interface TugMe {
    *  neutral band rather than at the bottom of one long list. */
   neighbours?: Array<{ rank: number; name: string; pulls: number; isMe?: boolean }>;
   /** Your own standing in the referral contest. */
-  referral?: { recruits: number; rank: number | null; prizeG: number };
+  referral?: {
+    recruits: number;
+    rank: number | null;
+    prizeG: number;
+    paidPlaces: number;
+    inTheMoney: boolean;
+    /** The place directly above you, and how many more recruits to take it.
+     *  This is the number that actually makes someone go and recruit. */
+    nextUp: { rank: number; name: string; need: number } | null;
+  };
 }
 
 /** What the player should do next. Exactly one thing, never a list. */

@@ -252,6 +252,45 @@ export default function TugPage() {
           updatedSecondsAgo={age} myTeam={me?.team ?? null}
         />
 
+        {/* Your side, stated plainly.
+            The score header marked it with a small "· YOU" beside the team
+            name, which is far too quiet for the single most important fact on
+            the screen, and it read as broken next to a team showing 0 humans.
+            That 0 is correct: the human count is QUALIFIED humans, and a player
+            who has not played 3 games yet is assigned a side without counting
+            for it. Saying both things out loud removes the contradiction. */}
+        {me?.team && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 14,
+            background: me.team === "red" ? "rgba(220,38,38,0.16)" : "rgba(103,232,249,0.13)",
+            border: `1px solid ${me.team === "red" ? TEAM_RED : TEAM_BLUE}66`,
+          }}>
+            <div style={{
+              width: 36, height: 36, flexShrink: 0, borderRadius: 11,
+              background: me.team === "red"
+                ? "linear-gradient(160deg, #dc2626, #7f1d1d)"
+                : "linear-gradient(160deg, #67e8f9, #0e7490)",
+              border: "2px solid rgba(255,255,255,0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontFamily: T.display, fontSize: 17, color: "#fff",
+            }}>
+              {me.team === "red" ? "R" : "B"}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink }}>
+                You are on Team {me.team === "red" ? "Red" : "Blue"}
+              </div>
+              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600, marginTop: 1 }}>
+                {me.qualified
+                  ? `Pulling for ${me.team === "red" ? "Red" : "Blue"} · ${me.pullsTotal} pulls so far`
+                  : `Play ${Math.max(0, me.gamesToQualify - me.gamesPlayed)} more game${
+                      Math.max(0, me.gamesToQualify - me.gamesPlayed) === 1 ? "" : "s"
+                    } and you start counting for them`}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 3 · today — the reason a trailing side keeps playing */}
         <div style={{
           display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderRadius: 13,
@@ -434,10 +473,27 @@ export default function TugPage() {
               ))}
             </div>
 
-            {me?.referral && me.referral.recruits > 0 && (
-              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.gold, fontWeight: 800, marginTop: 9 }}>
-                You&apos;ve brought {me.referral.recruits}
-                {me.referral.rank ? ` · currently #${me.referral.rank}` : ""}
+            {/* Your own line. A board without it is just a list of people
+                beating you; the gap to the place above is what turns it into
+                something you can act on. */}
+            {me?.referral && (
+              <div style={{
+                marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.hairline}`,
+                display: "flex", alignItems: "center", gap: 9,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: me.referral.inTheMoney ? T.gold : T.ink }}>
+                    {me.referral.recruits > 0
+                      ? `You've brought ${me.referral.recruits}${me.referral.rank ? ` · #${me.referral.rank}` : ""}`
+                      : "You haven't brought anyone yet"}
+                    {me.referral.inTheMoney && " ✓ in the money"}
+                  </div>
+                  {me.referral.nextUp && (
+                    <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
+                      {me.referral.nextUp.need} more to pass @{me.referral.nextUp.name} at #{me.referral.nextUp.rank}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </section>

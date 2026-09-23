@@ -317,7 +317,10 @@ function TeamBlock({ side, label, colour, deep, score, humans, leading, mine }: 
           {score.toLocaleString()}
         </div>
         <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.5)", fontWeight: 700, whiteSpace: "nowrap" }}>
-          {humans} humans
+          {/* "qualified", not just "humans": a player who has joined a side but
+              not yet played 3 games is on the team without counting for it, and
+              "0 humans" next to their own team name reads as a fault. */}
+          {humans} qualified
         </div>
       </div>
     </div>
