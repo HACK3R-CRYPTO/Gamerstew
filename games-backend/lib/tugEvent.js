@@ -287,9 +287,16 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
   // verifies is not growth, and paying for them is how referral contests get
   // farmed. Ties break on who got there first on-chain, so placement is
   // deterministic rather than whichever row the database happened to return.
+  //
+  // ITERATE cumulative.players, NOT quals. dedupeByIdentityRoot returns NEW
+  // objects carrying `counted`; it never mutates the rows it was given. Looping
+  // over `quals` and testing q.counted therefore tested undefined on every row
+  // and skipped all of them, so this board reported 0 entrants from the day it
+  // shipped while real recruits were being brought in. The regression test
+  // feeds rows with no `counted` flag and asserts the board is non-empty.
   const nameOf = new Map(quals.map((q) => [q.wallet, q.username]));
   const recruitsBy = new Map();
-  for (const q of quals) {
+  for (const q of cumulative.players) {
     if (!q.counted) continue;
     const ref = referrerOf.get(q.wallet);
     if (!ref || ref === q.wallet) continue;
