@@ -29,7 +29,7 @@ import { nextAction, type TugStandings, type TugMe } from "./types";
 const T = {
   ink: "#ffffff",
   inkDim: "rgba(220,210,255,0.72)",
-  inkSoft: "rgba(220,210,255,0.45)",
+  inkSoft: "rgba(220,210,255,0.62)",
   surface: "rgba(40,18,100,0.5)",
   hairline: "rgba(255,255,255,0.09)",
   accent: "#a78bfa",
@@ -195,6 +195,27 @@ export default function TugPage() {
 
   return (
     <main style={shell(share, !isMobile)}>
+      {/* The sidebar scrolls itself, so it needs a scrollbar that belongs to
+          this panel rather than the browser's default light one on dark glass.
+          Firefox takes the two standard properties; WebKit needs its own. */}
+      {/* Base background, fixed and full-bleed. It used to live on <main>,
+          which is capped at 980px and centred, while the battlefield tint
+          below is fixed across the whole viewport. On any screen wider than
+          the column that left a hard vertical seam down both edges where the
+          page gradient stopped and the bare body colour took over. */}
+      <div aria-hidden style={{
+        position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none",
+        background: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 42%, #0a0226 100%)",
+      }} />
+      <style>{`
+        .tug-aside { scrollbar-width: thin; scrollbar-color: rgba(167,139,250,0.35) transparent; }
+        .tug-aside::-webkit-scrollbar { width: 6px; }
+        .tug-aside::-webkit-scrollbar-track { background: transparent; }
+        .tug-aside::-webkit-scrollbar-thumb {
+          background: rgba(167,139,250,0.3); border-radius: 999px;
+        }
+        .tug-aside:hover::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.5); }
+      `}</style>
       {/* Battlefield tint. Two static radial gradients anchored to each team's
           own edge, their strength following the score — so "who is winning" is
           answered by the screen itself before any number is read. Static
@@ -511,14 +532,31 @@ export default function TugPage() {
           />
         )}
 
-        <div style={{ height: 78 }} />
+        {/* Clears the fixed CTA. Must include the home-indicator inset or the
+            last card sits under the button on any notched phone. */}
+        <div style={{ height: "calc(92px + env(safe-area-inset-bottom, 0px))" }} />
       </div>
 
       {/* Desktop: the rules get their own column, open, and stick as you
           scroll — so nobody has to hunt for them or remember to tap. This is
           the half of a wide viewport that was otherwise empty. */}
       {!isMobile && (
-        <aside style={{ width: 360, flexShrink: 0, position: "sticky", top: 16, paddingBottom: 24 }}>
+        <aside
+          className="tug-aside"
+          style={{
+            width: 360, flexShrink: 0, position: "sticky", top: 16,
+            // The rules are taller than most laptop viewports. Without a
+            // max-height and a scroller of its own, a sticky block pins itself
+            // and everything past the fold becomes unreachable: the first rule
+            // was clipped at the top and the last two ran underneath the fixed
+            // CTA. It also stretched the flex row to the full rules height and
+            // left a large empty column beside the much shorter left side.
+            maxHeight: "calc(100vh - 32px - 84px)",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            paddingBottom: 4,
+          }}
+        >
           <TugRules
             prizeTotalG={standings.prizeTotalG}
             bountySlots={standings.bounty.slots}
@@ -762,7 +800,9 @@ function shell(share: number, wide = false): React.CSSProperties {
   void share;
   return {
     minHeight: "100vh", position: "relative",
-    background: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 42%, #0a0226 100%)",
+    // Background now lives on a fixed full-bleed layer inside the page, so the
+    // gradient is not clipped to this centred, max-width column.
+    background: "transparent",
     color: T.ink, fontFamily: T.body,
     padding: "16px 16px 0",
     maxWidth: wide ? 980 : 480,
