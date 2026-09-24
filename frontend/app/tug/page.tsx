@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import TugRope, { TEAM_RED, TEAM_BLUE } from "@/components/TugRope";
 import TugRules from "@/components/TugRules";
@@ -257,6 +258,32 @@ export default function TugPage() {
             PREVIEW · sample numbers · the live API returned nothing
           </div>
         )}
+
+        {/* 0 · the way out.
+            This page had none. It is linked from the dashboard and from the
+            leaderboard, and it is also the link people paste into WhatsApp, so
+            a large share of arrivals have no history to go back through and
+            the device back button drops them out of the app entirely. A fixed
+            destination is used rather than router.back() for exactly that
+            reason: it behaves the same however the player got here. */}
+        <div>
+          <Link
+            href="/dashboard"
+            aria-label="Back to GameArena"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "7px 12px", borderRadius: 999,
+              background: "rgba(0,0,0,0.45)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "rgba(220,210,255,0.82)",
+              fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.1em",
+              textDecoration: "none",
+              // 44px is the Apple minimum target; the padding above plus the
+              // line box lands on it without making the chip look oversized.
+              minHeight: 32,
+            }}
+          >← BACK</Link>
+        </div>
 
         {/* 1 · title + clock, one line each, no wasted vertical */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
