@@ -35,6 +35,11 @@ import { useEffect, useState } from "react";
 // medallion's offset is itself an encoding that needs no colour at all.
 
 export const TEAM_RED = "#dc2626";
+// Red as TEXT, not as a shape. #dc2626 measures 3.15:1 on the lightest
+// backdrop: fine for a crest or a tint, where 3:1 is the bar for a graphical
+// object, but a fail for the 8.5 and 10.5px labels that used it. This reads
+// 8.01:1. Blue needs no such split, it is already 9.4:1 as text.
+export const TEAM_RED_TEXT = "#fca5a5";
 export const TEAM_RED_DEEP = "#7f1d1d";
 export const TEAM_BLUE = "#67e8f9";
 export const TEAM_BLUE_DEEP = "#0e7490";
@@ -43,7 +48,16 @@ const ROPE_CURVE = 0.6;
 
 /** Mirrors games-backend/lib/tugScoring.js — the client renders optimistically
  *  between polls, so it must agree with the server rather than approximate it. */
-export function ropeOffset(red: number, blue: number, maxPx = 130): number {
+// Signed travel as a FRACTION of the rope's half length, in [-1, 1].
+//
+// This used to return pixels against a fixed maxPx of 130, tuned for the 480px
+// max-width case where the rope's half length is 128px. The rope is inset 96px
+// on both sides, so its half length is (containerWidth - 192) / 2: 68px on a
+// 360px phone, 83px at 390, 94px at 412. A 130px offset therefore threw the
+// knot clean off the end of the rope and onto the crowd on every common phone,
+// and overshot by 2px even at 480. Returning a fraction lets the knot be
+// positioned in percent, so it scales with whatever the rope actually measures.
+export function ropeOffset(red: number, blue: number, maxPx = 1): number {
   const total = Number(red) + Number(blue);
   if (!Number.isFinite(total) || total <= 0) return 0;
   const lead = (red / total - 0.5) * 2;
@@ -77,8 +91,16 @@ export default function TugRope({
 }: TugRopeProps) {
   const reduced = usePrefersReducedMotion();
 
-  const offset = ropeOffset(red, blue);
-  const maxed = Math.abs(offset) >= 129.5;
+  const frac = ropeOffset(red, blue);                 // -1 .. 1
+  const maxed = Math.abs(frac) >= 0.995;
+  // Percent of the ROPE's width, measured from its centre. 36 keeps the 38px
+  // knot's outer edge on the rope at the narrowest phone: 50 - 36 = 14% of a
+  // 136px rope is 19px, exactly the knot's radius.
+  const knotPct = frac * 36;
+  // The crowds are anchored outside the rope, so they keep a pixel drag. 23px
+  // against their 26px inset is the value the old 130px offset produced at
+  // full lead, kept identical so the crowds look unchanged.
+  const crowdPx = frac * 23;
   const lead = Math.abs(red - blue);
   const leader: "red" | "blue" | null = red === blue ? null : red > blue ? "red" : "blue";
 
@@ -96,13 +118,13 @@ export default function TugRope({
       {/* ── Crest + score, one row per team ───────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <TeamBlock
-          side="left" label="RED" colour={TEAM_RED} deep={TEAM_RED_DEEP}
+          side="left" label="RED" colour={TEAM_RED} text={TEAM_RED_TEXT} deep={TEAM_RED_DEEP}
           score={red} humans={redHumans} leading={leader === "red"} mine={myTeam === "red"}
         />
         <div style={{ flex: "0 0 auto", textAlign: "center", minWidth: 62 }}>
           <div style={{
             fontSize: 10, fontWeight: 900, letterSpacing: "0.14em",
-            color: leader ? (leader === "red" ? "#fca5a5" : TEAM_BLUE) : "rgba(220,210,255,0.5)",
+            color: leader ? (leader === "red" ? TEAM_RED_TEXT : TEAM_BLUE) : "rgba(220,210,255,0.68)",
           }}>
             {leader ? "LEADS BY" : "LEVEL"}
           </div>
@@ -114,7 +136,7 @@ export default function TugRope({
           </div>
         </div>
         <TeamBlock
-          side="right" label="BLUE" colour={TEAM_BLUE} deep={TEAM_BLUE_DEEP}
+          side="right" label="BLUE" colour={TEAM_BLUE} text={TEAM_BLUE} deep={TEAM_BLUE_DEEP}
           score={blue} humans={blueHumans} leading={leader === "blue"} mine={myTeam === "blue"}
         />
       </div>
@@ -174,14 +196,16 @@ export default function TugRope({
           boxShadow: "inset 0 -2px 4px rgba(0,0,0,0.45), 0 2px 5px rgba(0,0,0,0.4)",
         }} />
 
-        <Crowd side="left"  colour={TEAM_RED}  humans={redHumans}  offset={offset} reduced={reduced} leading={leader === "red"} mine={myTeam === "red"} />
-        <Crowd side="right" colour={TEAM_BLUE} humans={blueHumans} offset={offset} reduced={reduced} leading={leader === "blue"} mine={myTeam === "blue"} />
+        <Crowd side="left"  colour={TEAM_RED}  text={TEAM_RED_TEXT} humans={redHumans}  offset={crowdPx} reduced={reduced} leading={leader === "red"} mine={myTeam === "red"} />
+        <Crowd side="right" colour={TEAM_BLUE} text={TEAM_BLUE} humans={blueHumans} offset={crowdPx} reduced={reduced} leading={leader === "blue"} mine={myTeam === "blue"} />
 
-        {/* the knot */}
+        {/* The knot rides a track inset exactly like the rope, so a percentage
+            here is a percentage OF THE ROPE and stays on it at any width. */}
+        <div style={{ position: "absolute", left: 96, right: 96, top: 0, bottom: 0, pointerEvents: "none" }}>
         <div style={{
-          position: "absolute", left: "50%", bottom: 43, width: 38, height: 38, marginLeft: -19,
-          transform: `translateX(${-offset}px)`,
-          transition: reduced ? "none" : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+          position: "absolute", left: `calc(50% - ${knotPct.toFixed(2)}%)`, bottom: 43,
+          width: 38, height: 38, marginLeft: -19,
+          transition: reduced ? "none" : "left 700ms cubic-bezier(0.22, 1, 0.36, 1)",
           borderRadius: "50%",
           background: "radial-gradient(circle at 34% 28%, #fff4c2, #f0b429 46%, #9a5b06)",
           border: "3px solid rgba(255,255,255,0.8)",
@@ -189,16 +213,17 @@ export default function TugRope({
             leader === "red" ? "rgba(220,38,38,0.6)" : leader === "blue" ? "rgba(103,232,249,0.55)" : "rgba(255,255,255,0.25)"
           }`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 17, willChange: "transform", zIndex: 3,
+          fontSize: 17, willChange: "left", zIndex: 3,
         }}>
           🎮
+        </div>
         </div>
       </div>
 
       {/* ── footnotes ─────────────────────────────────────────────────────── */}
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        fontSize: 10.5, color: "rgba(220,210,255,0.4)", fontWeight: 700, marginTop: 4,
+        fontSize: 10.5, color: "rgba(220,210,255,0.6)", fontWeight: 700, marginTop: 4,
       }}>
         <span>{maxed ? `maxed · lead over ${Math.round(ROPE_CAP * 100)}%` : `maxes out at a ${Math.round(ROPE_CAP * 100)}% lead`}</span>
         {updatedSecondsAgo !== undefined && (
@@ -215,8 +240,8 @@ export default function TugRope({
   );
 }
 
-function Crowd({ side, colour, humans, offset, reduced, leading, mine }: {
-  side: "left" | "right"; colour: string; humans: number; offset: number;
+function Crowd({ side, colour, text, humans, offset, reduced, leading, mine }: {
+  side: "left" | "right"; colour: string; text: string; humans: number; offset: number;
   reduced: boolean; leading: boolean; mine?: boolean;
 }) {
   const left = side === "left";
@@ -235,12 +260,12 @@ function Crowd({ side, colour, humans, offset, reduced, leading, mine }: {
   return (
     <div style={{
       // Inset far enough that the drag below can never push a crowd off the
-      // edge: max drag is |offset| * 0.18 = 23px against a 26px inset.
+      // edge: max drag is 23px against a 26px inset (computed by the caller).
       position: "absolute", [left ? "left" : "right"]: 26, bottom: 0,
       display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
       // The losing crowd gets dragged. Moving both by a fraction of the knot's
       // travel is what sells this as a pull rather than a slider.
-      transform: `translateX(${-offset * 0.18}px)`,
+      transform: `translateX(${-offset}px)`,
       transition: reduced ? "none" : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
       zIndex: 2,
     } as React.CSSProperties}>
@@ -271,14 +296,14 @@ function Crowd({ side, colour, humans, offset, reduced, leading, mine }: {
         <span style={{ fontSize: 11, fontWeight: 900, color: leading ? "#fff" : "rgba(255,255,255,0.78)", fontVariantNumeric: "tabular-nums" }}>
           {humans}
         </span>
-        {mine && <span style={{ fontSize: 8.5, fontWeight: 900, color: colour, letterSpacing: "0.08em" }}>YOU</span>}
+        {mine && <span style={{ fontSize: 8.5, fontWeight: 900, color: text, letterSpacing: "0.08em" }}>YOU</span>}
       </div>
     </div>
   );
 }
 
-function TeamBlock({ side, label, colour, deep, score, humans, leading, mine }: {
-  side: "left" | "right"; label: string; colour: string; deep: string;
+function TeamBlock({ side, label, colour, text, deep, score, humans, leading, mine }: {
+  side: "left" | "right"; label: string; colour: string; text: string; deep: string;
   score: number; humans: number; leading: boolean; mine?: boolean;
 }) {
   const right = side === "right";
@@ -303,7 +328,7 @@ function TeamBlock({ side, label, colour, deep, score, humans, leading, mine }: 
       </div>
       <div style={{ minWidth: 0, textAlign: right ? "right" : "left" }}>
         <div style={{
-          fontSize: 10.5, fontWeight: 900, letterSpacing: "0.1em", color: colour,
+          fontSize: 10.5, fontWeight: 900, letterSpacing: "0.1em", color: text,
           display: "flex", gap: 4, justifyContent: right ? "flex-end" : "flex-start",
           whiteSpace: "nowrap",
         }}>
@@ -316,7 +341,7 @@ function TeamBlock({ side, label, colour, deep, score, humans, leading, mine }: 
         }}>
           {score.toLocaleString()}
         </div>
-        <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.5)", fontWeight: 700, whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 10.5, color: "rgba(220,210,255,0.68)", fontWeight: 700, whiteSpace: "nowrap" }}>
           {/* "qualified", not just "humans": a player who has joined a side but
               not yet played 3 games is on the team without counting for it, and
               "0 humans" next to their own team name reads as a fault. */}
