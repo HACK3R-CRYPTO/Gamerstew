@@ -133,3 +133,57 @@ test('the recruiter board counts real recruits, not zero', () => {
     assert.equal(r.standings.referral.top[0].name, 'Boss');
   });
 });
+
+test('playing more games never moves anyone between teams', () => {
+  // REGRESSION, reported by a player who was Red at 8pm and Blue at 10pm
+  // without doing anything. The ordering key used to be the wallet's running
+  // game count, so any player finishing a game re-sorted the whole field and
+  // the balancer reassigned sides over the new order.
+  const now = Date.parse('2026-09-23T22:00:00Z');
+  const base = require('./tugEvent').tugConfig();
+  const cfg = { ...base, startsAt: '2026-09-23T17:00:00Z', endsAt: '2026-09-30T17:00:00Z' };
+  const t0 = Math.floor(Date.parse('2026-09-23T17:30:00Z') / 1000);
+
+  // Five players qualify in a fixed order. `grinder` then plays far more games
+  // than anyone else, which is exactly what used to shuffle the field.
+  const build = (grinderExtraGames) => {
+    const scores = [];
+    let id = 0;
+    const names = ['ann', 'ben', 'cal', 'dee', 'grinder'];
+    names.forEach((w, i) => {
+      const runs = w === 'grinder' ? 3 + grinderExtraGames : 3;
+      for (let k = 0; k < runs; k++) {
+        // Qualifying runs stay at their original times; extra runs come later,
+        // so nobody's qualification moment changes.
+        const ts = k < 3 ? t0 + i * 60 + k : t0 + 3600 + k;
+        scores.push({ id: `s${id++}`, blockTimestamp: String(ts),
+          gameType: 2, score: 50, player: { id: `0x${w}`, username: w } });
+      }
+    });
+    scores.sort((a, b) => Number(a.blockTimestamp) - Number(b.blockTimestamp));
+    return {
+      subgraph: { gql: async (_q, v) => ({ scores: scores.filter((s) =>
+        Number(s.blockTimestamp) >= Number(v.gte) && Number(s.blockTimestamp) <= Number(v.end)) }) },
+      isVerified: async () => true,
+      identityRootOf: async (w) => w,
+      mapLimit: async (items, _n, fn) => { const o = []; for (const x of items) o.push(await fn(x)); return o; },
+      referrerMap: async () => new Map(),
+    };
+  };
+
+  const teamsFor = (extra) => require('./tugEvent')
+    .buildStandings(build(extra), cfg, now)
+    .then((r) => new Map(r.players.map((p) => [p.wallet, p.team])));
+
+  return teamsFor(0).then((before) =>
+    Promise.all([teamsFor(10), teamsFor(40), teamsFor(120)]).then((afters) => {
+      for (const after of afters) {
+        for (const [w, team] of before) {
+          assert.equal(after.get(w), team, `${w} changed team because another player kept playing`);
+        }
+      }
+      // And the sides must still be balanced.
+      const red = [...before.values()].filter((t) => t === 'red').length;
+      assert.ok(Math.abs(red - (before.size - red)) <= 1, 'sides must stay level');
+    }));
+});

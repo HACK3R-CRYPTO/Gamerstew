@@ -11,7 +11,7 @@
 // root (see assignTeam), which is stable, balanced, and impossible to grief.
 
 const crypto = require('crypto');
-const { scoreTeams, bountyWinners, dedupeByIdentityRoot, POINTS_PER_QUALIFIED_HUMAN } = require('./tugScoring');
+const { scoreTeams, bountyWinners, dedupeByIdentityRoot, POINTS_PER_QUALIFIED_HUMAN, dayPoints } = require('./tugScoring');
 
 function tugConfig() {
   return {
@@ -126,7 +126,7 @@ function assignSides(quals, referrerOf, cmp) {
 // the last timestamp of a page — fine while human plays are seconds apart,
 // wrong the moment a burst lands many scores in one block, and it would drop
 // real players' games rather than the burst's.
-async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes) {
+async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes, qualifyGames) {
   // wallet -> { username, total, days: Map(date -> { n, best: Map(gameType -> score) }) }
   const byWallet = new Map();
   const seen = new Set();     // score ids already counted, guards the overlap
@@ -167,6 +167,18 @@ async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes) {
       const gt = Number(r.gameType), sc = Number(r.score) || 0;
       if (!d.best.has(gt) || sc > d.best.get(gt)) d.best.set(gt, sc);
       e.total += 1;
+
+      // FREEZE the moment this wallet first qualifies, and never touch it again.
+      // This is the ordering key for teams and for the bounty queue, so it has
+      // to describe a point in time, not a running total. It used to be
+      // e.total, the wallet's game count, which keeps growing: every game ANY
+      // player played re-sorted the field, the balancer re-ran over the new
+      // order, and players were swapped between Red and Blue without doing
+      // anything. One player reported three different teams in one evening.
+      if (e.qualifiedTs === undefined) {
+        if (!e.scoredAny && dayPoints(d.best) > 0) e.scoredAny = true;
+        if (e.total >= qualifyGames && e.scoredAny) e.qualifiedTs = Number(r.blockTimestamp);
+      }
     }
 
     const lastTs = Number(rows[rows.length - 1].blockTimestamp);
@@ -217,16 +229,16 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
     return { standings: base, players: [], byWallet: new Map(), cfg, referralBoard: [] };
   }
 
-  const plays = await fetchPlaysByWalletDay(subgraph, startUnix, endUnix, cfg.gameTypes);
+  const plays = await fetchPlaysByWalletDay(subgraph, startUnix, endUnix, cfg.gameTypes, cfg.qualifyGames);
 
   // Only wallets that could possibly qualify get an on-chain read. Checking all
   // 752 players every poll would be pointless traffic.
   // Qualifying needs real runs, not three taps on start. Without the points
   // check, quitting three times would claim a 2,500 G$ bounty slot.
-  const { dayPoints } = require('./tugScoring');
-  const earnedAny = (e) => [...e.days.values()].some((d) => dayPoints(d.best) > 0);
+  // qualifiedTs is set once, at the game that first met the bar, so this is the
+  // same set as the old total-plus-points filter but carries a frozen position.
   const candidates = [...plays.entries()]
-    .filter(([, e]) => e.total >= cfg.qualifyGames && earnedAny(e))
+    .filter(([, e]) => e.qualifiedTs !== undefined)
     .map(([w]) => w);
 
   const checked = await mapLimit(candidates, 10, async (w) => {
@@ -242,8 +254,10 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
       wallet: w,
       identity_root: root,
       team: assignTeam(root),
-      qualified_at: cfg.startsAt,
-      qualified_block: e.total,        // deterministic, re-derivable ordering key
+      qualified_at: new Date(e.qualifiedTs * 1000).toISOString(),
+      // Frozen at qualification. Two wallets qualifying in the same second fall
+      // through to the comparator's wallet byte-order tiebreak, which is stable.
+      qualified_block: e.qualifiedTs,
       qualified_log_idx: 0,
       games_at_qualify: cfg.qualifyGames,
       username: e.username,
