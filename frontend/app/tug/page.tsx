@@ -27,8 +27,8 @@ import { nextAction, type TugStandings, type TugMe } from "./types";
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.72)",
-  inkSoft: "rgba(220,210,255,0.62)",
+  inkDim: "rgba(220,210,255,0.82)",
+  inkSoft: "rgba(220,210,255,0.68)",
   surface: "rgba(40,18,100,0.5)",
   hairline: "rgba(255,255,255,0.09)",
   accent: "#a78bfa",
@@ -794,7 +794,10 @@ const ctaButton: React.CSSProperties = {
   width: "100%", maxWidth: 448, margin: "0 auto",
   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
   padding: "15px 18px", borderRadius: 16, cursor: "pointer", border: "none",
-  background: "linear-gradient(180deg, #22c55e, #15803d)",
+  // White on #22c55e is 2.28:1 and the label sits in the gradient's top half,
+  // so it failed badly. #16a34a is still only 3.30:1. Flat #15803d is 5.02:1,
+  // with a light inner edge keeping the button from going flat.
+  background: "#15803d",
   boxShadow: "0 12px 26px -8px rgba(34,197,94,0.6), inset 0 1px 0 rgba(255,255,255,0.35)",
 };
 const ctaPill: React.CSSProperties = {

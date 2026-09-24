@@ -16,8 +16,8 @@ import { useState } from "react";
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.76)",
-  inkSoft: "rgba(220,210,255,0.62)",
+  inkDim: "rgba(220,210,255,0.82)",
+  inkSoft: "rgba(220,210,255,0.68)",
   surface: "rgba(40,18,100,0.5)",
   hairline: "rgba(255,255,255,0.09)",
   accent: "#a78bfa",

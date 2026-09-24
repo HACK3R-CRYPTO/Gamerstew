@@ -85,7 +85,17 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // maximumScale is deliberately NOT set. Pinning it to 1 blocks pinch zoom on
+  // Android Chrome, which is a WCAG 1.4.4 failure, and it hurts exactly the
+  // people who need it most: cheap screens read outdoors.
+  //
+  // viewportFit: "cover" is what makes env(safe-area-inset-*) resolve to a real
+  // number. Without it every inset is 0, so a sticky bottom bar and the spacer
+  // that clears it both silently lose their padding on notched devices. The
+  // statusBarStyle here is black-translucent, so an iOS home-screen launch runs
+  // edge to edge and the inset is the only thing keeping the CTA off the home
+  // indicator.
+  viewportFit: "cover",
   themeColor: "#6a18c8",
 };
 
