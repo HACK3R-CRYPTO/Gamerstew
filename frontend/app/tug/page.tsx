@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import TugRope, { TEAM_RED, TEAM_BLUE } from "@/components/TugRope";
 import TugRules from "@/components/TugRules";
 import { nextAction, type TugStandings, type TugMe } from "./types";
@@ -172,7 +171,6 @@ export default function TugPage() {
   // there is a whole empty half of the viewport either side of that column —
   // so the rules live there, permanently open, where nobody has to go looking
   // for them.
-  const isMobile = useIsMobile(1024);
 
   if (!standings) {
     return <main style={shell(0)}><div style={{ color: T.inkSoft, padding: 40 }}>Loading…</div></main>;
@@ -194,7 +192,7 @@ export default function TugPage() {
   const todayLead = Math.abs(standings.today.red - standings.today.blue);
 
   return (
-    <main style={shell(share, !isMobile)}>
+    <main className="tug-shell" style={shell(share)}>
       {/* The sidebar scrolls itself, so it needs a scrollbar that belongs to
           this panel rather than the browser's default light one on dark glass.
           Firefox takes the two standard properties; WebKit needs its own. */}
@@ -208,6 +206,26 @@ export default function TugPage() {
         background: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 42%, #0a0226 100%)",
       }} />
       <style>{`
+        /* LAYOUT IS CSS, NOT JS. useIsMobile returns false on the server and
+           on the first client render, so every phone used to paint the 980px
+           two-column desktop layout and then jump to the phone layout once the
+           effect ran. On a mid-range Android that jump is visible on every
+           load. Media queries are correct on the first frame. */
+        .tug-shell { max-width: 480px; }
+        .tug-row {
+          display: flex; flex-direction: column; gap: 13px;
+          /* stretch, NOT flex-start: in a column, flex-start shrinks each card
+             to its own content width instead of filling the screen. */
+          align-items: stretch;
+        }
+        .tug-rules-inline { display: block; }
+        .tug-aside { display: none; }
+        @media (min-width: 1024px) {
+          .tug-shell { max-width: 980px; }
+          .tug-row { flex-direction: row; gap: 20px; align-items: flex-start; }
+          .tug-rules-inline { display: none; }
+          .tug-aside { display: block; }
+        }
         .tug-aside { scrollbar-width: thin; scrollbar-color: rgba(167,139,250,0.35) transparent; }
         .tug-aside::-webkit-scrollbar { width: 6px; }
         .tug-aside::-webkit-scrollbar-track { background: transparent; }
@@ -228,13 +246,7 @@ export default function TugPage() {
           `radial-gradient(ellipse 70% 52% at 100% 28%, rgba(103,232,249,${(0.10 + (1 - share) * 0.26).toFixed(3)}) 0%, transparent 62%)`,
       }} />
 
-      <div style={{
-        position: "relative", zIndex: 1,
-        display: "flex",
-        flexDirection: isMobile ? "column" : "row",
-        alignItems: "flex-start",
-        gap: isMobile ? 13 : 20,
-      }}>
+      <div className="tug-row" style={{ position: "relative", zIndex: 1 }}>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 13 }}>
         {preview && (
           <div style={{
@@ -520,8 +532,9 @@ export default function TugPage() {
           </section>
         )}
 
-        {/* On a phone the rules stay in the flow, collapsed. */}
-        {isMobile && (
+        {/* On a phone the rules stay in the flow, collapsed. Rendered always
+            and hidden by CSS above, so the layout needs no JS to be right. */}
+        <div className="tug-rules-inline">
           <TugRules
             prizeTotalG={standings.prizeTotalG}
             bountySlots={standings.bounty.slots}
@@ -530,7 +543,7 @@ export default function TugPage() {
             pointsPerHuman={me?.pointsPerHuman ?? 20}
             qualifyGames={me?.gamesToQualify ?? 3}
           />
-        )}
+        </div>
 
         {/* Clears the fixed CTA. Must include the home-indicator inset or the
             last card sits under the button on any notched phone. */}
@@ -540,7 +553,7 @@ export default function TugPage() {
       {/* Desktop: the rules get their own column, open, and stick as you
           scroll — so nobody has to hunt for them or remember to tap. This is
           the half of a wide viewport that was otherwise empty. */}
-      {!isMobile && (
+      {(
         <aside
           className="tug-aside"
           style={{
@@ -796,7 +809,7 @@ function fixture(): { standings: TugStandings; me: TugMe } {
   return state === "upcoming" ? PREVIEW_UPCOMING : PREVIEW;
 }
 
-function shell(share: number, wide = false): React.CSSProperties {
+function shell(share: number): React.CSSProperties {
   void share;
   return {
     minHeight: "100vh", position: "relative",
@@ -805,7 +818,7 @@ function shell(share: number, wide = false): React.CSSProperties {
     background: "transparent",
     color: T.ink, fontFamily: T.body,
     padding: "16px 16px 0",
-    maxWidth: wide ? 980 : 480,
+    // max-width is set by .tug-shell so the breakpoint is CSS, not JS.
     margin: "0 auto",
     // The app's global layout makes <body> a flex container, so <main> is a
     // flex ITEM — and a flex item defaults to min-width:auto, meaning it
