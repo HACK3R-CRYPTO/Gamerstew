@@ -548,6 +548,24 @@ export default function TugPage() {
                       : "You haven't brought anyone yet"}
                     {me.referral.inTheMoney && " ✓ in the money"}
                   </div>
+                  {/* The points a recruiter has actually earned, stated plainly.
+                      The board showed a recruit COUNT and nothing else, and the
+                      20 points per recruit land in the team total rather than
+                      in "YOUR PULLS", so the top recruiter in the event, seven
+                      people brought, reported that he was getting no points at
+                      all. He was earning 140. If the mechanic the whole event
+                      rests on is invisible, people stop trusting it. */}
+                  {me.referral.recruits > 0 && (
+                    <div style={{
+                      fontFamily: T.body, fontSize: 11.5, fontWeight: 800,
+                      color: T.gold, marginTop: 3,
+                    }}>
+                      +{(me.referral.recruits * (me.pointsPerHuman ?? 20)).toLocaleString()} pts
+                      <span style={{ color: T.inkDim, fontWeight: 600 }}>
+                        {" "}on {me.team ? me.team.toUpperCase() : "your side"} from recruiting
+                      </span>
+                    </div>
+                  )}
                   {me.referral.nextUp && (
                     <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 600, marginTop: 2 }}>
                       {me.referral.nextUp.need} more to pass @{me.referral.nextUp.name} at #{me.referral.nextUp.rank}
