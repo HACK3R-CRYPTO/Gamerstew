@@ -193,7 +193,7 @@ export default function ImpactPage() {
   // Verified competition payouts to players · live from /api/payouts (a committed,
   // tx-linked ledger), so the numbers below stop drifting from what actually
   // went on-chain.
-  const [payouts, setPayouts] = useState<{ rows: Array<{ competition: string; asset: string; amountToPlayers: number; players: number; tx: string | null }>; totals: Record<string, number>; playerSlotsPaid: number } | null>(null);
+  const [payouts, setPayouts] = useState<{ rows: Array<{ competition: string; asset: string; amountToPlayers: number | null; usdValue?: number; players: number | null; tx: string | null }>; totals: Record<string, number>; usdValueTotal: number; playerSlotsPaid: number } | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -233,7 +233,7 @@ export default function ImpactPage() {
       .catch(() => {});
     fetch("/api/payouts")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d && d.totals) setPayouts({ rows: Array.isArray(d.payouts) ? d.payouts : [], totals: d.totals, playerSlotsPaid: Number(d.playerSlotsPaid) || 0 }); })
+      .then((d) => { if (alive && d && d.totals) setPayouts({ rows: Array.isArray(d.payouts) ? d.payouts : [], totals: d.totals, usdValueTotal: Number(d.usdValueTotal) || 0, playerSlotsPaid: Number(d.playerSlotsPaid) || 0 }); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -288,6 +288,11 @@ export default function ImpactPage() {
   const totalG = payouts?.totals?.["G$"] ?? (COMMUNITY_POOL.paidG + CONSISTENCY.poolG);
   const totalUsd = payouts?.totals?.["USDC"] ?? SPRINT.usdc;
   const totalSlots = payouts?.playerSlotsPaid ?? (COMMUNITY_POOL.players + CONSISTENCY.players + SPRINT.players);
+  // Prizes recorded by USD value while their exact token amount is confirmed
+  // on-chain (the Arena Cup, $150 in G$). Shown as a value, not summed into the
+  // G$ figure, so no token amount is invented.
+  const usdValued = payouts?.usdValueTotal ?? 150;
+  const pendingRows = (payouts?.rows ?? []).filter((r) => !r.tx);
   const communityC = useCountUp(communityPaidG);
   const totalGC = useCountUp(totalG);
 
@@ -463,9 +468,14 @@ export default function ImpactPage() {
             <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
               Across the community pools, the loyalty pool and the private skill sprint,{" "}
               {fmtG(totalG)} G$ and ${totalUsd} in USDC have gone to verified players&apos; wallets,{" "}
-              {totalSlots} paid slots in all. Every settled payout is on-chain; the recurring
-              rounds link their transaction below.
+              {totalSlots} paid slots in all, plus ${usdValued} in G$ from the Arena Cup. Every
+              settled payout is on-chain; the recurring rounds link their transaction below.
             </span>
+            {pendingRows.length > 0 && (
+              <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5, maxWidth: 520 }}>
+                On-chain, tx link being added: {pendingRows.map((r) => r.competition).join(", ")}.
+              </span>
+            )}
           </div>
           <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
             <div style={{ fontFamily: T.display, fontSize: 46, color: T.gold, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.gold}55` }}>{fmtG(totalGC)}</div>
