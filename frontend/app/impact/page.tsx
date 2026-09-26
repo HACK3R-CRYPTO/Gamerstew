@@ -193,7 +193,7 @@ export default function ImpactPage() {
   // Verified competition payouts to players · live from /api/payouts (a committed,
   // tx-linked ledger), so the numbers below stop drifting from what actually
   // went on-chain.
-  const [payouts, setPayouts] = useState<{ totals: Record<string, number>; playerSlotsPaid: number } | null>(null);
+  const [payouts, setPayouts] = useState<{ rows: Array<{ competition: string; asset: string; amountToPlayers: number; players: number; tx: string | null }>; totals: Record<string, number>; playerSlotsPaid: number } | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -233,7 +233,7 @@ export default function ImpactPage() {
       .catch(() => {});
     fetch("/api/payouts")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d && d.totals) setPayouts({ totals: d.totals, playerSlotsPaid: Number(d.playerSlotsPaid) || 0 }); })
+      .then((d) => { if (alive && d && d.totals) setPayouts({ rows: Array.isArray(d.payouts) ? d.payouts : [], totals: d.totals, playerSlotsPaid: Number(d.playerSlotsPaid) || 0 }); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -279,9 +279,17 @@ export default function ImpactPage() {
   // Live G$ paid to players (Community Pool). USDC payouts (the sprint) are shown
   // separately since they are a different asset and must not be summed into a G$
   // figure. Fall back to the verified constant if the ledger is unreachable.
-  const communityPaidG = payouts?.totals?.["G$"] ?? COMMUNITY_POOL.paidG;
-  const sprintUsdc = payouts?.totals?.["USDC"] ?? SPRINT.usdc;
+  // Community pool figure = its OWN ledger row, not the G$ asset total (which now
+  // also includes the loyalty pool). Falls back to the verified constant.
+  const communityRow = payouts?.rows?.find((r) => r.competition.startsWith("Community Pool"));
+  const communityPaidG = communityRow?.amountToPlayers ?? COMMUNITY_POOL.paidG;
+  const sprintUsdc = payouts?.rows?.find((r) => r.asset === "USDC")?.amountToPlayers ?? SPRINT.usdc;
+  // Grand total across every competition, straight from the ledger.
+  const totalG = payouts?.totals?.["G$"] ?? (COMMUNITY_POOL.paidG + CONSISTENCY.poolG);
+  const totalUsd = payouts?.totals?.["USDC"] ?? SPRINT.usdc;
+  const totalSlots = payouts?.playerSlotsPaid ?? (COMMUNITY_POOL.players + CONSISTENCY.players + SPRINT.players);
   const communityC = useCountUp(communityPaidG);
+  const totalGC = useCountUp(totalG);
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
@@ -439,6 +447,29 @@ export default function ImpactPage() {
           <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
             <div style={{ fontFamily: T.display, fontSize: 46, color: T.amber, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.amber}55` }}>{fmtG(poolC)}</div>
             <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>G$ TO LOYAL PLAYERS</div>
+          </div>
+        </Card>
+
+        {/* ── all competition payouts · grand total from the ledger ── */}
+        <Card delay={370} style={{
+          display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 16,
+          alignItems: isDesktop ? "center" : "flex-start", position: "relative", overflow: "hidden",
+          background: `radial-gradient(120% 140% at 100% 0%, ${T.gold}1f 0%, transparent 55%), ${T.surface}`,
+          borderColor: `${T.gold}33`,
+        }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+            <Eyebrow tint={T.gold}>All competition payouts · to date</Eyebrow>
+            <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>Every competition, paid to verified players</span>
+            <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
+              Across the community pools, the loyalty pool and the private skill sprint,{" "}
+              {fmtG(totalG)} G$ and ${totalUsd} in USDC have gone to verified players&apos; wallets,{" "}
+              {totalSlots} paid slots in all. Every settled payout is on-chain; the recurring
+              rounds link their transaction below.
+            </span>
+          </div>
+          <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
+            <div style={{ fontFamily: T.display, fontSize: 46, color: T.gold, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.gold}55` }}>{fmtG(totalGC)}</div>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>G$ + ${totalUsd} USDC TO PLAYERS</div>
           </div>
         </Card>
 
