@@ -288,10 +288,6 @@ export default function ImpactPage() {
   const totalG = payouts?.totals?.["G$"] ?? (COMMUNITY_POOL.paidG + CONSISTENCY.poolG);
   const totalUsd = payouts?.totals?.["USDC"] ?? SPRINT.usdc;
   const totalSlots = payouts?.playerSlotsPaid ?? (COMMUNITY_POOL.players + CONSISTENCY.players + SPRINT.players);
-  // Prizes recorded by USD value while their exact token amount is confirmed
-  // on-chain (the Arena Cup, $150 in G$). Shown as a value, not summed into the
-  // G$ figure, so no token amount is invented.
-  const usdValued = payouts?.usdValueTotal ?? 150;
   const pendingRows = (payouts?.rows ?? []).filter((r) => !r.tx);
   const communityC = useCountUp(communityPaidG);
   const totalGC = useCountUp(totalG);
@@ -466,10 +462,10 @@ export default function ImpactPage() {
             <Eyebrow tint={T.gold}>All competition payouts · to date</Eyebrow>
             <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>Every competition, paid to verified players</span>
             <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
-              Across the community pools, the loyalty pool and the private skill sprint,{" "}
-              {fmtG(totalG)} G$ and ${totalUsd} in USDC have gone to verified players&apos; wallets,{" "}
-              {totalSlots} paid slots in all, plus ${usdValued} in G$ from the Arena Cup. Every
-              settled payout is on-chain; the recurring rounds link their transaction below.
+              Across the community pools, the loyalty pool, the private skill sprint and the
+              Arena Cup, {fmtG(totalG)} G$ and ${totalUsd} in USDC have gone to verified
+              players&apos; wallets. Every settled payout is on-chain; the recurring rounds link
+              their transaction below.
             </span>
             {pendingRows.length > 0 && (
               <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, lineHeight: 1.5, maxWidth: 520 }}>

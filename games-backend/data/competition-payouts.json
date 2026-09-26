@@ -36,11 +36,13 @@
       "window": "14-day event",
       "paidDate": "2026-08",
       "asset": "G$",
-      "amountToPlayers": null,
+      "amountToPlayers": 1420320,
       "usdValue": 150,
       "players": null,
       "tx": null,
-      "proof": "$150 in G$ ($100 top players + $50 their AI agents); exact G$ amount and tx pending on-chain confirmation"
+      "proof": "$150 in G$ ($100 top players + $50 their AI agents), valued at the live G$ rate; tx pending on-chain confirmation",
+      "rate": "0.00010561 USD/G$",
+      "rateSource": "CoinGecko live, 2026-09-26"
     }
   ]
 }
