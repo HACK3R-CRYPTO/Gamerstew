@@ -30,6 +30,17 @@
       "players": 5,
       "tx": null,
       "proof": "on-chain, tx hash pending backfill"
+    },
+    {
+      "competition": "Arena Cup",
+      "window": "14-day event",
+      "paidDate": "2026-08",
+      "asset": "G$",
+      "amountToPlayers": null,
+      "usdValue": 150,
+      "players": null,
+      "tx": null,
+      "proof": "$150 in G$ ($100 top players + $50 their AI agents); exact G$ amount and tx pending on-chain confirmation"
     }
   ]
 }

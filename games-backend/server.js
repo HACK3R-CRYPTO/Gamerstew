@@ -3076,15 +3076,24 @@ app.get('/api/payouts', (_req, res) => {
     const rows = Array.isArray(ledger.payouts) ? ledger.payouts : [];
     const totals = {};
     let playerSlots = 0;
+    let usdValueTotal = 0;          // for rows recorded by USD value (exact token amount pending)
     for (const r of rows) {
       const a = String(r.asset || '').toUpperCase();
-      totals[a] = (totals[a] || 0) + (Number(r.amountToPlayers) || 0);
+      // Only rows with a confirmed native amount count toward the asset totals.
+      // A row still awaiting its exact on-chain figure (amountToPlayers null)
+      // contributes its usdValue instead, so it is represented without inventing
+      // a token amount.
+      if (Number.isFinite(Number(r.amountToPlayers))) {
+        totals[a] = (totals[a] || 0) + Number(r.amountToPlayers);
+      }
+      if (Number.isFinite(Number(r.usdValue))) usdValueTotal += Number(r.usdValue);
       playerSlots += Number(r.players) || 0;
     }
     res.json({
       payouts: rows,
-      totals,                         // { "G$": 366135, "USDC": 50 }
-      playerSlotsPaid: playerSlots,   // sum of per-competition winners
+      totals,                         // confirmed native amounts, e.g. { "G$": 686135, "USDC": 50 }
+      usdValueTotal,                  // sum of USD-denominated prize values (e.g. Arena Cup)
+      playerSlotsPaid: playerSlots,   // sum of confirmed per-competition winner counts
       payoutWallet: ledger.payoutWallet || null,
       updatedAt: new Date().toISOString(),
     });
