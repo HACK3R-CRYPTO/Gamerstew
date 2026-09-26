@@ -240,3 +240,34 @@ test('a player NEVER changes team when OTHER players leave the qualified set', (
     });
   });
 });
+
+test('a recruit who verified and played still counts after their verification lapses', () => {
+  // REGRESSION. A top recruiter's count fell 10 -> 7 because 3 recruits who
+  // verified and played (one 199 games) let their verification lapse on the
+  // 3-day window and dropped out of the current-verified set. Recruit credit
+  // must persist on "ever verified" (permanent lastAuthenticated).
+  const now = Date.parse('2026-09-26T20:00:00Z');
+  const cfg = { ...require('./tugEvent').tugConfig(), startsAt: '2026-09-23T17:00:00Z', endsAt: '2026-09-30T17:00:00Z' };
+  const t0 = Math.floor(Date.parse('2026-09-24T00:00:00Z') / 1000);
+  const players = ['0xboss', '0xr1', '0xr2', '0xr3'];
+  const scores = [];
+  let sid = 0;
+  players.forEach((w, i) => { for (let k = 0; k < 4; k++) scores.push({ id: `s${sid++}`, blockTimestamp: String(t0 + i * 60 + k), gameType: 2, score: 50, player: { id: w, username: w.slice(2) } }); });
+
+  // r2 and r3 have LAPSED: not currently verified, but everVerified true.
+  const currentlyVerified = new Set(['0xboss', '0xr1']);
+  const everVerifiedSet = new Set(['0xboss', '0xr1', '0xr2', '0xr3']);
+  const deps = {
+    subgraph: { gql: async (_q, v) => ({ scores: scores.filter((s) => Number(s.blockTimestamp) >= Number(v.gte) && Number(s.blockTimestamp) <= Number(v.end)) }) },
+    isVerified: async (w) => currentlyVerified.has(w.toLowerCase()),
+    identityRootOf: async (w) => (currentlyVerified.has(w.toLowerCase()) ? w : null),
+    everVerified: async (w) => everVerifiedSet.has(w.toLowerCase()),
+    mapLimit: async (items, _n, fn) => { const o = []; for (const x of items) o.push(await fn(x)); return o; },
+    referrerMap: async () => new Map([['0xr1', '0xboss'], ['0xr2', '0xboss'], ['0xr3', '0xboss']]),
+  };
+  return require('./tugEvent').buildStandings(deps, cfg, now).then((r) => {
+    const boss = r.standings.referral.top.find((t) => t.name === 'boss');
+    assert.ok(boss, 'the recruiter must be on the board');
+    assert.equal(boss.recruits, 3, 'all 3 recruits count, including the 2 whose verification lapsed');
+  });
+});
