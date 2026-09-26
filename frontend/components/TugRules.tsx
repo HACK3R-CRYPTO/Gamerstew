@@ -80,18 +80,19 @@ export default function TugRules({
                 border="rgba(167,139,250,0.38)"
               />
               <SideRow
-                label="Each new player"
-                value="Goes to whichever side is smaller"
+                label="Your side"
+                value="Locked to your identity, never changes"
                 tint="rgba(34,197,94,0.14)"
                 border="rgba(134,239,172,0.4)"
               />
             </div>
             <p style={{ ...p, marginTop: 9, color: T.inkSoft }}>
-              Nobody picks a side, including you, and nobody can move you off the one
-              you get. The sides are kept level as people join, so the teams never
-              end up 10 against 2 — and one person can&apos;t stack a team with spare
-              wallets. Your friends may well be drawn against you. You still get paid
-              for bringing them: see rule 4.
+              Nobody picks a side, including you. Your side comes from your verified
+              identity, so it is fixed the moment you qualify and never changes for
+              the rest of the event, no matter who joins or leaves. One person
+              can&apos;t stack a team with spare wallets, because one human is one
+              identity on one side. Your friends may well be drawn against you. You
+              still get paid for bringing them: see rule 4.
             </p>
           </Rule>
 
