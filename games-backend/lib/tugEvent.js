@@ -210,7 +210,7 @@ async function fetchPlaysByWalletDay(subgraph, startUnix, endUnix, gameTypes, qu
  * @param {(items:any[],limit:number,fn:Function)=>Promise<any[]>} deps.mapLimit
  */
 async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
-  const { subgraph, isVerified, identityRootOf, mapLimit, referrerMap } = deps;
+  const { subgraph, isVerified, identityRootOf, everVerified, mapLimit, referrerMap } = deps;
   const phase = eventPhase(cfg, nowMs);
   const startUnix = Math.floor(Date.parse(cfg.startsAt) / 1000);
   const endUnix = Math.floor(Math.min(Date.parse(cfg.endsAt), nowMs) / 1000);
@@ -318,19 +318,61 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
   // and skipped all of them, so this board reported 0 entrants from the day it
   // shipped while real recruits were being brought in. The regression test
   // feeds rows with no `counted` flag and asserts the board is non-empty.
-  const nameOf = new Map(quals.map((q) => [q.wallet, q.username]));
+  //
+  // RECRUIT CREDIT PERSISTS ONCE EARNED. A recruit counts for their referrer if
+  // they were brought by that referrer, played the qualifying games, and have
+  // EVER passed a GoodDollar face check — even if that verification has since
+  // lapsed on the 3-day reverify window. The recruiter did the real work of
+  // bringing a genuine human who verified and played; silently revoking the
+  // credit when that human forgets to reverify is what made a top recruiter's
+  // count fall from 10 to 7 mid-event. `counted` (current verification) still
+  // governs pulls and bounty; this broader set governs ONLY the recruit board.
+  //
+  // Eligibility uses everVerified (permanent lastAuthenticated>0). If the dep is
+  // absent, it falls back to the currently-counted set so nothing breaks.
+  const nameOf = new Map();
+  for (const [w, e] of plays.entries()) if (e.username) nameOf.set(String(w).toLowerCase(), e.username);
+  for (const q of quals) if (q.username) nameOf.set(q.wallet, q.username);
   const recruitsBy = new Map();
-  for (const q of cumulative.players) {
-    if (!q.counted) continue;
-    const ref = referrerOf.get(q.wallet);
-    if (!ref || ref === q.wallet) continue;
-    if (!recruitsBy.has(ref)) recruitsBy.set(ref, []);
-    recruitsBy.get(ref).push(q.wallet);
+  const firstQualifiedAt = new Map();
+
+  if (typeof everVerified === 'function') {
+    // Candidates: played the qualifying games AND were brought by someone.
+    const referredCandidates = [...plays.entries()]
+      .filter(([w, e]) => e.qualifiedTs !== undefined && referrerOf.has(String(w).toLowerCase()))
+      .map(([w]) => String(w).toLowerCase());
+    const everFlags = await mapLimit(referredCandidates, 10, async (w) => [w, await everVerified(w)]);
+    const everSet = new Set(everFlags.filter(([, v]) => v).map(([w]) => w));
+
+    // Dedupe per referrer by identity: a verified recruit dedupes on their
+    // whitelisted root; a lapsed one (root now 0) dedupes on their own wallet.
+    // GoodDollar's face check is the sybil gate, so a lapsed wallet is still a
+    // distinct real human that once passed it.
+    const rootOf = new Map(quals.map((q) => [q.wallet, q.identity_root]));
+    const seenPerRef = new Map();  // ref -> Set(identityKey)
+    for (const w of referredCandidates) {
+      if (!everSet.has(w)) continue;
+      const ref = String(referrerOf.get(w)).toLowerCase();
+      if (!ref || ref === w) continue;
+      const key = rootOf.get(w) || w;
+      let seen = seenPerRef.get(ref);
+      if (!seen) { seen = new Set(); seenPerRef.set(ref, seen); }
+      if (seen.has(key)) continue;   // same human, second wallet -> ignore
+      seen.add(key);
+      if (!recruitsBy.has(ref)) recruitsBy.set(ref, []);
+      recruitsBy.get(ref).push(w);
+      firstQualifiedAt.set(w, Number(plays.get(w).qualifiedTs) || 0);
+    }
+  } else {
+    for (const q of cumulative.players) {
+      if (!q.counted) continue;
+      const ref = referrerOf.get(q.wallet);
+      if (!ref || ref === q.wallet) continue;
+      if (!recruitsBy.has(ref)) recruitsBy.set(ref, []);
+      recruitsBy.get(ref).push(q.wallet);
+      firstQualifiedAt.set(q.wallet, Number(q.qualified_block) || 0);
+    }
   }
-  const firstQualifiedAt = new Map(
-    cumulative.players.filter((p) => p.counted)
-      .map((p) => [p.wallet, Number(p.qualified_block) || 0]),
-  );
   const referralBoard = [...recruitsBy.entries()]
     .map(([wallet, recruits]) => ({
       wallet,

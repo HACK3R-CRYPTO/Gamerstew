@@ -2891,6 +2891,7 @@ const _gdIdentity = provider
         'function getWhitelistedRoot(address) view returns (address)',
         'function identities(address) view returns (uint256 dateAuthenticated, uint256 dateAdded, string did, uint256 whitelistedOnChainId, uint8 status, uint32 authCount)',
         'function reverifyDaysOptions(uint256) view returns (uint32)',
+        'function lastAuthenticated(address) view returns (uint256)',
       ],
       provider,
     )
@@ -2934,6 +2935,31 @@ async function identityRootOf(wallet) {
     return r;
   } catch {
     return c ? c.root : null;
+  }
+}
+
+// Has this wallet EVER passed a GoodDollar face check, regardless of whether the
+// verification is still valid today? lastAuthenticated is a permanent on-chain
+// timestamp: non-zero once a wallet has authenticated, and it survives the
+// 3-day reverify window lapsing. Used ONLY for recruit credit — a recruiter who
+// brought a real human that verified and played should keep the credit even
+// after that human's verification expires. It is NOT used to let anyone pull or
+// claim a bounty; those still require CURRENT verification via isVerified.
+const _everVerifiedCache = new Map(); // wallet -> { ever, at }
+async function everVerified(wallet) {
+  if (!_gdIdentity || !wallet) return false;
+  const w = String(wallet).toLowerCase();
+  const c = _everVerifiedCache.get(w);
+  // "ever verified" only ever flips false->true and then stays true, so a true
+  // can be cached hard; recheck falses periodically in case they verify.
+  if (c && (c.ever || Date.now() - c.at < VERIFIED_FALSE_TTL_MS)) return c.ever;
+  try {
+    const ts = await _gdIdentity.lastAuthenticated(w);
+    const ever = ts !== undefined && ts !== null && BigInt(ts) > 0n;
+    _everVerifiedCache.set(w, { ever, at: Date.now() });
+    return ever;
+  } catch {
+    return c ? c.ever : false;
   }
 }
 
@@ -5658,7 +5684,7 @@ async function getTugStandings() {
     console.log('🪢 tug rebuild START');
     try {
       const data = await tugEvent.buildStandings(
-        { subgraph, isVerified, identityRootOf, mapLimit, referrerMap: tugReferrerMap },
+        { subgraph, isVerified, identityRootOf, everVerified, mapLimit, referrerMap: tugReferrerMap },
         tugEvent.tugConfig(),
         Date.now(),
       );
