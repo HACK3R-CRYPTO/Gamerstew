@@ -3059,6 +3059,41 @@ app.get('/api/impact-stats', async (_, res) => {
   }
 });
 
+// ─── Competition payouts ──────────────────────────────────────────────────────
+// What GameArena has actually paid OUT to players through competitions, so the
+// impact page and GoodDollar can see it in one place instead of it living only
+// in WhatsApp announcements. Source of truth is data/competition-payouts.json,
+// a committed ledger where every row carries the on-chain tx hash that proves
+// it — the same tx anyone can open on Celoscan. Amounts are what reached
+// PLAYERS; the treasury/change leg in each batch is excluded at the ledger.
+// Add a row when a payout settles; nothing here is computed from a mutable
+// balance, so it cannot drift.
+app.get('/api/payouts', (_req, res) => {
+  try {
+    const fs = require('fs'), path = require('path');
+    const raw = fs.readFileSync(path.join(__dirname, 'data', 'competition-payouts.json'), 'utf8');
+    const ledger = JSON.parse(raw);
+    const rows = Array.isArray(ledger.payouts) ? ledger.payouts : [];
+    const totals = {};
+    let playerSlots = 0;
+    for (const r of rows) {
+      const a = String(r.asset || '').toUpperCase();
+      totals[a] = (totals[a] || 0) + (Number(r.amountToPlayers) || 0);
+      playerSlots += Number(r.players) || 0;
+    }
+    res.json({
+      payouts: rows,
+      totals,                         // { "G$": 366135, "USDC": 50 }
+      playerSlotsPaid: playerSlots,   // sum of per-competition winners
+      payoutWallet: ledger.payoutWallet || null,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('payouts ledger read failed:', e?.message || e);
+    res.status(200).json({ payouts: [], totals: {}, playerSlotsPaid: 0, updatedAt: null });
+  }
+});
+
 // ─── Arena Cup ──────────────────────────────────────────────────────────────
 // The 14-day skill event: two ladders (humans + their AIs) + a community pot.
 // PHASE 1 (this): the HUMAN ladder from two lanes — Skill (best run per game)

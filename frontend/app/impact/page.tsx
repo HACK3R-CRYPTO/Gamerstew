@@ -75,7 +75,13 @@ const CONSISTENCY = { players: 5, poolG: 320000 };
 // the games target it unlocks and pays every verified contributor their share.
 // Last round: 105,000 G$ to 15 verified players, sent on-chain (verified via
 // the disperse tx on Celo). Not placement-based — everyone who played + verified.
-const COMMUNITY_POOL = { paidG: 105000, players: 15 };
+// Verified on-chain. Community Pool: two weeks (Aug 24-Sep 6) paid together,
+// 366,135 G$ to 28 verified players, tx 0x1b1228...1366a (the matching treasury
+// change leg in that tx is excluded). Live value comes from /api/payouts; this
+// is the fallback if the endpoint is unreachable.
+const COMMUNITY_POOL = { paidG: 366135, players: 28 };
+// Private 5-day skill sprint, top 10, paid in USDC. tx 0xdc43be...c3d84.
+const SPRINT = { usdc: 50, players: 10 };
 // GoodDollar-verified humans · fallback only. The live figure comes from
 // /api/verified-stats, which checks isWhitelisted on-chain for every player —
 // the true verified set, not just GamePass minters. This floor matches the
@@ -184,6 +190,10 @@ export default function ImpactPage() {
   const [perks, setPerks] = useState<{ perkPurchases: number; perkSpendG: number } | null>(null);
   // Live Arena Cup · $150 in G$ event, its community pot and who's competing.
   const [cup, setCup] = useState<{ phase: string; pot: { plays: number; agentMatches: number; bonusG: number; humanPlayers: number; agents: number } } | null>(null);
+  // Verified competition payouts to players · live from /api/payouts (a committed,
+  // tx-linked ledger), so the numbers below stop drifting from what actually
+  // went on-chain.
+  const [payouts, setPayouts] = useState<{ totals: Record<string, number>; playerSlotsPaid: number } | null>(null);
 
   useEffect(() => {
     const update = () => setIsDesktop(window.innerWidth >= 900);
@@ -220,6 +230,10 @@ export default function ImpactPage() {
     fetch("/api/cup")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d && d.pot) setCup({ phase: d.phase, pot: d.pot }); })
+      .catch(() => {});
+    fetch("/api/payouts")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && d.totals) setPayouts({ totals: d.totals, playerSlotsPaid: Number(d.playerSlotsPaid) || 0 }); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -262,7 +276,12 @@ export default function ImpactPage() {
   const gamesC = useCountUp(games);
   const spendC = useCountUp(perkSpendG);
   const poolC = useCountUp(CONSISTENCY.poolG);
-  const communityC = useCountUp(COMMUNITY_POOL.paidG);
+  // Live G$ paid to players (Community Pool). USDC payouts (the sprint) are shown
+  // separately since they are a different asset and must not be summed into a G$
+  // figure. Fall back to the verified constant if the ledger is unreachable.
+  const communityPaidG = payouts?.totals?.["G$"] ?? COMMUNITY_POOL.paidG;
+  const sprintUsdc = payouts?.totals?.["USDC"] ?? SPRINT.usdc;
+  const communityC = useCountUp(communityPaidG);
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
@@ -434,8 +453,12 @@ export default function ImpactPage() {
             <Eyebrow tint={T.green}>Community pool · paid out</Eyebrow>
             <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>The whole community played, the whole community got paid</span>
             <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 520 }}>
-              A shared pool that unlocks when the community hits its games target. The last round paid {fmtG(COMMUNITY_POOL.paidG)} G$ straight to {COMMUNITY_POOL.players} verified players&apos; wallets — no placement, no gatekeeping, everyone who showed up and verified got a share.
+              A shared pool that unlocks when the community hits its games target. The last round paid {fmtG(communityPaidG)} G$ straight to {COMMUNITY_POOL.players} verified players&apos; wallets — no placement, no gatekeeping, everyone who showed up and verified got a share. On top of that, a private 5-day skill sprint paid ${sprintUsdc} in USDC to its top {SPRINT.players}.
             </span>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 2 }}>
+              <a href="https://celoscan.io/tx/0x1b1228211e85efaec57278b5b66dae7e383cf649df1782f43d616a4c86e1366a" target="_blank" rel="noopener noreferrer" style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.green, textDecoration: "none", letterSpacing: "0.04em" }}>Community pool tx ↗</a>
+              <a href="https://celoscan.io/tx/0xdc43bef25b7e96a2c8685de052bddbfd9adbd4e374f384d0dbdaf2c4ef9c3d84" target="_blank" rel="noopener noreferrer" style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.green, textDecoration: "none", letterSpacing: "0.04em" }}>Sprint tx ↗</a>
+            </div>
           </div>
           <div style={{ textAlign: isDesktop ? "right" : "left", flexShrink: 0 }}>
             <div style={{ fontFamily: T.display, fontSize: 46, color: T.green, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: `0 0 34px ${T.green}55` }}>{fmtG(communityC)}</div>
