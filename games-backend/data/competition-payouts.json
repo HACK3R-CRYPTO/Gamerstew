@@ -1,0 +1,25 @@
+{
+  "note": "Verified competition payouts to players. Each row is confirmed on-chain; the tx hash is the proof. Add a row when a payout settles. Amounts are what reached PLAYERS (treasury/change legs excluded). Do not edit numbers without a matching tx.",
+  "payoutWallet": "0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d",
+  "excludedTreasuryWallet": "0xD152f549545093347A162Dce210e7293f1452150",
+  "payouts": [
+    {
+      "competition": "Community Pool",
+      "window": "Aug 24 - Sep 6",
+      "paidDate": "2026-09-15",
+      "asset": "G$",
+      "amountToPlayers": 366135,
+      "players": 28,
+      "tx": "0x1b1228211e85efaec57278b5b66dae7e383cf649df1782f43d616a4c86e1366a"
+    },
+    {
+      "competition": "Skill Sprint (top 10)",
+      "window": "5-day private sprint",
+      "paidDate": "2026-09-15",
+      "asset": "USDC",
+      "amountToPlayers": 50,
+      "players": 10,
+      "tx": "0xdc43bef25b7e96a2c8685de052bddbfd9adbd4e374f384d0dbdaf2c4ef9c3d84"
+    }
+  ]
+}
