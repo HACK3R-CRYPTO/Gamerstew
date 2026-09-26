@@ -87,17 +87,27 @@ function assignTeam(identityRoot) {
 function assignSides(quals, referrerOf, cmp) {
   const ordered = [...quals].sort(cmp);
   const teamOf = new Map();
-  const count = { red: 0, blue: 0 };
 
-  // Pass 1: balance. Ties break on the identity hash so the first player of an
-  // event is not always red.
+  // Pass 1: team is a PURE FUNCTION of the player's own identity hash.
+  //
+  // It used to be a greedy running balance (assign each new qualifier to
+  // whichever side was smaller). That produced a perfect 23/23 but was
+  // catastrophically unstable: a player's side depended on the running count of
+  // everyone who qualified before them, so the moment ANY earlier player left
+  // the qualified set — verification lapsing on the 3-day GoodDollar window, or
+  // the subgraph re-indexing after the pause — the greedy pass reshuffled
+  // everyone downstream. Players with real points were flipped Red->Blue
+  // through no action of their own. Reported live: a teammate with 53 points
+  // moved to the other team.
+  //
+  // A hash of the identity root is fixed forever for one human and does not
+  // depend on anyone else, so a team, once assigned, never changes. Over 46
+  // qualified humans it splits 24/22; the tiny imbalance is a trade every
+  // player would take over watching their side flip mid-event. STABILITY BEATS
+  // A PERFECT SPLIT.
   for (const q of ordered) {
-    const side = count.red === count.blue
-      ? assignTeam(q.identity_root)
-      : (count.red < count.blue ? 'red' : 'blue');
-    q.team = side;
-    count[side] += 1;
-    teamOf.set(String(q.wallet).toLowerCase(), side);
+    q.team = assignTeam(q.identity_root);
+    teamOf.set(String(q.wallet).toLowerCase(), q.team);
   }
 
   // Pass 2: route each recruit's bounty to their recruiter's side. Separate

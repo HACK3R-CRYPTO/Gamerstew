@@ -11,24 +11,34 @@ const tally = (q, s) => q.filter((x) => x.team === s).length;
 const ROOT_A = '0xaaa1000000000000000000000000000000000001';
 const ROOT_B = '0xbbb2000000000000000000000000000000000002';
 
-test('the system balances sides no matter how lopsided the hashes are', () => {
-  // The bug this replaced: hashing is 50/50 only in expectation. Live data
-  // showed red 0, blue 4.
-  for (const n of [1, 2, 3, 4, 5, 17, 60]) {
-    const q = sides(Array.from({ length: n }, (_, i) => mk(`0xw${i}`, `0xr${i}`, i)));
-    assert.ok(Math.abs(tally(q, 'red') - tally(q, 'blue')) <= 1,
-      `${n} players split ${tally(q, 'red')}/${tally(q, 'blue')}`);
-  }
+test('team assignment is a stable pure function of identity, not a balance', () => {
+  // The greedy balance that used to enforce |red-blue|<=1 was abandoned: it
+  // made a player's side depend on everyone else in the set, so a dropout
+  // reshuffled the field. Team is now assignTeam(identity_root) — the same
+  // answer regardless of who else is present. It is only roughly balanced, and
+  // that is the deliberate trade for never moving anyone.
+  const roots = Array.from({ length: 200 }, (_, i) => `0xr${i}`);
+  // same identity -> same team, no matter the surrounding set or order
+  const a = sides(roots.map((r, i) => mk(`0xw${i}`, r, i)));
+  const b = sides(roots.map((r, i) => mk(`0xw${i}`, r, i)).reverse());
+  const teamA = new Map(a.map((x) => [x.wallet, x.team]));
+  for (const x of b) assert.equal(x.team, teamA.get(x.wallet), 'same identity must always get the same team');
+  // roughly balanced over many identities (not enforced, just checked loosely)
+  const red = a.filter((x) => x.team === 'red').length;
+  assert.ok(red > 70 && red < 130, `200 identities split ${red}/${200 - red} — hash should be near even`);
 });
 
 test('a recruit is NOT dragged onto their recruiter side', () => {
-  // 1 recruiter + 10 recruits used to be an 11-0 sweep for one side.
+  // A recruit's TEAM is decided by their own identity hash, never inherited
+  // from the recruiter. (The recruiter is paid via bounty_team instead.)
   const boss = mk('0xboss', ROOT_A, 1);
   const recruits = Array.from({ length: 10 }, (_, i) => mk(`0xr${i}`, `0xroot${i}`, 10 + i));
   const referrerOf = new Map(recruits.map((r) => [r.wallet, '0xboss']));
   const q = sides([boss, ...recruits], referrerOf);
-  assert.ok(Math.abs(tally(q, 'red') - tally(q, 'blue')) <= 1,
-    `expected a balanced split, got ${tally(q, 'red')}/${tally(q, 'blue')}`);
+  for (const r of recruits) {
+    const row = q.find((x) => x.wallet === r.wallet);
+    assert.equal(row.team, assignTeam(r.identity_root), 'recruit team must be their own hash, not the recruiter\'s');
+  }
 });
 
 test('a recruit bounty is credited to the RECRUITER side, not their own', () => {
@@ -40,9 +50,10 @@ test('a recruit bounty is credited to the RECRUITER side, not their own', () => 
   for (const r of recruits) {
     assert.equal(q.find((x) => x.wallet === r.wallet).bounty_team, bossTeam);
   }
-  // ...and at least one of them really is playing for the other side.
-  assert.ok(q.some((x) => x.wallet !== '0xboss' && x.team !== bossTeam),
-    'the balancing should have split them across both sides');
+  // bounty always credits the recruiter's side, even for recruits whose own
+  // hash puts them on the other team.
+  const crossTeam = q.filter((x) => x.wallet !== '0xboss' && x.team !== bossTeam);
+  for (const x of crossTeam) assert.equal(x.bounty_team, bossTeam);
 });
 
 test('a recruit who qualifies BEFORE their recruiter still pays the recruiter', () => {
@@ -186,4 +197,46 @@ test('playing more games never moves anyone between teams', () => {
       const red = [...before.values()].filter((t) => t === 'red').length;
       assert.ok(Math.abs(red - (before.size - red)) <= 1, 'sides must stay level');
     }));
+});
+
+test('a player NEVER changes team when OTHER players leave the qualified set', () => {
+  // REGRESSION. Verification lapses on the GoodDollar 3-day window, so players
+  // drop OUT of the qualified set mid-event. The old greedy balance reassigned
+  // every downstream player when that happened; a teammate with real points was
+  // flipped to the other team. Team must depend only on the player's own
+  // identity, never on who else is currently qualified.
+  const now = Date.parse('2026-09-26T20:00:00Z');
+  const cfg = { ...require('./tugEvent').tugConfig(),
+    startsAt: '2026-09-23T17:00:00Z', endsAt: '2026-09-30T17:00:00Z' };
+  const t0 = Math.floor(Date.parse('2026-09-24T00:00:00Z') / 1000);
+
+  const build = (verifiedSet) => {
+    const names = ['ann', 'ben', 'cal', 'dee', 'eve', 'fin', 'gus', 'hal'];
+    const scores = [];
+    let sid = 0;
+    names.forEach((w, i) => {
+      for (let k = 0; k < 3; k++) scores.push({ id: `s${sid++}`, blockTimestamp: String(t0 + i * 60 + k), gameType: 2, score: 50, player: { id: `0x${w}`, username: w } });
+    });
+    return {
+      subgraph: { gql: async (_q, v) => ({ scores: scores.filter((s) => Number(s.blockTimestamp) >= Number(v.gte) && Number(s.blockTimestamp) <= Number(v.end)) }) },
+      isVerified: async (w) => verifiedSet.has(w.toLowerCase()),
+      identityRootOf: async (w) => w,
+      mapLimit: async (items, _n, fn) => { const o = []; for (const x of items) o.push(await fn(x)); return o; },
+      referrerMap: async () => new Map(),
+    };
+  };
+
+  const all = new Set(['0xann', '0xben', '0xcal', '0xdee', '0xeve', '0xfin', '0xgus', '0xhal']);
+  const teamsFor = (verified) => require('./tugEvent').buildStandings(build(verified), cfg, now)
+    .then((r) => new Map(r.players.filter((p) => p.counted).map((p) => [p.wallet, p.team])));
+
+  return teamsFor(all).then((before) => {
+    // ann and cal lose verification and drop out.
+    const reduced = new Set([...all].filter((w) => w !== '0xann' && w !== '0xcal'));
+    return teamsFor(reduced).then((after) => {
+      for (const [w, team] of after) {
+        assert.equal(team, before.get(w), `${w} changed team when others dropped out`);
+      }
+    });
+  });
 });
