@@ -20,6 +20,16 @@
       "amountToPlayers": 50,
       "players": 10,
       "tx": "0xdc43bef25b7e96a2c8685de052bddbfd9adbd4e374f384d0dbdaf2c4ef9c3d84"
+    },
+    {
+      "competition": "Loyalty Pool (most consistent players)",
+      "window": "one-off",
+      "paidDate": "2026-08",
+      "asset": "G$",
+      "amountToPlayers": 320000,
+      "players": 5,
+      "tx": null,
+      "proof": "on-chain, tx hash pending backfill"
     }
   ]
 }
