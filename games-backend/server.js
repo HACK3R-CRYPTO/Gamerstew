@@ -5795,10 +5795,13 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
     const untilMs = req.query.until ? Date.parse(String(req.query.until))
       : (CREATOR_CONTEST_END ? Date.parse(CREATOR_CONTEST_END) : Date.now());
 
-    // Play data (who has played the qualifying games) comes from the warm tug
-    // cache — same qualification bar, no extra subgraph calls.
-    const { plays, cfg } = await getTugStandings();
-    const qualifyGames = cfg?.qualifyGames ?? 3;
+    // Play data comes from the warm tug cache — no extra subgraph calls.
+    // For the creator contest a referral counts once the player VERIFIES; there
+    // is no play requirement (minGames defaults to 0). Pass ?minGames=3 to also
+    // require the games, matching the in-app tug bar. This is deliberately
+    // separate from the tug prize, which always needs verify AND play.
+    const { plays } = await getTugStandings();
+    const minGames = Number.isFinite(Number(req.query.minGames)) ? Math.max(0, Number(req.query.minGames)) : 0;
 
     // Referrals within the window, from the intent table's set_at.
     let rows = [];
@@ -5823,8 +5826,8 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
     const qual = new Map();
     await mapLimit(referredWallets, 10, async (w) => {
       const pl = plays?.get(w);
-      const played = pl && (pl.qualifiedTs !== undefined || (pl.total || 0) >= qualifyGames);
-      const ever = played ? await everVerified(w) : false;   // skip the read if they never played
+      const played = minGames <= 0 ? true : Boolean(pl && (pl.total || 0) >= minGames);
+      const ever = played ? await everVerified(w) : false;   // skip the read when the play bar isn't met
       qual.set(w, Boolean(played && ever));
     });
 
@@ -5845,6 +5848,7 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
       updatedAt: new Date().toISOString(),
       window: { since: Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null,
                 until: Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null },
+      rule: minGames > 0 ? `verified + played ${minGames} games` : 'verified',
       entrants: leaderboard.length,
       leaderboard,
     });
