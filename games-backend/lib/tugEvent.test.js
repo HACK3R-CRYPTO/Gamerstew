@@ -271,3 +271,33 @@ test('a recruit who verified and played still counts after their verification la
     assert.equal(boss.recruits, 3, 'all 3 recruits count, including the 2 whose verification lapsed');
   });
 });
+
+test('new joiners fill the smaller side while stored players never move', () => {
+  // The balance-without-flipping contract: stored teams are the anchor (nobody
+  // moves), and a player with no stored team goes to whichever side is smaller.
+  const mk2 = (w, root, block) => ({ wallet: w, identity_root: root, qualified_block: block, qualified_log_idx: 0 });
+  const { compareQualificationOrder } = require('./tugScoring');
+  const { assignSides } = require('./tugEvent');
+
+  // Stored: 5 red, 2 blue (lopsided, like the live 30/25).
+  const stored = new Map([['0xa', 'red'], ['0xb', 'red'], ['0xc', 'red'], ['0xd', 'red'], ['0xe', 'red'], ['0xf', 'blue'], ['0xg', 'blue']]);
+  // Field = the 7 stored + 4 brand-new joiners.
+  const quals = [
+    ...[...stored.keys()].map((w, i) => mk2(w, `0xr${w}`, i)),
+    ...['0xn1', '0xn2', '0xn3', '0xn4'].map((w, i) => mk2(w, `0xroot${w}`, 100 + i)),
+  ];
+  const newAssign = [];
+  assignSides(quals, new Map(), compareQualificationOrder, stored, newAssign);
+  const teamOf = new Map(quals.map((q) => [q.wallet, q.team]));
+
+  // stored players unchanged
+  for (const [w, t] of stored) assert.equal(teamOf.get(w), t, `${w} must keep its stored team`);
+  // the 4 new joiners all filled blue (the smaller side)
+  const newTeams = ['0xn1', '0xn2', '0xn3', '0xn4'].map((w) => teamOf.get(w));
+  assert.deepEqual(newTeams, ['blue', 'blue', 'blue', 'red'], 'new joiners fill blue until it catches red, then alternate');
+  // and only the new ones were queued to persist
+  assert.equal(newAssign.length, 4);
+  // final split is now even-ish: 6 red / 5 blue
+  const red = [...teamOf.values()].filter((t) => t === 'red').length;
+  assert.equal(red, 6);
+});
