@@ -24,14 +24,14 @@ const T = {
 
 export default function CreatorContest() {
   const [rows, setRows] = useState<Row[] | null>(null);
-  const [meta, setMeta] = useState<{ updatedAt: string | null; window?: { since: string | null; until: string | null } }>({ updatedAt: null });
+  const [meta, setMeta] = useState<{ updatedAt: string | null; rule?: string; window?: { since: string | null; until: string | null } }>({ updatedAt: null });
 
   useEffect(() => {
     const qs = typeof window !== "undefined" ? window.location.search : "";
     let alive = true;
     const load = () => fetch(`/api/referrals/leaderboard${qs}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d) { setRows(d.leaderboard || []); setMeta({ updatedAt: d.updatedAt, window: d.window }); } })
+      .then((d) => { if (alive && d) { setRows(d.leaderboard || []); setMeta({ updatedAt: d.updatedAt, rule: d.rule, window: d.window }); } })
       .catch(() => {});
     load();
     const id = setInterval(load, 60_000);
@@ -47,7 +47,7 @@ export default function CreatorContest() {
           <div style={{ fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.16em", color: T.accent }}>CREATOR CONTEST</div>
           <h1 style={{ fontFamily: T.display, fontSize: 26, margin: "3px 0 0" }}>Qualified referrals</h1>
           <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, marginTop: 6, maxWidth: 520 }}>
-            Every creator ranked by referrals who <strong style={{ color: T.ink }}>verified and played the qualifying games</strong>.
+            Every creator ranked by referrals who <strong style={{ color: T.ink }}>{meta.rule || "verified"}</strong>.
             {meta.window?.since && <> Window: {fmtDate(meta.window.since)}{meta.window.until ? ` – ${fmtDate(meta.window.until)}` : ""}.</>}
           </p>
         </div>
@@ -73,7 +73,7 @@ export default function CreatorContest() {
         </div>
 
         <p style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center" }}>
-          A referral counts once the player verifies and plays the qualifying games. Updated every minute.
+          A referral counts once the player {meta.rule || "verified"}. Updated every minute.
           {meta.updatedAt && <> · {new Date(meta.updatedAt).toLocaleTimeString()}</>}
         </p>
       </div>
