@@ -571,6 +571,26 @@ export default function TugPage() {
                       {me.referral.nextUp.need} more to pass @{me.referral.nextUp.name} at #{me.referral.nextUp.rank}
                     </div>
                   )}
+                  {/* Who counted vs who is one nudge away — so a recruiter can
+                      chase the incomplete ones instead of guessing. */}
+                  {me.recruitBreakdown && (me.recruitBreakdown.countedN + me.recruitBreakdown.needPlayN + me.recruitBreakdown.needVerifyN) > 0 && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.hairline}`, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {me.recruitBreakdown.countedN > 0 && (
+                        <RecruitRow tint="#4ade80" label={`${me.recruitBreakdown.countedN} counted`} names={me.recruitBreakdown.counted} />
+                      )}
+                      {me.recruitBreakdown.needPlayN > 0 && (
+                        <RecruitRow tint="#fbbf24" label={`${me.recruitBreakdown.needPlayN} verified — just need to play`} names={me.recruitBreakdown.needPlay} />
+                      )}
+                      {me.recruitBreakdown.needVerifyN > 0 && (
+                        <RecruitRow tint={T.inkSoft} label={`${me.recruitBreakdown.needVerifyN} still to verify`} names={me.recruitBreakdown.needVerify} />
+                      )}
+                      {(me.recruitBreakdown.needPlayN + me.recruitBreakdown.needVerifyN) > 0 && (
+                        <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 600 }}>
+                          Nudge them and they count toward your prize.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -876,6 +896,26 @@ function shell(share: number): React.CSSProperties {
     // viewport and lets the content inside do the shrinking instead.
     width: "100%", minWidth: 0,
   };
+}
+
+function RecruitRow({ tint, label, names }: { tint: string; label: string; names: string[] }) {
+  // A status line plus the actual names, so a recruiter knows exactly who to
+  // chase. Names truncate gracefully; the count in the label is the truth.
+  const shown = names.slice(0, 6).join(", ");
+  const more = names.length > 6 ? ` +${names.length - 6}` : "";
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+      <span style={{ flexShrink: 0, width: 7, height: 7, borderRadius: 4, background: tint, transform: "translateY(1px)" }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: T.ink }}>{label}</div>
+        {shown && (
+          <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {shown}{more}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Cell({ label, value }: { label: string; value: string }) {
