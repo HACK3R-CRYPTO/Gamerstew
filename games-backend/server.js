@@ -5776,6 +5776,36 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
     const verified = await isVerified(wallet);            // 60-min cached
     const verificationDaysLeft = await verificationDaysLeftCached(wallet);  // 6-hr cached
 
+    // Your recruits, bucketed, so a recruiter can SEE who counted and who is one
+    // nudge away — instead of a bare "10 brought" with no way to chase the rest.
+    // Bounded to this wallet's own referrals (~a dozen), cached briefly.
+    let recruitBreakdown = null;
+    try {
+      const rbKey = `tugrecruits:${wallet}`;
+      recruitBreakdown = cacheGet(rbKey);
+      if (!recruitBreakdown) {
+        const { data: refs } = await supabase.from('season_v1_referrer_intent')
+          .select('wallet').ilike('referrer_wallet', wallet).limit(1000);
+        const recruitWallets = [...new Set((refs || []).map((r) => r.wallet?.toLowerCase()).filter(Boolean))]
+          .filter((w) => w !== wallet);
+        const counted = [], needPlay = [], needVerify = [];
+        await mapLimit(recruitWallets, 8, async (w) => {
+          const pl = plays?.get(w);
+          const played3 = Boolean(pl && pl.qualifiedTs !== undefined);
+          const ever = await everVerified(w);
+          const name = (pl && pl.username) || String(w).slice(2, 8);
+          if (ever && played3) counted.push(name);
+          else if (ever && !played3) needPlay.push(name);   // verified, just needs to play
+          else needVerify.push(name);                        // hasn't verified yet
+        });
+        recruitBreakdown = {
+          counted: counted.sort(), needPlay: needPlay.sort(), needVerify: needVerify.sort(),
+          countedN: counted.length, needPlayN: needPlay.length, needVerifyN: needVerify.length,
+        };
+        cacheSet(rbKey, recruitBreakdown, 3 * 60 * 1000);
+      }
+    } catch (e) { /* breakdown is a bonus; never fail /me over it */ }
+
     res.json({
       wallet,
       // identityRootOf is itself cached; only reached for players not yet in
@@ -5793,6 +5823,7 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
       verificationDaysLeft,
       teamPercentile,
       neighbours,
+      recruitBreakdown,
       referral: (() => {
         const board = _tugCache.data?.referralBoard || [];
         const row = board.find((r) => r.wallet === wallet);

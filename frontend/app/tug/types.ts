@@ -67,6 +67,11 @@ export interface TugMe {
      *  This is the number that actually makes someone go and recruit. */
     nextUp: { rank: number; name: string; need: number } | null;
   };
+  /** Your recruits, bucketed so you can see who counted and who to chase. */
+  recruitBreakdown?: {
+    counted: string[]; needPlay: string[]; needVerify: string[];
+    countedN: number; needPlayN: number; needVerifyN: number;
+  } | null;
 }
 
 /** What the player should do next. Exactly one thing, never a list. */
