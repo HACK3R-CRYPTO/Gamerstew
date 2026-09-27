@@ -26,7 +26,7 @@ human, one account, no bots.
 2. Tag @_blockhub @gamearenahq @celo @gooddollarorg
 3. Use #GameArena #QuickSkillGame
 4. Join the GameArena Telegram
-5. Share your referral link to bring players. A referral counts as QUALIFIED when the player VERIFIES. (No 3-game requirement for this contest.)
+5. Share your referral link to bring players. A referral counts as QUALIFIED when the player VERIFIES and plays at least 3 games.
 6. Vote for GameArena on Flowstate and submit proof.
 Submit content link + screenshot + Flowstate proof through the Blockhub GrindFi Hub.
 

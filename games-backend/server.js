@@ -5796,12 +5796,12 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
       : (CREATOR_CONTEST_END ? Date.parse(CREATOR_CONTEST_END) : Date.now());
 
     // Play data comes from the warm tug cache — no extra subgraph calls.
-    // For the creator contest a referral counts once the player VERIFIES; there
-    // is no play requirement (minGames defaults to 0). Pass ?minGames=3 to also
-    // require the games, matching the in-app tug bar. This is deliberately
-    // separate from the tug prize, which always needs verify AND play.
-    const { plays } = await getTugStandings();
-    const minGames = Number.isFinite(Number(req.query.minGames)) ? Math.max(0, Number(req.query.minGames)) : 0;
+    // A referral counts when the player VERIFIES and plays the qualifying games,
+    // matching the contest's announced rules. Override with ?minGames=0 to count
+    // verified-only, or any N for a different bar.
+    const { plays, cfg } = await getTugStandings();
+    const defaultMin = cfg?.qualifyGames ?? 3;
+    const minGames = Number.isFinite(Number(req.query.minGames)) ? Math.max(0, Number(req.query.minGames)) : defaultMin;
 
     // Referrals within the window, from the intent table's set_at.
     let rows = [];
