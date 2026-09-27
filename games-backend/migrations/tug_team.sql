@@ -15,4 +15,6 @@ alter table tug_team enable row level security;
 -- No update/delete policy: a team, once written, is immutable.
 drop policy if exists tug_team_read on tug_team;
 create policy tug_team_read on tug_team for select using (true);
-drop policy if exists tug_team_insert on tug_team for insert with check (true);
+
+drop policy if exists tug_team_insert on tug_team;
+create policy tug_team_insert on tug_team for insert with check (true);

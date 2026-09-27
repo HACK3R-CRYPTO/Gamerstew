@@ -5779,6 +5779,81 @@ app.get('/api/tug', requireSecret, async (_req, res) => {
   }
 });
 
+// Referral leaderboard for the creator / thread contest — every referrer ranked
+// by QUALIFIED referrals brought DURING the contest window. A referral counts
+// when the referred player was brought in the window (referral set_at inside
+// it), has ever passed a GoodDollar face check, and has played the qualifying
+// games. Windowed by ?since / ?until (ISO); defaults to the creator-contest env
+// window. This is a separate competition from the in-app tug recruiter prize,
+// so it must not reuse the tug board's all-time counts. Public: names + counts.
+const CREATOR_CONTEST_START = process.env.CREATOR_CONTEST_START || '';
+const CREATOR_CONTEST_END = process.env.CREATOR_CONTEST_END || '';
+app.get('/api/referrals/leaderboard', async (req, res) => {
+  try {
+    const sinceMs = req.query.since ? Date.parse(String(req.query.since))
+      : (CREATOR_CONTEST_START ? Date.parse(CREATOR_CONTEST_START) : NaN);
+    const untilMs = req.query.until ? Date.parse(String(req.query.until))
+      : (CREATOR_CONTEST_END ? Date.parse(CREATOR_CONTEST_END) : Date.now());
+
+    // Play data (who has played the qualifying games) comes from the warm tug
+    // cache — same qualification bar, no extra subgraph calls.
+    const { plays, cfg } = await getTugStandings();
+    const qualifyGames = cfg?.qualifyGames ?? 3;
+
+    // Referrals within the window, from the intent table's set_at.
+    let rows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('season_v1_referrer_intent')
+        .select('wallet, referrer_wallet, set_at').range(from, from + 999);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      rows.push(...data);
+      if (data.length < 1000) break;
+    }
+    const inWindow = rows.filter((r) => {
+      const t = Date.parse(r.set_at);
+      if (!Number.isFinite(t)) return true;               // undated rows: keep
+      if (Number.isFinite(sinceMs) && t < sinceMs) return false;
+      if (Number.isFinite(untilMs) && t > untilMs) return false;
+      return true;
+    });
+
+    // A referral qualifies when the player has ever verified AND played the bar.
+    const referredWallets = [...new Set(inWindow.map((r) => r.wallet?.toLowerCase()).filter(Boolean))];
+    const qual = new Map();
+    await mapLimit(referredWallets, 10, async (w) => {
+      const pl = plays?.get(w);
+      const played = pl && (pl.qualifiedTs !== undefined || (pl.total || 0) >= qualifyGames);
+      const ever = played ? await everVerified(w) : false;   // skip the read if they never played
+      qual.set(w, Boolean(played && ever));
+    });
+
+    const byRef = new Map();  // referrer -> Set(qualified recruit wallets)
+    for (const r of inWindow) {
+      const w = r.wallet?.toLowerCase(), ref = r.referrer_wallet?.toLowerCase();
+      if (!w || !ref || w === ref || !qual.get(w)) continue;
+      if (!byRef.has(ref)) byRef.set(ref, new Set());
+      byRef.get(ref).add(w);
+    }
+    const nameFor = (w) => { const pl = plays?.get(w); return (pl && pl.username) || String(w).slice(2, 8); };
+    const leaderboard = [...byRef.entries()]
+      .map(([ref, set]) => ({ name: nameFor(ref), qualifiedReferrals: set.size }))
+      .sort((a, b) => b.qualifiedReferrals - a.qualifiedReferrals || a.name.localeCompare(b.name))
+      .map((r, i) => ({ rank: i + 1, ...r }));
+
+    res.json({
+      updatedAt: new Date().toISOString(),
+      window: { since: Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null,
+                until: Number.isFinite(untilMs) ? new Date(untilMs).toISOString() : null },
+      entrants: leaderboard.length,
+      leaderboard,
+    });
+  } catch (e) {
+    console.warn('referral leaderboard failed:', e?.message || e);
+    res.status(503).json({ error: 'unavailable' });
+  }
+});
+
 app.get('/api/tug/me', requireSecret, async (req, res) => {
   const wallet = String(req.query.wallet || '').toLowerCase();
   try {

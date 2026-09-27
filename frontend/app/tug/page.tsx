@@ -901,8 +901,10 @@ function shell(share: number): React.CSSProperties {
 function RecruitRow({ tint, label, names }: { tint: string; label: string; names: string[] }) {
   // A status line plus the actual names, so a recruiter knows exactly who to
   // chase. Names truncate gracefully; the count in the label is the truth.
-  const shown = names.slice(0, 6).join(", ");
-  const more = names.length > 6 ? ` +${names.length - 6}` : "";
+  // Show every name — a recruiter needs the full list to know exactly who to
+  // chase, not a "+4" they can't act on.
+  const shown = names.join(", ");
+  const more = "";
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
       <span style={{ flexShrink: 0, width: 7, height: 7, borderRadius: 4, background: tint, transform: "translateY(1px)" }} />
