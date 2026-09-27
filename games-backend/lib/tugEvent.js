@@ -84,30 +84,44 @@ function assignTeam(identityRoot) {
  * @param {Map}      referrerOf  wallet -> referrer wallet
  * @param {Function} cmp         the on-chain ordering comparator
  */
-function assignSides(quals, referrerOf, cmp) {
+function assignSides(quals, referrerOf, cmp, storedTeams, newAssignments) {
   const ordered = [...quals].sort(cmp);
   const teamOf = new Map();
 
-  // Pass 1: team is a PURE FUNCTION of the player's own identity hash.
+  // TEAM ASSIGNMENT: stored first, balance only NEW joiners, nobody ever moves.
   //
-  // It used to be a greedy running balance (assign each new qualifier to
-  // whichever side was smaller). That produced a perfect 23/23 but was
-  // catastrophically unstable: a player's side depended on the running count of
-  // everyone who qualified before them, so the moment ANY earlier player left
-  // the qualified set — verification lapsing on the 3-day GoodDollar window, or
-  // the subgraph re-indexing after the pause — the greedy pass reshuffled
-  // everyone downstream. Players with real points were flipped Red->Blue
-  // through no action of their own. Reported live: a teammate with 53 points
-  // moved to the other team.
+  // Two rules, in this order:
+  //   1. If a player already has a STORED team, use it. This is the anchor that
+  //      makes teams stable: once you are on a side you never move, no matter
+  //      who lapses, joins, or how the set is re-indexed. It is why the old
+  //      greedy balance was ripped out — it moved existing players (a teammate
+  //      with 53 points was flipped) whenever the set changed.
+  //   2. A player with NO stored team is NEW. Put them on whichever side is
+  //      currently smaller (counting stored teams plus everyone assigned so far
+  //      this pass) and record it in newAssignments so it gets persisted. Ties
+  //      break on the identity hash so the very first player is not always red.
   //
-  // A hash of the identity root is fixed forever for one human and does not
-  // depend on anyone else, so a team, once assigned, never changes. Over 46
-  // qualified humans it splits 24/22; the tiny imbalance is a trade every
-  // player would take over watching their side flip mid-event. STABILITY BEATS
-  // A PERFECT SPLIT.
+  // Result: incoming players fill the smaller side and the split trends even,
+  // while nobody already placed is ever reshuffled. If storedTeams is absent
+  // (table not provisioned yet) it falls back to the pure identity hash — the
+  // current stable behaviour — so this can never break the live event.
+  const stored = storedTeams instanceof Map ? storedTeams : null;
+  const count = { red: 0, blue: 0 };
+  if (stored) for (const t of stored.values()) if (t === 'red' || t === 'blue') count[t] += 1;
+
   for (const q of ordered) {
-    q.team = assignTeam(q.identity_root);
-    teamOf.set(String(q.wallet).toLowerCase(), q.team);
+    const w = String(q.wallet).toLowerCase();
+    let team = stored ? stored.get(w) : null;
+    if (team !== 'red' && team !== 'blue') {
+      // new player (or no store): balance toward the smaller side
+      team = stored
+        ? (count.red === count.blue ? assignTeam(q.identity_root) : (count.red < count.blue ? 'red' : 'blue'))
+        : assignTeam(q.identity_root);
+      count[team] += 1;
+      if (newAssignments) newAssignments.push({ wallet: w, identity_root: q.identity_root, team });
+    }
+    q.team = team;
+    teamOf.set(w, team);
   }
 
   // Pass 2: route each recruit's bounty to their recruiter's side. Separate
@@ -276,11 +290,17 @@ async function buildStandings(deps, cfg = tugConfig(), nowMs = Date.now()) {
 
   const quals = checked.filter(Boolean);
 
-  // Decide sides once, in on-chain order, after the chain pass so every root is
-  // known. Recruits follow their recruiter; everyone else balances the sides.
+  // Decide sides. Stored teams are the anchor (nobody moves); new joiners fill
+  // the smaller side. loadTeams/saveTeams are optional deps — absent means the
+  // persistence table is not provisioned and we fall back to the identity hash.
   const referrerOf = referrerMap ? await referrerMap() : new Map();
   const { compareQualificationOrder } = require('./tugScoring');
-  assignSides(quals, referrerOf, compareQualificationOrder);
+  const storedTeams = (typeof deps.loadTeams === 'function') ? await deps.loadTeams().catch(() => null) : null;
+  const newAssignments = [];
+  assignSides(quals, referrerOf, compareQualificationOrder, storedTeams, newAssignments);
+  if (newAssignments.length && typeof deps.saveTeams === 'function') {
+    deps.saveTeams(newAssignments).catch(() => {});   // fire-and-forget; never blocks standings
+  }
 
   const dailyByWallet = new Map(
     quals.map((q) => {

@@ -5662,6 +5662,49 @@ async function tugReferrerMap() {
   return map;
 }
 
+// Persisted team assignments. This is the anchor that lets teams both stay
+// stable (nobody moves) AND stay balanced (new joiners fill the smaller side):
+// once a wallet is here, its team is fixed forever; only wallets NOT here are
+// balanced on the way in. Reads/writes tug_team; every path degrades to the
+// identity-hash fallback if the table is missing, so it can never break tug.
+async function loadTugTeams() {
+  const map = new Map();
+  try {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from('tug_team')
+        .select('wallet, team')
+        .eq('event_id', tugEvent.tugConfig().eventId)
+        .range(from, from + 999);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) if (r.wallet && (r.team === 'red' || r.team === 'blue')) map.set(String(r.wallet).toLowerCase(), r.team);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+  } catch (e) {
+    // Table not provisioned yet, or transient. Return null so assignSides falls
+    // back to the pure identity hash (current stable behaviour), never empty
+    // (empty would treat everyone as new and rebalance them).
+    return null;
+  }
+  // An empty table means "provisioned but not seeded yet". Treat that as the
+  // hash fallback too, so persistence only activates once the seed has frozen
+  // the current teams — a deploy before seeding can never trigger a reshuffle.
+  return map.size > 0 ? map : null;
+}
+async function saveTugTeams(rows) {
+  if (!rows || !rows.length) return;
+  const eventId = tugEvent.tugConfig().eventId;
+  try {
+    await supabase.from('tug_team').upsert(
+      rows.map((r) => ({ wallet: String(r.wallet).toLowerCase(), identity_root: r.identity_root || null, team: r.team, event_id: eventId })),
+      { onConflict: 'wallet,event_id', ignoreDuplicates: true },
+    );
+  } catch (e) { /* best-effort; a missed write just reassigns next rebuild */ }
+}
+
 let _tugCache = { at: 0, data: null };
 let _tugInflight = null;                        // single-flight guard
 const TUG_TTL_MS = Number(process.env.TUG_TTL_MS || 30_000);
@@ -5684,7 +5727,7 @@ async function getTugStandings() {
     console.log('🪢 tug rebuild START');
     try {
       const data = await tugEvent.buildStandings(
-        { subgraph, isVerified, identityRootOf, everVerified, mapLimit, referrerMap: tugReferrerMap },
+        { subgraph, isVerified, identityRootOf, everVerified, mapLimit, referrerMap: tugReferrerMap, loadTeams: loadTugTeams, saveTeams: saveTugTeams },
         tugEvent.tugConfig(),
         Date.now(),
       );
