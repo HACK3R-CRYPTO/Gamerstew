@@ -51,11 +51,11 @@ Headline arc: **227 → 879 players (3.9×)**, **12,483 → 61,966 games (5×)**
 Answering Rael's "total G$ circulation" question (she recalled ~1M before).
 Payout wallet: `0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d` · G$ token `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`.
 
-- Payout wallet total G$ sent out: **5,984,115 G$** (204 txs), of which:
+- Payout wallet total G$ sent out: **5,984,115 G$** (204 txs, 23 distinct recipients), of which:
   - **4,000,000 G$ → UniswapV3Pool** (`0x3d9e…b341`) — liquidity/market-making, NOT player payouts, excluded from circulation
-  - **1,442,427 G$ → Disperse contract** (`0xd152…2150`) — batch-fanned to 149 player wallets (≈ Arena Cup). Confirms Arena Cup IS on-chain (hash just not logged in /api/payouts)
-  - remainder direct to players
-- **G$ paid to players (on-chain): ~1,984,000 G$**
+  - **1,442,427 G$ → Disperse.app** (`0xd152…2150`) — the PUBLIC shared batch-payout contract (not GameArena's own). Our wallet funded this batch (size ≈ Arena Cup), which reaches players, but Disperse's aggregate recipient count is ecosystem-wide, NOT ours. To itemize our slice, trace the specific tx hashes our wallet funded.
+  - remainder (~541,688 G$) direct to ~21 addresses
+- **G$ paid to players (on-chain, excluding the 4M Uniswap liquidity): ~1,984,000 G$**
 - **G$ spent by players in-game (perks + habitats): 228,522 G$**
 - **Total game circulation ≈ 2.2M G$** (up from ~1M pre-Arena-Cup)
   - of which to GoodDollar UBI pool: 45,769 G$
