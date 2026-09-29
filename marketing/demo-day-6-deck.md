@@ -1,123 +1,108 @@
-# Demo Day 6 · Deck content + script
-GoodBuilders Season 4 · Demo Day 6, 3PM UTC · 5–6 min · Theme: From silent to spreading the word — turning the events engine into a growth machine.
-Slides stay SPARSE — bullets are anchors, SAY lines are for your mouth. Numbers verified on-chain 29 Sep 2026; re-pull the morning of.
-
-Punch line (use it on the title + recap): **"We went from silent to spreading the word."**
+# Final Demo Day · Deck content + script
+GoodBuilders Season 4 · Tue Sept 29, 3PM UTC · 3–4 min, sharp and evidence-backed.
+Structure follows the official brief exactly: 1 Where you started · 2 Where you are now · 3 Live demo · 4 Biggest game changer · 5 GoodBuilders impact · 6 What's next.
+Numbers verified on-chain 29 Sep 2026 — re-pull the morning of. Slides sparse; SAY lines are for your mouth.
 
 ---
 
-## Slide 1 · Title
+## Slide 1 · Title (~5s)
 
 **On slide:**
 GAME ARENA
-Quick skill games. Real G$. Real humans and the AIs they build.
-*From silent to spreading the word.*
-Ogazboiz · gamearenahq.xyz · GoodBuilders S4 · Demo Day 6
+Quick skill games. Real G$. Real humans — never bots.
+Ogazboiz · gamearenahq.xyz · GoodBuilders S4 · Final Demo Day
 
-**SAY (~5s):**
-"GameArena — quick skill games on Celo where verified humans compete for real G$. Last month we built the machine. This month we made noise with it."
-
----
-
-## Slide 2 · Recap (30s)
-
-**On slide:**
-We had the engine. We were too quiet.
-Events engine + on-chain payouts shipped — but growth was flat.
-
-**SAY (0:00–0:30):**
-"Honest recap: we'd built a real on-chain events engine — prize pools, duels, auto-payout — but we were sitting on it quietly and growth was flat. So this month we did one thing: we turned it into a growth machine and started spreading the word. A flagship event, a creator partnership, and a public proof page. Here's what shipped."
+**SAY:**
+"GameArena — quick skill games on Celo where verified humans compete for real G$. Here's the whole season in four minutes."
 
 ---
 
-## Slide 3 · What we shipped (2 min · demo here)
+## Slide 2 · Where we started (35s)
 
 **On slide:**
-Turned the engine into a growth machine
-· TUG OF WAR — our biggest event: 2,000,000 G$, two teams, 7 days. Every player becomes a recruiter — bring a verified human, score for your side.
-· CREATOR CONTEST × BLOCKHUB — partnered a creator community: make content, bring players, compete. External distribution, not just us.
-· PUBLIC PAYOUT LEDGER — every competition payout now on-chain and public at /impact, each with its Celoscan tx.
-· VERIFIED PLAYERS, REBUILT — we'd lost touch with our verified base as verifications lapsed. The events make verification the way in, and it worked: verified humans are back up to 168 (19%) and climbing.
-· FAIR-TEAMS + RECRUIT ENGINE — teams balance without ever moving a player; recruit credit is permanent once earned.
+The problem: play-to-earn pays bots, not people
+· Every reward game gets farmed by scripts and spare wallets
+· The prize pool drains to no one real — engagement is hollow
+Our bet: gate everything on PROOF OF PERSONHOOD
+· Quick skill games, one human one account, real G$ — zero bots ever paid
 
-**SAY (0:30–2:30):**
-"First, the flagship: Tug of War. Two teams, seven days, two million G$ in prizes. [DEMO: open gamearenahq.xyz/tug — show the live rope, the team split, the recruiter board.] The mechanic is the point: every player becomes a recruiter, and you only score by bringing VERIFIED humans who play. So the event doesn't just spread the word — it spreads verification. That fixed our biggest gap: we'd lost touch with our verified players as their verifications lapsed, and this month we rebuilt that base — verified humans are back up to 168, nineteen percent, and climbing. Second, distribution beyond us: we partnered with Blockhub, a creator community — creators make content and bring players for a share of the prize. Third, proof: every payout we've ever made is now public and on-chain at slash impact, each with its transaction. And under the hood we solved the hard fairness problem: teams balance as people join but nobody is ever moved off their side, and a recruiter keeps credit the moment their player verifies and plays."
+**SAY (0:00–0:35):**
+"We started with a problem every reward game has: bots farm it. The pool that's supposed to reach people drains to scripts and spare wallets. Our bet this season was to gate everything — every game, every prize — on GoodDollar proof-of-personhood. Quick skill games, one human one account, real G$, and zero bots ever paid. That constraint is the whole product."
 
 ---
 
-## Slide 4 · Proof of impact (1.5 min · REQUIRED · all verifiable)
+## Slide 3 · Where we are now (60s · SHOW GROWTH)
 
 **On slide:**
-Real money to real humans — on-chain, anyone can check
-· 168 VERIFIED HUMANS (19%) — rebuilt from a lapsed base · 875 players · 61,700+ games, every game a Celo tx
-· TUG OF WAR live now: 2,000,000 G$ in prizes · 61 of 160 guaranteed slots claimed
-· 366,135 G$ + $50 USDC paid to verified players last cycle — on-chain, tx-linked
-· Every competition payout public at /impact (community pools, loyalty, sprint, Arena Cup)
-· 21,385 G$ routed to the GoodDollar UBI pool · zero bots ever paid
-Verify: dune.com/ogazboiz/gamearena · gamearenahq.xyz/impact
+Traction — all on-chain, anyone can check
+· Players: 227 → 879 across the season (Demo Day 1 → now)
+· 163 VERIFIED humans (19%) — rebuilt from a lapsed base
+· 61,900+ games — every game a Celo transaction
+· 2,000,000+ G$ paid to verified players across competitions
+· 21,385 G$ routed to the GoodDollar UBI pool · zero bots paid
+Verify: gamearenahq.xyz/impact · dune.com/ogazboiz/gamearena
 
-**SAY (2:30–4:00):**
-"The proof, none of it self-reported. 875 players, 168 verified humans, over 61,000 games — each a Celo transaction. Tug of War is live right now with two million G$ in prizes, and sixty-one of the hundred-and-sixty guaranteed payout slots are already claimed. Last cycle we paid 366,000 G$ plus fifty in USDC straight to verified players' wallets, on-chain, transactions linked. Every competition payout we've made is public on our impact page. Twenty-one thousand G$ into the UBI pool. And every payout is gated by GoodDollar face-verification, so zero bots have ever been paid."
+**SAY (0:35–1:35):**
+"Where we are now, none of it self-reported. We went from 227 players at Demo Day 1 to 879, and the number we actually optimize — verified humans — is 163, nineteen percent, rebuilt after we'd lost touch with our verified base. Over 61,000 games, each a Celo transaction. We've paid more than two million G$ to verified players through competitions, and routed 21,000 into the GoodDollar UBI pool. Every figure is on our impact page and on Dune. Growth is real and it's on-chain."
 
 ---
 
-## Slide 5 · Milestone progress (1 min · REQUIRED · % vs Flowstate)
+## Slide 4 · Live demo (45s)
 
 **On slide:**
-Season milestones (Flowstate)
-· Growth — players/verified/tx ...... exceeded (875 players, 168 verified vs 75 target, 61k tx vs 8k)
-· G$ to players through competitions .. exceeded (400k target — over 2M G$ + $50 USDC to date)
-· G$ to UBI ......................... exceeded (2,500 target — 21,385 G$)
-· Public Dune / GoodDollar economy ... 75% (economy dashboard live; payouts-by-competition panel next)
-· Competition automation ............ in progress (standings + notifications automated; payout batching next)
+Two things live right now
+· TUG OF WAR — a 7-day team event, 2,000,000 G$ in prizes, where every player recruits verified humans
+· /impact — every payout we've ever made, public and on-chain with its tx
 
-**SAY (4:00–5:00):**
-"Against the milestones we set: every growth number is past target — 875 players, 168 verified against a target of 75, 61,000 transactions against 8,000. G$ paid to players through competitions blew past the 400,000 target — we're over two million to date. UBI's at 21,000 against a 2,500 target. Two are still open: the GoodDollar economy dashboard is live on Dune at about 75% — the payouts-by-competition panel is what's left — and competition automation, where standings and notifications run themselves and payout batching is next. [REPLACE %s with your exact Flowstate figures.]"
+**SAY (1:35–2:20):**
+"Let me show you. [OPEN gamearenahq.xyz/tug] This is Tug of War, live now — two teams, seven days, two million G$. The mechanic is the growth engine: you only score by bringing verified humans who play, so the event spreads verification instead of us marketing it. [OPEN /impact] And this is our proof page — every payout we've made, public, on-chain, each with its transaction. Nothing here is a claim; it's all a link."
 
 ---
 
-## Slide 6 · What broke (30s · one honest blocker)
+## Slide 5 · Biggest game changer (35s)
 
 **On slide:**
-The event froze — and we hardened it
-Our subgraph paused mid-event (indexer credit limit), freezing the Tug of War board ~16h.
-Caught it, resumed it, everything counted retroactively — no data lost.
-Next: billing safeguard + a stall monitor so a live event never freezes silently again.
+The insight that shifted the season
+We stopped chasing signups. We made every prize REQUIRE a verified human.
+→ Growth and verification became the SAME motion.
+The Tug of War doesn't market the game — it markets proof-of-personhood.
 
-**SAY (~30s):**
-"Our honest blocker: mid-event, our on-chain indexer hit a credit limit and paused — it froze the Tug of War leaderboard for about sixteen hours. Every game was still saved on-chain the whole time, so when we resumed it, all of it counted retroactively and nobody lost anything. But it should never have happened silently during a live prize event. We're adding a billing safeguard and a stall monitor so the next freeze pings us before a player ever feels it."
+**SAY (2:20–2:55):**
+"The one thing that changed our trajectory: we stopped chasing signups and made every prize require a verified human to earn it. The moment we did that, growth and verification stopped being two problems — they became the same motion. Our biggest event isn't marketing the games, it's marketing proof-of-personhood, and that's why the verified base rebuilt itself. That reframe is the whole season."
 
 ---
 
-## Slide 7 · Milestones ahead (30s)
+## Slide 6 · GoodBuilders impact (30s)
 
 **On slide:**
-Next
-· Dune payouts-by-competition panel — close the last of the GoodDollar dashboard
-· Competition automation — scheduled sealing + hands-off payout batching
-· Verification retention — a re-verify nudge system (the 3-day window is the real ceiling)
-· Roll the events engine to more partners — Blockhub is the first of many
+What the program unlocked
+· GoodDollar proof-of-personhood — the moat. "Zero bots paid" only exists because of it.
+· GoodDollar UBI routing — 20% of every spend flows back to real people
+· GoodAgents partnership (fellow builder) — players deploy AI agents into the arena
+· Demo-day cadence + mentor — forced shipping discipline every two weeks
 
-**SAY (~30s):**
-"Next: finish the GoodDollar Dune dashboard with a payouts-by-competition panel. Full competition automation — scheduled sealing and hands-off payout batching. A verification-retention system — the three-day reverify window is our real ceiling, so we're building nudges around it. And rolling the events engine out to more partner communities — Blockhub is the first of many."
+**SAY (2:55–3:25):**
+"GoodBuilders specifically: GoodDollar's face verification is our moat — 'zero bots paid' is only true because of it, and it's the thing no competitor has. The UBI routing sends twenty percent of every spend back to real people. Through GoodAgents, a fellow builder, players deploy their own AI agents into the arena. And the demo-day cadence and our mentor forced us to ship something real every two weeks. This is a GoodDollar-native product, not a Celo app that bolted it on."
 
 ---
 
-## Slide 8 · Ask (15s)
+## Slide 7 · What's next (30s)
 
 **On slide:**
-The ask
-· Intros to creator communities / partners to run contests on GameArena (like Blockhub)
-· A direct line to GoodCollective to formalize UBI routing + add more collectives
+Where we take this past the season
+· GAME ARENA INSIDE OTHER APPS — our games playable in a partner chat app's DMs, bringing their users into GameArena without them leaving
+· Verification retention — a re-verify system around the 3-day window
+· The events engine to more partners — BlockHub creator contest is the first
+· MiniPay listing — GameArena in the pocket of the Global South
 
-**SAY (~15s):**
-"Two asks: intros to creator communities or partners who'd run a contest on GameArena the way Blockhub is, and a direct line to GoodCollective to formalize our UBI routing and add more collectives."
+**SAY (3:25–3:55):**
+"What's next, past the season: we're embedding GameArena's games inside a partner chat app's DMs — their users play our game and become GameArena players without ever leaving their thread. A verification-retention system around the reverify window. Rolling the events engine to more partners — our BlockHub creator contest is the first. And a MiniPay listing, to put GameArena in the pocket of the Global South. Watch this one. Thank you."
 
 ---
 
 ## Checklist (before Demo Day)
-- ☐ Re-pull live numbers the morning of: players / verified / games / UBI (verified-stats + /api/stats + Dune).
-- ☐ Confirm Tug of War is live and the board is moving (subgraph not paused) before the demo.
-- ☐ Have /impact and /tug open in tabs for the live demo.
-- ☐ Replace Slide 5 %s with your exact Flowstate milestone numbers.
-- ☐ Impact page now shows DD1→DD6 momentum — pull it up to show the growth curve.
+- ☐ Re-pull the morning of: players / verified / games / UBI (verified-stats + /api/stats + Dune).
+- ☐ Confirm the Tug of War board is live (subgraph NOT paused) before the demo — it's the flagship.
+- ☐ Have /tug and /impact open in tabs.
+- ☐ Update Flow State metrics + milestones BEFORE the session (Rael flagged this).
+- ☐ Pull up /impact's DD1→DD6 momentum curve to show growth visually.
