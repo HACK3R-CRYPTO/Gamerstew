@@ -63,9 +63,13 @@ const DD2 = { players: 392, games: 14416, ubi: 1217, perkSpendG: 3766 };
 // (Aug 6) — baked into the baseline so Epoch-4 deltas are purely organic.
 // Chain state at Demo Day 3 (Aug 11, 2026 15:00 UTC · block 74559642).
 const DD3 = { players: 487, games: 20448, ubi: 13029, perkSpendG: 12722, perkPurchases: 1821 };
+// Demo Day 4 snapshot (Aug 25) — historical track.
+const DD4 = { players: 664, games: 51000, ubi: 21385, perkSpendG: null };
+// Demo Day 5 snapshot (Sep 10) — the previous demo day; current epoch baseline.
+const DD5 = { players: 737, games: 57000, ubi: 21385, perkSpendG: null };
 // "Now" fallback — used only if the live subgraph fetch fails, so the page
 // never renders empty. Live values override these on load.
-const NOW_FALLBACK = { players: DD3.players, games: DD3.games, ubi: DD3.ubi };
+const NOW_FALLBACK = { players: DD5.players, games: DD5.games, ubi: DD5.ubi };
 // Perk shop fallbacks (live perkShopStat overrides on load).
 const PERKS = { purchases: DD3.perkPurchases, spendG: DD3.perkSpendG };
 // Surprise loyalty payout to the 5 most consistent players (one-off, kept out
@@ -158,22 +162,27 @@ function KPI({ label, value, unit, tint, sub, delay }: { label: string; value: s
 // Full-track momentum row: DD1 → DD2 → DD3 → now, plus this-epoch Δ. The bar
 // keeps the two-tone read — dim = where we stood at the start of THIS epoch
 // (DD3), bright = growth added since. basePct = DD3 / current.
-function MomentumRow({ label, dd1, dd2, dd3, now, delta, tint, basePct }: { label: string; dd1: string; dd2: string; dd3: string; now: string; delta: string; tint: string; basePct: number }) {
+const MOMENTUM_GRID = "1.2fr repeat(6, 0.46fr) 0.6fr";
+function MomentumRow({ label, cols, delta, tint, basePct }: { label: string; cols: string[]; delta: string; tint: string; basePct: number }) {
   const clamped = Math.max(0, Math.min(100, basePct));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 0.45fr 0.45fr 0.5fr 0.65fr 0.55fr", alignItems: "center", gap: 6, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
+    <div style={{ display: "grid", gridTemplateColumns: MOMENTUM_GRID, alignItems: "center", gap: 5, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <span style={{ fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 700 }}>{label}</span>
+        <span style={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700 }}>{label}</span>
         <div className="impact-barfill" style={{ display: "flex", height: 6, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
           <div style={{ width: `${clamped}%`, background: tint, opacity: 0.35 }} />
           <div style={{ flex: 1, background: tint, boxShadow: `0 0 12px ${tint}99` }} />
         </div>
       </div>
-      <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd1}</span>
-      <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.inkSoft, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd2}</span>
-      <span style={{ fontFamily: T.display, fontSize: 14, color: T.inkDim, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{dd3}</span>
-      <span style={{ fontFamily: T.display, fontSize: 17, color: T.ink, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{now}</span>
-      <span style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 800, color: tint, textAlign: "right" }}>{delta}</span>
+      {cols.map((v, i) => (
+        <span key={i} style={{
+          fontFamily: T.display,
+          fontSize: i === cols.length - 1 ? 15 : 11,
+          color: i === cols.length - 1 ? T.ink : (i >= cols.length - 2 ? T.inkDim : T.inkSoft),
+          textAlign: "right", fontVariantNumeric: "tabular-nums",
+        }}>{v}</span>
+      ))}
+      <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: tint, textAlign: "right" }}>{delta}</span>
     </div>
   );
 }
@@ -256,9 +265,9 @@ export default function ImpactPage() {
   // Epoch-4 momentum is measured from the Demo Day 3 baseline. Epoch 3's
   // one-time 10,000 G$ habitat unlock is baked into DD3.ubi, so every delta
   // below is purely organic — no special-casing needed this epoch.
-  const playersDelta = Math.round(((Math.max(players, DD3.players) - DD3.players) / DD3.players) * 100);
-  const gamesDelta = Math.max(0, games - DD3.games);
-  const ubiDelta = Math.round(((Math.max(ubi, DD3.ubi) - DD3.ubi) / DD3.ubi) * 100);
+  const playersDelta = Math.round(((Math.max(players, DD5.players) - DD5.players) / DD5.players) * 100);
+  const gamesDelta = Math.max(0, games - DD5.games);
+  const ubiDelta = Math.round(((Math.max(ubi, DD5.ubi) - DD5.ubi) / DD5.ubi) * 100);
 
   // Flow split · of every G$ spent on a perk, ~20% routes to the GoodDollar UBI pool
   // UBI and ~80% goes to the treasury that funds operations.
@@ -301,7 +310,7 @@ export default function ImpactPage() {
 
         {/* ── header ── */}
         <div className="impact-reveal">
-          <Eyebrow tint={T.accent}>The G$ Economy · Epoch 4</Eyebrow>
+          <Eyebrow tint={T.accent}>The G$ Economy · Epoch 6</Eyebrow>
           <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 38 : 28, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em", lineHeight: 1.04, textWrap: "balance" } as React.CSSProperties}>
             Where real G$ moves in the arena
           </h1>
@@ -326,11 +335,11 @@ export default function ImpactPage() {
               <span style={{ fontFamily: T.display, fontSize: isDesktop ? 30 : 24, color: T.accent }}>G$</span>
             </div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, padding: "5px 12px", borderRadius: 999, background: `${T.accent}1f`, border: `1px solid ${T.accent}55` }}>
-              <span style={{ fontFamily: T.display, fontSize: 13, color: T.accent }}>EPOCH 4</span>
-              <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>Demo Day 3 → Demo Day 4</span>
+              <span style={{ fontFamily: T.display, fontSize: 13, color: T.accent }}>EPOCH 6</span>
+              <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 600 }}>Demo Day 5 → Demo Day 6</span>
             </div>
             <p style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 440 }}>
-              Cumulative GoodDollar in the UBI pool — funded by play, not by us. Epoch-4 growth is measured from the Demo Day 3 snapshot, all organic.
+              Cumulative GoodDollar in the UBI pool — funded by play, not by us. Epoch-6 growth is measured from the Demo Day 5 snapshot, all organic.
             </p>
           </div>
           {/* inline supporting stats */}
@@ -356,22 +365,22 @@ export default function ImpactPage() {
 
         {/* ── epoch momentum ── */}
         <Card delay={240}>
-          <Eyebrow>Momentum · Demo Day 1 → 2 → 3 → 4</Eyebrow>
+          <Eyebrow>Momentum · Demo Day 1 → 6</Eyebrow>
           <div style={{ marginTop: 4, marginBottom: 10 }}>
             <span style={{ fontFamily: T.display, fontSize: 21, color: T.ink }}>The full track</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 0.45fr 0.45fr 0.5fr 0.65fr 0.55fr", gap: 6, paddingBottom: 6 }}>
-            {["Metric", "DD1", "DD2", "DD3", "Now", "Δ ep4"].map((h, i) => (
-              <span key={h} style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
+          <div style={{ display: "grid", gridTemplateColumns: MOMENTUM_GRID, gap: 5, paddingBottom: 6 }}>
+            {["Metric", "DD1", "DD2", "DD3", "DD4", "DD5", "DD6", "Δ ep6"].map((h, i) => (
+              <span key={h} style={{ fontFamily: T.body, fontSize: 9, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", textAlign: i === 0 ? "left" : "right" }}>{h}</span>
             ))}
           </div>
-          <MomentumRow label="Players" dd1={fmtInt(DD1.players)} dd2={fmtInt(DD2.players)} dd3={fmtInt(DD3.players)} now={fmtInt(Math.max(players, DD3.players))} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD3.players / Math.max(players, DD3.players)) * 100} />
-          <MomentumRow label="Games on-chain" dd1={fmtG(DD1.games)} dd2={fmtG(DD2.games)} dd3={fmtG(DD3.games)} now={fmtG(Math.max(games, DD3.games))} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD3.games / Math.max(games, DD3.games)) * 100} />
-          <MomentumRow label="Perk spend" dd1="—" dd2={fmtG(DD2.perkSpendG)} dd3={fmtG(DD3.perkSpendG)} now={fmtG(Math.max(perkSpendG, DD3.perkSpendG))} delta={`+${Math.round(((Math.max(perkSpendG, DD3.perkSpendG) - DD3.perkSpendG) / DD3.perkSpendG) * 100)}%`} tint={T.amber} basePct={(DD3.perkSpendG / Math.max(perkSpendG, DD3.perkSpendG)) * 100} />
-          <MomentumRow label="G$ to UBI" dd1={fmtG(DD1.ubi)} dd2={fmtG(DD2.ubi)} dd3={fmtG(DD3.ubi)} now={fmtG(Math.max(ubi, DD3.ubi))} delta={`+${ubiDelta}%`} tint={T.accent} basePct={(DD3.ubi / Math.max(ubi, DD3.ubi)) * 100} />
+          <MomentumRow label="Players" cols={[fmtInt(DD1.players), fmtInt(DD2.players), fmtInt(DD3.players), fmtInt(DD4.players), fmtInt(DD5.players), fmtInt(Math.max(players, DD5.players))]} delta={`+${playersDelta}%`} tint={T.green} basePct={(DD5.players / Math.max(players, DD5.players)) * 100} />
+          <MomentumRow label="Games on-chain" cols={[fmtG(DD1.games), fmtG(DD2.games), fmtG(DD3.games), fmtG(DD4.games), fmtG(DD5.games), fmtG(Math.max(games, DD5.games))]} delta={`+${fmtInt(gamesDelta)}`} tint={T.cyan} basePct={(DD5.games / Math.max(games, DD5.games)) * 100} />
+          <MomentumRow label="Perk spend" cols={["—", fmtG(DD2.perkSpendG), fmtG(DD3.perkSpendG), "—", "—", fmtG(Math.max(perkSpendG, DD3.perkSpendG))]} delta={`+${Math.round(((Math.max(perkSpendG, DD3.perkSpendG) - DD3.perkSpendG) / DD3.perkSpendG) * 100)}%`} tint={T.amber} basePct={(DD3.perkSpendG / Math.max(perkSpendG, DD3.perkSpendG)) * 100} />
+          <MomentumRow label="G$ to UBI" cols={[fmtG(DD1.ubi), fmtG(DD2.ubi), fmtG(DD3.ubi), fmtG(DD4.ubi), fmtG(DD5.ubi), fmtG(Math.max(ubi, DD5.ubi))]} delta={`+${ubiDelta}%`} tint={T.accent} basePct={(DD5.ubi / Math.max(ubi, DD5.ubi)) * 100} />
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontFamily: T.body, fontSize: 11.5, color: T.inkSoft }}>
-              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, opacity: 0.35 }} /> baseline (DD3)
+              <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, opacity: 0.35 }} /> baseline (DD5)
               <span style={{ width: 10, height: 6, borderRadius: 2, background: T.accent, marginLeft: 8 }} /> growth this epoch
             </span>
           </div>
