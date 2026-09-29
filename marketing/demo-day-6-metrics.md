@@ -47,6 +47,23 @@ Baselines frozen from chain at each demo day; DD6 is live now.
 Headline arc: **227 → 879 players (3.9×)**, **12,483 → 61,966 games (5×)**,
 **385 → 45,769 G$ to UBI (119×)** from Demo Day 1 to now.
 
+## Total G$ circulation in GameArena (on-chain, from payout wallet + subgraph)
+Answering Rael's "total G$ circulation" question (she recalled ~1M before).
+Payout wallet: `0xa479b8c6030cBB01f8E9F6AcB2Ad2C757C81894d` · G$ token `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A`.
+
+- Payout wallet total G$ sent out: **5,984,115 G$** (204 txs), of which:
+  - **4,000,000 G$ → UniswapV3Pool** (`0x3d9e…b341`) — liquidity/market-making, NOT player payouts, excluded from circulation
+  - **1,442,427 G$ → Disperse contract** (`0xd152…2150`) — batch-fanned to 149 player wallets (≈ Arena Cup). Confirms Arena Cup IS on-chain (hash just not logged in /api/payouts)
+  - remainder direct to players
+- **G$ paid to players (on-chain): ~1,984,000 G$**
+- **G$ spent by players in-game (perks + habitats): 228,522 G$**
+- **Total game circulation ≈ 2.2M G$** (up from ~1M pre-Arena-Cup)
+  - of which to GoodDollar UBI pool: 45,769 G$
+
+Note: the /api/payouts ledger shows 2,106,455 G$ with Arena Cup + Loyalty marked
+`tx: null`. On-chain the payments DID settle (via Disperse) — backfill the tx
+hashes into the ledger so it matches the chain.
+
 ## vs GoodBuilders season targets (all beaten)
 - Players: 879 vs 200 target — **4.4×**
 - Verified humans: 163 vs 75 target — **2.2×**
