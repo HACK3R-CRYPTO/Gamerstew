@@ -39,6 +39,7 @@ missing.
 |---|---|
 | G$ (GoodDollar) | `0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A` |
 
-Public data sources: subgraph
-`https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn`
-· impact page https://gamearenahq.xyz/impact · Dune dune.com/ogazboiz/gamearena
+Public data sources:
+- G$ economy dashboard (the full picture): https://dune.com/ogazboiz/gamearena-gooddollar-g-economy
+- Subgraph: `https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn`
+- Impact page: https://gamearenahq.xyz/impact
