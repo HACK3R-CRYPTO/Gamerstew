@@ -129,6 +129,33 @@ function requireAgentKey(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
+// ─── Partner keys — same env as lib/partner.js (PARTNER_GAMES + PARTNER_KEY_*) ─
+// Loaded here too so server-to-server routes a partner BFF calls directly (the
+// faucet, below) can accept a valid x-partner-key without the master secret.
+const PARTNER_KEYS = (() => {
+  const set = new Set();
+  (process.env.PARTNER_GAMES || '')
+    .split(',').map((s) => s.trim()).filter(Boolean)
+    .forEach((pair) => {
+      const slug = pair.split(':')[0];
+      const key = process.env[`PARTNER_KEY_${(slug || '').toUpperCase()}`];
+      if (key) set.add(key);
+    });
+  return set;
+})();
+function isPartnerKey(req) {
+  const k = req.headers['x-partner-key'];
+  return !!k && PARTNER_KEYS.has(k);
+}
+// Faucet auth: the master internal secret (frontend) OR a valid partner key
+// (a partner BFF funding a player it just verified). Flags req.viaPartner so the
+// route can apply the smaller partner drip.
+function requireSecretOrPartner(req, res, next) {
+  if (req.headers['x-internal-secret'] === INTERNAL_SECRET) return next();
+  if (isPartnerKey(req)) { req.viaPartner = true; return next(); }
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
 // For no-origin requests (Next.js server actions) require INTERNAL_SECRET.
 // Browser requests must come from an allowed origin.
 app.use((req, res, next) => {
@@ -159,6 +186,15 @@ app.use((req, res, next) => {
   // check is meaningless for server-to-server traffic — there is no browser to
   // protect and the header is attacker-controlled; the key is the real auth.
   if (req.path.startsWith('/api/partner/')) {
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  // Faucet · also called server-to-server by a partner BFF (holding x-partner-key)
+  // to fund a just-verified player, in addition to the frontend's no-origin +
+  // internal-secret call. The route (requireSecretOrPartner) is the real auth, so
+  // let the request through the origin gate to reach it.
+  if (req.path === '/api/faucet') {
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     return next();
   }
@@ -4905,6 +4941,10 @@ app.get('/api/arena/ladder', requireSecret, async (req, res) => {
 // When ON, only Self-verified wallets get the drip · strongest sybil
 // gate but adds onboarding friction (player must verify first).
 const FAUCET_DRIP_CELO        = process.env.FAUCET_DRIP_CELO || '0.7';
+// Smaller drip for partner-BFF calls (e.g. Square): a claim/mint costs ~0.06
+// CELO, so 0.1 covers it with margin and funds ~7 players for the price of one
+// full onboarding drip. Keeps the main onboarding drip untouched.
+const FAUCET_PARTNER_DRIP_CELO = process.env.FAUCET_PARTNER_DRIP_CELO || '0.1';
 // A wallet under this CELO balance is treated as "out of gas" and eligible for
 // a drip. Was 0.001, which left a dead zone: a wallet holding dust (e.g. 0.005
 // CELO) was above the line so the faucet refused it, yet it had far too little
@@ -4915,8 +4955,15 @@ const FAUCET_MAX_PER_IP_DAY   = Number(process.env.FAUCET_MAX_PER_IP_DAY || '5')
 const FAUCET_MAX_PER_DAY      = Number(process.env.FAUCET_MAX_PER_DAY || '50');
 const FAUCET_REQUIRE_GOODDOLLAR = process.env.FAUCET_REQUIRE_GOODDOLLAR === 'true';
 
-app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
+// Per-IP strictLimiter is skipped for partner-BFF calls: they all originate from
+// the partner's server IPs, so a per-IP cap would false-throttle legit players in
+// a burst. The partner path is still bounded by one-drip-per-wallet-ever, the
+// GoodDollar gate, and the global daily kill-switch.
+const faucetRateGate = (req, res, next) => (req.viaPartner ? next() : strictLimiter(req, res, next));
+app.post('/api/faucet', requireSecretOrPartner, faucetRateGate, async (req, res) => {
   const { address, privyUserId, ipHash } = req.body || {};
+  // Partner-BFF calls get the smaller drip; frontend onboarding keeps the full one.
+  const dripCelo = req.viaPartner ? FAUCET_PARTNER_DRIP_CELO : FAUCET_DRIP_CELO;
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
     return res.status(400).json({ success: false, error: 'Missing or invalid address' });
   }
@@ -4995,7 +5042,7 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
       }
     }
 
-    const amountWei = ethers.parseEther(FAUCET_DRIP_CELO);
+    const amountWei = ethers.parseEther(dripCelo);
 
     // Faucet self-balance gate · if the faucet WALLET itself can't cover the
     // drip (+ a little gas), surface a clear `faucet_empty` reason instead of
@@ -5022,8 +5069,8 @@ app.post('/api/faucet', requireSecret, strictLimiter, async (req, res) => {
       tx_hash:       tx.hash,
     });
 
-    console.log(`⛽ Faucet: sent ${FAUCET_DRIP_CELO} CELO to ${lower} (tx: ${tx.hash.slice(0, 10)}...)`);
-    return res.json({ success: true, txHash: tx.hash, amount: FAUCET_DRIP_CELO });
+    console.log(`⛽ Faucet: sent ${dripCelo} CELO to ${lower}${req.viaPartner ? ' (partner)' : ''} (tx: ${tx.hash.slice(0, 10)}...)`);
+    return res.json({ success: true, txHash: tx.hash, amount: dripCelo });
   } catch (e) {
     console.error(`⛽ Faucet failed for ${lower}:`, e.message);
     return res.status(500).json({ success: false, error: 'Faucet transfer failed' });
