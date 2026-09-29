@@ -36,7 +36,7 @@ Where we started · Demo Day 1: 227 players, 385 G$ to UBI — the open question
 
 **On slide:**
 Demo Day 1 → now — every number on-chain
-· Players: 227 → 879 (3.9×) · 163 verified humans
+· Players: 227 → 879 (3.9×) · 160+ verified humans
 · Games: 12,483 → 61,966 (5×) — each a Celo transaction
 · G$ to UBI pool: 385 → 45,769 (119×) — target was 2,500
 · 121,922 G$ in perk spend across 3,422 purchases
@@ -44,7 +44,7 @@ Demo Day 1 → now — every number on-chain
 Verify: gamearenahq.xyz/impact · dune.com/ogazboiz/gamearena · PerkShop on Celoscan
 
 **SAY (0:35–1:35):**
-"Where we are now — none of it self-reported, and every number is on the same chart from Demo Day 1. Players: 227 to 879, nearly four times, and 163 of those are GoodDollar-verified humans. Games: twelve thousand to almost sixty-two thousand, each one a Celo transaction. G$ into the GoodDollar UBI pool went from 385 to over forty-five thousand — the season target was two and a half thousand. Real money is moving: a hundred and twenty thousand G$ in perk spend across thirty-four hundred purchases, and over two million G$ paid to verified players through competitions, where the target was four hundred thousand. Every figure is on our impact page, on Dune, and on the PerkShop contract on Celoscan."
+"Where we are now — none of it self-reported, and every number is on the same chart from Demo Day 1. Players: 227 to 879, nearly four times, and 160-plus of those are GoodDollar-verified humans. Games: twelve thousand to almost sixty-two thousand, each one a Celo transaction. G$ into the GoodDollar UBI pool went from 385 to over forty-five thousand — the season target was two and a half thousand. Real money is moving: a hundred and twenty thousand G$ in perk spend across thirty-four hundred purchases, and over two million G$ paid to verified players through competitions, where the target was four hundred thousand. Every figure is on our impact page, on Dune, and on the PerkShop contract on Celoscan."
 
 ---
 

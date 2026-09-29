@@ -7,12 +7,12 @@ Short, evidence-backed, all on-chain. Numbers pulled live 2026-09-29 11:34 UTC
   12,483 → 61,966 (5×). G$ to the GoodDollar UBI pool 385 → 45,769 (119×). Nothing
   self-reported — every figure is on the subgraph and at gamearenahq.xyz/impact.
 
-- **Verified humans are the moat.** 163 verified humans (19%) — every game and prize
+- **Verified humans are the moat.** 160+ verified humans (~19%) — every game and prize
   gated by GoodDollar proof-of-personhood. Zero bots ever paid. This is the thing no
   competitor has.
 
-- **Every GoodBuilders target beaten.** 879 players (target 200, 4.4×), 163 verified
-  humans (target 75, 2.2×), 45,769 G$ to UBI (target 2,500, 18×), 2.1M G$ to players
+- **Every GoodBuilders target beaten.** 879 players (target 200, 4.4×), 160+ verified
+  humans (target 75, 2×+), 45,769 G$ to UBI (target 2,500, 18×), 2.1M G$ to players
   (target 400K, 5×). All auditable on the PerkShop contract and the Dune dashboard.
 
 - **Over 2,100,000 G$ paid to verified players** across four competitions this season
@@ -38,8 +38,7 @@ Short, evidence-backed, all on-chain. Numbers pulled live 2026-09-29 11:34 UTC
 
 - **What's next, past the season:** the social rails are shipped — friend duels (stake G$,
   winner takes 80%, 20% to UBI) and voice MARKOV. Next is scale: Month 3 targets of 200
-  wallets, 75 verified humans, 30 settled duels, 5 GoodCollectives — then GameArena's games
-  embedded inside a partner chat app's DMs, and a MiniPay listing.
+  wallets, 75 verified humans, 30 settled duels.
 
 One line if you only read one: *GameArena made every prize require a verified human, so
 growth and proof-of-personhood became the same motion — 227 → 879 players, 2.1M+ G$ to
