@@ -25,25 +25,26 @@ Why we built it — two problems
 · Web3 rewards never reached real people — wallet, gas, then bots farm the pool before anyone real gets in
 Our answer
 · 30-second skill games that sharpen you · Google sign-in · zero gas · every player a verified human · real GoodDollar income daily, especially for emerging markets
+Where we started · Demo Day 1: 227 players, 385 G$ to UBI — the open question was whether real humans would show up for skill games with no token hype
 
 **SAY (0:00–0:35):**
-"We started from two problems. One, we all reach for the phone when we're tired, scroll, and feel worse — we wanted a short break that leaves you sharper, a reset not an escape. Two, web3 rewards never reached real people: you needed a wallet, you needed gas, and once you got past that, bots had already farmed the pool. So GameArena is quick skill games you play with a Google sign-in and zero gas, where every player is a verified human, no bot ever wins, and real value comes as a bonus — GoodDollar income daily, which matters most in emerging markets. That constraint, verified humans only, is the whole product."
+"We started from two problems. One, we all reach for the phone when we're tired, scroll, and feel worse — we wanted a short break that leaves you sharper, a reset not an escape. Two, web3 rewards never reached real people: you needed a wallet, you needed gas, and once you got past that, bots had already farmed the pool. So GameArena is quick skill games you play with a Google sign-in and zero gas, where every player is a verified human, no bot ever wins, and real value comes as a bonus — GoodDollar income daily, which matters most in emerging markets. At Demo Day 1 we were 227 players and 385 G$ routed to UBI — the whole question was whether real humans would show up for skill games with no token hype. Here's the answer."
 
 ---
 
 ## Slide 3 · Where we are now (60s · SHOW GROWTH)
 
 **On slide:**
-Traction — all on-chain, anyone can check
-· Players: 227 → 879 across the season (Demo Day 1 → now)
-· 163 VERIFIED humans (19%) — rebuilt from a lapsed base
-· 61,900+ games — every game a Celo transaction
-· 2,000,000+ G$ paid to verified players across competitions
-· 21,385 G$ routed to the GoodDollar UBI pool · zero bots paid
-Verify: gamearenahq.xyz/impact · dune.com/ogazboiz/gamearena
+Demo Day 1 → now — every number on-chain
+· Players: 227 → 879 (3.9×) · 160+ verified humans
+· Games: 12,483 → 61,966 (5×) — each a Celo transaction
+· G$ to UBI pool: 385 → 45,769 (119×) — target was 2,500
+· 121,922 G$ in perk spend across 3,422 purchases
+· 2,106,455 G$ + $50 USDC paid to verified players — season target 400K (5×)
+Verify: gamearenahq.xyz/impact · dune.com/ogazboiz/gamearena · PerkShop on Celoscan
 
 **SAY (0:35–1:35):**
-"Where we are now, none of it self-reported. We went from 227 players at Demo Day 1 to 879, and the number we actually optimize — verified humans — is 163, nineteen percent, rebuilt after we'd lost touch with our verified base. Over 61,000 games, each a Celo transaction. We've paid more than two million G$ to verified players through competitions, and routed 21,000 into the GoodDollar UBI pool. Every figure is on our impact page and on Dune. Growth is real and it's on-chain."
+"Where we are now — none of it self-reported, and every number is on the same chart from Demo Day 1. Players: 227 to 879, nearly four times, and 160-plus of those are GoodDollar-verified humans. Games: twelve thousand to almost sixty-two thousand, each one a Celo transaction. G$ into the GoodDollar UBI pool went from 385 to over forty-five thousand — the season target was two and a half thousand. Real money is moving: a hundred and twenty thousand G$ in perk spend across thirty-four hundred purchases, and over two million G$ paid to verified players through competitions, where the target was four hundred thousand. Every figure is on our impact page, on Dune, and on the PerkShop contract on Celoscan."
 
 ---
 
@@ -65,10 +66,11 @@ Two things live right now
 The insight that shifted the season
 We stopped chasing signups. We made every prize REQUIRE a verified human.
 → Growth and verification became the SAME motion.
+Then we made the numbers provable: removed 896 sybil matches, gated ranking on a GamePass, moved scoring server-side.
 The Tug of War doesn't market the game — it markets proof-of-personhood.
 
 **SAY (2:20–2:55):**
-"The one thing that changed our trajectory: we stopped chasing signups and made every prize require a verified human to earn it. The moment we did that, growth and verification stopped being two problems — they became the same motion. Our biggest event isn't marketing the games, it's marketing proof-of-personhood, and that's why the verified base rebuilt itself. That reframe is the whole season."
+"The one thing that changed our trajectory: we stopped chasing signups and made every prize require a verified human to earn it. Growth and verification stopped being two problems and became the same motion. Then we made those numbers provable — we removed 896 sybil matches from wallets with no GamePass, gated ranking on a minted pass, and moved scoring server-side so a score can't be faked. So the traction I just showed you is provably real people, not inflation. That reframe is the whole season."
 
 ---
 
@@ -89,14 +91,14 @@ What the program unlocked
 ## Slide 7 · What's next (30s)
 
 **On slide:**
-Where we take this past the season
-· GAME ARENA INSIDE OTHER APPS — our games playable in a partner chat app's DMs, bringing their users into GameArena without them leaving
-· Verification retention — a re-verify system around the 3-day window
-· The events engine to more partners — BlockHub creator contest is the first
+The rails are built — next is scale
+· Shipped: friend duels (stake G$, winner takes 80%, 20% to UBI) + voice MARKOV — the social loop is live
+· Month 3 targets: 200 wallets · 75 verified humans · 30 settled duels · 5 GoodCollectives funded
+· GAME ARENA INSIDE OTHER APPS — our games in a partner chat app's DMs, no one leaves the thread
 · MiniPay listing — GameArena in the pocket of the Global South
 
 **SAY (3:25–3:55):**
-"What's next, past the season: we're embedding GameArena's games inside a partner chat app's DMs — their users play our game and become GameArena players without ever leaving their thread. A verification-retention system around the reverify window. Rolling the events engine to more partners — our BlockHub creator contest is the first. And a MiniPay listing, to put GameArena in the pocket of the Global South. Watch this one. Thank you."
+"What's next. The hard rails are already built and live — friend duels, where you stake G$ and the winner takes eighty percent with twenty going to UBI, and MARKOV, our AI opponent, now has a voice. So what's left is scale: our Month 3 targets are two hundred wallets, seventy-five verified humans, thirty settled duels, and five different GoodCollectives funded by player choice. Then we embed GameArena's games inside a partner chat app's DMs, so their users become our players without leaving the thread — and a MiniPay listing, to put this in the pocket of the Global South. Watch this one. Thank you."
 
 ---
 

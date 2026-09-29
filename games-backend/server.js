@@ -152,6 +152,17 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Partner API · server-to-server from partner BFFs (Square, etc.) holding the
+  // scoped x-partner-key and sending NO browser Origin. Gated by the key inside
+  // the partner router (requirePartner rejects missing/invalid keys), so let the
+  // no-origin request through here instead of dying on the origin gate. An origin
+  // check is meaningless for server-to-server traffic — there is no browser to
+  // protect and the header is attacker-controlled; the key is the real auth.
+  if (req.path.startsWith('/api/partner/')) {
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
   // Public read-only stats · the /impact page (and partners) read these. They're
   // cached, non-sensitive aggregates — the same numbers shown publicly on-site —
   // so they bypass the origin/secret gate with permissive CORS. Without this the
