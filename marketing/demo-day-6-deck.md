@@ -25,26 +25,26 @@ Why we built it — two problems
 · Web3 rewards never reached real people — wallet, gas, then bots farm the pool before anyone real gets in
 Our answer
 · 30-second skill games that sharpen you · Google sign-in · zero gas · every player a verified human · real GoodDollar income daily, especially for emerging markets
+Where we started · Demo Day 1: 227 players, 385 G$ to UBI — the open question was whether real humans would show up for skill games with no token hype
 
 **SAY (0:00–0:35):**
-"We started from two problems. One, we all reach for the phone when we're tired, scroll, and feel worse — we wanted a short break that leaves you sharper, a reset not an escape. Two, web3 rewards never reached real people: you needed a wallet, you needed gas, and once you got past that, bots had already farmed the pool. So GameArena is quick skill games you play with a Google sign-in and zero gas, where every player is a verified human, no bot ever wins, and real value comes as a bonus — GoodDollar income daily, which matters most in emerging markets. That constraint, verified humans only, is the whole product."
+"We started from two problems. One, we all reach for the phone when we're tired, scroll, and feel worse — we wanted a short break that leaves you sharper, a reset not an escape. Two, web3 rewards never reached real people: you needed a wallet, you needed gas, and once you got past that, bots had already farmed the pool. So GameArena is quick skill games you play with a Google sign-in and zero gas, where every player is a verified human, no bot ever wins, and real value comes as a bonus — GoodDollar income daily, which matters most in emerging markets. At Demo Day 1 we were 227 players and 385 G$ routed to UBI — the whole question was whether real humans would show up for skill games with no token hype. Here's the answer."
 
 ---
 
 ## Slide 3 · Where we are now (60s · SHOW GROWTH)
 
 **On slide:**
-Traction — every number on-chain, every target beaten
-· 479 GamePass wallets — season target was 200 (2.4×)
-· 163 verified humans · 44 paying wallets (target 30)
-· 7,355 on-chain transactions in 30 days — target 1,500 (~5×)
-· 9,222 G$ in perk purchases (1,768 buys)
-· 12,229 G$ routed to the GoodDollar UBI pool — target 2,500 (~5×)
-· 2,000,000+ G$ paid to verified players via competitions — target 400K (5×)
+Demo Day 1 → now — every number on-chain
+· Players: 227 → 879 (3.9×) · 163 verified humans
+· Games: 12,483 → 61,966 (5×) — each a Celo transaction
+· G$ to UBI pool: 385 → 45,769 (119×) — target was 2,500
+· 121,922 G$ in perk spend across 3,422 purchases
+· 2,106,455 G$ + $50 USDC paid to verified players — season target 400K (5×)
 Verify: gamearenahq.xyz/impact · dune.com/ogazboiz/gamearena · PerkShop on Celoscan
 
 **SAY (0:35–1:35):**
-"Where we are now — none of it self-reported. We set targets with GoodBuilders and beat every one. 479 GamePass wallets against a target of 200. 44 paying wallets against 30. Over seven thousand on-chain transactions in the last thirty days against a target of fifteen hundred — nearly five times. And real money moving: nine thousand G$ in perk purchases, twelve thousand routed into the GoodDollar UBI pool, and over two million G$ paid to verified players through competitions, where the season target was four hundred thousand — five times over. Every figure is on our impact page, on Dune, and on the PerkShop contract on Celoscan. Growth is real and it's on-chain."
+"Where we are now — none of it self-reported, and every number is on the same chart from Demo Day 1. Players: 227 to 879, nearly four times, and 163 of those are GoodDollar-verified humans. Games: twelve thousand to almost sixty-two thousand, each one a Celo transaction. G$ into the GoodDollar UBI pool went from 385 to over forty-five thousand — the season target was two and a half thousand. Real money is moving: a hundred and twenty thousand G$ in perk spend across thirty-four hundred purchases, and over two million G$ paid to verified players through competitions, where the target was four hundred thousand. Every figure is on our impact page, on Dune, and on the PerkShop contract on Celoscan."
 
 ---
 
