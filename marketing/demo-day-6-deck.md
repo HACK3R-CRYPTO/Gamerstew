@@ -37,10 +37,11 @@ Turned the engine into a growth machine
 · TUG OF WAR — our biggest event: 2,000,000 G$, two teams, 7 days. Every player becomes a recruiter — bring a verified human, score for your side.
 · CREATOR CONTEST × BLOCKHUB — partnered a creator community: make content, bring players, compete. External distribution, not just us.
 · PUBLIC PAYOUT LEDGER — every competition payout now on-chain and public at /impact, each with its Celoscan tx.
+· VERIFIED PLAYERS, REBUILT — we'd lost touch with our verified base as verifications lapsed. The events make verification the way in, and it worked: verified humans are back up to 168 (19%) and climbing.
 · FAIR-TEAMS + RECRUIT ENGINE — teams balance without ever moving a player; recruit credit is permanent once earned.
 
 **SAY (0:30–2:30):**
-"First, the flagship: Tug of War. Two teams, seven days, two million G$ in prizes. [DEMO: open gamearenahq.xyz/tug — show the live rope, the team split, the recruiter board.] The mechanic is the point: every player becomes a recruiter. Bring a verified human who plays and you score for your side — so the event spreads itself. Second, distribution beyond us: we partnered with Blockhub, a creator community, on a creator contest — creators make content and bring players for a share of the prize. Third, proof: every payout we've ever made is now public and on-chain at slash impact, each with its transaction — no self-reporting. And under the hood we solved the hard fairness problem: teams balance as people join but nobody is ever moved off their side, and a recruiter keeps credit the moment their player verifies and plays."
+"First, the flagship: Tug of War. Two teams, seven days, two million G$ in prizes. [DEMO: open gamearenahq.xyz/tug — show the live rope, the team split, the recruiter board.] The mechanic is the point: every player becomes a recruiter, and you only score by bringing VERIFIED humans who play. So the event doesn't just spread the word — it spreads verification. That fixed our biggest gap: we'd lost touch with our verified players as their verifications lapsed, and this month we rebuilt that base — verified humans are back up to 168, nineteen percent, and climbing. Second, distribution beyond us: we partnered with Blockhub, a creator community — creators make content and bring players for a share of the prize. Third, proof: every payout we've ever made is now public and on-chain at slash impact, each with its transaction. And under the hood we solved the hard fairness problem: teams balance as people join but nobody is ever moved off their side, and a recruiter keeps credit the moment their player verifies and plays."
 
 ---
 
@@ -48,7 +49,7 @@ Turned the engine into a growth machine
 
 **On slide:**
 Real money to real humans — on-chain, anyone can check
-· 875 players · 168 verified humans (19%) · 61,700+ games — every game a Celo tx
+· 168 VERIFIED HUMANS (19%) — rebuilt from a lapsed base · 875 players · 61,700+ games, every game a Celo tx
 · TUG OF WAR live now: 2,000,000 G$ in prizes · 61 of 160 guaranteed slots claimed
 · 366,135 G$ + $50 USDC paid to verified players last cycle — on-chain, tx-linked
 · Every competition payout public at /impact (community pools, loyalty, sprint, Arena Cup)
