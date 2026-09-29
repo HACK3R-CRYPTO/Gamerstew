@@ -9,7 +9,7 @@ Numbers verified on-chain 29 Sep 2026 — re-pull the morning of. Slides sparse;
 
 **On slide:**
 GAME ARENA
-Quick skill games. Real G$. Real humans — never bots.
+Quick skill games that make you sharper. Verified humans, no bots, real G$ every day.
 Ogazboiz · gamearenahq.xyz · GoodBuilders S4 · Final Demo Day
 
 **SAY:**
@@ -20,14 +20,14 @@ Ogazboiz · gamearenahq.xyz · GoodBuilders S4 · Final Demo Day
 ## Slide 2 · Where we started (35s)
 
 **On slide:**
-The problem: play-to-earn pays bots, not people
-· Every reward game gets farmed by scripts and spare wallets
-· The prize pool drains to no one real — engagement is hollow
-Our bet: gate everything on PROOF OF PERSONHOOD
-· Quick skill games, one human one account, real G$ — zero bots ever paid
+Why we built it — two problems
+· Scrolling leaves you worse; a break should give something back (a reset, not an escape)
+· Web3 rewards never reached real people — wallet, gas, then bots farm the pool before anyone real gets in
+Our answer
+· 30-second skill games that sharpen you · Google sign-in · zero gas · every player a verified human · real GoodDollar income daily, especially for emerging markets
 
 **SAY (0:00–0:35):**
-"We started with a problem every reward game has: bots farm it. The pool that's supposed to reach people drains to scripts and spare wallets. Our bet this season was to gate everything — every game, every prize — on GoodDollar proof-of-personhood. Quick skill games, one human one account, real G$, and zero bots ever paid. That constraint is the whole product."
+"We started from two problems. One, we all reach for the phone when we're tired, scroll, and feel worse — we wanted a short break that leaves you sharper, a reset not an escape. Two, web3 rewards never reached real people: you needed a wallet, you needed gas, and once you got past that, bots had already farmed the pool. So GameArena is quick skill games you play with a Google sign-in and zero gas, where every player is a verified human, no bot ever wins, and real value comes as a bonus — GoodDollar income daily, which matters most in emerging markets. That constraint, verified humans only, is the whole product."
 
 ---
 
