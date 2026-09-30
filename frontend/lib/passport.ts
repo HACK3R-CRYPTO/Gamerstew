@@ -63,7 +63,7 @@ export type PassportData = {
   bestRhythm: number;
   bestSimon: number;
   bestStack: number;
-  bestSquare: number;           // gameType 5 · legacy partner (Square) plays
+  bestChallenge: number;        // gameType 3 · Challenge AI (MARKOV)
   rank: number | null;         // all-time combined rank (subgraph)
   badges: { gold: number; silver: number; bronze: number };
   pet: { id: string; name: string; src: string };
@@ -134,7 +134,8 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
           { ...gamePass, functionName: "bestScore", args: [addr, 1] },
           { address: CONTRACT_ADDRESSES.PERK_SHOP as `0x${string}`, abi: PERK_SHOP_ABI, functionName: "playerUbiContributed", args: [addr] },
           { address: GD_IDENTITY, abi: GD_IDENTITY_ABI, functionName: "getWhitelistedRoot", args: [addr] },
-          { ...gamePass, functionName: "bestScore", args: [addr, 5] },
+          { ...gamePass, functionName: "bestScore", args: [addr, 2] },
+          { ...gamePass, functionName: "bestScore", args: [addr, 3] },
         ],
       })
       .catch(() => null),
@@ -156,7 +157,8 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
   // false one — the page revalidates every 60s, so a transient miss self-heals.
   const root = chain?.[6]?.status === "success" ? String(chain[6].result || "") : "";
   const verified = !!root && root.toLowerCase() !== ZERO_ADDR;
-  const bestSquare = chain?.[7]?.status === "success" ? Number(chain[7].result) : 0;
+  const onChainStack = chain?.[7]?.status === "success" ? Number(chain[7].result) : 0;
+  const bestChallenge = chain?.[8]?.status === "success" ? Number(chain[8].result) : 0;
 
   // A passport only exists for real players: minted pass OR any recorded play.
   if (!minted && gamesPlayed === 0 && !user) return null;
@@ -194,8 +196,8 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
     gamesPlayed,
     bestRhythm: standing?.bestRhythm ?? bestRhythm,
     bestSimon: standing?.bestSimon ?? bestSimon,
-    bestStack: standing?.bestStack ?? 0,
-    bestSquare,
+    bestStack: standing?.bestStack ?? onChainStack,
+    bestChallenge,
     rank: standing?.rank ?? null,
     badges,
     pet: petForLevel(level),
