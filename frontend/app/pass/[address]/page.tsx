@@ -108,8 +108,8 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
         <Section title="BEST SCORES">
           <Row icon="🎵" label="Rhythm" value={p.bestRhythm.toLocaleString()} />
           <Row icon="🧠" label="Simon" value={p.bestSimon.toLocaleString()} />
-          {p.bestStack > 0 && <Row icon="🧱" label="Stack" value={p.bestStack.toLocaleString()} />}
-          {p.bestSquare > 0 && <Row icon="🎯" label="Square" value={p.bestSquare.toLocaleString()} />}
+          <Row icon="🧱" label="Stack" value={p.bestStack.toLocaleString()} />
+          <Row icon="🤖" label="Challenge AI" value={p.bestChallenge.toLocaleString()} />
         </Section>
 
         {/* badges */}
