@@ -1804,7 +1804,7 @@ app.get('/api/leaderboard', async (req, res) => {
   const gameTypeInt = GAME_TYPE[game];
   let all = [];
   try {
-    all = await subgraph.leaderboard(gameTypeInt, seasonStart, 100);
+    all = await subgraph.leaderboard(gameTypeInt, seasonStart); // no cap · every player who scored this season
   } catch (e) {
     console.warn('subgraph leaderboard failed:', e?.message || e);
   }

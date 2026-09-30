@@ -43,34 +43,48 @@ async function gql(query, variables = {}) {
 // Returns top-N by score within [startUnix, +∞), deduped per-player. Exact
 // shape match to the previous Supabase getLeaderboard() so callers don't
 // have to rewrap.
-async function leaderboard(gameType, startUnix, limit = 50) {
-  const data = await gql(
-    `query LB($g: Int!, $start: BigInt!) {
-      scores(first: 500, where: { gameType: $g, blockTimestamp_gte: $start }, orderBy: score, orderDirection: desc) {
-        player { id username }
-        score
-        blockTimestamp
-        txHash
-      }
-    }`,
-    { g: gameType, start: startUnix.toString() },
-  );
+// Full season leaderboard · EVERY player who scored this season, not a top-N.
+// Paginate all score events by id cursor, dedup to each player's best score,
+// then sort. `limit` defaults to Infinity (no cap); pass a finite number only
+// when a caller genuinely wants a top-N slice. The old code pulled first:500 and
+// sliced to 50/100, which silently hid every player past the cap.
+async function leaderboard(gameType, startUnix, limit = Infinity) {
   const seen = new Map();
-  for (const s of data.scores || []) {
-    const id = s.player.id.toLowerCase();
-    const score = Number(s.score);
-    const existing = seen.get(id);
-    if (!existing || score > existing.score) {
-      seen.set(id, {
-        wallet_address: id,
-        username: s.player.username || null,
-        score,
-        created_at: new Date(Number(s.blockTimestamp) * 1000).toISOString(),
-        tx_hash: s.txHash || null,
-      });
+  let cursor = '';
+  for (let page = 0; page < 50; page++) { // 50 × 1000 = 50k score events, ample
+    const data = await gql(
+      `query LB($g: Int!, $start: BigInt!, $c: ID!) {
+        scores(first: 1000, where: { gameType: $g, blockTimestamp_gte: $start, id_gt: $c }, orderBy: id, orderDirection: asc) {
+          id
+          player { id username }
+          score
+          blockTimestamp
+          txHash
+        }
+      }`,
+      { g: gameType, start: startUnix.toString(), c: cursor },
+    );
+    const rows = data.scores || [];
+    if (rows.length === 0) break;
+    for (const s of rows) {
+      const id = s.player.id.toLowerCase();
+      const score = Number(s.score);
+      const existing = seen.get(id);
+      if (!existing || score > existing.score) {
+        seen.set(id, {
+          wallet_address: id,
+          username: s.player.username || null,
+          score,
+          created_at: new Date(Number(s.blockTimestamp) * 1000).toISOString(),
+          tx_hash: s.txHash || null,
+        });
+      }
     }
+    cursor = rows[rows.length - 1].id;
+    if (rows.length < 1000) break;
   }
-  return Array.from(seen.values()).sort((a, b) => b.score - a.score).slice(0, limit);
+  const sorted = Array.from(seen.values()).sort((a, b) => b.score - a.score);
+  return Number.isFinite(limit) ? sorted.slice(0, limit) : sorted;
 }
 
 // ─── Recent activity feed ────────────────────────────────────────────────────
