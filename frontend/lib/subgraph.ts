@@ -103,6 +103,7 @@ export type LeaderboardEntry = {
 };
 
 type ScoreRow = {
+  id: string;
   player: { id: string; username: string | null };
   score: string;
   blockTimestamp: string;
@@ -115,44 +116,50 @@ export type GameTypeId = 0 | 1 | 2;
 export async function fetchLeaderboard(
   gameType: GameTypeId,
   weekStartUnix: number,
-  limit = 50,
+  limit = Infinity, // default: EVERY player who scored this season, not a top-N
 ): Promise<LeaderboardEntry[]> {
-  const data = await gql<{ scores: ScoreRow[] }>(
-    `query LB($gameType: Int!, $start: BigInt!) {
-      scores(
-        first: 500,
-        where: { gameType: $gameType, blockTimestamp_gte: $start }
-        orderBy: score, orderDirection: desc
-      ) {
-        player { id username }
-        score
-        blockTimestamp
-      }
-    }`,
-    { gameType, start: weekStartUnix.toString() },
-  );
-
-  if (!data || !data.scores) return [];
-
-  // Keep only the best score per wallet
+  // Paginate all season score events by id cursor, then dedup to each player's
+  // best. The old query pulled first:500 and sliced to 50, so every player past
+  // the cut (a low score, a late arrival) was silently absent from the board.
   const seen = new Map<string, LeaderboardEntry>();
-  for (const s of data.scores) {
-    const id = s.player.id.toLowerCase();
-    const score = Number(s.score);
-    const existing = seen.get(id);
-    if (!existing || score > existing.score) {
-      seen.set(id, {
-        player: id,
-        username: s.player.username || undefined,
-        score,
-        timestamp: Number(s.blockTimestamp),
-      });
+  let cursor = "";
+  for (let p = 0; p < 50; p++) { // 50 × 1000 = 50k events, ample for a season
+    const data = await gql<{ scores: ScoreRow[] }>(
+      `query LB($gameType: Int!, $start: BigInt!, $c: ID!) {
+        scores(
+          first: 1000,
+          where: { gameType: $gameType, blockTimestamp_gte: $start, id_gt: $c }
+          orderBy: id, orderDirection: asc
+        ) {
+          id
+          player { id username }
+          score
+          blockTimestamp
+        }
+      }`,
+      { gameType, start: weekStartUnix.toString(), c: cursor },
+    );
+    const rows = data?.scores ?? [];
+    if (rows.length === 0) break;
+    for (const s of rows) {
+      const id = s.player.id.toLowerCase();
+      const score = Number(s.score);
+      const existing = seen.get(id);
+      if (!existing || score > existing.score) {
+        seen.set(id, {
+          player: id,
+          username: s.player.username || undefined,
+          score,
+          timestamp: Number(s.blockTimestamp),
+        });
+      }
     }
+    cursor = rows[rows.length - 1].id;
+    if (rows.length < 1000) break;
   }
 
-  return Array.from(seen.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  const sorted = Array.from(seen.values()).sort((a, b) => b.score - a.score);
+  return Number.isFinite(limit) ? sorted.slice(0, limit) : sorted;
 }
 
 // ─── All-time combined leaderboard ──────────────────────────────────────────

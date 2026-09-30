@@ -490,7 +490,7 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
     const seasonStart = meta?.currentStartsAt
       ?? (meta?.currentEndsAt ? meta.currentEndsAt - 7 * 24 * 60 * 60 : Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60);
     const gameType = GAME_TYPE_ID[gameKind];
-    fetchLeaderboard(gameType, seasonStart, 50)
+    fetchLeaderboard(gameType, seasonStart) // no cap · every player who scored this season
       .then(rows => { if (!cancelled) setLiveEntries(rows); })
       .catch(() => { if (!cancelled) setLiveEntries([]); });
     return () => { cancelled = true; };
