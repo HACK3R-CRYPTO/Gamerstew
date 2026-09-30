@@ -75,9 +75,14 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
               {name}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap", justifyContent: "center" }}>
-              {p.minted && (
+              {p.verified && (
                 <span style={{ fontSize: 9.5, fontWeight: 800, color: "#86efac", background: "rgba(34,197,94,0.18)", border: "1px solid rgba(134,239,172,0.45)", borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
-                  ✓ VERIFIED PLAYER
+                  ✓ VERIFIED HUMAN
+                </span>
+              )}
+              {p.minted && !p.verified && (
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
+                  🎮 GAMEPASS
                 </span>
               )}
               <span style={{ fontSize: 9.5, fontWeight: 800, color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
@@ -104,6 +109,7 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
           <Row icon="🎵" label="Rhythm" value={p.bestRhythm.toLocaleString()} />
           <Row icon="🧠" label="Simon" value={p.bestSimon.toLocaleString()} />
           {p.bestStack > 0 && <Row icon="🧱" label="Stack" value={p.bestStack.toLocaleString()} />}
+          {p.bestSquare > 0 && <Row icon="🎯" label="Square" value={p.bestSquare.toLocaleString()} />}
         </Section>
 
         {/* badges */}
