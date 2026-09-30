@@ -73,7 +73,7 @@ export default async function Image({ params }: { params: Promise<{ address: str
         <div style={{ position: "absolute", left: 0, bottom: 58, width: 1200, display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ display: "flex", fontSize: 62, fontWeight: 800, textShadow: "0 3px 16px rgba(0,0,0,0.85)" }}>{name}</div>
-            {p?.minted && (
+            {p?.verified && (
               <div style={{ display: "flex", fontSize: 19, fontWeight: 800, color: "#86efac", background: "rgba(10,40,20,0.78)", border: "2px solid rgba(134,239,172,0.6)", borderRadius: 999, padding: "7px 18px" }}>
                 VERIFIED
               </div>

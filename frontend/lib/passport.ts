@@ -27,6 +27,22 @@ const PERK_SHOP_ABI = [
   },
 ] as const;
 
+// GoodDollar Identity (Celo mainnet) · the passport's "verified" badge MUST come
+// from here at read time, not from holding a GamePass. getWhitelistedRoot resolves
+// linked wallets and returns 0x0 when the wallet (and its links) never passed a
+// face check — the same read SelfVerificationContext uses on the client.
+const GD_IDENTITY = "0xC361A6E67822a0EDc17D899227dd9FC50BD62F42" as const;
+const GD_IDENTITY_ABI = [
+  {
+    type: "function",
+    name: "getWhitelistedRoot",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+
 // Same thresholds as the profile page's petStageFor.
 export function petForLevel(level: number): { id: string; name: string; src: string } {
   if (level >= 50) return { id: "king", name: "King Slime", src: "/pets/stage-5-king.png" };
@@ -39,6 +55,7 @@ export function petForLevel(level: number): { id: string; name: string; src: str
 export type PassportData = {
   address: string;
   minted: boolean;
+  verified: boolean;            // GoodDollar face-verified (getWhitelistedRoot != 0)
   username: string | null;
   level: number;
   streak: number;
@@ -46,6 +63,7 @@ export type PassportData = {
   bestRhythm: number;
   bestSimon: number;
   bestStack: number;
+  bestSquare: number;           // gameType 5 · legacy partner (Square) plays
   rank: number | null;         // all-time combined rank (subgraph)
   badges: { gold: number; silver: number; bronze: number };
   pet: { id: string; name: string; src: string };
@@ -115,6 +133,8 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
           { ...gamePass, functionName: "bestScore", args: [addr, 0] },
           { ...gamePass, functionName: "bestScore", args: [addr, 1] },
           { address: CONTRACT_ADDRESSES.PERK_SHOP as `0x${string}`, abi: PERK_SHOP_ABI, functionName: "playerUbiContributed", args: [addr] },
+          { address: GD_IDENTITY, abi: GD_IDENTITY_ABI, functionName: "getWhitelistedRoot", args: [addr] },
+          { ...gamePass, functionName: "bestScore", args: [addr, 5] },
         ],
       })
       .catch(() => null),
@@ -131,6 +151,12 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
   const bestRhythm = chain?.[3]?.status === "success" ? Number(chain[3].result) : 0;
   const bestSimon = chain?.[4]?.status === "success" ? Number(chain[4].result) : 0;
   const perkUbiWei = chain?.[5]?.status === "success" ? (chain[5].result as bigint) : BigInt(0);
+  // On-chain GoodDollar verification · non-zero root = a real face check (self or
+  // linked wallet). Fail closed: an RPC miss shows NO verified badge rather than a
+  // false one — the page revalidates every 60s, so a transient miss self-heals.
+  const root = chain?.[6]?.status === "success" ? String(chain[6].result || "") : "";
+  const verified = !!root && root.toLowerCase() !== ZERO_ADDR;
+  const bestSquare = chain?.[7]?.status === "success" ? Number(chain[7].result) : 0;
 
   // A passport only exists for real players: minted pass OR any recorded play.
   if (!minted && gamesPlayed === 0 && !user) return null;
@@ -161,6 +187,7 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
   return {
     address,
     minted,
+    verified,
     username,
     level,
     streak,
@@ -168,6 +195,7 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
     bestRhythm: standing?.bestRhythm ?? bestRhythm,
     bestSimon: standing?.bestSimon ?? bestSimon,
     bestStack: standing?.bestStack ?? 0,
+    bestSquare,
     rank: standing?.rank ?? null,
     badges,
     pet: petForLevel(level),
