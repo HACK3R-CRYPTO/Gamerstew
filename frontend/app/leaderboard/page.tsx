@@ -168,7 +168,7 @@ type SelectedEvent =
 type DetailRow = { label: string; name: string; value: string; tint: string; icon?: string };
 type UnifiedPastEvent = {
   key: string;
-  kind: "season" | "cup" | "challenge" | "climb";
+  kind: "season" | "cup" | "challenge" | "climb" | "tug";
   sortTs: number;
   title: string;
   dateRange: string;
@@ -440,6 +440,10 @@ export default function EventsPage() {
   const router = useRouter();
   const [climb, setClimb] = useState<MarkovClimbData | null>(null);
   const [cup, setCup] = useState<CupPastData | null>(null); // Arena Cup · shown in PAST once ended
+  // Tug of War · once it ends, /api/tug keeps serving the sealed standings. Like
+  // the Cup and Climb, we push it into the PAST grid so a finished Tug doesn't
+  // vanish from both tabs.
+  const [tug, setTug] = useState<{ status: string; red: number; blue: number; startsAt?: string; endsAt?: string; referral?: { top?: { name: string; recruits: number; rank: number }[] } } | null>(null);
   const [pastSeasons, setPastSeasons] = useState<PastSeasonV1[] | null>(null);
   const [pastCups, setPastCups] = useState<PastCompetition[] | null>(null);
   const [pastChallenges, setPastChallenges] = useState<PastChallenge[] | null>(null);
@@ -491,6 +495,12 @@ export default function EventsPage() {
     fetch("/api/cup", { cache: "no-store" })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d) setCup(d as CupPastData); })
+      .catch(() => {});
+    // Tug of War · keeps serving sealed standings after it ends; pushed into the
+    // PAST grid below so a finished Tug shows up like the Cup and Climb.
+    fetch("/api/tug", { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d && !d.error) setTug(d); })
       .catch(() => {});
 
     fetch("/api/season/past", { cache: "no-store" })
@@ -664,9 +674,34 @@ export default function EventsPage() {
         href: "/leaderboard/cup",
       });
     }
+    // ─── Sealed Tug of War ──────────────────────────────────────────────────
+    // Once the event ends, /api/tug keeps serving the final standings (status
+    // flips to "ended"). Without this push it was hidden from both tabs. Tapping
+    // opens the full rope + final board at /tug.
+    if (tug && tug.status === "ended") {
+      const winnerBlue = tug.blue > tug.red;
+      const tie = tug.blue === tug.red;
+      const winScore = Math.max(tug.blue, tug.red);
+      const topRec = tug.referral?.top ?? [];
+      const r1 = topRec[0], r2 = topRec[1];
+      const endsAt = safeDate(tug.endsAt);
+      const startsAt = safeDate(tug.startsAt);
+      out.push({
+        key: "tug-sealed",
+        kind: "tug",
+        sortTs: endsAt ? endsAt.getTime() : 0,
+        title: "TUG OF WAR · SEALED",
+        dateRange: fmtDateRange(startsAt, endsAt),
+        primary: { label: "WINNING SIDE", name: tie ? "Tie" : winnerBlue ? "Blue team" : "Red team", value: `${winScore.toLocaleString()} pts`, tint: winnerBlue ? "#60a5fa" : "#f87171", icon: "🏆" },
+        secondary: r1 ? { label: "TOP RECRUITER", name: `@${r1.name}`, value: `${r1.recruits} recruits`, tint: "#fbbf24", icon: "🥇" } : undefined,
+        tertiary: r2 ? { label: "2ND RECRUITER", name: `@${r2.name}`, value: `${r2.recruits} recruits`, tint: "#e2e8f0", icon: "🥈" } : undefined,
+        accent: "#f0abfc",
+        href: "/tug",
+      });
+    }
     out.sort((a, b) => b.sortTs - a.sortTs);
     return out;
-  }, [pastSeasons, pastCups, pastChallenges, climb, cup, address]);
+  }, [pastSeasons, pastCups, pastChallenges, climb, cup, tug, address]);
 
   // ALL-TIME pagination
   const podium = (allEntries ?? []).slice(0, 3);
