@@ -6044,6 +6044,106 @@ app.get('/api/tug/me', requireSecret, async (req, res) => {
   }
 });
 
+// ─── GET /api/tug/payout-list — the final, auditable per-wallet distribution ──
+// Computed straight from the same standings the event ran on, so it is
+// reproducible and nobody has to eyeball a payout. requireSecret: it exposes
+// every participant's wallet, so it is admin-only. Only returns once the event
+// has ENDED (a payout mid-event would be wrong).
+//
+// Prize model, exactly as the in-app rules (TugRules.tsx) promised players:
+//   1. Bounty      · each wallet that CLAIMED a bounty slot (first bountySlots
+//                    qualifiers) gets bountyAmountG. Unclaimed slots are not owed
+//                    to anyone. 77 of 160 claimed → only those 77 are paid.
+//   2. Team split  · prizeTotalG − (bountySlots × bountyAmountG) = the split pool
+//                    (600,000 G$ here). Paid to every COUNTED player in proportion
+//                    to their individual points, so the winning side earns more in
+//                    aggregate (they scored more) while the losing side is still
+//                    paid "by how much" they scored — the exact wording of rule 6.
+//                    ?rollUnclaimed=1 folds the unclaimed bounty into this pool
+//                    instead of leaving it in treasury (opt-in; default off, which
+//                    matches the literal rule).
+//   3. Referral    · top referrers get referralPrizesG (500k/300k/200k) by wallet.
+// A wallet can appear in more than one bucket; its row sums them.
+app.get('/api/tug/payout-list', requireSecret, async (req, res) => {
+  try {
+    const data = await getTugStandings();
+    const { standings, players, bountyRank, referralBoard, cfg } = data;
+    if (standings.status !== 'ended') {
+      return res.status(409).json({ error: 'event not ended', status: standings.status });
+    }
+
+    const BOUNTY_G = cfg.bountyAmountG;
+    const bountyReserveG = cfg.bountySlots * cfg.bountyAmountG;
+    const baseSplitPoolG = cfg.prizeTotalG - bountyReserveG;
+    const claimed = bountyRank.size;
+    const unclaimedBountyG = (cfg.bountySlots - claimed) * cfg.bountyAmountG;
+    const rollUnclaimed = req.query.rollUnclaimed === '1';
+    const splitPoolG = rollUnclaimed ? baseSplitPoolG + unclaimedBountyG : baseSplitPoolG;
+
+    const acc = new Map(); // wallet -> { wallet, name, bounty, split, referral }
+    const add = (wallet, field, amt, name) => {
+      if (!amt) return;
+      const w = String(wallet).toLowerCase();
+      let row = acc.get(w);
+      if (!row) { row = { wallet: w, name: name || null, bounty: 0, split: 0, referral: 0 }; acc.set(w, row); }
+      row[field] += amt;
+      if (name && !row.name) row.name = name;
+    };
+
+    // 1 · Bounty — only wallets that actually claimed a slot
+    for (const p of players) if (bountyRank.has(p.wallet)) add(p.wallet, 'bounty', BOUNTY_G, p.username);
+
+    // 2 · Team split — proportional to individual points, counted players only
+    const counted = players.filter((p) => p.counted && p.points > 0);
+    const totalPoints = counted.reduce((s, p) => s + p.points, 0);
+    for (const p of counted) {
+      const amt = totalPoints > 0 ? Math.round((splitPoolG * p.points) / totalPoints) : 0;
+      add(p.wallet, 'split', amt, p.username);
+    }
+
+    // 3 · Referral — top placements with a prize
+    for (const r of referralBoard) if (r.prizeG > 0) add(r.wallet, 'referral', r.prizeG, r.username);
+
+    const payouts = [...acc.values()]
+      .map((r) => ({ ...r, totalG: r.bounty + r.split + r.referral }))
+      .sort((a, b) => b.totalG - a.totalG);
+
+    const sum = (f) => payouts.reduce((s, r) => s + r[f], 0);
+
+    // ?format=disperse → plain text ready to paste into Disperse.app: one
+    // "wallet amount" per line, amounts in whole G$ (Disperse takes token units,
+    // not wei). Zero-total rows are dropped so no dust entries.
+    if (req.query.format === 'disperse') {
+      const text = payouts.filter((r) => r.totalG > 0).map((r) => `${r.wallet} ${r.totalG}`).join('\n');
+      res.set('Content-Type', 'text/plain; charset=utf-8');
+      return res.send(text);
+    }
+
+    res.json({
+      eventId: cfg.eventId,
+      endsAt: cfg.endsAt,
+      winner: standings.blue > standings.red ? 'blue' : standings.red > standings.blue ? 'red' : 'tie',
+      scores: { red: standings.red, blue: standings.blue },
+      pools: {
+        mainTotalG: cfg.prizeTotalG,
+        bountyReserveG,
+        bountySlots: cfg.bountySlots,
+        bountyClaimed: claimed,
+        bountyPaidG: claimed * BOUNTY_G,
+        unclaimedBountyG,
+        rolledUnclaimedIntoSplit: rollUnclaimed,
+        splitPoolG,
+        referralTotalG: standings.referral?.totalG ?? 0,
+      },
+      totals: { wallets: payouts.length, bountyG: sum('bounty'), splitG: sum('split'), referralG: sum('referral'), totalG: sum('totalG') },
+      payouts,
+    });
+  } catch (e) {
+    console.warn('tug payout-list failed:', e?.message || e);
+    res.status(503).json({ error: 'unavailable' });
+  }
+});
+
 // ─── Tug of War notification cron ────────────────────────────────────────────
 // Four moments, and deliberately only four. Push is the one channel a player
 // cannot mute selectively without muting everything, so an event that pings
