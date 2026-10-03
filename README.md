@@ -41,6 +41,19 @@ And web3 rewards never reached real people. To earn crypto you needed a wallet, 
 
 ---
 
+## Traction · Season 4 (complete)
+
+GoodDollar's GoodBuilders Season 4 ran through Sept 2026, and GameArena beat every milestone target it set:
+
+- **479+ GamePass wallets** minted · **160+ GoodDollar-verified humans** playing
+- **60,000+ games** played on-chain, each a Celo transaction
+- **~45,000 G$** routed to the GoodDollar UBI pool (20% of every in-game spend)
+- **2,000,000+ G$** paid to verified players across competitions · zero bots paid
+
+Every figure is on-chain and auditable — see [Public analytics](#public-analytics).
+
+---
+
 ## How it works (the technical version)
 
 Every player is identity-verified via the GoodDollar Identity SDK before they can score, earn, or claim · no bots, no sybil, no farming. Three live game loops run in parallel · skill-based solo games (Rhythm Rush, Simon Memory, Stack Tower), free instant matches against MARKOV (an AI opponent that models your patterns · provably fair via commit-reveal), and weekly + seasonal competitions with real G$ prize pools.
@@ -152,6 +165,7 @@ Every action across all loops · games played, MARKOV wins, daily claims, referr
 - **New skill game** · ship a frontend client + scoring rules. No contract redeploy.
 - **New agent game** · add it to MARKOV's strategy module. The instant-match engine and ladder carry it.
 - **New agent entirely** · register on the same ERC-8004 registry. MARKOV is the first agent on the platform, not the only one it can host · A2A v0.3 discovery means any compliant agent plugs into the same surfaces.
+- **Partner apps** · other products bring their own players onto GameArena boards through a scoped partner API (`/api/partner/*`, `x-partner-key`, [`sdk/`](sdk/README.md)) · verify them as GoodDollar humans, let them sign in with a GamePass, and optionally mirror their scores on-chain under a dedicated gameType. A partner chat app already onboards its users this way.
 - **Multi-platform reach** · the frontend works on the web AND inside MiniPay's webview from the same surface · no separate build.
 
 ---
@@ -232,7 +246,7 @@ MARKOV is an autonomous AI agent you can challenge at any time · no human in th
 | Strategy | Markov-2 chains · predicts your next move from your last two                                                                          |
 | Fairness | Commit-reveal · seed hash published before round 1, revealed at match end, deterministic replay                                       |
 | Identity | Registered on the Celo Agent Trust Protocol (ERC-8004), Token #6386                                                                   |
-| Games    | Rock-Paper-Scissors, Coin Flip                                                                                                        |
+| Games    | Rock-Paper-Scissors · MARKOV reacts in a rank-aware voice during matches                                                             |
 
 #### Architecture · four independent surfaces
 
@@ -258,18 +272,19 @@ flowchart TB
 
 GameArena runs periodic competitions with G$ prize pools sourced from the platform, sponsors, or community-funded pots. Formats vary by event:
 
-- **Team races** — players auto-balanced into teams via soft cap, racing to a target across the period. Tiered prizes to top teams.
+- **Team races** — players auto-balanced into teams via soft cap, racing to a target across the period. Tiered prizes to top teams. The flagship was **Tug of War** (below).
 - **Solo Ladders** — individual ranking competitions running alongside team events or standalone.
 - **Sponsor cups** — rare, larger-pool events (typically in USDC) funded by sponsor partners.
 - **Community-funded pots** — player-contributed prize pools, no platform money involved.
+- **Friend Duels** — head-to-head rooms on the `DuelEscrow` contract: stake G$ (winner takes the pot, a small cut to treasury) or run a free prize-pool room. 24h to beat the score, public or private (join code / allowlist). Available any time, not just during events.
 
 Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
-**Arena Cup (Aug 7 to Aug 21, 5PM WAT):** the first real-money, skill-based cup, $150 in G$ across two ladders on one board. The Players Cup ($100, GameArena) ranks people by Cup Points from four capped lanes · Skill (your best run in each game, not total), Consistency (distinct days played), Referrals (friends who verify and play), and G$ spend (rewarded on a curve). The Agent Cup ($50, from partner GoodAgents) ranks deployed AI agents by their record against MARKOV, each attributed to its human owner. A community pot grows bonus G$ for everyone as total plays hit milestones. Verified humans only, scores checked server-side, best-run scoring · grinding and bots earn nothing. Live board at `gamearenahq.xyz/leaderboard/cup`.
+**Recent events.** The **Arena Cup** (Aug 2026) was the first real-money skill cup · $150 in G$ across a Players Cup (ranked on four capped lanes: best-run skill, consistency, referrals, and G$ spend) and an Agent Cup where deployed AI agents competed against MARKOV, each attributed to its human owner. Over **Season 4** of GoodDollar's GoodBuilders program, GameArena ran a full cadence of weekly ladders, community pots, and cups. The flagship was **Tug of War** · a verified-humans-only team event with a **2,000,000 G$ prize pool** that paid out on-chain to real players, with the full per-wallet distribution (bounty + team split + referral) computed straight from chain data and published for anyone to audit. Live boards at `gamearenahq.xyz/leaderboard` (Live · Past · All-time); completed events, including Tug of War, show under Past.
 
 ### Player passport and referrals
 
-Every verified player gets a public passport at `gamearenahq.xyz/pass/{username}` · verification status, all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
+Every player gets a public passport at `gamearenahq.xyz/pass/{address}` (your username works too) · verification status read live on-chain (shows ✓ verified only if currently GoodDollar-whitelisted, otherwise a neutral GamePass badge), all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
 
 Referrals ride on the passport. A player's referral code is their username (`?ref=ogazboiz` · a raw wallet still works), every share link carries it, and new players can type a code by hand during onboarding ("Got a referral code?" resolves live to `✓ referred by @name`). A referral counts the moment the referred player verifies and mints their GamePass. Your count shows on your profile and passport.
 
@@ -328,13 +343,17 @@ Deployed on Celo Mainnet (chain id 42220).
 
 | Contract             | Address                                                                                                                   | Purpose                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow                      |
-| `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT + on-chain scores          |
-| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 80% treasury / 20% UBI |
-| `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 80% treasury / 20% UBI    |
+| `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT · usernames + on-chain scores |
+| `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 20% UBI / 80% treasury    |
+| `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 20% UBI / 80% treasury |
+| `DuelEscrow.sol`     | [`0x5dd223edb3...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557)                              | Friend Duels · staked G$ / prize-pool rooms |
+| `SoloWager.sol`      | [`0xc78A8A027e...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb)                              | Solo G$ score wagers                     |
+| `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow (A2A agent interface) |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
-| ERC-8004 Registry    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
-| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of every perk and habitat spend routes here |
+| GoodDollar Identity  | [`0xC361A6E678...`](https://celoscan.io/address/0xC361A6E67822a0EDc17D899227dd9FC50BD62F42)                              | Face-verification oracle · gates earning |
+| ERC-8004 Identity    | [`0x8004A169FB4...`](https://celoscan.io/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)                              | MARKOV agent identity (Token #6386)     |
+| ERC-8004 Reputation  | [`0x8004BAa17C...`](https://celoscan.io/address/0x8004BAa17C55a88189AE136b182e5fdA19dE9b63)                              | MARKOV on-chain match attestations       |
+| GoodCollective UBI   | [`0x43d72Ff177...`](https://celoscan.io/address/0x43d72Ff17701B2DA814620735C39C620Ce0ea4A1)                              | UBI pool · 20% of every perk + habitat spend routes here |
 
 ---
 
@@ -398,12 +417,13 @@ Required environment variables: Privy app id, Supabase URL + anon key, contract 
 
 ```
 GameArenaCelo-/
-  contracts/        Solidity sources · ArenaPlatform (legacy), SoloWager (legacy), GamePass
-  frontend/         Next.js 16 · game UI, wallet, arena + economy flows
-  games-backend/    Express + Supabase · scores, seasons, push, validator
-  agent/            MARKOV agent · Markov-2 chains, hash-committed RNG
+  contracts/        Solidity · GamePass, PerkShop, HabitatRegistry, DuelEscrow, SoloWager, ArenaPlatform, ERC-8004 registries
+  frontend/         Next.js 16 · games, wallet/MiniPay, duels, tug, passport, shop, agents
+  games-backend/    Express + Supabase · scores, seasons, faucet, tug + payouts, partner API, push
+  agent/            MARKOV agent · Markov-2 chains, hash-committed RNG, ERC-8004 #6386
+  sdk/              Partner Game SDK · bring your own players onto GameArena boards
   scripts/          Deployment + utility scripts
-  subgraph/         The Graph indexing (optional)
+  subgraph/         Goldsky subgraph · on-chain reads (scores, players, habitats, perks)
 ```
 
 Each subdirectory has its own README · open one for the deeper picture:

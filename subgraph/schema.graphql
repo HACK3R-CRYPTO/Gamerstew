@@ -21,7 +21,7 @@ type Player @entity {
   # Habitat ownership (paid tiers only; free tiers are level-derived off-chain)
   ownedHabitats: [PlayerHabitat!]! @derivedFrom(field: "player")
   highestHabitatTier: Int!        # 0 if none owned
-  totalUbiDonated: BigInt!        # sum of UBI portion (85% of every habitat unlock)
+  totalUbiDonated: BigInt!        # sum of UBI portion (20% of every habitat unlock, live split)
 
   # Wagering
   totalWagers: BigInt!

@@ -1,5 +1,21 @@
 # Duel Rooms & Challenges — Full Spec (design locked)
 
+> **Status: SHIPPED (Friend Duels live).** The core — on-chain escrow, create/join,
+> allowlist, trustless refunds, resolution, and the hub — is deployed and live.
+> This doc is now a spec-vs-reality record; per-item implementation status is
+> marked inline with **✅ Shipped**, **◻️ Not shipped**, or a note where the live
+> build differs from the original design.
+>
+> **Live references**
+> - Contract: `DuelEscrow` at `0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557` (Celo mainnet) · source `contracts/src/DuelEscrow.sol`
+> - Frontend: `frontend/app/duel/*` (hub `page.tsx`, `create/`, `[id]/`), `frontend/hooks/useDuel.ts`, `frontend/lib/duel.ts`
+> - Backend: `games-backend/lib/duelRooms.js` → `/api/duel/*`
+>
+> **Key deviation from this spec:** the per-room cut shipped as **`feeBps` → treasury**
+> (hard ceiling `MAX_FEE_BPS = 20%`), not the `ubiBps` named in §6. Sponsored pools
+> set `feeBps = 0` (winner takes the full prize). This matches §4's "fee to treasury"
+> decision; §6's `ubiBps` naming is superseded.
+
 The complete design for the rooms / challenges / prize-pool feature. Money
 custody is on-chain (`DuelEscrow`); the backend coordinates and gates entry; the
 frontend is the flow. First real use: a community's **$50 private prize pool**,
@@ -69,29 +85,44 @@ No manual list-keeping: the allowlist *is* the list, on-chain.
 - **Discovery** — a challenge lands in the target's `notifications_feed` + a web
   push ("Sam challenged you — 18h left"), and prompts at every game-over.
 
-## 6. Contract changes (DuelEscrow v2)
+## 6. Contract changes (DuelEscrow v2) — ✅ Shipped (deployed `0x5dd2…0c557`)
 Current contract already does rooms + private code + seed + trustless
 `refundUnfilled`/`refundAll`. Add:
-1. **Per-room `ubiBps`** — `createRoom` takes a cut (0..`MAX_UBI_BPS`); pools set 0.
-2. **Per-room allowlist** — optional; if set, `joinRoom` requires the caller be
-   allowlisted. Admin manages it (`addToAllowlist`/`removeFromAllowlist`, owner
-   or room creator). Off by default (public/code rooms don't use it).
-3. **`forceRefund`** — trustless backstop: anyone can call after
-   `deadline + graceWindow` (proposed 2 days, owner-configurable) if a contested
-   room was never resolved, returning stakes to players and the seed to the
-   sponsor. Closes the "validator vanished" reliability gap.
-4. (Optional) **Top-3 split** payout mode.
-Re-test to 100% branch/function coverage; keep Ownable2Step + Pausable +
-ReentrancyGuard + custom errors.
+1. **Per-room cut** — ✅ Shipped **as `feeBps` → treasury**, not `ubiBps`.
+   `createRoom` takes `feeBps` (0..`MAX_FEE_BPS = 2000` = 20%); sponsored pools set
+   `feeBps = 0` so the winner takes the full prize. Fee routes to the per-room
+   `treasury` (owner-settable), per §4.
+2. **Per-room allowlist** — ✅ Shipped. `useAllowlist` flag on the room; `joinRoom`
+   reverts with `NotAllowlisted` when set and caller isn't listed.
+   `addToAllowlist`/`removeFromAllowlist` managed by owner or room creator. Off by
+   default (public/code rooms don't use it).
+3. **`forceRefund`** — ✅ Shipped. Trustless backstop: anyone can call after
+   `deadline + forceRefundGrace` (owner-configurable via `setForceRefundGrace`) on a
+   contested room that was never resolved, returning stakes to players and the seed
+   to the sponsor.
+4. **Top-3 split** payout mode — ◻️ Not shipped. `resolveRoom` pays
+   **winner-takes-all** (highest score; ties → earliest entrant). Left as a future
+   option.
+
+**Also shipped:** gasless `createRoomWithPermit` / `joinRoomWithPermit` (EIP-2612),
+`MAX_CAPACITY = 256`, Ownable2Step + Pausable + ReentrancyGuard + SafeERC20 + custom
+errors, 100% branch/function coverage (see `nfr.md`).
 
 ## 7. Architecture
 - **Contract (`DuelEscrow` v2)** — source of truth for funds, membership,
   allowlist, resolution. Immutable; tuned via owner setters.
-- **Backend (`duel` module, existing Node backend)** — one vertical slice:
-  - Endpoints: `POST /api/duel/create`, `POST /api/duel/join` (gasless relay),
-    `GET /api/duel/rooms` (public hub feed), `GET /api/duel/room/:id`,
-    `POST /api/duel/resolve` (validator submits scoreboard),
-    `POST /api/duel/allowlist` (admin adds wallets), plus rivalry reads.
+- **Backend (`duel` module, existing Node backend)** — one vertical slice.
+  ✅ Shipped as `games-backend/lib/duelRooms.js`. Live endpoints:
+  - `GET /api/duel/rooms` (public hub feed) · `GET /api/duel/my?wallet=` (a
+    player's rooms) · `GET /api/duel/room/:id` (detail + participants) ·
+    `POST /api/duel/sync/:id` (trustless mirror of one room from chain) ·
+    `POST /api/duel/resolve/:id` (internal, `x-internal-secret`; validator
+    submits the scoreboard) · `GET /api/duel/rivalry?a=&b=` (head-to-head).
+  - **Deviation:** there is **no** `POST /create`, `/join`, or `/allowlist`
+    backend endpoint. Create / join / allowlist run **client-side on-chain** from
+    `frontend/hooks/useDuel.ts` (`createRoomWithPermit`, `joinRoomWithPermit`,
+    `addToAllowlist`) — gasless via the player's own permit signature, no backend
+    relay. The backend only mirrors chain state and resolves.
   - Supabase mirror of rooms/participants for fast queries + private filtering,
     reconciled against on-chain events.
   - Reuses: `isVerified`, the anti-cheat scoring, the permit relayer, the
@@ -112,22 +143,25 @@ ReentrancyGuard + custom errors.
 - `rivalries`: wallet_a, wallet_b, wins_a, wins_b, ties, last_played.
 
 ## 9. Build phases (definition of done)
-- **P1 — Contract v2**: per-room ubiBps + allowlist + forceRefund (+ optional
-  top-3), tests to 100%, deploy to a local anvil Celo fork.
-- **P2 — Backend `duel` module**: create/join/resolve/list/allowlist + tables.
-- **P3 — Frontend pool flow**: create sponsored private pool, room page, join,
-  play, result, admin allowlist paste. **← this is everything the $50 pilot needs.**
-- **P4 — Challenges hub + game-over entry points + notifications.**
-- **P5 — Rivalries + MARKOV house challenger.**
-- **P6 — Deploy to Celo mainnet + run the $50 pilot pool.**
-
-**Pilot-critical path = P1 + P2 + P3.** P4–P5 are the retention layer that
-follows. Voice MARKOV is already shipped.
+- **P1 — Contract v2**: ✅ per-room cut (`feeBps`) + allowlist + forceRefund, tests
+  to 100%. Top-3 split ◻️ not shipped (winner-takes-all).
+- **P2 — Backend `duel` module**: ✅ resolve/list/mirror + tables. (Create/join/
+  allowlist run client-side on-chain, not as backend endpoints — see §7.)
+- **P3 — Frontend pool flow**: ✅ create room, room page, join, play, result,
+  admin allowlist. **← everything the $50 pilot needs.**
+- **P4 — Challenges hub + game-over entry points + notifications**: ✅ hub live
+  (`/api/duel/rooms` + `frontend/app/duel`).
+- **P5 — Rivalries + MARKOV house challenger**: rivalries ✅ (`GET /api/duel/rivalry`,
+  `rivalries` table). Voice MARKOV already shipped.
+- **P6 — Deploy to Celo mainnet + run the $50 pilot pool**: ✅ deployed to Celo
+  mainnet (`0x5dd2…0c557`).
 
 ---
 
-## Open items to confirm before P1
-1. `forceRefund` grace window: **2 days** after deadline (proposed).
-2. Payout: ship **winner-takes-all** first, add top-3 split as a P4 option? (yes/no)
-3. Verified-required: rely on the admin only allowlisting verified wallets
-   (recommended, simplest) vs. an on-chain identity check in `joinRoom`?
+## Open items to confirm before P1 — resolved as built
+1. `forceRefund` grace window: shipped as owner-configurable `forceRefundGrace`
+   (`setForceRefundGrace`), not a fixed constant.
+2. Payout: shipped **winner-takes-all**; top-3 split left unbuilt.
+3. Verified-required: shipped the simplest path — the admin allowlists wallets
+   (which can be the voted+verified list); no on-chain identity check inside
+   `joinRoom`.

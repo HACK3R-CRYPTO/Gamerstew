@@ -45,7 +45,7 @@ npm run build     # compiles the AssemblyScript handlers
 # One-time login (uses GOLDSKY_API_KEY env var or interactive)
 npx goldsky login
 
-# Deploy. Slug is `gamearena/1.0.2` in package.json · bump the version on schema changes.
+# Deploy. The `deploy:goldsky` script targets slug `gamearena/1.0.2` · bump the slug version on schema changes.
 npm run deploy:goldsky
 ```
 
@@ -142,6 +142,7 @@ PerkShop UBI + purchase totals (one row, id = `"global"`):
 
 ## Notes
 
+- **Deployed version:** the live subgraph is `gamearena/1.0.2`, which the frontend pins as `NEXT_PUBLIC_SUBGRAPH_URL`. The `deploy:goldsky` script in `package.json` already targets that slug, but the package `version` field still reads `1.0.0` — a cosmetic mismatch, harmless since Goldsky keys off the slug, not the field. Bump both together on the next schema change.
 - `startBlock` for each contract is set just before its first known activity to skip empty blocks. Keep these accurate so re-indexes stay fast.
 - `Player.username` is set on `PassMinted` and updated on `UsernameChanged` · the latest value always wins.
 - `Player.totalUbiDonated` and `GlobalStat.totalUbiDonatedG` sum the UBI portion of every habitat unlock. `GlobalStat.totalTreasuryG` tracks the treasury portion separately.
