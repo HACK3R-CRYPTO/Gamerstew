@@ -10,7 +10,7 @@
 
 const SUBGRAPH_URL =
   process.env.SUBGRAPH_URL ||
-  'https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn';
+  'https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.2/gn';
 
 const TIMEOUT_MS = 8_000;
 
