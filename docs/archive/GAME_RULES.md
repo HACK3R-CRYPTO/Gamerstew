@@ -1,3 +1,7 @@
+> ⚠️ **ARCHIVED — historical snapshot (archived 2026-10-03).** This is a point-in-time planning/record artifact and is **no longer maintained**. For GameArena's current state, see the root [README](../../README.md).
+>
+> ---
+
 # Arena Platform - Game Rules & How They Work
 
 ## Overview

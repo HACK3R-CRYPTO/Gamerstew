@@ -2,7 +2,7 @@
 
 Solidity contracts for GameArena on Celo Mainnet (chain 42220). Built with Foundry and OpenZeppelin v4.
 
-These contracts cover three jobs: proving who a player is on-chain (GamePass), recording game scores on-chain, and moving GoodDollar (G$) for wagers and cosmetic unlocks. Most day-to-day player value now lives in GamePass and HabitatRegistry. The two wager contracts are older and kept around for the AI-agent match flow and legacy players.
+These contracts cover three jobs: proving who a player is on-chain (GamePass), recording game scores on-chain, and moving GoodDollar (G$) for duels, wagers, and cosmetic unlocks. Most day-to-day player value now lives in GamePass, HabitatRegistry, PerkShop, and DuelEscrow (Friend Duels). The two older wager contracts, ArenaPlatform and SoloWager, are kept around for the AI-agent match flow and legacy players.
 
 ## Deployed contracts (Celo Mainnet)
 
@@ -11,6 +11,7 @@ These contracts cover three jobs: proving who a player is on-chain (GamePass), r
 | `GamePass.sol` | Soulbound identity NFT: username, tiers, on-chain scores | [`0xBB044d67...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE) |
 | `HabitatRegistry.sol` | G$ cosmetic sink: unlock paid habitat tiers, split to UBI + treasury | [`0x8888FEb4...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F) |
 | `PerkShop.sol` | G$ perk sink: saves, retries, cosmetics, match tickets, split to treasury + UBI | [`0xe451Ab21...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5) |
+| `DuelEscrow.sol` | Friend Duels: staked / seeded-prize G$ duel rooms, on-chain winner + payout | [`0x5dd223ed...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557) |
 | `ArenaPlatform.sol` | 1v1 G$ match escrow, used by A2A agent counterparties, legacy for human players | [`0x5C0eafE7...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE) |
 | `SoloWager.sol` | Solo score wager escrow (legacy) | [`0xc78A8A02...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb) |
 
@@ -23,7 +24,7 @@ A non-transferable ERC-721 ("GameArena Pass", symbol `GAPASS`). One per wallet.
 - `mint(username)` registers a player. Usernames are 3-16 chars, `a-z 0-9 _`, case-insensitive unique. `hasMinted[player]` gates everything else. `totalSupply` is the count of registered players.
 - `changeUsername(newName)`, plus views `getUsername(player)` and `isUsernameAvailable(name)`.
 - Scores are stored two ways: `bestScore[player][gameType]` (all-time, never resets) and `weeklyBest[season][player][gameType]` (per-week). `currentSeason()` returns `block.timestamp / 7 days`, so seasons roll over automatically with no admin call.
-- `gameType` is a `uint8`: `0` = Rhythm Rush, `1` = Simon Memory.
+- `gameType` is a `uint8`: `0` = Rhythm Rush, `1` = Simon Memory, `2` = Stack Tower, `3` = Challenge AI. The contract accepts any `uint8`; the one-time `migrate` path only seeds Rhythm and Simon scores.
 
 Score-save paths:
 
@@ -70,6 +71,19 @@ In-game perks paid in G$ across GameArena's casual modes: saves ("continue your 
 
 Constructor takes `(gToken, ubiPool, treasury)`.
 
+### DuelEscrow.sol · Friend Duels room escrow
+
+Escrows G$ for multiplayer "duel rooms" (`Ownable2Step` + `Pausable` + `ReentrancyGuard`). A creator opens a room — a friend duel, an open room, or a sponsored prize pool — funding a per-player `stake` and/or a seeded `seed` prize, picking the game, capacity, deadline, fee, and gating. Others join before the deadline, everyone plays a run on the existing engine, the backend validator submits the final scoreboard, and the contract derives the winner **on-chain** and pays out.
+
+- `createRoom(RoomParams)` opens a room; the caller must have approved `stake + seed` of G$. `createRoomWithPermit(...)` is the gasless path (EIP-2612 permit wrapped in try/catch). `RoomParams` carries `gameType` (`0` rhythm · `1` simon · `2` stack · `3` challenge-ai), `stake`, `seed`, `feeBps`, `capacity` (2–256), `deadline`, `joinCodeHash`, `useAllowlist`, and a display-only `targetScore`.
+- Entry gating, mixable per room: a **join-code** (`keccak` of a secret carried in the share link) and/or an **allowlist** (`addToAllowlist` / `removeFromAllowlist`, creator or owner). A `joinCodeHash` of 0 means the room is public and listed.
+- `joinRoom(id, code)` / `joinRoomWithPermit(...)` lock the stake and enforce deadline, capacity, allowlist, and join-code checks.
+- `resolveRoom(id, scores)` is validator-only. Scores align to `players` index-for-index; winner is the highest score, ties break to the earliest entrant, so the validator cannot hand-pick a winner. Callable once the room is full or past its deadline. Payout is `pot - fee`; `fee = pot * feeBps / 10000` routes to `treasury`. Fee is capped at `MAX_FEE_BPS` (2000 = **20%**); sponsored community pools set `feeBps = 0` so the winner takes the full prize.
+- Trustless exits so funds are never trapped: `refundUnfilled` (anyone, after deadline, if only the creator joined), `refundAll` (validator escape hatch after the deadline), and `forceRefund` (anyone, after `deadline + forceRefundGrace`, default 2 days, if a contested room was never resolved). Pause gates only create/join — resolve and all refunds stay open.
+- Views: `getRoom`, `getPlayers`, `playerCount`, `getPlayerRooms`, `pot`, `isResolvable`. Owner config: `setValidator`, `setTreasury`, `setWindowBounds`, `setForceRefundGrace`, `pause` / `unpause`.
+
+Constructor takes `(gToken, treasury, validator)`.
+
 ### ArenaPlatform.sol · 1v1 match escrow
 
 Escrows G$ for 1v1 matches. Used by A2A agent counterparties against MARKOV, legacy for human players.
@@ -96,7 +110,7 @@ Constructor takes `(gToken, goodCollective, backendValidator)`.
 
 ## Other contracts
 
-`src/` also holds earlier or experimental contracts not covered above (for example `TournamentPlatform.sol`, `GameLottery.sol`, `AgentRegistry.sol`, `EIP8004Registry.sol`, `ArenaToken.sol`, `GameAssets.sol`). They are not part of the four deployed addresses listed here.
+`src/` also holds earlier or experimental contracts not covered above (for example `TournamentPlatform.sol`, `GameLottery.sol`, `AgentRegistry.sol`, `EIP8004Registry.sol`, `ArenaToken.sol`, `GameAssets.sol`). They are not part of the six deployed addresses listed here.
 
 ## Prerequisites
 
@@ -114,7 +128,7 @@ forge script script/DeployGamePass.s.sol \
   --broadcast --account deployer
 ```
 
-Deploy scripts live in `script/` (one per contract, e.g. `DeployGamePass.s.sol`, `DeployHabitatRegistry.s.sol`, `DeployPerkShop.s.sol`, `DeployArenaOnly.s.sol`, `DeploySoloWager.s.sol`).
+Deploy scripts live in `script/` (one per contract, e.g. `DeployGamePass.s.sol`, `DeployHabitatRegistry.s.sol`, `DeployPerkShop.s.sol`, `DeployDuelEscrow.s.sol`, `DeployArenaOnly.s.sol`, `DeploySoloWager.s.sol`).
 
 Both `DeployPerkShop.s.sol` and `DeployHabitatRegistry.s.sol` default the treasury to the real GameArena wallet `0xc1cFA63135eA2fB5AB795cF10e4c79F4DD03c3f6` (overridable via `GAMEARENA_TREASURY`) and hard-revert if the treasury resolves to the Foundry placeholder sender `0x1804c8AB...` · a guard against the earlier bug where an unset treasury silently routed funds to an unowned address. The live PerkShop and HabitatRegistry `treasury()` both point to that wallet, set via `setTreasury`.
 
@@ -139,8 +153,9 @@ forge verify-contract <address> src/GamePass.sol:GamePass \
 
 ## Security
 
-- **ReentrancyGuard** on state-changing wager and unlock functions.
-- **Ownable** for admin operations, **Pausable** on HabitatRegistry and PerkShop.
+- **ReentrancyGuard** on state-changing wager, unlock, and duel-room functions.
+- **Ownable** for admin operations (**Ownable2Step** on DuelEscrow), **Pausable** on HabitatRegistry, PerkShop, and DuelEscrow. DuelEscrow's pause gates only room create/join, so resolve and refunds can never be blocked.
+- **Trustless refunds** on DuelEscrow (`refundUnfilled` / `refundAll` / `forceRefund`) so escrowed G$ is never trapped if a room goes unresolved.
 - **SafeERC20** for all token transfers.
 - **EIP-712 signatures** for GamePass score recording, with single-use nonces to block replays.
 - Backend-validator pattern: only an authorized wallet can resolve wagers or act as `scoreValidator`.
@@ -153,6 +168,7 @@ contracts/
 │   ├── GamePass.sol           Soulbound identity NFT + on-chain scores
 │   ├── HabitatRegistry.sol    Paid habitat tiers, G$ split to UBI + treasury
 │   ├── PerkShop.sol           G$ perks (saves/retries/cosmetics/tickets), split to treasury + UBI
+│   ├── DuelEscrow.sol         Friend Duels: staked / seeded-prize G$ duel rooms, on-chain payout
 │   ├── ArenaPlatform.sol      1v1 G$ match escrow
 │   ├── SoloWager.sol          Solo score wager escrow (legacy)
 │   └── ...                    earlier / experimental contracts

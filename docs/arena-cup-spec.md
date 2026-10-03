@@ -1,5 +1,11 @@
 # Arena Cup — Build Spec
 
+> **Status: COMPLETE — past event.** The Arena Cup ran and has concluded (Aug 2026).
+> This document is kept as the historical build spec and design record. The dates,
+> weights, and "source of truth for the build" language below are preserved as-written
+> from the build; they are no longer live config. For the current economy and live
+> events, see the root `README.md`.
+
 The first real-money, skill-based, verification-gated event. Two ladders (humans + their AIs) on one board, one community-grown pot. This is the source of truth for the build.
 
 ---

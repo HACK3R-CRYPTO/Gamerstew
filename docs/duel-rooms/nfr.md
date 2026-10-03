@@ -1,5 +1,9 @@
 # Duel Rooms — Non-Functional Requirements
 
+> **Status: SHIPPED.** `DuelEscrow` is deployed on Celo mainnet at
+> `0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557`. The NFRs below held as designed;
+> the §6 reliability gap (`forceRefund`) is now **closed** — see the inline note.
+
 Feature: peer-to-peer and sponsored G$ "duel rooms" (friend duel, open room,
 sponsored private prize pool). First real use: a community's **$50 private
 prize pool**, replacing the manual screenshot / verified-list process.
@@ -71,18 +75,19 @@ Targets below are deliberately modest; inflating them is how you over-engineer.
   create/join go through EIP-2612 `permit` + the existing relayer (the same
   gasless path skill-game scores use). Only the validator's `resolveRoom` tx
   costs gas, from the existing validator wallet.
-- **Prize pools are sponsor-funded**, not platform-funded. The 20% UBI cut is a
-  routing, not a platform expense.
+- **Prize pools are sponsor-funded**, not platform-funded. The per-room cut
+  (shipped as `feeBps` → treasury, capped at 20%) is a routing, not a platform
+  expense; sponsored pools set it to 0.
 
 ## 6. Reliability
 - **Every room reaches a terminal state (Resolved or Refunded).**
   - Nobody joined → `refundUnfilled` (trustless, anyone can call). ✅
   - Contested but no valid scores → `refundAll` (validator). ✅
-  - **GAP TO CLOSE:** a *contested* room whose validator never resolves has no
-    trustless exit — funds could sit until the owner intervenes. **Requirement:**
-    add a trustless `forceRefund` callable by anyone once `deadline + grace`
-    (e.g. 7 days) passes, returning stakes to players and the seed to the
-    sponsor. This guarantees no configuration of downtime can trap funds.
+  - **GAP CLOSED (✅ shipped):** a *contested* room whose validator never resolves
+    now has a trustless exit — `forceRefund` is callable by anyone once
+    `deadline + forceRefundGrace` (owner-configurable via `setForceRefundGrace`)
+    passes, returning stakes to players and the seed to the sponsor. No
+    configuration of downtime can trap funds.
 - Idempotency: create/join/resolve mirrors keyed on `roomId` + tx hash so a
   retry can't double-record.
 
@@ -94,7 +99,7 @@ Targets below are deliberately modest; inflating them is how you over-engineer.
   components (podium, rows, share/telegram deep-link, verify gate).
 
 ## 8. Testability
-- Contract: **100% branch/function coverage already** (57 tests).
+- Contract: **100% branch/function coverage** (62 tests in `contracts/test/DuelEscrow.t.sol`).
 - Backend: score→winner selection and entry-gating are pure/deterministic and
   unit-testable; the on-chain path is tested end-to-end against a **local anvil
   Celo fork** (real G$ addresses, zero mainnet risk) before mainnet deploy.
@@ -108,4 +113,5 @@ Targets below are deliberately modest; inflating them is how you over-engineer.
 2. **Backend vs. contract as source of truth for the room list/hub:** index
    on-chain events vs. a Supabase mirror written on create/join. *Lean: Supabase
    mirror for speed + private-room filtering, reconciled against chain.*
-3. **`forceRefund` grace period:** 7 days after deadline (proposed).
+3. **`forceRefund` grace period:** resolved — shipped as an owner-configurable
+   `forceRefundGrace` setter rather than a fixed constant.

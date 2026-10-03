@@ -5,7 +5,12 @@
 we committed to the GoodDollar team (Lewis) in the admin. **Do not ship an integration
 that exceeds or contradicts anything below without re-confirming with GoodDollar first.**
 
-Last updated: 2026-08-25
+Last updated: 2026-10-03
+
+**Current traction (Oct 2026):** 479+ GamePass wallets · 160+ GoodDollar-verified
+humans · ~45,000 G$ routed to the GoodDollar UBI pool · 2,000,000+ G$ paid out to
+players · Season 4 complete. (These are live GameArena metrics; the EngagementRewards
+on-chain claim flow below is still unshipped — the two are independent.)
 
 ---
 
@@ -100,5 +105,9 @@ verified friend activates). Resolved from `season_v1_referrer_intent`.
    reward, NOT recurring. Never build a flow that assumes daily/repeat claims.
 3. Verification gate is non-negotiable — no reward without a non-zero `getWhitelistedRoot`.
 4. Ongoing engagement/retention is funded by GameArena's own economy (Cups, community pool, prize
-   rooms), which is entirely separate from the GoodDollar engagement reward.
+   rooms), which is entirely separate from the GoodDollar engagement reward. That economy also
+   feeds the UBI pool directly: **20% of every G$ a player spends** (perks, habitats, and match
+   refills) streams on-chain to the GoodDollar UBI pool, 80% to treasury — a per-spend routing, NOT
+   the retired wager-era 2% match fee, and NOT the EngagementRewards claim described above. All
+   three are distinct flows; do not conflate them in any copy to GoodDollar.
 5. Any change to the activation threshold (first N games) requires re-confirming with GoodDollar.

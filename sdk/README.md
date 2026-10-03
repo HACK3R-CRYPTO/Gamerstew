@@ -97,6 +97,18 @@ Header on every call: `x-partner-key: <your key>`
 
 Rate limit: 120 requests / minute / key.
 
+## Live consumer: the Square chat app
+The **Square** chat app (worldstreet) is a live production consumer of this API. It
+calls the partner surface **server-to-server** from its own backend (holding its
+scoped `x-partner-key`, no browser origin) and is configured as an **on-chain
+partner with `gameType 5`** — so its players' scores mirror on-chain on GameArena
+through the gasless GamePass path, same as a native game.
+
+To onboard its players with zero friction, Square also calls GameArena's
+**`/api/faucet`** server-to-server with its partner key: a just-verified player gets
+a small gas drip (`FAUCET_PARTNER_DRIP_CELO`, ~0.1 CELO — enough for a claim/mint)
+so they can transact without ever holding CELO first. One drip per wallet, ever.
+
 ## Notes
 - Scores always feed GameArena's leaderboards. On-chain partners also get each score
   mirrored on-chain on GameArena (gas sponsored by GameArena) — your plays lift
