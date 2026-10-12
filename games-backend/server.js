@@ -457,6 +457,113 @@ if (provider && FAUCET_KEY) {
   }
 }
 
+// ─── Vatar on-chain provisioning (custodial wallets) ─────────────────────────
+// Brings Vatar (Lagos Life) players onto Celo. Each Vatar playerId maps to a
+// DETERMINISTIC custodial Celo wallet derived from VATAR_CUSTODY_SEED — the key
+// is never stored, only re-derived. On first embed load we drip gas and mint a
+// GamePass, so the Vatar player becomes a real on-chain GameArena player; their
+// scores and purchases settle on-chain in later phases.
+//
+// VATAR_CUSTODY_SEED is the MASTER key for every custodial wallet: env only,
+// never code/commits. Lose it = the wallets can't be re-derived; leak it = every
+// custodial key is derivable; change it = everyone already provisioned is
+// orphaned. Set once, back up, keep secret.
+const VATAR_CUSTODY_SEED = process.env.VATAR_CUSTODY_SEED || '';
+const VATAR_GAS_DRIP_CELO = process.env.VATAR_GAS_DRIP_CELO || '0.1'; // a mint costs ~0.06
+// Minimal GamePass ABI for the custodial mint — the main passContract ABI is
+// bound to the validator and exposes no mint().
+const GAME_PASS_MINT_ABI = [
+  'function mint(string username) external',
+  'function hasMinted(address player) external view returns (bool)',
+  'function isUsernameAvailable(string username) external view returns (bool)',
+];
+
+// Deterministic custodial wallet for a Vatar playerId. keccak256(seed:playerId)
+// is the private key, so the same player always resolves to the same wallet and
+// no keys are ever stored. null when unconfigured.
+function deriveVatarWallet(playerId) {
+  if (!VATAR_CUSTODY_SEED || !provider) return null;
+  try {
+    const pk = ethers.keccak256(ethers.toUtf8Bytes(`${VATAR_CUSTODY_SEED}:${playerId}`));
+    return new ethers.Wallet(pk, provider);
+  } catch { return null; }
+}
+
+// Player-facing username for the minted pass · "ll_" (Lagos Life) + 8 hex of the
+// playerId: deterministic, collision-resistant, matches the contract's
+// [a-z0-9_]{3,16} rule.
+function vatarUsername(playerId) {
+  const h = ethers.keccak256(ethers.toUtf8Bytes(`username:${playerId}`)).slice(2, 10);
+  return `ll_${h}`;
+}
+
+// In-flight guard · "on embed load" fires ensureVatarOnchain for every page
+// load, and the first few can race before the DB row lands. One provision per
+// playerId at a time; the on-chain hasMinted check + mint's own revert make any
+// surviving race harmless.
+const _vatarProvisioning = new Set();
+
+// Ensure a Vatar player has a custodial wallet + a minted GamePass. Idempotent:
+// returns early when already minted (DB row or on-chain). Drips gas then mints
+// from the custodial wallet. Returns { address, minted, txHash?, already? } or
+// { address?, error }.
+async function ensureVatarOnchain(playerId) {
+  const wallet = deriveVatarWallet(playerId);
+  if (!wallet) return { error: 'custody_not_configured' };
+  const address = wallet.address;
+
+  const { data: existing } = await supabase
+    .from('vatar_wallets').select('address, minted').eq('player_id', String(playerId)).maybeSingle();
+  if (existing?.minted) return { address: existing.address, minted: true, already: true };
+
+  if (_vatarProvisioning.has(playerId)) return { address, minted: false, pending: true };
+  _vatarProvisioning.add(playerId);
+  try {
+    const pass = new ethers.Contract(GAME_PASS_ADDR, GAME_PASS_MINT_ABI, wallet);
+
+    // Record the mapping up front so we always know the address, even if the
+    // mint below fails and we retry on the next load.
+    await supabase.from('vatar_wallets')
+      .upsert({ player_id: String(playerId), address }, { onConflict: 'player_id' });
+
+    // Minted on-chain already (e.g. provisioned before the row was written)?
+    if (await pass.hasMinted(address)) {
+      await supabase.from('vatar_wallets').update({ minted: true }).eq('player_id', String(playerId));
+      return { address, minted: true, already: true };
+    }
+
+    // Drip gas so the custodial wallet can pay for its own mint.
+    const faucetSigner = faucetWallet || validator;
+    if (!faucetSigner) return { address, minted: false, error: 'no_faucet' };
+    const dripWei = ethers.parseEther(VATAR_GAS_DRIP_CELO);
+    if ((await provider.getBalance(address)) < dripWei) {
+      const faucetBal = await provider.getBalance(faucetSigner.address);
+      if (faucetBal < dripWei + ethers.parseEther('0.02')) {
+        console.warn(`⛽ VATAR GAS LOW · refusing drip to ${address} · TOP UP ${faucetSigner.address}`);
+        return { address, minted: false, error: 'faucet_empty' };
+      }
+      const drip = await faucetSigner.sendTransaction({ to: address, value: dripWei });
+      await drip.wait();
+    }
+
+    // Pick an available username (append two hex of the address on the rare clash).
+    let username = vatarUsername(playerId);
+    try { if (!(await pass.isUsernameAvailable(username))) username = `${username}${address.slice(2, 4).toLowerCase()}`; } catch {}
+
+    const tx = await pass.mint(username);
+    await tx.wait();
+    await supabase.from('vatar_wallets')
+      .update({ minted: true, username }).eq('player_id', String(playerId));
+    console.log(`🎮 Vatar player on Celo · ${address} minted "${username}" (tx ${tx.hash.slice(0, 10)}…)`);
+    return { address, minted: true, txHash: tx.hash };
+  } catch (e) {
+    console.error(`Vatar on-chain provision failed for ${playerId}:`, e?.message || e);
+    return { address, minted: false, error: 'provision_failed' };
+  } finally {
+    _vatarProvisioning.delete(playerId);
+  }
+}
+
 // ─── Habitat Registry — paid habitat tier ownership ──────────────────────────
 const HABITAT_REGISTRY_ADDR = process.env.HABITAT_REGISTRY_ADDRESS || '';
 const HABITAT_PAID_TIERS    = [6, 7, 8, 9, 10];
@@ -4617,6 +4724,26 @@ app.post('/api/vatar/claim', standardLimiter, async (req, res) => {
   } catch (e) {
     console.error('vatar/claim error:', e?.message || e);
     return res.status(500).json({ error: 'claim_failed' });
+  }
+});
+
+// POST /api/vatar/onchain/ensure — provision a Vatar player onto Celo (custodial
+// wallet + GamePass mint). The embed calls this on load via the Next server
+// action. requireSecret because it SPENDS GAS (drip + mint), so only our own
+// server (holding INTERNAL_SECRET) can trigger it; the Vatar session is then
+// verified server-side so we never trust a client-supplied playerId. Idempotent.
+app.post('/api/vatar/onchain/ensure', standardLimiter, requireSecret, async (req, res) => {
+  const { session } = req.body || {};
+  if (!session) return res.status(400).json({ error: 'session_required' });
+  if (!VATAR_SECRET) return res.status(503).json({ error: 'vatar_not_configured' });
+  try {
+    const me = await vatarApi('/session/verify', { session });
+    if (me.http !== 200 || !me.playerId) return res.status(401).json({ error: 'bad_session' });
+    const r = await ensureVatarOnchain(me.playerId);
+    return res.json(r);
+  } catch (e) {
+    console.error('vatar/onchain/ensure error:', e?.message || e);
+    return res.status(500).json({ error: 'ensure_failed' });
   }
 });
 

@@ -28,3 +28,24 @@ export async function claimVatarPurchase(
     return { error: 'backend_unreachable' };
   }
 }
+
+// Provision a Vatar player onto Celo (custodial wallet + GamePass mint). Called
+// on embed load. The backend verifies the session itself and mints at most once,
+// so this is safe to fire on every load. Returns the player's custodial address
+// when provisioned. Spends sponsored gas server-side, hence the internal secret.
+export async function ensureVatarOnchain(
+  session: string,
+): Promise<{ address?: string; minted?: boolean; error?: string }> {
+  if (!session) return { error: 'session_required' };
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/vatar/onchain/ensure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ session }),
+      cache: 'no-store',
+    });
+    return await res.json();
+  } catch {
+    return { error: 'backend_unreachable' };
+  }
+}
