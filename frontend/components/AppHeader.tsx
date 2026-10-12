@@ -14,6 +14,7 @@ import { AccountSheet } from "@/components/AccountSheet";
 import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import { isEmbedded } from "@/lib/vatar";
 
 const T = {
   ink: "#ffffff",
@@ -87,6 +88,12 @@ export default function AppHeader() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+  // Inside a Vatar world there is no GameArena sign-in to offer (the player is
+  // already the authenticated Vatar player, and Privy/Google can't be framed),
+  // so the guest "Sign in" button is hidden. Computed after mount — SSR always
+  // renders the standalone site.
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
   const innerMax = isDesktop ? 1180 : 480;
   const innerPad = isDesktop ? "0 32px" : "0 16px";
 
@@ -397,6 +404,8 @@ export default function AppHeader() {
               </svg>
             </button>
           </>
+        ) : embedded ? (
+          <span style={{ width: 38, height: 38, flexShrink: 0 }} />
         ) : (
           <button onClick={() => router.push("/home")} style={{
             display: "flex", alignItems: "center", gap: 6,
