@@ -31,7 +31,8 @@ import GuestScorePrompt from "@/components/GuestScorePrompt";
 import MintScorePrompt from "@/components/MintScorePrompt";
 import toast from "react-hot-toast";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
-import { startDemoMatch, throwDemoMove, demoMatchesLeft, DEMO_MATCH_LIMIT } from "@/lib/markovDemo";
+import { startDemoMatch, throwDemoMove, demoMatchesLeft, DEMO_MATCH_LIMIT, grantDemoMatches, CONTINUE_MATCHES } from "@/lib/markovDemo";
+import { isEmbedded, vatarPurchase } from "@/lib/vatar";
 import { renderArenaShareCard, canNativeShare, nativeShareCard, downloadCard } from "@/lib/arenaShareCard";
 import { startWaapiFallback } from "@/lib/waapiFallback";
 import {
@@ -286,6 +287,35 @@ export default function ChallengeAiPage() {
   const [refillOffer, setRefillOffer] = useState<RefillOffer | null>(null);
   const [buying, setBuying] = useState(false);
 
+  // Embedded in a Vatar (Lagos Life) world? Only then do we offer the paid
+  // Continue · set after mount so server and first client render agree.
+  const [embedded, setEmbedded] = useState(false);
+  const [buyingContinue, setBuyingContinue] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
+
+  // Out of free demo matches inside a Vatar world: sign-in can't be framed, so
+  // the player buys a Continue through Vatar instead. Our server verifies the
+  // purchase against the authenticated Vatar player and records it; the matches
+  // themselves are credited in-session (a guest has no GameArena account).
+  const onBuyContinue = useCallback(async () => {
+    if (buyingContinue) return;
+    setBuyingContinue(true);
+    setError(null);
+    try {
+      const r = await vatarPurchase("continue_run");
+      if (r.ok) {
+        grantDemoMatches(CONTINUE_MATCHES);
+        setDemoLeft(demoMatchesLeft());
+        toast.success(`🎮 +${CONTINUE_MATCHES} matches · back in the ring`, { duration: 4000 });
+      } else if (r.error && !/cancel/i.test(r.error)) {
+        setError("Purchase didn't go through · try again");
+      }
+    } catch {
+      setError("Purchase didn't go through · try again");
+    }
+    setBuyingContinue(false);
+  }, [buyingContinue]);
+
   const buyRefill = useCallback(async () => {
     if (!address || buying) return;
     const ticket = getPerk(6);
@@ -523,6 +553,9 @@ export default function ChallengeAiPage() {
             onBuyRefill={buyRefill}
             isGuest={!authed && !authPending}
             demoLeft={demoLeft}
+            embedded={embedded}
+            onBuyContinue={onBuyContinue}
+            buyingContinue={buyingContinue}
             showAgentOption={authed}
             onAgent={agentLaunch.play}
             agentLaunchPhase={agentLaunch.phase}
@@ -582,7 +615,7 @@ export default function ChallengeAiPage() {
 // ═══ Lobby ════════════════════════════════════════════════════════════════════
 function Lobby({
   pet, record, busy, error, onStart, ladder, myAddress, remaining, refillOffer, buying, onBuyRefill,
-  isGuest, demoLeft, showAgentOption, onAgent, onAgentSettings, isDesktop,
+  isGuest, demoLeft, embedded, onBuyContinue, buyingContinue, showAgentOption, onAgent, onAgentSettings, isDesktop,
   agent, agentKnownAbsent, agentStrategy, onDeploy, agentLaunchPhase,
 }: {
   pet: PetStage;
@@ -598,6 +631,9 @@ function Lobby({
   onBuyRefill: () => void;
   isGuest: boolean;   // no account · gets the local demo, never ranked
   demoLeft: number;   // demo matches remaining before the sign-in ask
+  embedded: boolean;        // inside a Vatar world · offer the paid Continue
+  onBuyContinue: () => void; // buy continue_run through Vatar for more matches
+  buyingContinue: boolean;   // pay sheet open / claim in flight
   showAgentOption: boolean; // signed-in players can hand the fight to their agent
   onAgent: () => void;      // launch the agent flow (sign → live match)
   agentLaunchPhase: LaunchPhase; // lobby CTA reflects signing/waking/starting
@@ -863,22 +899,49 @@ function Lobby({
             </div>
           </div>
         ) : isGuest && demoLeft === 0 ? (
-          /* Demo spent · this is the ask. Ranked play, a genuinely provable
-             match, the ladder and G$ all live behind sign-in. The demo proved
-             MARKOV reads you; this is where they come get the real one. */
-          <Link href="/home" style={{ textDecoration: "none" }}>
-            <div style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}>
-              <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
-                <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-                <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 18, color: "#12043a", letterSpacing: "0.04em" }}>
-                  SIGN IN TO KEEP PLAYING
-                </span>
+          embedded ? (
+            /* Inside a Vatar world · sign-in can't be framed (Google blocks it),
+               so the player buys a Continue through Vatar to keep going. The
+               purchase is verified + recorded server-side against the
+               authenticated Vatar player; the matches credit in-session. */
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: T.display, fontSize: 14, color: "#c4b5fd", letterSpacing: "0.03em" }}>DEMO OVER</div>
+              <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, margin: "5px 0 8px" }}>
+                MARKOV has your number · grab {CONTINUE_MATCHES} more and break the read
+              </div>
+              <div
+                role="button"
+                onClick={buyingContinue ? undefined : onBuyContinue}
+                style={{ cursor: buyingContinue ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}
+              >
+                <div style={{ borderRadius: "16px 16px 12px 12px", background: buyingContinue ? "rgba(167,139,250,0.45)" : "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                  <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 17, color: "#12043a", letterSpacing: "0.04em" }}>
+                    {buyingContinue ? "OPENING PAY SHEET…" : `🎮 CONTINUE · +${CONTINUE_MATCHES} MATCHES`}
+                  </span>
+                </div>
+              </div>
+              <div style={{ textAlign: "center", marginTop: 7, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft }}>
+                Paid in Vatar · practice matches, never ranked
               </div>
             </div>
-            <div style={{ textAlign: "center", marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
-              That was the demo · sign in for ranked matches, the ladder, and G$
-            </div>
-          </Link>
+          ) : (
+            /* Standalone site · demo spent, this is the ask. Ranked play, a
+               provable match, the ladder and G$ all live behind sign-in. */
+            <Link href="/home" style={{ textDecoration: "none" }}>
+              <div style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}>
+                <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                  <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 18, color: "#12043a", letterSpacing: "0.04em" }}>
+                    SIGN IN TO KEEP PLAYING
+                  </span>
+                </div>
+              </div>
+              <div style={{ textAlign: "center", marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+                That was the demo · sign in for ranked matches, the ladder, and G$
+              </div>
+            </Link>
+          )
         ) : (
           <>
             {/* WHO FIGHTS · segmented switch, one lobby, instant flip. The
