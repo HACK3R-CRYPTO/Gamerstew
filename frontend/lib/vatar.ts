@@ -18,7 +18,7 @@
 //   if (r.ok) { /* delivered + recorded server-side against the Vatar player */ }
 // Docs: https://lagoslife.app/developers/docs
 
-import { claimVatarPurchase } from "@/app/actions/vatar";
+import { claimVatarPurchase, ensureVatarOnchain } from "@/app/actions/vatar";
 
 const SDK_SRC = "https://lagoslife.app/sdk/vatar-games-v1.js";
 
@@ -111,6 +111,10 @@ export async function initVatar(wallet?: string): Promise<VatarInit | null> {
     try {
       const info = await v.init();
       currentPlayer = info.player ?? null;
+      // Bring this Vatar player onto Celo: the backend provisions a custodial
+      // wallet and mints their GamePass (once). Fire-and-forget — gameplay never
+      // waits on a chain write, and the backend is idempotent per player.
+      void ensureVatarOnchain(info.session).catch(() => {});
       // Fires when a purchase is confirmed with no purchase() call waiting, e.g.
       // the player came back from a payment page.
       v.onPurchase((p) => {
