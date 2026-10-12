@@ -9,6 +9,23 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: import.meta.dirname,
   },
+  // Let Vatar (Lagos Life) embed GameArena in its "worlds" iframe. Vatar requires
+  // a frame-ancestors CSP that names its domains and NO X-Frame-Options DENY/
+  // SAMEORIGIN; 'self' keeps any same-origin framing working. Applied site-wide
+  // because the registered game URL is the platform root.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self' https://lagoslife.app https://www.lagoslife.app",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

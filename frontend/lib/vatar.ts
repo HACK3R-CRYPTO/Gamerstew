@@ -1,0 +1,154 @@
+"use client";
+
+// ─── Vatar (Lagos Life) browser SDK wrapper ──────────────────────────────────
+// Loads the official SDK once, inits it only when GameArena is EMBEDDED in a
+// Vatar world, and turns a purchase into a server-confirmed delivery via the
+// claimVatarPurchase server action (the secret stays on our server). Safe to
+// call when NOT embedded: init no-ops and purchases report unavailable, so the
+// standalone gamearenahq.xyz site is untouched.
+//
+// Identity: inside a Vatar world the player is the authenticated Vatar player.
+// Vatar.init() returns { player: { id, name, avatar }, session } and our server
+// verifies the session with POST /session/verify → playerId. No GameArena
+// sign-in (Privy/Google) is involved — that flow can't even be framed.
+//
+// Usage once a product exists in the Vatar dashboard:
+//   await initVatar();                        // on app load (embedded-only)
+//   const r = await vatarPurchase("continue_run");
+//   if (r.ok) { /* delivered + recorded server-side against the Vatar player */ }
+// Docs: https://lagoslife.app/developers/docs
+
+import { claimVatarPurchase } from "@/app/actions/vatar";
+
+const SDK_SRC = "https://lagoslife.app/sdk/vatar-games-v1.js";
+
+export type VatarPlayer = { id: string; name?: string; avatar?: string };
+type VatarInit = { player: VatarPlayer; session: string; mode?: string };
+type Purchase = { purchaseId: string; productId: string };
+type Vatar = {
+  init: () => Promise<VatarInit>;
+  session: () => Promise<{ session: string }>;
+  purchase: (productId: string) => Promise<Purchase>;
+  purchases: () => Promise<Purchase[]>;
+  onPurchase: (fn: (p: Purchase) => void) => void;
+};
+
+declare global {
+  interface Window {
+    Vatar?: Vatar;
+  }
+}
+
+let sdkPromise: Promise<Vatar | null> | null = null;
+let initPromise: Promise<VatarInit | null> | null = null;
+let currentPlayer: VatarPlayer | null = null;
+let currentWallet: string | undefined;
+
+// Only embedded pages (inside an iframe, i.e. a Vatar world) should load/init
+// the SDK; standalone gamearenahq.xyz never needs it.
+export function isEmbedded(): boolean {
+  try {
+    return typeof window !== "undefined" && window.self !== window.top;
+  } catch {
+    return true; // cross-origin frame access throws — we ARE framed
+  }
+}
+
+// The authenticated Vatar player, once init has resolved (null until then / when
+// not embedded).
+export function getVatarPlayer(): VatarPlayer | null {
+  return currentPlayer;
+}
+
+function loadSdk(): Promise<Vatar | null> {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.Vatar) return Promise.resolve(window.Vatar);
+  if (sdkPromise) return sdkPromise;
+  sdkPromise = new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = SDK_SRC; // load from Vatar, never a copy — it gets security fixes
+    s.async = true;
+    s.onload = () => resolve(window.Vatar ?? null);
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+  return sdkPromise;
+}
+
+async function freshSession(): Promise<string | null> {
+  const v = await loadSdk();
+  if (!v) return null;
+  try {
+    return (await v.session()).session;
+  } catch {
+    return null;
+  }
+}
+
+// Confirm + deliver a purchase through our server. Errors are logged, not shown:
+// an unclaimed purchase is retried on the next load via the pending sweep below.
+async function claim(p: Purchase): Promise<{ ok?: boolean; productId?: string; error?: string } | undefined> {
+  const session = (await freshSession()) ?? "";
+  try {
+    const r = await claimVatarPurchase(session, p.purchaseId, currentWallet);
+    if (r?.error) console.warn("Vatar claim failed:", r.error);
+    return r;
+  } catch (e) {
+    console.warn("Vatar claim threw:", e);
+    return undefined;
+  }
+}
+
+// Init the SDK and reconcile anything already paid for. Returns the player info,
+// or null when not embedded / not a Vatar world. Idempotent (memoised).
+export async function initVatar(wallet?: string): Promise<VatarInit | null> {
+  currentWallet = wallet;
+  if (!isEmbedded()) return null;
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const v = await loadSdk();
+    if (!v) return null;
+    try {
+      const info = await v.init();
+      currentPlayer = info.player ?? null;
+      // Fires when a purchase is confirmed with no purchase() call waiting, e.g.
+      // the player came back from a payment page.
+      v.onPurchase((p) => {
+        void claim(p);
+      });
+      // Deliver anything paid-for-but-not-delivered (a past claim that failed).
+      try {
+        const pending = await v.purchases();
+        for (const p of pending || []) await claim(p);
+      } catch {
+        /* no pending, or not supported */
+      }
+      return info;
+    } catch {
+      return null; // not inside a Vatar world, or the SDK rejected init
+    }
+  })();
+  return initPromise;
+}
+
+// Link (or update) the GameArena wallet used when recording future deliveries.
+export function setVatarWallet(wallet?: string): void {
+  currentWallet = wallet;
+}
+
+// Start a purchase: opens Vatar's pay sheet; resolves once payment is confirmed,
+// then we claim it server-side. Returns { ok } and the productId on success.
+export async function vatarPurchase(
+  productId: string,
+): Promise<{ ok: boolean; productId?: string; error?: string }> {
+  const v = await loadSdk();
+  if (!v) return { ok: false, error: "vatar_unavailable" };
+  try {
+    const p = await v.purchase(productId);
+    const r = await claim(p);
+    return { ok: !!r?.ok, productId: r?.productId, error: r?.error };
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    return { ok: false, error: code || "purchase_failed" };
+  }
+}

@@ -38,6 +38,10 @@ const MARKOV_PCT = 0.7;                     // 70% model, 30% random · same mix
 /** How many free matches a guest gets before we ask them to sign in. */
 export const DEMO_MATCH_LIMIT = 3;
 const DEMO_PLAYED_KEY = "gamearena:markov:demoPlayed";
+// Extra demo matches bought through Vatar (Lagos Life) · beyond the free limit.
+const DEMO_BONUS_KEY = "gamearena:markov:demoBonus";
+/** How many matches one continue_run purchase grants. */
+export const CONTINUE_MATCHES = 3;
 
 // ─── Seeded PRNG · mirror of the server makeRand ─────────────────────────────
 function makeRand(seed: `0x${string}`, matchId: string) {
@@ -247,12 +251,26 @@ export function demoMatchesPlayed(): number {
   if (typeof window === "undefined") return 0;
   return Number(window.localStorage.getItem(DEMO_PLAYED_KEY) || 0);
 }
+/** Extra demo matches bought through Vatar, beyond the free DEMO_MATCH_LIMIT. */
+function demoBonus(): number {
+  if (typeof window === "undefined") return 0;
+  return Number(window.localStorage.getItem(DEMO_BONUS_KEY) || 0);
+}
 export function demoMatchesLeft(): number {
-  return Math.max(0, DEMO_MATCH_LIMIT - demoMatchesPlayed());
+  return Math.max(0, DEMO_MATCH_LIMIT + demoBonus() - demoMatchesPlayed());
 }
 function bumpDemoPlayed() {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DEMO_PLAYED_KEY, String(demoMatchesPlayed() + 1));
+}
+/** Grant n more demo matches after a confirmed Vatar purchase (continue_run).
+ *  Account-less: the credit lives in this browser, tied to nothing but the
+ *  device, which fits a guest playing inside a Vatar world (no GameArena
+ *  account, no wallet). The purchase itself is recorded server-side against the
+ *  authenticated Vatar player in vatar_deliveries. */
+export function grantDemoMatches(n: number): void {
+  if (typeof window === "undefined" || n <= 0) return;
+  window.localStorage.setItem(DEMO_BONUS_KEY, String(demoBonus() + n));
 }
 
 export type DemoStart = {

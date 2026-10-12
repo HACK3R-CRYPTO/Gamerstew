@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "@/components/providers";
 import AppAudio from "@/components/AppAudio";
+import VatarBridge from "@/components/VatarBridge";
 
 const APP_URL = "https://gamearenahq.xyz";
 const APP_TITLE = "Game Arena";
@@ -170,6 +171,9 @@ export default function RootLayout({
           {/* App-wide UI audio: ambient pad on menu routes + click blip on every
               button. Pauses during gameplay so game tracks dominate. */}
           <AppAudio />
+          {/* Activates the Vatar (Lagos Life) SDK only when embedded in a Vatar
+              world · no-ops on standalone gamearenahq.xyz. */}
+          <VatarBridge />
           {children}
         </Providers>
       </body>
