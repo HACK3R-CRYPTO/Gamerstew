@@ -111,6 +111,12 @@ export async function initVatar(wallet?: string): Promise<VatarInit | null> {
     try {
       const info = await v.init();
       currentPlayer = info.player ?? null;
+      // Let the UI (e.g. AppHeader) swap "Guest" for the real Vatar player as
+      // soon as init resolves, without prop-drilling or polling.
+      try {
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new CustomEvent("vatar:player", { detail: currentPlayer }));
+      } catch { /* no window / CustomEvent — ignore */ }
       // Bring this Vatar player onto Celo: the backend provisions a custodial
       // wallet and mints their GamePass (once). Fire-and-forget — gameplay never
       // waits on a chain write, and the backend is idempotent per player.
