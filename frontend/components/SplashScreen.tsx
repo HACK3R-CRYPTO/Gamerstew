@@ -5,6 +5,7 @@ import { preloadHomeData, getHomeData } from "@/lib/homePreload";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import { isEmbedded } from "@/lib/vatar";
 
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -339,7 +340,11 @@ export default function SplashScreen() {
   //     /home falls back to its own fetch state
   useEffect(() => {
     preloadHomeData();
-    const dest = isMiniPay ? "/dashboard" : "/home";
+    // Inside a Vatar world the player is already the authenticated Vatar
+    // player — there is no GameArena sign-in to offer (Privy/Google can't even
+    // be framed, Google 403s). Skip the /home Play-Free / Sign-In gate and drop
+    // them straight into the games hub so they can pick any of the four games.
+    const dest = isEmbedded() ? "/games" : isMiniPay ? "/dashboard" : "/home";
     router.prefetch(dest);
     const started = Date.now();
     let cancelled = false;

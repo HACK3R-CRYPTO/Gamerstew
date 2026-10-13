@@ -9,6 +9,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { playClick, playWhooshIn } from "@/hooks/useAppAudio";
 import { type AllTimeEntry } from "@/lib/subgraph";
 import { getHomeData } from "@/lib/homePreload";
+import { isEmbedded } from "@/lib/vatar";
 import Onboarding, { type OnboardingResult } from "@/components/Onboarding";
 
 const ONBOARDED_KEY = "gamearena:onboarded";
@@ -247,7 +248,7 @@ const KEYFRAMES = `
 
 // ─── HomeScreen · mobile ─────────────────────────────────────────────────
 function HomeScreenMobile({
-  onPlayFree, onConnect, onAbout, onMute, muted, banner,
+  onPlayFree, onConnect, onAbout, onMute, muted, banner, embedded,
 }: {
   onPlayFree: () => void;
   banner?: React.ReactNode;
@@ -255,6 +256,7 @@ function HomeScreenMobile({
   onAbout: () => void;
   onMute: () => void;
   muted: boolean;
+  embedded: boolean;
 }) {
   return (
     // height: 100dvh uses the dynamic viewport on mobile so iOS Safari's
@@ -320,18 +322,25 @@ function HomeScreenMobile({
         }}>
           <Icon name="play" size={18} color="#fff" /> Play free
         </button>
-        <button onClick={onConnect} style={{
-          fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 800,
-          minHeight: 60, padding: "0 16px", borderRadius: 14,
-          background: "rgba(255,255,255,0.05)",
-          border: `1px solid ${T.hairlineHi}`,
-          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        }}>
-          <Icon name="bolt" size={15} color={T.accent} /> Sign in
-        </button>
-        <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.4, marginTop: 2 }}>
-          Free to play. Sign in anytime to win G$ &amp; save your pet.
-        </div>
+        {/* Sign in is hidden inside a Vatar world: the player is already the
+            authenticated Vatar player, and Privy/Google OAuth 403s when framed.
+            Standalone gamearenahq.xyz still shows it. */}
+        {!embedded && (
+          <>
+            <button onClick={onConnect} style={{
+              fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 800,
+              minHeight: 60, padding: "0 16px", borderRadius: 14,
+              background: "rgba(255,255,255,0.05)",
+              border: `1px solid ${T.hairlineHi}`,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}>
+              <Icon name="bolt" size={15} color={T.accent} /> Sign in
+            </button>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, textAlign: "center", lineHeight: 1.4, marginTop: 2 }}>
+              Free to play. Sign in anytime to win G$ &amp; save your pet.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -339,7 +348,7 @@ function HomeScreenMobile({
 
 // ─── HomeScreen · desktop ────────────────────────────────────────────────
 function HomeScreenDesktop({
-  onPlayFree, onConnect, onAbout, onMute, muted, live, banner,
+  onPlayFree, onConnect, onAbout, onMute, muted, live, banner, embedded,
 }: {
   onPlayFree: () => void;
   banner?: React.ReactNode;
@@ -348,6 +357,7 @@ function HomeScreenDesktop({
   onMute: () => void;
   muted: boolean;
   live: LiveData | null;
+  embedded: boolean;
 }) {
   return (
     <div style={{ display: "flex", overflow: "hidden", padding: "32px 40px", gap: 48, alignItems: "center", justifyContent: "center", minHeight: "100vh", maxWidth: 1180, margin: "0 auto", width: "100%" }}>
@@ -379,20 +389,23 @@ function HomeScreenDesktop({
             }}>
               <Icon name="play" size={15} color="#fff" /> Play free
             </button>
-            <button onClick={onConnect} style={{
-              fontFamily: T.body, fontSize: 14, fontWeight: 800, color: T.ink,
-              padding: "15px 24px", borderRadius: 16,
-              background: "rgba(255,255,255,0.05)",
-              border: `1px solid ${T.hairlineHi}`,
-              cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 8,
-            }}>
-              <Icon name="bolt" size={14} color={T.accent} /> Sign in
-            </button>
+            {/* Sign in hidden inside a Vatar world (see mobile note). */}
+            {!embedded && (
+              <button onClick={onConnect} style={{
+                fontFamily: T.body, fontSize: 14, fontWeight: 800, color: T.ink,
+                padding: "15px 24px", borderRadius: 16,
+                background: "rgba(255,255,255,0.05)",
+                border: `1px solid ${T.hairlineHi}`,
+                cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 8,
+              }}>
+                <Icon name="bolt" size={14} color={T.accent} /> Sign in
+              </button>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: T.body, fontSize: 12, color: T.inkSoft }}>
             <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-            Free to start. Sign in later to win G$ &amp; save your progress.
+            {embedded ? "Free to play. Climb the board." : "Free to start. Sign in later to win G$ & save your progress."}
             <button onClick={onAbout} style={{ background: "none", border: "none", color: T.accent, fontFamily: T.body, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, marginLeft: 2 }}>How it works ›</button>
           </div>
         </div>
@@ -532,6 +545,11 @@ export default function HomePage() {
   const [live, setLive] = useState<LiveData | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  // Framed inside a Vatar world? Computed on the client after mount (SSR always
+  // renders the standalone site) so the sign-in UI can be hidden — the Vatar
+  // player is already authenticated and Privy/Google can't be framed.
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
 
   // Lock html + body overflow while /home is mounted so iOS Safari can't
   // drag-scroll the page when its address bar collapses (which changes the
@@ -738,6 +756,7 @@ export default function HomePage() {
             onMute={toggleMute}
             muted={muted}
             live={live}
+            embedded={embedded}
           />
         ) : (
           <div style={{ maxWidth: 480, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column" }}>
@@ -748,6 +767,7 @@ export default function HomePage() {
               onAbout={onAbout}
               onMute={toggleMute}
               muted={muted}
+              embedded={embedded}
             />
           </div>
         )}

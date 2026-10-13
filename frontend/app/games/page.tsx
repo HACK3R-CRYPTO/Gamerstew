@@ -12,6 +12,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { fetchPreview } from "@/lib/leaderboardPreview";
 import type { GameTypeId } from "@/lib/subgraph";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
+import { isEmbedded } from "@/lib/vatar";
 
 // ─── tokens (in sync with /dashboard + /home) ────────────────────────────
 const T = {
@@ -216,6 +217,11 @@ export default function GamesPage() {
   const { authenticated } = usePrivy();
   const { address } = useAccount();
   const [isDesktop, setIsDesktop] = useState(false);
+  // Framed inside a Vatar world? Hide the guest "sign in" banner — the Vatar
+  // player is already authenticated and can't be sent through Privy/Google.
+  // Computed after mount (SSR renders the standalone site).
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
   // Per-game loading overlay state · holds the tapped game's identity so
   // the loader shows the right art/title/glow. Cleared when the route
   // change unmounts the page (and re-cleared on back-nav return).
@@ -293,8 +299,9 @@ export default function GamesPage() {
       {/* Full-viewport sticky header. Content centers itself inside. */}
       <AppHeader />
 
-      {/* Guest banner — only when not fully onboarded. Same pattern as /dashboard. */}
-      {!connected && !identityResolving && (
+      {/* Guest banner — only when not fully onboarded. Same pattern as /dashboard.
+          Hidden in a Vatar world: there is no GameArena sign-in to nudge toward. */}
+      {!connected && !identityResolving && !embedded && (
         <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "8px auto 0" }}>
           <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
         </div>
