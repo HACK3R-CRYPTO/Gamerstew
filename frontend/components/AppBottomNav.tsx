@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { playClick } from "@/hooks/useAppAudio";
+import { isEmbedded } from "@/lib/vatar";
 
 const T = {
   accent: "#a78bfa",
@@ -37,6 +39,11 @@ export default function AppBottomNav({ wide = false }: { wide?: boolean }) {
   const pathname = usePathname() || "";
   const router = useRouter();
   const active = activeId(pathname);
+  // Inside a Vatar world we keep the embed to the games only — no app-wide
+  // nav to Home / Shop / Events / Pet. Computed after mount (SSR renders the
+  // full standalone nav).
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
 
   const wideStyle: React.CSSProperties = {
     position: "fixed", left: "50%", bottom: 18, transform: "translateX(-50%)", zIndex: 60,
@@ -52,6 +59,8 @@ export default function AppBottomNav({ wide = false }: { wide?: boolean }) {
     borderTop: `1px solid ${T.hairline}`,
     display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 2,
   };
+
+  if (embedded) return null;
 
   return (
     <nav style={wide ? wideStyle : mobileStyle}>
