@@ -47,6 +47,7 @@ let sdkPromise: Promise<Vatar | null> | null = null;
 let initPromise: Promise<VatarInit | null> | null = null;
 let currentPlayer: VatarPlayer | null = null;
 let currentWallet: string | undefined;
+let currentVatarAddress: string | null = null; // custodial Celo wallet, lowercase
 
 // Only embedded pages (inside an iframe, i.e. a Vatar world) should load/init
 // the SDK; standalone gamearenahq.xyz never needs it.
@@ -72,6 +73,28 @@ export function getVatarPlayer(): VatarPlayer | null {
 const noopSubscribe = () => () => {};
 export function useIsEmbedded(): boolean {
   return useSyncExternalStore(noopSubscribe, isEmbedded, () => false);
+}
+
+// Reactive custodial Celo address (lowercase) for the embedded Vatar player, or
+// null. Populated when ensureVatarOnchain resolves; lets the leaderboard flag
+// this player's own rows even though they have no browser wallet.
+function subscribeVatarAddress(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("vatar:address", cb);
+  return () => window.removeEventListener("vatar:address", cb);
+}
+export function useVatarAddress(): string | null {
+  return useSyncExternalStore(subscribeVatarAddress, () => currentVatarAddress, () => null);
+}
+
+// Reactive Vatar display name, or undefined. Updates on the "vatar:player" event.
+function subscribeVatarPlayer(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("vatar:player", cb);
+  return () => window.removeEventListener("vatar:player", cb);
+}
+export function useVatarName(): string | undefined {
+  return useSyncExternalStore(subscribeVatarPlayer, () => currentPlayer?.name, () => undefined);
 }
 
 function loadSdk(): Promise<Vatar | null> {
@@ -155,8 +178,20 @@ export async function initVatar(wallet?: string): Promise<VatarInit | null> {
       } catch { /* no window / CustomEvent — ignore */ }
       // Bring this Vatar player onto Celo: the backend provisions a custodial
       // wallet and mints their GamePass (once). Fire-and-forget — gameplay never
-      // waits on a chain write, and the backend is idempotent per player.
-      void ensureVatarOnchain(info.session).catch(() => {});
+      // waits on a chain write, and the backend is idempotent per player. Capture
+      // the custodial address so the UI can recognise this player's own rows on
+      // the leaderboard ("You · <Vatar name>").
+      void ensureVatarOnchain(info.session)
+        .then((r) => {
+          if (r?.address) {
+            currentVatarAddress = r.address.toLowerCase();
+            try {
+              if (typeof window !== "undefined")
+                window.dispatchEvent(new CustomEvent("vatar:address", { detail: currentVatarAddress }));
+            } catch { /* ignore */ }
+          }
+        })
+        .catch(() => {});
       // Fires when a purchase is confirmed with no purchase() call waiting, e.g.
       // the player came back from a payment page.
       v.onPurchase((p) => {
