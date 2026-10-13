@@ -21,6 +21,8 @@ import {
   startGameMiniPay as startGameMiniPayAction,
   type RhythmTap,
 } from "@/app/actions/game";
+import { useIsEmbedded, getVatarSession, vatarSubmitScore } from "@/lib/vatar";
+import { startVatarGame, signVatarScore } from "@/app/actions/vatar";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
@@ -347,6 +349,9 @@ export default function RhythmGamePage() {
   // Guests (not signed in) get GUEST_PLAY_LIMIT free runs, then a sign-in
   // gate — mirrors Challenge AI's demo limit. Signed-in players are unlimited.
   const isGuest = !authed && !authPending;
+  // Vatar embed player (Lagos Life iframe) · no browser wallet but a custodial
+  // GamePass. Their runs record on-chain via the Vatar session (effect below).
+  const inVatar = useIsEmbedded();
   const [guestLeft, setGuestLeft] = useState<number>(3);
   const [guestLimitOpen, setGuestLimitOpen] = useState(false);
   const guestCountedRef = useRef(false);
@@ -912,6 +917,7 @@ export default function RhythmGamePage() {
     reset();
     // Reset submission bookkeeping — a fresh run is a fresh submit
     submittedRef.current = false;
+    vatarSubmittedRef.current = false;
     usedPerkRef.current = false;
     setSubmitResult(null);
     setSubmitError(null);
@@ -948,6 +954,17 @@ export default function RhythmGamePage() {
         startingRef.current = false;
         return;
       }
+    } else if (inVatar) {
+      // Vatar embed · no browser wallet. Bind a session ticket to the player's
+      // custodial wallet (backend resolves it from the Vatar session) so the
+      // finished run can record on-chain. Non-blocking: play continues on failure.
+      try {
+        const vs = await getVatarSession();
+        if (vs) {
+          const r = await startVatarGame(vs, "rhythm");
+          if (r.success) sessionTokenRef.current = r.sessionToken;
+        }
+      } catch { /* ignore · play continues */ }
     }
 
     setPhase("countdown");
@@ -959,6 +976,32 @@ export default function RhythmGamePage() {
     // until the next gameover surface.
     startingRef.current = false;
   };
+
+  // ═══ Vatar embed · record the finished run ═══════════════════════════════
+  // The embed player has no browser wallet, so the on-chain submit path (gated
+  // on `address`) skips them. Record the run to the GameArena on-chain ladder
+  // (backend-signed gasless write, keyed to their custodial wallet via the Vatar
+  // session) AND to Vatar's own in-world board. The backend REPLAYS the tapLog
+  // and records the computed score. Best-effort.
+  const vatarSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "finished" || !inVatar) return;
+    if (vatarSubmittedRef.current) return;
+    vatarSubmittedRef.current = true;
+    const token = sessionTokenRef.current;
+    // Informational only for rhythm — the backend replays `taps` and records the
+    // computed score. The in-world board gets this number directly.
+    const scoreToSave = Math.min(1_000_000, Math.max(0, Math.round(score)));
+    const taps = tapLogRef.current.slice();
+    void (async () => {
+      void vatarSubmitScore(scoreToSave);
+      if (!token) return;
+      const vs = await getVatarSession();
+      if (!vs) return;
+      await signVatarScore(vs, "rhythm", scoreToSave, token, taps).catch(() => {});
+    })();
+  }, [phase, inVatar, score]);
+
   useEffect(() => {
     if (phase !== "countdown") return;
     if (countdown <= 0) {

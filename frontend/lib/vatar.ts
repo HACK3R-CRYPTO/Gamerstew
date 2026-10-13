@@ -32,6 +32,9 @@ type Vatar = {
   purchase: (productId: string) => Promise<Purchase>;
   purchases: () => Promise<Purchase[]>;
   onPurchase: (fn: (p: Purchase) => void) => void;
+  // Vatar's OWN in-world leaderboard (Lagos Life). Separate from GameArena's
+  // on-chain ladder. Optional — older SDK builds may not expose it.
+  submitScore?: (score: number) => Promise<void> | void;
 };
 
 declare global {
@@ -93,6 +96,28 @@ async function freshSession(): Promise<string | null> {
     return (await v.session()).session;
   } catch {
     return null;
+  }
+}
+
+// A fresh Vatar session token, for server actions that need to verify the
+// player server-side (e.g. recording a score on-chain). Null when not embedded.
+export async function getVatarSession(): Promise<string | null> {
+  if (!isEmbedded()) return null;
+  return freshSession();
+}
+
+// Push a score to Vatar's OWN in-world leaderboard (Lagos Life). Separate from
+// GameArena's on-chain ladder. Fire-and-forget and best-effort: no-ops when not
+// embedded or when the SDK build has no submitScore. Vatar counts one score per
+// ~20s, so callers submit once per finished run.
+export async function vatarSubmitScore(score: number): Promise<void> {
+  if (!isEmbedded()) return;
+  if (!Number.isFinite(score) || score < 0) return;
+  try {
+    const v = await loadSdk();
+    if (v?.submitScore) await v.submitScore(Math.round(score));
+  } catch {
+    /* in-world board is non-critical — ignore */
   }
 }
 

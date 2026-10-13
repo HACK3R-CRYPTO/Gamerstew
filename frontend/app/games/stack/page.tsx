@@ -39,6 +39,8 @@ import {
   startGame as startGameAction,
   startGameMiniPay as startGameMiniPayAction,
 } from "@/app/actions/game";
+import { useIsEmbedded, getVatarSession, vatarSubmitScore } from "@/lib/vatar";
+import { startVatarGame, signVatarScore } from "@/app/actions/vatar";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
@@ -219,6 +221,10 @@ export default function StackTowerPage() {
   // Guests (not signed in) get GUEST_PLAY_LIMIT free runs, then a sign-in
   // gate — mirrors Challenge AI's demo limit. Signed-in players are unlimited.
   const isGuest = !authed && !authPending;
+  // Vatar embed player (inside the Lagos Life iframe) · distinct from Privy's
+  // isEmbeddedWallet below. They have no browser wallet but a custodial GamePass,
+  // so their runs record on-chain via the Vatar session (see the effects below).
+  const inVatar = useIsEmbedded();
   const [guestLeft, setGuestLeft] = useState<number>(3);
   const [guestLimitOpen, setGuestLimitOpen] = useState(false);
   const guestCountedRef = useRef(false);
@@ -534,6 +540,7 @@ export default function StackTowerPage() {
     setScore(0); setCombo(0);
     juice.reset();
     submittedRef.current = false;
+    vatarSubmittedRef.current = false;
     savePausedAtRef.current = 0;
     sessionTokenRef.current = null;
     setSubmitResult(null);
@@ -570,13 +577,25 @@ export default function StackTowerPage() {
         startingRef.current = false;
         return;
       }
+    } else if (inVatar) {
+      // Vatar embed · no browser wallet. Bind a session ticket to the player's
+      // custodial wallet (the backend resolves it from the Vatar session) so the
+      // finished run can record on-chain. Non-blocking: if it fails, play still
+      // runs and the run just won't post to the ladder.
+      try {
+        const vs = await getVatarSession();
+        if (vs) {
+          const r = await startVatarGame(vs, "stack");
+          if (r.success) sessionTokenRef.current = r.sessionToken;
+        }
+      } catch { /* ignore · play continues */ }
     }
 
     getAudioCtx();
     setCountdown(3);
     setPhase("countdown");
     startingRef.current = false;
-  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest]);
+  }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest, inVatar]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
@@ -612,6 +631,30 @@ export default function StackTowerPage() {
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [phase, finish]);
+
+  // ═══ Vatar embed · record the finished run ═══════════════════════════════
+  // The embed player has no browser wallet, so the on-chain submit effect below
+  // (gated on `address`) skips them. This records their run to the GameArena
+  // on-chain ladder (backend-signed gasless write, keyed to their custodial
+  // wallet via the Vatar session) AND to Vatar's own in-world leaderboard.
+  // Best-effort: a failure never blocks the finish screen.
+  const vatarSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "finished" || !inVatar) return;
+    if (vatarSubmittedRef.current) return;
+    vatarSubmittedRef.current = true;
+    const token = sessionTokenRef.current;
+    const scoreToSave = Math.min(1_000_000, Math.max(0, Math.round(scoreRef.current)));
+    void (async () => {
+      // Vatar's in-world board (always, even without an on-chain ticket).
+      void vatarSubmitScore(scoreToSave);
+      // GameArena on-chain ladder (needs the ticket from startGame + a real score).
+      if (!token || scoreToSave <= 0) return;
+      const vs = await getVatarSession();
+      if (!vs) return;
+      await signVatarScore(vs, "stack", scoreToSave, token).catch(() => {});
+    })();
+  }, [phase, inVatar]);
 
   // ═══ Submit score · same three-step flow as simon ════════════════════════
   // 1. signScore                    backend EIP-712 voucher

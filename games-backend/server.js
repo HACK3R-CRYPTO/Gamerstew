@@ -4747,6 +4747,122 @@ app.post('/api/vatar/onchain/ensure', standardLimiter, requireSecret, async (req
   }
 });
 
+// ─── Vatar on-chain scores (Phase 2) ─────────────────────────────────────────
+// A Vatar embed player has no browser wallet, but IS a provisioned custodial
+// GamePass holder (see ensureVatarOnchain). These two endpoints let their
+// skill-game runs land on the GameArena on-chain leaderboard, with the SAME
+// session-ticket + replay anti-cheat as signed-in players. Identity always
+// comes from the VERIFIED Vatar session, never a client-supplied wallet, so a
+// player can only ever write scores for THEIR OWN custodial wallet. The write
+// is always gasless (the custodial key is server-side; the player never signs).
+
+// POST /api/vatar/start-game — issue a session ticket bound to the player's
+// custodial wallet. Mirrors /api/start-game.
+app.post('/api/vatar/start-game', requireSecret, gaslessLimiter, async (req, res) => {
+  const { session, game } = req.body || {};
+  if (!session || !game) return res.status(400).json({ error: 'Missing session or game' });
+  if (!VALID_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game' });
+  if (!VATAR_SECRET) return res.status(503).json({ error: 'vatar_not_configured' });
+  try {
+    const me = await vatarApi('/session/verify', { session });
+    if (me.http !== 200 || !me.playerId) return res.status(401).json({ error: 'bad_session' });
+    const wallet = deriveVatarWallet(me.playerId);
+    if (!wallet) return res.status(503).json({ error: 'custody_not_configured' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const { error } = await supabase
+      .from('game_sessions')
+      .insert({ token, wallet: wallet.address.toLowerCase(), game });
+    if (error) {
+      console.error('vatar/start-game insert error:', error.message);
+      return res.status(500).json({ error: 'Failed to start session' });
+    }
+    return res.json({ success: true, sessionToken: token });
+  } catch (e) {
+    console.error('vatar/start-game error:', e?.message || e);
+    return res.status(500).json({ error: 'start_failed' });
+  }
+});
+
+// POST /api/vatar/sign-score — validate a Vatar run and record it on-chain
+// (gasless). Same validation as /api/sign-score: the session ticket blocks
+// direct PoC submits, rhythm is server-replayed, simon/stack trust the client
+// score within bounds. No legacy voucher path (the player can't sign) and no
+// Season-1 points hook (Vatar players aren't enrolled).
+app.post('/api/vatar/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
+  if (!passScoreWriter || !GASLESS_SKILL_GAMES) {
+    return res.status(503).json({ error: 'gasless_not_configured' });
+  }
+  const { session, game, score, sessionToken, tapLog } = req.body || {};
+  if (!session || !game) return res.status(400).json({ error: 'Missing session or game' });
+  if (!VALID_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game' });
+  if (!sessionToken) return res.status(400).json({ error: 'Missing sessionToken' });
+  if (!VATAR_SECRET) return res.status(503).json({ error: 'vatar_not_configured' });
+
+  try {
+    // ── Identity from the verified Vatar session ──
+    const me = await vatarApi('/session/verify', { session });
+    if (me.http !== 200 || !me.playerId) return res.status(401).json({ error: 'bad_session' });
+    const wallet = deriveVatarWallet(me.playerId);
+    if (!wallet) return res.status(503).json({ error: 'custody_not_configured' });
+    const playerAddress = wallet.address;
+
+    // ── Ensure the GamePass exists (recordScore reverts without it). Idempotent
+    //    and fast once minted; init already fires this on embed load. ──
+    const prov = await ensureVatarOnchain(me.playerId).catch(() => null);
+    if (!prov || !prov.minted) return res.status(503).json({ error: 'not_provisioned' });
+
+    // ── Session-ticket validation (mirrors /api/sign-score) ──
+    const { data: gs, error: sErr } = await supabase
+      .from('game_sessions').select('*').eq('token', sessionToken).single();
+    if (sErr || !gs) return res.status(403).json({ error: 'Invalid session token' });
+    if (gs.used) return res.status(403).json({ error: 'Session already used' });
+    if (gs.wallet.toLowerCase() !== playerAddress.toLowerCase())
+      return res.status(403).json({ error: 'Session wallet mismatch' });
+    if (gs.game !== game) return res.status(403).json({ error: 'Session game mismatch' });
+    const elapsed = Date.now() - new Date(gs.started_at).getTime();
+    if (elapsed > 11 * 60 * 1000) return res.status(403).json({ error: 'Session expired' });
+    if (elapsed < 5_000) return res.status(403).json({ error: 'Session too short' });
+
+    // ── Score determination (rhythm replayed; simon/stack bounded client score) ──
+    let serverScore;
+    if (game === 'rhythm') {
+      if (!Array.isArray(tapLog)) return res.status(400).json({ error: 'Missing tapLog (required for rhythm)' });
+      const physics = rhythmPhysicsCheck(tapLog, elapsed);
+      if (!physics.ok) return res.status(403).json({ error: 'Physics check failed', reason: physics.reason });
+      const replay = rhythmComputeScore(tapLog, elapsed);
+      const jitter = rhythmJitterCheck(replay.hits);
+      if (!jitter.ok) return res.status(403).json({ error: 'Jitter check failed', reason: jitter.reason });
+      serverScore = replay.score;
+    } else {
+      if (typeof score !== 'number' || !Number.isFinite(score) || !Number.isInteger(score) || score < 0 || score > 1_000_000)
+        return res.status(400).json({ error: 'Score out of range (max 1000000)' });
+      serverScore = score;
+    }
+
+    // Burn the ticket (best-effort; the score is already validated/computed).
+    await supabase.from('game_sessions')
+      .update({ used: true, used_at: new Date().toISOString(), computed_score: serverScore })
+      .eq('token', sessionToken);
+
+    // ── Gasless on-chain write · serialized with every other signer write ──
+    const budget = gaslessBudgetCheck(playerAddress);
+    if (!budget.ok) {
+      console.warn(`⛔ Vatar gasless budget hit (${budget.reason}) · ${playerAddress.slice(0, 10)}…`);
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+    const gameType = GAME_TYPE[game];
+    const tx = await enqueueScoreWrite(playerAddress, gameType, serverScore);
+    gaslessBudgetConsume(playerAddress);
+    _rememberGaslessTx(tx.hash);
+    console.log(`⛽ Vatar ${game} · ${playerAddress.slice(0, 10)}… score ${serverScore} · ${tx.hash}`);
+    return res.json({ success: true, gasless: true, txHash: tx.hash, gameType, score: serverScore });
+  } catch (e) {
+    console.error('vatar/sign-score error:', e?.message || e);
+    return res.status(500).json({ error: 'sign_failed' });
+  }
+});
+
 // POST /api/vatar/webhook — Lagos Life POSTs purchase events here (server-to-
 // server). Verify the HMAC over the raw body, then RE-verify the purchase with
 // Vatar before granting (the event is only a nudge). Always 200 a well-formed

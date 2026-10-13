@@ -49,3 +49,58 @@ export async function ensureVatarOnchain(
     return { error: 'backend_unreachable' };
   }
 }
+
+// ─── Vatar on-chain scores (Phase 2) ─────────────────────────────────────────
+// Record an embed player's skill-game run on the GameArena on-chain leaderboard.
+// Identity is the Vatar session (the backend verifies it and resolves the
+// player's custodial wallet) — the client never names a wallet. The write is
+// gasless (backend-signed), same anti-cheat as signed-in players.
+
+type VatarGame = 'rhythm' | 'simon' | 'stack';
+
+// Request a session ticket BEFORE play. Mirrors startGame() for signed-in
+// players; the backend binds the ticket to the player's custodial wallet.
+export async function startVatarGame(
+  session: string,
+  game: VatarGame,
+): Promise<{ success: true; sessionToken: string } | { success: false; error: string }> {
+  if (!session || !game) return { success: false, error: 'session_and_game_required' };
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/vatar/start-game`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ session, game }),
+      cache: 'no-store',
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.success) return { success: false, error: data?.error || 'start_failed' };
+    return { success: true, sessionToken: data.sessionToken };
+  } catch {
+    return { success: false, error: 'backend_unreachable' };
+  }
+}
+
+// Record the run on-chain AFTER play. For rhythm, pass the tapLog (the backend
+// replays it and records the computed score, ignoring any client number).
+export async function signVatarScore(
+  session: string,
+  game: VatarGame,
+  score: number,
+  sessionToken: string,
+  tapLog?: unknown[] | null,
+): Promise<{ success: true; txHash: string; score: number } | { success: false; error: string }> {
+  if (!session || !sessionToken) return { success: false, error: 'session_required' };
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/vatar/sign-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
+      body: JSON.stringify({ session, game, score, sessionToken, tapLog: tapLog ?? null }),
+      cache: 'no-store',
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.success) return { success: false, error: data?.error || 'sign_failed' };
+    return { success: true, txHash: data.txHash, score: typeof data.score === 'number' ? data.score : score };
+  } catch {
+    return { success: false, error: 'backend_unreachable' };
+  }
+}
