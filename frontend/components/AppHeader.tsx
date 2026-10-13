@@ -14,7 +14,7 @@ import { AccountSheet } from "@/components/AccountSheet";
 import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
 import { useGasStatus } from "@/hooks/useGasStatus";
-import { isEmbedded } from "@/lib/vatar";
+import { isEmbedded, getVatarPlayer, type VatarPlayer } from "@/lib/vatar";
 
 const T = {
   ink: "#ffffff",
@@ -94,6 +94,17 @@ export default function AppHeader() {
   // renders the standalone site.
   const [embedded, setEmbedded] = useState(false);
   useEffect(() => { setEmbedded(isEmbedded()); }, []);
+  // The authenticated Vatar player, inside a Vatar world. Read on mount (init
+  // usually resolved already via VatarBridge) and kept fresh by the
+  // "vatar:player" event lib/vatar.ts fires when init resolves. Lets the header
+  // show the real player instead of "Guest" in the embed.
+  const [vatarPlayer, setVatarPlayer] = useState<VatarPlayer | null>(null);
+  useEffect(() => {
+    setVatarPlayer(getVatarPlayer());
+    const onPlayer = (e: Event) => setVatarPlayer((e as CustomEvent).detail ?? getVatarPlayer());
+    window.addEventListener("vatar:player", onPlayer);
+    return () => window.removeEventListener("vatar:player", onPlayer);
+  }, []);
   const innerMax = isDesktop ? 1180 : 480;
   const innerPad = isDesktop ? "0 32px" : "0 16px";
 
@@ -130,6 +141,13 @@ export default function AppHeader() {
   // for these seconds — the #1 "I signed in but it shows guest" complaint.
   // Unknown is a loading state, never a guest state.
   const identityResolving = (authenticated || isMiniPay) && (!address || hasMinted === undefined);
+  // In a Vatar world the player isn't Privy-connected but is a real, named
+  // Vatar player (and on-chain, a provisioned custodial GamePass holder). Show
+  // them as themselves, not "Guest". Only when embedded, not Privy-connected,
+  // and init has handed us the player.
+  const showVatar = embedded && !connected && !!vatarPlayer;
+  // "Has an identity to show" — drives the active (not greyed-out) avatar look.
+  const identified = connected || showVatar;
   // GoodDollar / Self verification status · drives the ✓ overlay on the
   // avatar. Only shows when the player is fully connected AND verified ·
   // unverified state shows no badge at all (per design: never mark people
@@ -210,17 +228,21 @@ export default function AppHeader() {
             overlay anchors to a relative wrapper around the button so it
             never breaks layout flex alignment. */}
         <div style={{ position: "relative", flexShrink: 0 }}>
-        <button onClick={() => router.push("/profile")} style={{
-          width: 42, height: 42, borderRadius: 14,
-          background: connected
+        <button onClick={showVatar ? undefined : () => router.push("/profile")} style={{
+          width: 42, height: 42, borderRadius: 14, overflow: "hidden",
+          background: identified
             ? `radial-gradient(circle at 35% 30%, ${T.accent}dd, ${T.accent}33)`
             : "radial-gradient(circle at 35% 30%, rgba(148,163,184,0.6), rgba(148,163,184,0.12))",
-          border: `1.5px solid ${connected ? T.accent + "66" : "rgba(148,163,184,0.4)"}`,
+          border: `1.5px solid ${identified ? T.accent + "66" : "rgba(148,163,184,0.4)"}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 0, cursor: "pointer",
-          boxShadow: connected ? `0 0 14px ${T.accent}33, inset 0 1px 0 rgba(255,255,255,0.2)` : "inset 0 1px 0 rgba(255,255,255,0.15)",
+          padding: 0, cursor: showVatar ? "default" : "pointer",
+          boxShadow: identified ? `0 0 14px ${T.accent}33, inset 0 1px 0 rgba(255,255,255,0.2)` : "inset 0 1px 0 rgba(255,255,255,0.15)",
         }}>
-          <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: connected ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
+          {showVatar && vatarPlayer?.avatar ? (
+            <img src={vatarPlayer.avatar} alt="" style={{ width: 42, height: 42, objectFit: "cover" }} />
+          ) : (
+            <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: identified ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
+          )}
         </button>
         {connected && isVerified && (
           <span
@@ -245,7 +267,7 @@ export default function AppHeader() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {connected ? name : authedUnminted ? "Almost there" : identityResolving ? "Connecting…" : "Guest"}
+            {connected ? name : showVatar ? (vatarPlayer?.name || "Player") : authedUnminted ? "Almost there" : identityResolving ? "Connecting…" : "Guest"}
           </div>
           {connected ? (
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
@@ -275,7 +297,7 @@ export default function AppHeader() {
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
               <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>Playing free · no sign-up</span>
+              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>{showVatar ? "Lagos Life" : "Playing free · no sign-up"}</span>
             </div>
           )}
         </div>
