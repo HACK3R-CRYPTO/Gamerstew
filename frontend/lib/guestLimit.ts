@@ -11,6 +11,8 @@
 // not a security control — a determined guest can clear storage, exactly like
 // the Challenge AI demo. Real anti-farming lives behind sign-in + verification.
 
+import { isEmbedded } from "@/lib/vatar";
+
 export const GUEST_PLAY_LIMIT = 3;
 
 const KEY = (game: string) => `gamearena:guestPlayed:${game}`;
@@ -23,11 +25,16 @@ export function guestPlaysPlayed(game: string): number {
 
 /** Free runs the guest has left for `game` before the sign-in gate. */
 export function guestPlaysLeft(game: string): number {
+  // Inside a Vatar world there is no sign-in gate — the player is already the
+  // authenticated Vatar player (and provisioned on-chain). Always report the
+  // cap as full so play never blocks, regardless of any prior guest count.
+  if (isEmbedded()) return GUEST_PLAY_LIMIT;
   return Math.max(0, GUEST_PLAY_LIMIT - guestPlaysPlayed(game));
 }
 
 /** Count one completed free run. Call once when a guest run finishes. */
 export function bumpGuestPlayed(game: string): void {
   if (typeof window === "undefined") return;
+  if (isEmbedded()) return; // no cap in the embed — nothing to count
   window.localStorage.setItem(KEY(game), String(guestPlaysPlayed(game) + 1));
 }

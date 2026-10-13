@@ -18,6 +18,7 @@
 //   if (r.ok) { /* delivered + recorded server-side against the Vatar player */ }
 // Docs: https://lagoslife.app/developers/docs
 
+import { useSyncExternalStore } from "react";
 import { claimVatarPurchase, ensureVatarOnchain } from "@/app/actions/vatar";
 
 const SDK_SRC = "https://lagoslife.app/sdk/vatar-games-v1.js";
@@ -58,6 +59,16 @@ export function isEmbedded(): boolean {
 // not embedded).
 export function getVatarPlayer(): VatarPlayer | null {
   return currentPlayer;
+}
+
+// React hook form of isEmbedded(). Returns false on the server and the first
+// client render (so SSR + hydration match the standalone site), then the real
+// value after mount. useSyncExternalStore is the hydration-safe way to read a
+// client-only value — no setState-in-effect, no mismatch warning. Use it to
+// hide standalone-only UI (sign-in prompts, nav) inside the embed.
+const noopSubscribe = () => () => {};
+export function useIsEmbedded(): boolean {
+  return useSyncExternalStore(noopSubscribe, isEmbedded, () => false);
 }
 
 function loadSdk(): Promise<Vatar | null> {

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GUEST_PLAY_LIMIT } from "@/lib/guestLimit";
+import { useIsEmbedded } from "@/lib/vatar";
 
 // ─── GuestLimitPrompt ─────────────────────────────────────────────────────────
 // Shown when a guest has used up their free runs of a skill game. Blocks a new
@@ -21,6 +22,7 @@ export default function GuestLimitPrompt({
   game: string;
 }) {
   const router = useRouter();
+  const embedded = useIsEmbedded();
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +31,9 @@ export default function GuestLimitPrompt({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  // Never gate a Vatar player with sign-in: the cap is lifted in the embed, so
+  // this should never open there, but hide it defensively.
+  if (!open || embedded) return null;
 
   return (
     <div
