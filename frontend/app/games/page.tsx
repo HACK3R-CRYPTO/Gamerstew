@@ -122,6 +122,18 @@ const GAMES = [
     href: "/games/challenge-ai",
   },
   {
+    // UP NEPA — the walkable 3D Lagos power game (at /world). Teased as SOON
+    // until the mode is wired into the arena + leaderboard and deployed.
+    id: "upnepa",
+    title: "UP NEPA",
+    subtitle: "Beat the blackout · restore the light",
+    art: "/games/upnepa.png",
+    bg: "linear-gradient(160deg, #2a1550 0%, #12043a 52%, #d97706 135%)",
+    glow: "#fbbf24",
+    active: false,
+    href: "/world",
+  },
+  {
     id: "coming-soon",
     title: "More coming",
     subtitle: "Coming soon",
