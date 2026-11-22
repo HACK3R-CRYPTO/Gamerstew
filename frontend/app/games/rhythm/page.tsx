@@ -2511,6 +2511,7 @@ function PlayingView({
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+      <HeatStage heat={heat} />
       {/* ═══ FEVER VIGNETTE — the whole screen ignites gold for the 6
           doubled seconds. pointerEvents:none so lanes stay tappable. ═══ */}
       {fever && (
@@ -2762,6 +2763,54 @@ function PlayingView({
     </div>
   );
 }
+
+// ─── HeatStage — the scene behind the lanes, driven by how hot the run is ────
+// At heat 0 the stage is the calm night sky it always was. As the speed climbs
+// the scene comes alive with it: a glow in the heat's colour rises from the hit
+// line and pulses on the beat, light streaks rain down the screen faster and
+// thicker, and at the top levels the edges of the screen catch fire. A miss
+// drops the heat and the whole stage cools at once, so you SEE the reset.
+// Only transform and opacity are animated (cheap on phones), and it is memoised
+// so the score ticking over never rebuilds it.
+const STREAKS = Array.from({ length: 18 }, (_, i) => ({ x: (i * 53 + 7) % 100, w: 1 + (i % 3), delay: (i * 0.37) % 1.6, len: 60 + ((i * 29) % 80) }));
+const HeatStage = React.memo(function HeatStage({ heat }: { heat: number }) {
+  const c = HEAT_COLOR[heat];
+  const n = heat === 0 ? 0 : 3 + heat * 3;
+  const dur = 1.5 - heat * 0.19; // streaks fall faster as it heats up
+  return (
+    <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
+      <style>{`
+        @keyframes heat-pulse { 0%,100% { opacity: .55; transform: scale(1); } 12% { opacity: 1; transform: scale(1.06); } }
+        @keyframes heat-fall { from { transform: translate3d(0,-30vh,0); } to { transform: translate3d(0,130vh,0); } }
+        @keyframes heat-flame { 0%,100% { opacity: .55; transform: scaleY(1); } 50% { opacity: .95; transform: scaleY(1.08); } }
+        @media (prefers-reduced-motion: reduce) { .heat-anim { animation: none !important; } }
+      `}</style>
+      {/* glow rising from the hit line, in this level's colour, beating in time */}
+      <div className="heat-anim" style={{
+        position: "absolute", left: "-10%", right: "-10%", bottom: "-18%", height: "78%",
+        background: `radial-gradient(ellipse 60% 62% at 50% 100%, ${c}${heat >= 4 ? "66" : heat >= 2 ? "4d" : "33"} 0%, ${c}1a 45%, transparent 72%)`,
+        opacity: heat === 0 ? 0 : 1, transition: "opacity 0.35s",
+        animation: heat > 0 ? `heat-pulse ${BEAT}s ease-out infinite` : undefined, transformOrigin: "50% 100%",
+      }} />
+      {/* speed streaks */}
+      {STREAKS.slice(0, n).map((k, i) => (
+        <i key={i} className="heat-anim" style={{
+          position: "absolute", top: 0, left: `${k.x}%`, width: k.w, height: k.len, borderRadius: 2,
+          background: `linear-gradient(180deg, transparent, ${c}cc)`, opacity: 0.2 + heat * 0.09,
+          animation: `heat-fall ${dur + (i % 4) * 0.12}s linear ${-k.delay}s infinite`, willChange: "transform",
+        }} />
+      ))}
+      {/* the edges catch fire near the top */}
+      {heat >= 4 && [0, 1].map((side) => (
+        <div key={side} className="heat-anim" style={{
+          position: "absolute", top: "18%", bottom: 0, width: "16%", [side ? "right" : "left"]: 0,
+          background: `linear-gradient(${side ? 270 : 90}deg, ${heat >= 5 ? "#f43f5e" : "#fb923c"}59 0%, transparent 100%)`,
+          transformOrigin: "50% 100%", animation: `heat-flame ${0.42 + side * 0.07}s ease-in-out infinite`,
+        }} />
+      ))}
+    </div>
+  );
+});
 
 // ─── Stat gem (reused from profile pattern) ───────────────────────────────────
 function StatGem({ label, value, color, wall, emphasize }: { label: string; value: string; color: string; wall: string; emphasize?: boolean }) {
