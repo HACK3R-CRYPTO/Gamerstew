@@ -331,6 +331,11 @@ export default function StackTowerPage() {
       localStorage.setItem("stack_best", String(best));
       return best;
     });
+    // tallest tower ever built on this device: the line you climb toward next time
+    try {
+      const built = Math.max(0, levelRef.current - 1);
+      if (built > bestHeightRef.current) { bestHeightRef.current = built; localStorage.setItem("stack_best_height", String(built)); }
+    } catch { /* ignore */ }
     setPhase("finished");
   }, [blip, haptic, juice]);
 
@@ -420,6 +425,12 @@ export default function StackTowerPage() {
     }
 
     levelRef.current = newLevel;
+    // the moment the tower tops your best ever
+    if (!passedBestRef.current && lineHeightRef.current >= 3 && newLevel - 1 > lineHeightRef.current) {
+      passedBestRef.current = true;
+      juice.fireCallout({ text: "NEW HEIGHT!", sub: `PAST YOUR BEST OF ${lineHeightRef.current}`, color: "#4ade80" }, 900);
+      haptic([20, 30, 60]);
+    }
     setScore(scoreRef.current);
     setCombo(comboRef.current);
 
@@ -530,6 +541,8 @@ export default function StackTowerPage() {
     scoreRef.current = 0;
     comboRef.current = 0;
     levelRef.current = 1;
+    lineHeightRef.current = bestHeightRef.current;
+    passedBestRef.current = false;
     dropLogRef.current = [];
     setScore(0); setCombo(0);
     juice.reset();
@@ -855,7 +868,30 @@ export default function StackTowerPage() {
   // allocation, and the old code did it EVERY frame (60×/s). The hue only
   // moves when the level changes, so cache by (level, height): one
   // allocation per stacked block instead of ~3,600/minute.
+  // dev only: lets an automated test build a tower (drop when the block lines up)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __stack?: unknown }).__stack = {
+      phase, drop, level: () => levelRef.current,
+      offset: () => { const m = movingRef.current, st = stackRef.current; return m && st.length ? m.x - st[st.length - 1].x : null; },
+      setBest: (n: number) => { bestHeightRef.current = n; lineHeightRef.current = n; },
+    };
+  });
+
   const bgGradRef = useRef<{ key: string; grad: CanvasGradient } | null>(null);
+  // Tallest tower so far (blocks), drawn as a gold line across the sky. It is
+  // fixed for the whole run, so passing it mid-run is a moment you can see.
+  const bestHeightRef = useRef(0);
+  const lineHeightRef = useRef(0);   // the height the line shows this run
+  const passedBestRef = useRef(false);
+  const skyRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    try { bestHeightRef.current = Number(localStorage.getItem("stack_best_height")) || 0; } catch { /* ignore */ }
+    lineHeightRef.current = bestHeightRef.current;
+    const img = new Image();
+    img.onload = () => { skyRef.current = img; };
+    img.src = "/games/stack-sky.webp";
+  }, []);
 
   // ─── Draw ─────────────────────────────────────────────────────────────────
   const draw = (ctx: CanvasRenderingContext2D, wall: number) => {
@@ -872,9 +908,45 @@ export default function StackTowerPage() {
     }
     ctx.fillStyle = bgGradRef.current.grad;
     ctx.fillRect(0, 0, w, h);
+    // The night sky over Lagos. The skyline sits at the bottom when you start,
+    // and the picture slides down as the tower rises (slower than the tower, so
+    // it reads as distance), until you are stacking up among the stars.
+    const sky = skyRef.current;
+    if (sky) {
+      const scale = Math.max(w / sky.width, (h * 1.45) / sky.height);
+      const dw = sky.width * scale, dh = sky.height * scale;
+      const pan = Math.min(dh - h, camYRef.current * 0.3);
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(sky, (w - dw) / 2, h - dh + pan, dw, dh);
+      ctx.globalAlpha = 0.34; // keep the hue shift that shows the climb
+      ctx.fillStyle = bgGradRef.current.grad;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
 
     ctx.save();
     ctx.translate(0, camYRef.current);
+
+    // YOUR BEST line: the top of the tallest tower you have ever built.
+    const bestH = lineHeightRef.current;
+    if (bestH >= 3) {
+      const ly = blockCenterY(bestH + 1) + BLOCK_H / 2; // top face of block number bestH
+      const passed = levelRef.current - 1 > bestH;
+      ctx.save();
+      ctx.strokeStyle = passed ? "rgba(74,222,128,0.9)" : "rgba(251,191,36,0.9)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 7]);
+      ctx.shadowColor = passed ? "#4ade80" : "#fbbf24";
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.font = '900 11px ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif';
+      ctx.fillStyle = passed ? "#86efac" : "#fde68a";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(passed ? `BEATEN · WAS ${bestH}` : `YOUR BEST · ${bestH}`, 10, ly - 4);
+      ctx.restore();
+    }
 
     // Stack
     const crystal = hasCrystalRef.current;
