@@ -111,7 +111,12 @@ type ScoreRow = {
 
 // Returns the top players for the current week's leaderboard. Pulls a wide
 // score window from the subgraph (top 500 by score) and dedupes per-player.
-export type GameTypeId = 0 | 1 | 2;
+// gameType uint8 mirror of GamePass.sol + backend GAME_TYPE. 3 is Challenge AI
+// (its own ladder, not a skill-board gameType). 4 is NEPA: Up Light — the
+// weekly board reads the generic Score entity filtered by gameType, so nepa is
+// rankable with no subgraph redeploy. Per-player best fields for nepa
+// (bestNepaScore / all-time inclusion) are a later subgraph fast-follow.
+export type GameTypeId = 0 | 1 | 2 | 4;
 
 export async function fetchLeaderboard(
   gameType: GameTypeId,
@@ -279,16 +284,25 @@ export async function fetchPlayerAllTimeCombinedStats(
 // rank vs everyone else. Used by the ALL-TIME tab to render the
 // "Your rank: #N · Your best: X" chip when they're outside the top 50.
 
-const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bestStackScore"> = {
+// Per-game best field on the Player entity. nepa (4) maps to a field the
+// deployed schema does NOT index yet — the all-time/per-game-best path is a
+// deferred subgraph fast-follow, and the weekly board (fetchLeaderboard) never
+// touches this map. The entry exists only so the Record stays exhaustive over
+// GameTypeId; nothing queries bestNepaScore until the subgraph ships it.
+const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bestStackScore" | "bestNepaScore"> = {
   0: "bestRhythmScore",
   1: "bestSimonScore",
   2: "bestStackScore",
+  4: "bestNepaScore",
 };
 
 export async function fetchPlayerAllTimeStats(
   address: string,
   gameType: GameTypeId,
 ): Promise<{ peak: number; rank: number } | null> {
+  // nepa (4) has no per-player best field in the deployed schema yet — the
+  // all-time path is a deferred subgraph fast-follow. Report "no data" cleanly.
+  if (gameType === 4) return null;
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // Asking for stack on gameType=2 when the subgraph doesn't index it yet
@@ -302,6 +316,7 @@ export async function fetchPlayerAllTimeStats(
       bestRhythmScore: string;
       bestSimonScore: string;
       bestStackScore?: string;
+      bestNepaScore?: string;
     } | null;
   }>(
     `query MyBest($id: ID!) {
@@ -338,6 +353,8 @@ export async function fetchPlayerRank(
   address: string,
   gameType: GameTypeId,
 ): Promise<number | null> {
+  // nepa (4): no per-player best field indexed yet (deferred fast-follow).
+  if (gameType === 4) return null;
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // gameType=2 against an unmigrated subgraph has no truth to report.
@@ -350,6 +367,7 @@ export async function fetchPlayerRank(
       bestRhythmScore: string;
       bestSimonScore: string;
       bestStackScore?: string;
+      bestNepaScore?: string;
     } | null;
   }>(
     `query MyBest($id: ID!) {

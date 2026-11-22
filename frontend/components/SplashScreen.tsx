@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { preload } from "react-dom";
 import { preloadHomeData, getHomeData } from "@/lib/homePreload";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
@@ -316,6 +317,7 @@ const DOTS: {
 ];
 
 export default function SplashScreen() {
+  preload("/logo-full.png", { as: "image", fetchPriority: "high" }); // this screen shows the logo first
   const [textIndex, setTextIndex] = useState(0);
   const [displayed, setDisplayed] = useState(0);
   const router = useRouter();

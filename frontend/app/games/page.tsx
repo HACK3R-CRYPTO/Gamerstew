@@ -26,10 +26,43 @@ const T = {
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
+// ─── 3D games · full worlds you move around in ─────────────────────────────
+// Kept as their own shelf so the hub reads as two kinds of game: the 3D worlds
+// (heavier, landscape or portrait, physics) and the quick classic 2D games.
+// Each card shows the REAL game: a cover captured from live play, with its title
+// over it and a Play button in a glass bar (so you see what you are about to
+// play before you tap, instead of an icon on a colour).
+const GAMES_3D = [
+  {
+    id: "upnepa3d",
+    title: "UP NEPA 3D",
+    meta: "LAGOS · OPEN STREET · 2 MODES",
+    blurb: "NEPA don take light. Run the street, flip the breakers, dodge the danfo and bring the whole area back.",
+    cover: "/games/covers/upnepa3d.jpg",
+    focus: "58% 40%",
+    accent: "#fbbf24",
+    badge: "FEATURED",
+    href: "/world",
+  },
+  {
+    id: "streetstrike",
+    title: "Street Strike",
+    meta: "BOWLING · PHYSICS · 5 FRAMES",
+    blurb: "Roll the tyre down the road and scatter the bottles. Curve your swipe to hook. No enter gutter o!",
+    cover: "/games/covers/streetstrike.jpg",
+    focus: "50% 30%",
+    accent: "#a855f7",
+    badge: "NEW",
+    href: "/bowling",
+  },
+];
+
 // ─── games (real project assets · ordered by gameplay weight) ────────────
 const GAMES = [
   {
     id: "rhythm",
+    cover: "/games/covers/rhythm.jpg",
+    focus: "50% 40%",
     title: "Rhythm Rush",
     subtitle: "Tap to the beat · combo to climb",
     art: "/games/rhythm.png",
@@ -40,6 +73,8 @@ const GAMES = [
   },
   {
     id: "simon",
+    cover: "/games/covers/simon.jpg",
+    focus: "50% 45%",
     title: "Simon Memory",
     subtitle: "Sequence memory · go deeper",
     art: "/games/simon.png",
@@ -82,6 +117,8 @@ const GAMES = [
     // identity. Schema also normalized from artGrad/path to bg/href so
     // the card actually paints (the render reads game.bg, game.href).
     id: "stack",
+    cover: "/games/covers/stack.jpg",
+    focus: "50% 60%",
     title: "Stack Tower",
     subtitle: "Stack & survive · don't drop",
     art: (
@@ -112,6 +149,8 @@ const GAMES = [
   },
   {
     id: "challenge-ai",
+    cover: "/games/covers/challenge-ai.jpg",
+    focus: "50% 55%",
     title: "Challenge AI",
     subtitle: "Outsmart MARKOV · or send your own AI",
     art: "/games/challenge-ais.png",
@@ -119,6 +158,47 @@ const GAMES = [
     glow: "#22c55e",
     active: true,
     href: "/games/challenge-ai",
+  },
+  {
+    // NEPA: Up Light — charge devices before NEPA takes the light. Inline-SVG
+    // card art (no PNG asset needed): a glossy socket strip with a lit bulb,
+    // neon purple/gold to match the lobby.
+    id: "nepa",
+    cover: "/games/covers/nepa.jpg",
+    focus: "60% 30%",
+    title: "NEPA: Up Light",
+    subtitle: "Charge fast · beat the blackout",
+    art: (
+      <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }}>
+        {/* glow halo */}
+        <circle cx="50" cy="34" r="26" fill="rgba(251,191,36,0.22)" />
+        {/* bulb */}
+        <circle cx="50" cy="34" r="15" fill="url(#nepaBulb)" stroke="#fde68a" strokeWidth="1.5" />
+        <rect x="44" y="47" width="12" height="7" rx="1.5" fill="#a16207" />
+        <rect x="45" y="54" width="10" height="4" rx="1.5" fill="#713f12" />
+        {/* socket strip */}
+        <rect x="18" y="70" width="64" height="20" rx="5" fill="#2a1d55" stroke="#a855f7" strokeWidth="1.5" />
+        {[28, 50, 72].map((cx, i) => (
+          <g key={i}>
+            <circle cx={cx} cy="80" r="6" fill="#140a2e" stroke="#c084fc" strokeWidth="1" />
+            <rect x={cx - 2.6} y="77.5" width="1.6" height="3" rx="0.6" fill="#e9d5ff" />
+            <rect x={cx + 1} y="77.5" width="1.6" height="3" rx="0.6" fill="#e9d5ff" />
+          </g>
+        ))}
+        <defs>
+          <radialGradient id="nepaBulb" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stopColor="#fffbeb" />
+            <stop offset="55%" stopColor="#fbbf24" />
+            <stop offset="100%" stopColor="#d97706" />
+          </radialGradient>
+        </defs>
+      </svg>
+    ),
+    bg: "linear-gradient(155deg, #7c3aed 0%, #5b21b6 55%, #2e1065 100%)",
+    glow: "#fbbf24",
+    active: true,
+    isNew: true,
+    href: "/games/nepa",
   },
   {
     id: "coming-soon",
@@ -168,6 +248,98 @@ function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSe
   );
 }
 
+// A 3D game card: full-bleed cover from the real game, a shade so text stays
+// readable, badge + meta line, big title, two-line blurb, and a glass dock with
+// the Play button. The first card is the hero and gets a larger title.
+function Card3D({ game, hero, wide, onClick }: { game: typeof GAMES_3D[number]; hero: boolean; wide: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`Play ${game.title}`}
+      style={{
+        position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end",
+        width: "100%", aspectRatio: wide ? "16 / 10" : hero ? "4 / 4.5" : "4 / 3.9",
+        padding: 0, border: "none", borderRadius: 24, overflow: "hidden", textAlign: "left", cursor: "pointer",
+        color: "#fff", background: "#0b0c12", isolation: "isolate",
+        boxShadow: `0 28px 56px -30px rgba(0,0,0,0.95), 0 30px 70px -45px ${game.accent}`,
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={game.cover} alt="" loading={hero ? "eager" : "lazy"} decoding="async" style={{ position: "absolute", left: 0, top: 0, width: "100%", height: wide ? "100%" : "64%", objectFit: "cover", objectPosition: game.focus, zIndex: 0 }} />
+      <span style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: wide ? "linear-gradient(rgba(5,6,10,0.4) 0%, rgba(5,6,10,0) 22%, rgba(5,6,10,0) 40%, rgba(5,6,10,0.85) 70%, rgba(5,6,10,0.97) 100%)" : "linear-gradient(rgba(5,6,10,0.35) 0%, rgba(5,6,10,0) 16%, rgba(5,6,10,0) 40%, rgba(11,12,18,0.9) 60%, #0b0c12 66%)" }} />
+      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 24, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px rgba(255,255,255,0.14)" }} />
+      <span style={{ position: "absolute", top: 14, left: 14, zIndex: 3, display: "inline-flex", alignItems: "center", gap: 7, height: 26, padding: "0 11px", borderRadius: 999, fontFamily: T.body, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", color: game.badge === "NEW" ? "#ffd56b" : "rgba(255,255,255,0.92)", background: "rgba(10,11,16,0.5)", border: `1px solid ${game.badge === "NEW" ? "rgba(255,213,107,0.45)" : "rgba(255,255,255,0.16)"}`, backdropFilter: "blur(14px) saturate(1.4)", WebkitBackdropFilter: "blur(14px) saturate(1.4)" }}>
+        <i style={{ width: 6, height: 6, borderRadius: "50%", background: game.accent, boxShadow: `0 0 10px ${game.accent}` }} />
+        {game.badge}
+      </span>
+      <span style={{ position: "relative", zIndex: 3, display: "flex", flexDirection: "column", gap: 6, padding: "0 18px" }}>
+        <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(255,255,255,0.74)", textShadow: "0 1px 12px rgba(0,0,0,0.9)" }}>{game.meta}</span>
+        <b style={{ fontFamily: T.display, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", fontSize: hero ? "clamp(32px, 9vw, 46px)" : "clamp(26px, 7vw, 34px)", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>{game.title}</b>
+        <small style={{ fontFamily: T.body, fontSize: 13.5, fontWeight: 500, lineHeight: 1.42, color: "rgba(255,255,255,0.74)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", maxWidth: 480 }}>{game.blurb}</small>
+      </span>
+      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "14px 10px 10px", padding: "7px 7px 7px 14px", borderRadius: 17, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px) saturate(1.5)", WebkitBackdropFilter: "blur(20px) saturate(1.5)" }}>
+        <span style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 600, color: "rgba(255,255,255,0.82)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free to play · no download</span>
+        <span style={{ flex: "none", display: "flex", alignItems: "center", gap: 3, height: 40, padding: "0 16px 0 20px", borderRadius: 12, background: "#fff", color: "#0a0b10", fontFamily: T.display, fontSize: 15, boxShadow: "0 8px 20px -8px rgba(0,0,0,0.6)" }}>
+          Play
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ShelfLabel({ tag, text, note }: { tag: string; text: string; note: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
+      <span style={{ fontFamily: T.display, fontSize: 12, color: "#1a1400", background: "linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)", borderRadius: 8, padding: "3px 8px" }}>{tag}</span>
+      <span style={{ fontFamily: T.display, fontSize: 18, color: T.ink }}>{text}</span>
+      <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft }}>{note}</span>
+    </div>
+  );
+}
+
+// A 2D game card, same idea as the 3D ones at a smaller size: a cover captured
+// from the real game on top, then the title, one line about it, and Play.
+function Card2D({ game, onClick }: { game: typeof GAMES[number]; onClick: () => void }) {
+  const g = game as typeof game & { cover?: string; focus?: string; isNew?: boolean };
+  if (!g.active || !g.cover) return <GameCard game={game} onClick={onClick} />;
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`Play ${g.title}`}
+      style={{
+        position: "relative", display: "flex", flexDirection: "column", width: "100%", padding: 0, border: "none",
+        borderRadius: 20, overflow: "hidden", textAlign: "left", cursor: "pointer", color: "#fff", background: "#0b0c12", isolation: "isolate",
+        boxShadow: `0 20px 40px -24px rgba(0,0,0,0.95), 0 22px 46px -32px ${g.glow}`,
+      }}
+    >
+      <span style={{ position: "relative", display: "block", width: "100%", aspectRatio: "1 / 0.86", overflow: "hidden" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={g.cover} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: g.focus }} />
+        <span style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(rgba(5,6,10,0.3) 0%, rgba(5,6,10,0) 26%, rgba(5,6,10,0) 62%, #0b0c12 100%)" }} />
+      </span>
+      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 20, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px rgba(255,255,255,0.14)" }} />
+      {g.isNew && (
+        <span style={{ position: "absolute", top: 10, left: 10, zIndex: 3, display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 9px", borderRadius: 999, fontFamily: T.body, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", color: "#ffd56b", background: "rgba(10,11,16,0.55)", border: "1px solid rgba(255,213,107,0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
+          <i style={{ width: 5, height: 5, borderRadius: "50%", background: g.glow, boxShadow: `0 0 8px ${g.glow}` }} />
+          NEW
+        </span>
+      )}
+      <span style={{ position: "relative", zIndex: 3, display: "flex", flexDirection: "column", gap: 4, padding: "2px 12px 0", flex: 1 }}>
+        <b style={{ fontFamily: T.display, fontWeight: 700, fontSize: 17, lineHeight: 1.1, letterSpacing: "-0.01em" }}>{g.title}</b>
+        <small style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 500, lineHeight: 1.35, color: "rgba(255,255,255,0.68)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 31 }}>{g.subtitle}</small>
+      </span>
+      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "10px 8px 8px", padding: "5px 5px 5px 11px", borderRadius: 13, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}>
+        <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free</span>
+        <span style={{ flex: "none", display: "flex", alignItems: "center", gap: 2, height: 30, padding: "0 10px 0 13px", borderRadius: 9, background: "#fff", color: "#0a0b10", fontFamily: T.display, fontSize: 13 }}>
+          Play
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg>
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function GameCard({ game, onClick }: { game: typeof GAMES[number]; onClick: () => void }) {
   return (
     <button onClick={onClick} disabled={!game.active} style={{
@@ -186,6 +358,9 @@ function GameCard({ game, onClick }: { game: typeof GAMES[number]; onClick: () =
     }}>
       {!game.active && (
         <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", zIndex: 2 }}>SOON</span>
+      )}
+      {game.active && (game as { isNew?: boolean }).isNew && (
+        <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)", border: "1px solid rgba(255,255,255,0.35)", color: "#231005", fontFamily: T.body, fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", zIndex: 2, boxShadow: "0 2px 8px rgba(251,191,36,0.6)" }}>NEW</span>
       )}
       <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
         {/* Cards can declare `art` as either a string path (rhythm /
@@ -272,7 +447,7 @@ export default function GamesPage() {
     // never feels rushed on a fast connection, never feels stuck on a
     // slow one.
     const gameType: GameTypeId | null =
-      id === "rhythm" ? 0 : id === "simon" ? 1 : id === "stack" ? 2 : null;
+      id === "rhythm" ? 0 : id === "simon" ? 1 : id === "stack" ? 2 : id === "nepa" ? 4 : null;
     const tasks: Promise<unknown>[] = [new Promise(r => setTimeout(r, 600))];
     if (gameType !== null) tasks.push(fetchPreview(gameType).catch(() => null));
     await Promise.all(tasks);
@@ -308,9 +483,18 @@ export default function GamesPage() {
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>All games</h2>
         </div>
 
-        {/* Grid · 2 cols mobile, 3 cols desktop */}
+        {/* Shelf 1 · 3D worlds */}
+        <ShelfLabel tag="3D" text="3D games" note="Full worlds. Move, drive, roll" />
+        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(2, 1fr)" : "1fr", gap: 14 }}>
+          {GAMES_3D.map((g, i) => (
+            <Card3D key={g.id} game={g} hero={i === 0} wide={isDesktop} onClick={() => { playClick(); router.push(g.href); }} />
+          ))}
+        </div>
+
+        {/* Shelf 2 · classic 2D · 2 cols mobile, 3 cols desktop */}
+        <ShelfLabel tag="2D" text="Classic games" note="Quick skill games" />
         <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(3, 1fr)" : "repeat(2, 1fr)", gap: 12 }}>
-          {GAMES.map(g => <GameCard key={g.id} game={g} onClick={() => onPlay(g.id)} />)}
+          {GAMES.map(g => <Card2D key={g.id} game={g} onClick={() => onPlay(g.id)} />)}
         </div>
       </div>
 

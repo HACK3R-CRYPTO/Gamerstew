@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { preload } from "react-dom";
 import { usePrivy, useLogin, useConnectWallet } from "@privy-io/react-auth";
 import { useAccount, useDisconnect } from "wagmi";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
@@ -488,6 +489,7 @@ function climbPillLabel(climb: { phase: string; endsAt: string } | null): string
 }
 
 export default function HomePage() {
+  preload("/logo-full.png", { as: "image", fetchPriority: "high" }); // this screen shows the logo first
   const router = useRouter();
   const { authenticated, user, ready, logout } = usePrivy();
   // Privy's useLogin gives us a guaranteed onComplete callback that fires

@@ -81,7 +81,7 @@ async function internalFetch(path: string, body: unknown) {
 
 // Game type IDs · mirror games-backend/server.js GAME_TYPE map and the
 // uint8 gameType the GamePass contract emits. Stack Tower = 2.
-export type GameId = 'rhythm' | 'simon' | 'stack';
+export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa';
 export type ScoreData = {
   game:     GameId;
   score:    number;
@@ -139,9 +139,18 @@ export type StackDrop = { dropIndex: number; level: number; landed: boolean; per
 // the ordered color ids the player tapped across the run; `rounds`/`elapsedMs`
 // are informational for the shadow log.
 export type SimonShadow = { tapLog: string[]; rounds: number; elapsedMs: number };
+// NEPA: Up Light shadow-mode payload · SHADOW MODE only (see ANTICHEAT.md).
+// Optional + additive · the server replays `inputLog` against the SEED stored
+// on the session row and logs the delta, but STILL signs the client's claimed
+// score. `inputLog` is the ordered plug/unplug events; `bankedNaira`/`elapsedMs`
+// are informational for the shadow log.
+// `gen` is a socket-less power-up action (the generator), so device/socket are
+// optional — only plug/unplug/bank carry them.
+export type NepaInput = { device?: string; socket?: number; action: 'plug' | 'unplug' | 'bank' | 'gen'; t: number };
+export type NepaShadow = { inputLog: NepaInput[]; bankedNaira: number; elapsedMs: number };
 
 type StartGameResult =
-  | { success: true;  sessionToken: string }
+  | { success: true;  sessionToken: string; seed?: string }
   | { success: false; error: string };
 
 type SubmitScoreResult =
@@ -182,7 +191,8 @@ export async function startGame(
       game,
     });
     if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
-    return { success: true, sessionToken: data.sessionToken };
+    // `seed` is only returned for seed-driven games (nepa); undefined otherwise.
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
@@ -214,7 +224,8 @@ export async function startGameMiniPay(
       game,
     });
     if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
-    return { success: true, sessionToken: data.sessionToken };
+    // `seed` is only returned for seed-driven games (nepa); undefined otherwise.
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
@@ -236,6 +247,7 @@ export async function signScore(
   tapLog?:       RhythmTap[],
   dropLog?:      StackDrop[],
   simon?:        SimonShadow,
+  nepa?:         NepaShadow,
 ): Promise<SignScoreResult> {
   if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -253,6 +265,10 @@ export async function signScore(
       simonTapLog:   simon?.tapLog ?? null,
       simonRounds:   simon?.rounds ?? null,
       simonElapsedMs: simon?.elapsedMs ?? null,
+      // NEPA shadow-mode input log · optional, does not change the signed score.
+      nepaInputLog:   nepa?.inputLog ?? null,
+      nepaBankedNaira: nepa?.bankedNaira ?? null,
+      nepaElapsedMs:  nepa?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     if (data.gasless) {
@@ -294,6 +310,7 @@ export async function signScoreMiniPay(
   tapLog?:        RhythmTap[],
   dropLog?:       StackDrop[],
   simon?:         SimonShadow,
+  nepa?:          NepaShadow,
 ): Promise<SignScoreResult> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
     return { success: false, error: 'Invalid wallet address' };
@@ -311,6 +328,10 @@ export async function signScoreMiniPay(
       simonTapLog:   simon?.tapLog ?? null,
       simonRounds:   simon?.rounds ?? null,
       simonElapsedMs: simon?.elapsedMs ?? null,
+      // NEPA shadow-mode input log · optional, does not change the signed score.
+      nepaInputLog:   nepa?.inputLog ?? null,
+      nepaBankedNaira: nepa?.bankedNaira ?? null,
+      nepaElapsedMs:  nepa?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     if (data.gasless) {

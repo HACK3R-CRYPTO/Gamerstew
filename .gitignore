@@ -14,3 +14,11 @@ frontend/design-prototype/
 # never commit env secrets (any dir)
 **/.env
 .vercel
+tools/asset-backups/
+
+# Marketing material (videos, renders, images, decks) stays on disk, not in git.
+# The few files already tracked on dev stay tracked; nothing new is added.
+marketing/
+
+# Installed packages are never committed
+/node_modules/

@@ -11,6 +11,7 @@ const {
 } = require('./lib/rhythmScoring');
 const { computeStackScore, computeStackHumanness } = require('./lib/stackScoring');
 const { computeSimonScore } = require('./lib/simonScoring');
+const { computeNepaScore, computeNepaHumanness } = require('./lib/nepaScoring');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -20,7 +21,10 @@ app.set('trust proxy', 1);
 
 // ─── CORS — only allowed origins or trusted server-to-server calls ───────────
 const allowedOrigins = (process.env.ALLOWED_ORIGINS).split(',').map(o => o.trim());
-app.use(express.json());
+// Keep the exact raw bytes of each JSON body on req.rawBody so the Vatar webhook
+// can verify its HMAC signature over them (JSON.parse + re-stringify would not
+// byte-match what Vatar signed). Negligible cost for every other route.
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
 // Three buckets, each keyed appropriately:
@@ -199,6 +203,14 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Vatar webhook · server-to-server from Lagos Life, carrying NO browser Origin.
+  // The X-Vatar-Signature HMAC checked inside the handler is the real auth, so
+  // let the no-origin request through the gate instead of 403-ing it here.
+  if (req.path === '/api/vatar/webhook') {
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
   // Public read-only stats · the /impact page (and partners) read these. They're
   // cached, non-sensitive aggregates — the same numbers shown publicly on-site —
   // so they bypass the origin/secret gate with permissive CORS. Without this the
@@ -236,6 +248,57 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 console.log('📦 Supabase connected');
+
+// ─── Vatar (Lagos Life) in-game purchases ────────────────────────────────────
+// Players pay inside the embedding "world"; our server confirms each purchase
+// with Vatar and delivers the item EXACTLY once. The secret never leaves the
+// server (env only, never the game bundle). Docs: lagoslife.app/developers/docs
+const VATAR_API = process.env.VATAR_API || 'https://lagoslife.app/api/games/v1';
+const VATAR_SECRET = process.env.VATAR_SECRET || '';
+const VATAR_WEBHOOK_SECRET = process.env.VATAR_WEBHOOK_SECRET || '';
+
+// Call the Vatar games API with our bearer secret. Returns { http, ...json }.
+async function vatarApi(path, body) {
+  const r = await fetch(VATAR_API + path, {
+    method: body ? 'POST' : 'GET',
+    body: body ? JSON.stringify(body) : undefined,
+    headers: { Authorization: `Bearer ${VATAR_SECRET}`, 'Content-Type': 'application/json' },
+  });
+  let json = {};
+  try { json = await r.json(); } catch {}
+  return { http: r.status, ...json };
+}
+
+// Verify X-Vatar-Signature: "sha256=" + hex HMAC-SHA256 of the RAW body, keyed
+// with the webhook signing secret. Constant-time compare; false if unconfigured.
+function vatarSignatureOk(rawBody, header) {
+  if (!VATAR_WEBHOOK_SECRET || !rawBody || !rawBody.length) return false;
+  const want = Buffer.from('sha256=' + crypto.createHmac('sha256', VATAR_WEBHOOK_SECRET).update(rawBody).digest('hex'));
+  const got = Buffer.from(String(header ?? ''));
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
+}
+
+// Deliver a Vatar purchase EXACTLY once. The vatar_deliveries.purchase_id primary
+// key makes replays (client /claim AND the server webhook both firing) a no-op.
+// Returns { granted:false, already:true } on a replay. THIS is the single place
+// to map a Vatar productId to a real GameArena item — see the TODO below.
+async function deliverVatarPurchase({ purchaseId, playerId, productId, wallet }) {
+  const { error } = await supabase.from('vatar_deliveries').insert({
+    purchase_id: purchaseId,
+    player_id: String(playerId),
+    product_id: String(productId),
+    wallet: wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? wallet.toLowerCase() : null,
+  });
+  if (error) {
+    if (error.code === '23505') return { granted: false, already: true }; // unique = already delivered
+    throw error;
+  }
+  // TODO(product mapping): grant the actual item for `productId` here. e.g.
+  //   if (productId === 'double_taps') { /* credit perk_inventory / arena_daily */ }
+  // This needs the Vatar player ↔ GameArena wallet link decided first; until then
+  // the purchase is VERIFIED and RECORDED (nothing lost, never double-granted).
+  return { granted: true };
+}
 
 // ─── On-chain config ────────────────────────────────────────────────────────
 const CELO_RPC = process.env.CELO_RPC_URL || 'https://forno.celo.org';
@@ -645,12 +708,12 @@ const XP_PLAYED  = 10;  // base XP for finishing a game
 const XP_WIN     = 25;  // bonus when you beat the win threshold
 const XP_NEW_PB  = 25;  // bonus when you set a new personal best
 
-const WIN_THRESHOLD = { rhythm: 350, simon: 7, stack: 50 };
+const WIN_THRESHOLD = { rhythm: 350, simon: 7, stack: 50, nepa: 50 };
 
 // Single source of truth for game enum mapping. GamePass.sol treats
 // gameType as a free uint8 — these IDs are off-chain conventions that
 // also drive the subgraph mapping. Add a new game by appending here.
-const GAME_TYPE = { rhythm: 0, simon: 1, stack: 2 };
+const GAME_TYPE = { rhythm: 0, simon: 1, stack: 2, nepa: 4 };
 const VALID_GAMES = Object.keys(GAME_TYPE);
 
 // Challenge AI (MARKOV) records an on-chain GamePass score per completed match,
@@ -662,7 +725,7 @@ const VALID_GAMES = Object.keys(GAME_TYPE);
 // max-per-wallet leaderboard. The uint8 gameType is open on GamePass.sol, so no
 // contract change is needed — see onMatchComplete + recordChallengeMatchOnChain.
 const CHALLENGE_AI_GAME_TYPE = 3;
-const GAME_LABEL = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower' };
+const GAME_LABEL = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower', nepa: 'Up NEPA!' };
 
 // Cumulative XP required to reach a given level (LV 1 = 0).
 //   LV 1: 0     LV 2: 100    LV 3: 300    LV 4: 600    LV 5: 1,000
@@ -1230,20 +1293,31 @@ app.post('/api/start-game', requireSecret, gaslessLimiter, async (req, res) => {
   // 32 random bytes → 64 hex chars. Unguessable.
   const token = crypto.randomBytes(32).toString('hex');
 
+  // NEPA: Up Light (gameType 4) is seed-driven · the per-session seed fully
+  // determines the light-cut schedule the player races against. Generate it
+  // SERVER-SIDE and store it on the row so the client can't pick a favourable
+  // one (per the PRD fairness rule). Only nepa carries a seed; every other
+  // game's insert shape is unchanged so existing games are untouched even if
+  // the seed column migration hasn't run yet.
+  const row = { token, wallet: wallet.toLowerCase(), game };
+  let seed = null;
+  if (game === 'nepa') {
+    seed = crypto.randomBytes(16).toString('hex');
+    row.seed = seed;
+  }
+
   const { error } = await supabase
     .from('game_sessions')
-    .insert({
-      token,
-      wallet: wallet.toLowerCase(),
-      game,
-    });
+    .insert(row);
 
   if (error) {
     console.error('start-game insert error:', error.message);
     return res.status(500).json({ error: 'Failed to start session' });
   }
 
-  return res.json({ success: true, sessionToken: token });
+  const response = { success: true, sessionToken: token };
+  if (seed) response.seed = seed;
+  return res.json(response);
 });
 
 // ─── POST /api/sign-score ────────────────────────────────────────────────────
@@ -1262,7 +1336,8 @@ app.post('/api/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
   }
 
   const { playerAddress, game, score, sessionToken, tapLog, dropLog,
-          simonTapLog, simonRounds, simonElapsedMs } = req.body;
+          simonTapLog, simonRounds, simonElapsedMs,
+          nepaInputLog, nepaBankedNaira, nepaElapsedMs } = req.body;
   if (!playerAddress || !game) {
     return res.status(400).json({ error: 'Missing playerAddress or game' });
   }
@@ -1389,6 +1464,37 @@ app.post('/api/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
       const claimed = typeof simonRounds === 'number' ? simonRounds : sim.roundsClaimed;
       console.log(`[simon:shadow] player=${playerAddress.slice(0, 10)} taps=${simonTapLog.length} serverScore=${sim.score} clientScore=${score} delta=${delta} roundsVerified=${sim.roundsVerified} roundsClaimed=${claimed} ${flag} · SIGNING CLIENT SCORE`);
     }
+
+    // ── NEPA: Up Light · SHADOW MODE (ANTICHEAT.md Steps 1 + 2) ───────────────
+    // The run is driven by the SERVER-issued seed stored on the session row, so
+    // the server has ground truth. Replay the client's input log against that
+    // seed (device spawns + light-cut timing + charge math + combo all derive
+    // from it) and LOG the comparison. We do NOT touch serverScore · the
+    // CLIENT'S claimed score (points = ₦ banked / 1000) is still what gets
+    // signed (set to `score` above). Non-enforcing so an imperfect port cannot
+    // affect a player; the frontend scores from the SAME pure replay so honest
+    // deltas should be 0. Absent nepaInputLog (older client, guest with no
+    // session seed) = behave exactly as before (no log line).
+    if (game === 'nepa' && Array.isArray(nepaInputLog)) {
+      // Cap the replayed log length. A full honest run is well under a few
+      // hundred events; the express.json 100kb body limit already bounds this,
+      // but an explicit cap keeps the O(n·sockets²) replay cheap and makes the
+      // ceiling intentional rather than a side effect of the body parser.
+      const NEPA_MAX_INPUTS = 1_000;
+      const replayLog = nepaInputLog.length > NEPA_MAX_INPUTS
+        ? nepaInputLog.slice(0, NEPA_MAX_INPUTS)
+        : nepaInputLog;
+      if (nepaInputLog.length > NEPA_MAX_INPUTS) {
+        console.log(`[nepa:shadow] player=${playerAddress.slice(0, 10)} inputLog over cap (${nepaInputLog.length} > ${NEPA_MAX_INPUTS}) · truncated for replay`);
+      }
+      const shadow = computeNepaScore({ seed: session.seed, inputLog: replayLog });
+      const human = computeNepaHumanness(nepaInputLog);
+      const delta = shadow.points - score;
+      const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
+      const naira = typeof nepaBankedNaira === 'number' ? nepaBankedNaira : shadow.nairaScore;
+      const elapsed = typeof nepaElapsedMs === 'number' ? nepaElapsedMs : sessionElapsedMs;
+      console.log(`[nepa:shadow] player=${playerAddress.slice(0, 10)} inputs=${nepaInputLog.length} serverPoints=${shadow.points} clientPoints=${score} delta=${delta} (naira=${shadow.nairaScore} clientNaira=${naira} banked=${shadow.banked} wasted=${shadow.wasted} maxCombo=${shadow.maxCombo}) rate=${human.stats.inputsPerSec}/s elapsed=${elapsed}ms ${flag} · SIGNING CLIENT SCORE`);
+    }
   }
 
   const gameType = GAME_TYPE[game];
@@ -1428,7 +1534,8 @@ app.post('/api/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
     //   stack  — raw 30–300+ blocks   → /5   →  6–60+
     // Each divisor was tuned so a strong run in any game lands in a
     // comparable normalized band.
-    const SCORE_DIVISOR = game === 'rhythm' ? 100 : game === 'stack' ? 5 : 20;
+    //   nepa   — points 0–500+ (₦ banked / 1000) → /20 → 0–25+ (clamped to 15)
+    const SCORE_DIVISOR = game === 'rhythm' ? 100 : game === 'stack' ? 5 : game === 'nepa' ? 20 : 20;
     const MIN_DURATION_MS = 8_000;
     const passesDuration = sessionElapsedMs >= MIN_DURATION_MS;
     const seasonPts = passesDuration
@@ -4531,6 +4638,56 @@ app.get('/api/perks/inventory', requireSecret, async (req, res) => {
   }
 });
 
+// ─── Vatar purchases ─────────────────────────────────────────────────────────
+// POST /api/vatar/claim — the game (browser) calls this after Vatar.purchase()
+// resolves, or from Vatar.onPurchase(), with the player's short-lived session
+// and the purchaseId (optional linked wallet). We confirm BOTH with Vatar — the
+// session proves who is asking, the purchase proves it is real and theirs — then
+// deliver once and tell Vatar it is delivered. Never trust the client alone.
+// Browser origin is gated by the global CORS allowlist above.
+app.post('/api/vatar/claim', standardLimiter, async (req, res) => {
+  const { session, purchaseId, wallet } = req.body || {};
+  if (!session || !purchaseId) return res.status(400).json({ error: 'session_and_purchaseId_required' });
+  if (!VATAR_SECRET) return res.status(503).json({ error: 'vatar_not_configured' });
+  try {
+    const me = await vatarApi('/session/verify', { session });
+    const p = await vatarApi(`/purchases/${encodeURIComponent(purchaseId)}`);
+    if (me.http !== 200 || p.http !== 200 || !p.playerId || p.playerId !== me.playerId) {
+      return res.status(403).json({ error: 'not_your_purchase' });
+    }
+    if (p.status === 'refunded') return res.status(409).json({ error: 'refunded' });
+    const result = await deliverVatarPurchase({ purchaseId: p.id, playerId: p.playerId, productId: p.productId, wallet });
+    await vatarApi(`/purchases/${encodeURIComponent(p.id)}/deliver`, {}); // idempotent on Vatar's side
+    return res.json({ ok: true, productId: p.productId, granted: result.granted });
+  } catch (e) {
+    console.error('vatar/claim error:', e?.message || e);
+    return res.status(500).json({ error: 'claim_failed' });
+  }
+});
+
+// POST /api/vatar/webhook — Lagos Life POSTs purchase events here (server-to-
+// server). Verify the HMAC over the raw body, then RE-verify the purchase with
+// Vatar before granting (the event is only a nudge). Always 200 a well-formed
+// signed event so Vatar stops retrying; delivery is idempotent either way.
+app.post('/api/vatar/webhook', async (req, res) => {
+  if (!vatarSignatureOk(req.rawBody, req.headers['x-vatar-signature'])) return res.status(401).end();
+  let evt = {};
+  try { evt = JSON.parse(req.rawBody.toString('utf8')); } catch { return res.status(400).end(); }
+  try {
+    const purchaseId = evt?.data?.purchaseId;
+    if (purchaseId) {
+      const p = await vatarApi(`/purchases/${encodeURIComponent(purchaseId)}`);
+      if (p.http === 200 && p.id && p.status !== 'refunded') {
+        await deliverVatarPurchase({ purchaseId: p.id, playerId: p.playerId, productId: p.productId, wallet: null });
+        await vatarApi(`/purchases/${encodeURIComponent(p.id)}/deliver`, {});
+      }
+    }
+  } catch (e) {
+    console.error('vatar/webhook error:', e?.message || e); // recorded idempotently; no retry needed
+  }
+  return res.status(200).end();
+});
+
 // GET /api/cosmetics/equip?wallet=0x… — a player's explicit equip choices.
 // Returns only rows they've set; the client treats any owned cosmetic NOT in
 // this map as equipped (default ON). Keyed by wallet so the choice follows
@@ -5152,7 +5309,7 @@ async function indexOnChainScores() {
       // Reverse of GAME_TYPE · uint8 from on-chain back to the player-key
       // string we use in the activity table. Adding a new game means
       // appending one row here, not a wider ternary chain.
-      const game = ({ 0: 'rhythm', 1: 'simon', 2: 'stack' })[gameType];
+      const game = ({ 0: 'rhythm', 1: 'simon', 2: 'stack', 4: 'nepa' })[gameType];
       if (!game) {
         console.warn(`⛓️  Unknown gameType ${gameType} in ScoreRecorded event · skipping`);
         continue;

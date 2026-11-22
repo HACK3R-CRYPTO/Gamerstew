@@ -168,6 +168,30 @@ const STACK_ART = (
   </svg>
 );
 
+// The 3D games lead with a real picture of the game, not an illustration:
+// seeing the street or the bottles tells a new player what they are about to
+// play faster than any drawing. Covers are captured from live play.
+const COVERS: Record<string, { src: string; focus: string }> = {
+  upnepa3d: { src: "/games/covers/upnepa3d.jpg", focus: "58% 45%" },
+  streetstrike: { src: "/games/covers/streetstrike.jpg", focus: "50% 55%" },
+  stack: { src: "/games/covers/stack.jpg", focus: "50% 60%" },
+  rhythm: { src: "/games/covers/rhythm.jpg", focus: "50% 40%" },
+  simon: { src: "/games/covers/simon.jpg", focus: "50% 45%" },
+  arena: { src: "/games/covers/challenge-ai.jpg", focus: "50% 55%" },
+};
+const GAMES_3D: Game[] = [
+  {
+    id: "upnepa3d", title: "UP NEPA 3D", subtitle: "Lagos street · 2 modes",
+    desc: "NEPA don take light. Run the street, flip the breakers and bring the whole area back.",
+    art: "/games/covers/upnepa3d.jpg", bg: "#0b0c12", glow: "#fbbf24", active: true, href: "/world", isNew: true,
+  },
+  {
+    id: "streetstrike", title: "Street Strike", subtitle: "3D bowling · tyre and bottles",
+    desc: "Roll the tyre down the road and scatter the bottles while the whole street watches.",
+    art: "/games/covers/streetstrike.jpg", bg: "#0b0c12", glow: "#a855f7", active: true, href: "/bowling", isNew: true,
+  },
+];
+
 const GAMES: Game[] = [
   {
     id: "stack", title: "Stack Tower", subtitle: "Stack & survive · don't drop",
@@ -348,6 +372,9 @@ export default function DashboardPage() {
     // The AI-mode hero routes into the Challenge lobby, where the YOU/YOUR AI
     // switch and the deploy-on-GoodAgents CTA both live.
     if (id === "aimode") { router.push("/games/challenge-ai"); return; }
+    // 3D games open straight into their own world.
+    const world = GAMES_3D.find(x => x.id === id);
+    if (world) { router.push(world.href); return; }
     // Spam-tap guard · ignore while a load is in flight (the overlay
     // covers the cards anyway, but this stops queued promises racing).
     if (loadingGame) return;
@@ -387,7 +414,7 @@ export default function DashboardPage() {
   // A dead promise on the app's busiest surface costs more trust than an empty
   // slot. If a fixed-prize event runs again, drive this from /api/challenge
   // rather than a constant so it can never outlive its own window again.
-  const heroList = [TUG_HERO, AI_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
+  const heroList = [TUG_HERO, ...GAMES_3D, AI_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -1044,6 +1071,33 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       </button>
     );
   }
+  // 3D games: the real game fills the banner, with the words over a shade.
+  const cover = GAMES_3D.some(x => x.id === game.id) ? COVERS[game.id] : null;
+  if (cover) {
+    return (
+      <button onClick={() => onPlayGame(game.id)} aria-label={`Play ${game.title}`} style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
+        borderRadius: 20, textAlign: "left", background: "#0b0c12", color: "#fff",
+        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={cover.src} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: cover.focus }} />
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(90deg, rgba(5,6,10,0.88) 0%, rgba(5,6,10,0.55) 46%, rgba(5,6,10,0) 78%), linear-gradient(rgba(5,6,10,0.35) 0%, rgba(5,6,10,0) 34%, rgba(5,6,10,0.5) 100%)" }} />
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1, display: "flex", gap: 6 }}>
+          <Pill color="#fde68a">✨ NEW · 3D</Pill>
+        </div>
+        <div style={{ padding: "10px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
+          <div style={{ fontFamily: T.display, fontSize: 25, lineHeight: 1, textShadow: "0 2px 14px rgba(0,0,0,0.7)" }}>{game.title}</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.84)", marginTop: 5, lineHeight: 1.35, textShadow: "0 1px 8px rgba(0,0,0,0.8)" }}>{game.desc}</div>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, marginTop: 10, height: 30, padding: "0 10px 0 14px", borderRadius: 10, background: "#fff", color: "#0a0b10", fontFamily: T.display, fontSize: 13, boxShadow: "0 8px 18px -8px rgba(0,0,0,0.7)" }}>
+            Play
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg>
+          </span>
+        </div>
+      </button>
+    );
+  }
   return (
     <button onClick={() => onPlayGame(game.id)} style={{
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
@@ -1071,35 +1125,37 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
 function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
   // Overview PREVIEW — a clean row of 3; the full roster lives behind "View
   // all". Fixed set so it never reflows or orphans as the hero rotates.
-  const cards = GAMES.slice(0, 3);
+  // The two 3D games lead, then the newest classic.
+  const cards = [...GAMES_3D, GAMES[0]];
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-      {cards.map(g => (
-        <button key={g.id} onClick={() => onPlayGame(g.id)} style={{
-          position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
-          background: g.bg, cursor: "pointer",
-          boxShadow: `0 8px 18px -8px ${g.glow}88`,
-        }}>
-          <div style={{ height: 70, position: "relative" }}>
-            {typeof g.art === "string" ? (
-              <img src={g.art} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
-            ) : (
-              <div style={{ position: "absolute", inset: 0, padding: 6, display: "flex", alignItems: "center", justifyContent: "center" }}>{g.art}</div>
-            )}
-          </div>
-          {/* Text panel · subtitle wraps to 2 lines on narrow screens so
-              full copy stays readable on every device. minHeight keeps the
-              row even when one card's subtitle wraps and another's doesn't. */}
-          <div style={{ padding: "8px 10px 10px", background: "rgba(0,0,0,0.35)", minHeight: 56, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
-            <div style={{ fontFamily: T.display, fontSize: 12, color: "#fff", lineHeight: 1.1 }}>{g.title}</div>
-            <div style={{
-              fontFamily: T.body, fontSize: 8.5, color: "rgba(255,255,255,0.6)", fontWeight: 700,
-              marginTop: 3, lineHeight: 1.3,
-              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-            }}>{g.subtitle}</div>
-          </div>
-        </button>
-      ))}
+      {cards.map(g => {
+        const cover = COVERS[g.id];
+        const is3d = GAMES_3D.some(x => x.id === g.id);
+        return (
+          <button key={g.id} onClick={() => onPlayGame(g.id)} aria-label={`Play ${g.title}`} style={{
+            position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
+            background: "#0b0c12", cursor: "pointer", display: "flex", flexDirection: "column",
+            boxShadow: `0 8px 18px -8px ${g.glow}88, inset 0 0 0 1px rgba(255,255,255,0.1)`,
+          }}>
+            <div style={{ height: 78, position: "relative", width: "100%" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cover.src} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: cover.focus }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(11,12,18,0) 55%, #0b0c12 100%)" }} />
+              {is3d && <span style={{ position: "absolute", top: 6, left: 6, padding: "2px 6px", borderRadius: 6, fontFamily: T.display, fontSize: 9, color: "#231005", background: "linear-gradient(180deg, #fde68a, #fbbf24)" }}>3D</span>}
+            </div>
+            {/* subtitle wraps to 2 lines on narrow screens; minHeight keeps the row even */}
+            <div style={{ padding: "6px 10px 10px", minHeight: 54, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+              <div style={{ fontFamily: T.display, fontSize: 12, color: "#fff", lineHeight: 1.1 }}>{g.title}</div>
+              <div style={{
+                fontFamily: T.body, fontSize: 8.5, color: "rgba(255,255,255,0.62)", fontWeight: 700,
+                marginTop: 3, lineHeight: 1.3,
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+              }}>{g.subtitle}</div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

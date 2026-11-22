@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
-import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchLeaderboard, type LeaderboardEntry, type GameTypeId } from "@/lib/subgraph";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 const PAGE_SIZE = 16;
@@ -30,15 +30,17 @@ const T = {
 };
 
 type Tab = "live" | "past";
-type GameKind = "rhythm" | "simon" | "stack";
+type GameKind = "rhythm" | "simon" | "stack" | "nepa";
 
 // gameType ID mirrors GamePass.sol uint8 + backend's GAME_TYPE map.
 // Add a row here when a new game lands · everything else flows from it.
-const GAME_TYPE_ID: Record<GameKind, 0 | 1 | 2> = { rhythm: 0, simon: 1, stack: 2 };
+// (3 is Challenge AI, which has its own ladder; nepa is 4.)
+const GAME_TYPE_ID: Record<GameKind, GameTypeId> = { rhythm: 0, simon: 1, stack: 2, nepa: 4 };
 const GAME_HREF: Record<GameKind, string> = {
   rhythm: "/games/rhythm",
   simon: "/games/simon",
   stack: "/games/stack",
+  nepa: "/games/nepa",
 };
 // Friendly title used in the past-season detail sheet header. One row per
 // game · add a new game and the sheet picks it up.
@@ -46,6 +48,7 @@ const GAME_LABEL: Record<GameKind, string> = {
   rhythm: "Rhythm Rush",
   simon: "Simon Memory",
   stack: "Stack Tower",
+  nepa: "NEPA: Up Light",
 };
 // Per-game accent for the detail sheet · matches each lobby's signature
 // color so the sheet visually belongs to the game the player came from.
@@ -53,6 +56,7 @@ const GAME_ACCENT: Record<GameKind, string> = {
   rhythm: "#e879f9",
   simon: "#06b6d4",
   stack: "#fb923c",
+  nepa: "#fbbf24",
 };
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the
