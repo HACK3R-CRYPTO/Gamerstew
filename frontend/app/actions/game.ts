@@ -248,6 +248,7 @@ export async function signScore(
   dropLog?:      StackDrop[],
   simon?:        SimonShadow,
   nepa?:         NepaShadow,
+  songId?:       string, // Rhythm Rush: which song was played (older servers ignore it)
 ): Promise<SignScoreResult> {
   if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -259,6 +260,7 @@ export async function signScore(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      songId: songId ?? null,
       // Stack shadow-mode drop log · optional, does not change the signed score.
       dropLog: dropLog ?? null,
       // Simon shadow-mode tap log · optional, does not change the signed score.
@@ -311,6 +313,7 @@ export async function signScoreMiniPay(
   dropLog?:       StackDrop[],
   simon?:         SimonShadow,
   nepa?:          NepaShadow,
+  songId?:       string, // Rhythm Rush: which song was played (older servers ignore it)
 ): Promise<SignScoreResult> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
     return { success: false, error: 'Invalid wallet address' };
@@ -322,6 +325,7 @@ export async function signScoreMiniPay(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      songId: songId ?? null,
       // Stack shadow-mode drop log · optional, does not change the signed score.
       dropLog: dropLog ?? null,
       // Simon shadow-mode tap log · optional, does not change the signed score.

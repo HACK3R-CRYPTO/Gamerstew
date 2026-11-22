@@ -8,6 +8,7 @@ const {
   physicsCheck:  rhythmPhysicsCheck,
   jitterCheck:   rhythmJitterCheck,
   computeScore:  rhythmComputeScore,
+  isKnownSong:   rhythmIsKnownSong,
 } = require('./lib/rhythmScoring');
 const { computeStackScore, computeStackHumanness } = require('./lib/stackScoring');
 const { computeSimonScore } = require('./lib/simonScoring');
@@ -1400,7 +1401,14 @@ app.post('/api/sign-score', requireSecret, gaslessLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Physics check failed', reason: physics.reason });
     }
 
-    const replay = rhythmComputeScore(tapLog, sessionElapsedMs);
+    // Which song was played. Older clients send none and get the original
+    // song, exactly as before. A song id we do not know is refused, because
+    // replaying it against the wrong chart would score an honest run as misses.
+    const songId = typeof req.body.songId === 'string' && req.body.songId ? req.body.songId : null;
+    if (songId && !rhythmIsKnownSong(songId)) {
+      return res.status(400).json({ error: 'Unknown song', songId });
+    }
+    const replay = rhythmComputeScore(tapLog, sessionElapsedMs, songId);
 
     const jitter = rhythmJitterCheck(replay.hits);
     if (!jitter.ok) {
@@ -5235,6 +5243,14 @@ app.post('/api/faucet', requireSecretOrPartner, faucetRateGate, async (req, res)
 });
 
 // ─── GET /health ────────────────────────────────────────────────────────────
+// Which Rhythm Rush songs this server can score. The game asks before offering
+// any song beyond the original, so a newer game talking to an older server
+// never lets someone play a song that would be replayed against the wrong chart.
+app.get('/api/rhythm/songs', (_req, res) => {
+  const songs = require('./lib/rhythmSongs.json');
+  res.json({ songs: songs.songs.map((s) => s.id), default: songs.default });
+});
+
 app.get('/health', async (_, res) => {
   // Per-game score counts. New games pick up automatically via VALID_GAMES.
   const scoreCounts = Object.fromEntries(

@@ -1,0 +1,43 @@
+{
+  "_note": "Rhythm Rush songs. This file exists TWICE and both copies must be identical: frontend/lib/rhythmSongs.json and games-backend/lib/rhythmSongs.json. The game draws from one, the server replays against the other. Run `node scripts/check-rhythm-songs.mjs` after any change. Every song uses the SAME timing skeleton (when notes fall, which ones are held and for how long), so every song has exactly the same number of notes and the same maximum score: only the melody, and therefore the lanes, differ. That is what keeps one leaderboard fair across songs. Phrase shapes: T1 and T2 are 5 notes with the last held 1.0 s; T3 is 8 taps; T4 is 3 notes with the last held 1.5 s; the outro is 4 holds of 1.0 s on one pitch.",
+  "pitches": { "G4": 392.0, "GS4": 415.3, "A4": 440.0, "B4": 493.88, "C5": 523.25, "D5": 587.33, "DS5": 622.25, "E5": 659.25, "F5": 698.46, "G5": 783.99 },
+  "default": "turca",
+  "songs": [
+    {
+      "id": "turca", "name": "Turkish March", "by": "Mozart", "mood": "Bouncy",
+      "lanes": { "GS4": 0, "A4": 0, "B4": 1, "C5": 1, "D5": 2, "DS5": 2, "E5": 3, "F5": 3 },
+      "T1": ["B4", "A4", "GS4", "A4", "C5"],
+      "T2": ["D5", "C5", "B4", "C5", "E5"],
+      "T3": ["F5", "E5", "DS5", "E5", "B4", "A4", "GS4", "A4"],
+      "T4": ["C5", "B4", "A4"],
+      "outro": "A4"
+    },
+    {
+      "id": "elise", "name": "Für Elise", "by": "Beethoven", "mood": "Moody",
+      "lanes": { "GS4": 0, "A4": 0, "B4": 1, "C5": 1, "D5": 2, "DS5": 2, "E5": 3 },
+      "T1": ["E5", "DS5", "E5", "DS5", "E5"],
+      "T2": ["B4", "D5", "C5", "A4", "A4"],
+      "T3": ["C5", "E5", "A4", "B4", "E5", "GS4", "B4", "C5"],
+      "T4": ["E5", "D5", "A4"],
+      "outro": "A4"
+    },
+    {
+      "id": "mountain", "name": "Mountain King", "by": "Grieg", "mood": "Sneaky",
+      "lanes": { "A4": 0, "B4": 0, "C5": 1, "D5": 2, "DS5": 2, "E5": 3 },
+      "T1": ["A4", "B4", "C5", "D5", "E5"],
+      "T2": ["C5", "E5", "DS5", "B4", "DS5"],
+      "T3": ["A4", "B4", "C5", "D5", "E5", "C5", "E5", "DS5"],
+      "T4": ["D5", "B4", "A4"],
+      "outro": "A4"
+    },
+    {
+      "id": "ode", "name": "Ode to Joy", "by": "Beethoven", "mood": "Bright",
+      "lanes": { "C5": 0, "D5": 1, "E5": 2, "F5": 3, "G5": 3 },
+      "T1": ["E5", "E5", "F5", "G5", "G5"],
+      "T2": ["F5", "E5", "D5", "C5", "C5"],
+      "T3": ["D5", "E5", "E5", "D5", "D5", "E5", "F5", "E5"],
+      "T4": ["D5", "C5", "C5"],
+      "outro": "C5"
+    }
+  ]
+}

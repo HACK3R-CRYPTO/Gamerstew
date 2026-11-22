@@ -39,6 +39,7 @@ import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
+import SONG_FILE from "@/lib/rhythmSongs.json";
 import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
@@ -227,36 +228,39 @@ type NoteDef = { id: number; lane: number; time: number; travel: number; freq: n
 const P_GS4 = 415.30, P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25,
   P_D5 = 587.33, P_DS5 = 622.25, P_E5 = 659.25, P_F5 = 698.46;
 
-function buildChart(): NoteDef[] {
+// Songs come from lib/rhythmSongs.json, which the server holds an exact copy of
+// (it replays every run against the same chart). All songs share this function's
+// timing skeleton, so they have the same notes, holds and maximum score: only
+// the melody, and so the lanes, differ.
+type Song = { id: string; name: string; by: string; mood: string; lanes: Record<string, number>; T1: string[]; T2: string[]; T3: string[]; T4: string[]; outro: string };
+const SONGS = SONG_FILE.songs as unknown as Song[];
+const PITCH = SONG_FILE.pitches as Record<string, number>;
+const DEFAULT_SONG = SONG_FILE.default;
+const songById = (id: string) => SONGS.find((x) => x.id === id) ?? SONGS.find((x) => x.id === DEFAULT_SONG)!;
+// One song is "today's song" for everyone, changing at midnight UTC.
+const todaysSongId = (ids: string[]) => ids[Math.floor(Date.now() / 86_400_000) % ids.length];
+
+function buildChart(songId: string = DEFAULT_SONG): NoteDef[] {
+  const song = songById(songId);
   const notes: NoteDef[] = [];
   let id = 0;
   const push = (lane: number, time: number, travel: number, freq: number, hold?: number) =>
     notes.push({ id: id++, lane, time, travel, freq, ...(hold ? { hold } : {}) });
 
-  // Rondo alla Turca opening theme, simplified to one octave. Phrase
-  // entries are [pitch, holdSeconds?] — phrase-ending notes sustain,
-  // which is exactly how Mozart phrases it (the turn lands and RINGS).
-  //   T1: B A G# A → C(hold)      (5, THE famous opening turn)
-  //   T2: D C B C → E(hold)       (5, the turn sequenced up — the echo)
-  //   T3: F E D# E B A G# A       (8, the cascade run — no holds, pure taps)
-  //   T4: C B → A(long hold)      (3, landing home on the tonic)
-  //   Two passes, then T3 at eighth notes as the climax sprint — the
-  //   skill check where the ±80ms PERFECT window forms the leaderboard.
+  // Phrase entries are [pitch, holdSeconds?]: the last note of T1, T2 and T4
+  // sustains, the way the melody breathes. T3 is the run: pure taps.
   type TN = [number, number?];
-  const T1: TN[] = [[P_B4], [P_A4], [P_GS4], [P_A4], [P_C5, 1.0]];
-  const T2: TN[] = [[P_D5], [P_C5], [P_B4], [P_C5], [P_E5, 1.0]];
-  const T3: TN[] = [[P_F5], [P_E5], [P_DS5], [P_E5], [P_B4], [P_A4], [P_GS4], [P_A4]];
-  const T4: TN[] = [[P_C5], [P_B4], [P_A4, 1.5]];
+  const phrase = (names: string[], lastHold: number): TN[] =>
+    names.map((n, i) => (lastHold && i === names.length - 1 ? [PITCH[n], lastHold] : [PITCH[n]]));
+  const T1 = phrase(song.T1, 1.0);
+  const T2 = phrase(song.T2, 1.0);
+  const T3 = phrase(song.T3, 0);
+  const T4 = phrase(song.T4, 1.5);
 
-  // Lane map — low-left to high-right, two pitches per lane. The turn
-  // rocks between lanes 1 and 0; the cascade run sweeps 3 → 0 across
-  // the full width of the screen. Melody and hand motion agree.
-  const laneFor = (f: number): number => {
-    if (f === P_GS4 || f === P_A4) return 0;
-    if (f === P_B4 || f === P_C5) return 1;
-    if (f === P_D5 || f === P_DS5) return 2;
-    return 3; // P_E5 / P_F5
-  };
+  // Lane for a pitch, low-left to high-right, from the song's own table.
+  const byFreq = new Map<number, number>(Object.entries(song.lanes).map(([n, lane]) => [PITCH[n], lane]));
+  const laneFor = (f: number): number => byFreq.get(f) ?? 0;
+  const P_A4 = PITCH[song.outro]; // the song's home pitch, used by the outro
 
   // Section stamper — lays a phrase at `start` with the given `travel` and
   // `step` (seconds per note). Quarter notes on the passes, eighth-note
@@ -294,7 +298,7 @@ function buildChart(): NoteDef[] {
   // ─── OUTRO (36.0s → 43.5s): four held tonic A's at slowing intervals —
   //   long-press landings that close the run on the home note.
   const outro: number[] = [36.0, 38.0, 40.0, 42.5];
-  outro.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0));
+  outro.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0)); // P_A4 = this song's home pitch
 
   return notes.sort((a, b) => a.time - b.time);
 }
@@ -680,6 +684,24 @@ export default function RhythmGamePage() {
   const [paceDelta, setPaceDelta] = useState<number | null>(null);
   const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
   useEffect(() => { bestRef.current = readRhythmBest(); }, []);
+  // Song choice. Only the original is offered until the server confirms which
+  // songs it can score (GET /api/rhythm/songs): a newer game must never let a
+  // run be replayed against the wrong chart by an older server.
+  const [songIds, setSongIds] = useState<string[]>([DEFAULT_SONG]);
+  const [songId, setSongId] = useState<string>(DEFAULT_SONG);
+  const songIdRef = useRef<string>(DEFAULT_SONG);
+  useEffect(() => { songIdRef.current = songId; }, [songId]);
+  useEffect(() => {
+    let dead = false;
+    fetch(`${BACKEND_URL}/api/rhythm/songs`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (dead || !d || !Array.isArray(d.songs)) return;
+      const ok = SONGS.map((x) => x.id).filter((id) => d.songs.includes(id));
+      if (ok.length < 2) return;
+      setSongIds(ok);
+      setSongId(todaysSongId(ok)); // start on today's song; the player can switch
+    }).catch(() => { /* older server or offline: the original song only */ });
+    return () => { dead = true; };
+  }, []);
   // HEAT (see the constants at the top of the file)
   const heatRef = useRef(0);
   const topHeatRef = useRef(0);
@@ -867,7 +889,7 @@ export default function RhythmGamePage() {
 
   // Reset game state
   const reset = useCallback(() => {
-    chartRef.current = buildChart();
+    chartRef.current = buildChart(songIdRef.current);
     spawnedRef.current = new Set();
     missedRef.current = new Set();
     encoreMissesRef.current = 0;
@@ -1134,6 +1156,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
+            undefined, undefined, undefined, songIdRef.current,
           );
         } else {
           authToken = await getAccessToken();
@@ -1146,6 +1169,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
+            undefined, undefined, undefined, songIdRef.current,
           );
         }
 
@@ -1910,7 +1934,7 @@ export default function RhythmGamePage() {
     (window as unknown as { __rhythm?: unknown }).__rhythm = {
       now: () => (performance.now() - startRef.current) / 1000,
       chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
-      hit: hitLane, release: releaseLane, phase, heat: () => heatRef.current, warm: () => warmRef.current,
+      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
       falls: () => [...travelLockRef.current.values()],
     };
   });
@@ -2014,6 +2038,10 @@ export default function RhythmGamePage() {
       {/* ═══ IDLE ═══ */}
       {phase === "idle" && (
         <IdleView
+          songs={songIds.map(songById)}
+          songId={songId}
+          todayId={songIds.length > 1 ? todaysSongId(songIds) : null}
+          onPickSong={setSongId}
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
@@ -2187,7 +2215,8 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ songs, songId, todayId, onPickSong, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  songs: Song[]; songId: string; todayId: string | null; onPickSong: (id: string) => void;
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
@@ -2270,6 +2299,33 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup
           where the eye actually goes, not in a corner icon nobody scans.
           Showing who you're chasing is the START motivation. */}
       <RhythmTopPlayersPreview onViewAll={onLeaderboard} />
+
+      {/* Pick a song. Every song has the same notes and the same top score, so
+          they all count on one leaderboard; today's is marked for everyone. */}
+      {songs.length > 1 && (
+        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto 14px", padding: "0 4px" }}>
+          <div style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "rgba(220,200,255,0.6)", textAlign: "center", marginBottom: 7 }}>CHOOSE YOUR SONG</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {songs.map((sg) => {
+              const on = sg.id === songId;
+              return (
+                <button key={sg.id} onClick={() => onPickSong(sg.id)} aria-pressed={on} style={{
+                  position: "relative", padding: "9px 10px 8px", borderRadius: 14, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                  background: on ? "linear-gradient(180deg, rgba(232,121,249,0.32), rgba(124,29,158,0.4))" : "rgba(20,8,50,0.72)",
+                  border: `1.5px solid ${on ? "#f0abfc" : "rgba(167,139,250,0.3)"}`,
+                  boxShadow: on ? "0 0 16px rgba(232,121,249,0.45)" : "none", color: "#fff",
+                }}>
+                  {sg.id === todayId && (
+                    <span style={{ position: "absolute", top: -7, right: 8, padding: "1px 7px", borderRadius: 999, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "#231005", background: "linear-gradient(180deg, #fde68a, #fbbf24)" }}>TODAY</span>
+                  )}
+                  <div style={{ fontSize: 13, lineHeight: 1.1 }}>{sg.name}</div>
+                  <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 10, fontWeight: 700, color: "rgba(220,200,255,0.65)", marginTop: 2 }}>{sg.by} · {sg.mood}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Juicy START button */}
       <div role="button" tabIndex={0} onClick={onStart}
