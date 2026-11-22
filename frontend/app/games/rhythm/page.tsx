@@ -105,6 +105,22 @@ const HOLD_TICK_POINTS = 2;      // per 0.5s of the bar's length, paid on comple
 const HOLD_TICK_SEC = 0.5;
 const HOLD_RELEASE_GRACE = 0.15; // releasing within 150ms of the end still completes
 
+// ─── HEAT · the run speeds up as you play well, and drops back when you slip ──
+// Every tile still has to be hit at exactly the same moment (the server judges
+// tap time against the chart and never looks at how fast a tile fell), so this
+// changes how HARD the tiles are to read, not the song or the score.
+//   · Keep a combo going and the tiles fall faster, one step at a time.
+//   · Miss once and the combo breaks: you are back to the slow, easy fall.
+// So the game is as fast as you are good, and a mistake is forgiven with an
+// easier stretch instead of a wall. The backing band follows the same level:
+// it builds in as you heat up and falls silent the moment you miss.
+const HEAT_AT = [5, 10, 16, 24, 34];              // combo needed for heat 1..5
+const HEAT_FALL = [1, 0.9, 0.8, 0.72, 0.65, 0.58]; // fall-time multiplier per heat level
+const HEAT_SPEED = [1, 1.1, 1.25, 1.4, 1.55, 1.7]; // what the player is shown
+const HEAT_COLOR = ["#a78bfa", "#67e8f9", "#4ade80", "#fbbf24", "#fb923c", "#f43f5e"];
+const HEAT_MIN_TRAVEL = 0.95;                      // never faster than this: still readable
+const heatFor = (combo: number) => HEAT_AT.filter((c) => combo >= c).length;
+
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -657,6 +673,12 @@ export default function RhythmGamePage() {
   const [paceDelta, setPaceDelta] = useState<number | null>(null);
   const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
   useEffect(() => { bestRef.current = readRhythmBest(); }, []);
+  // HEAT (see the constants at the top of the file)
+  const heatRef = useRef(0);
+  const topHeatRef = useRef(0);
+  const [heat, setHeat] = useState(0);
+  const travelLockRef = useRef<Map<number, number>>(new Map()); // each tile's fall time, fixed when it appears
+  const beatIdxRef = useRef(-1);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [hits, setHits] = useState({ perfect: 0, good: 0, miss: 0 });
@@ -867,6 +889,8 @@ export default function RhythmGamePage() {
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
     paceRef.current = [];
+    heatRef.current = 0; topHeatRef.current = 0; setHeat(0);
+    travelLockRef.current = new Map(); beatIdxRef.current = -1;
     setPaceDelta(null);
     setBestResult(null);
     setHits({ perfect: 0, good: 0, miss: 0 });
@@ -1676,9 +1700,52 @@ export default function RhythmGamePage() {
         }
       }
 
+      // The band you earn. Silent at heat 0. A kick joins on the beat at heat 1,
+      // off-beat hats at heat 2, a bass root on each bar at heat 4. It stops the
+      // instant a miss drops the heat, and that silence is the feedback.
+      if (phase === "playing") {
+        const idx = Math.floor(now / (BEAT / 2));
+        if (idx !== beatIdxRef.current) {
+          beatIdxRef.current = idx;
+          const h = heatRef.current;
+          const ctx = h > 0 ? getAudioCtx() : null;
+          const mg = gainsRef.current.music;
+          if (ctx && mg > 0) {
+            const t = ctx.currentTime + 0.005;
+            if (idx % 2 === 0) {
+              // kick: a short sine thump that drops in pitch
+              const o = ctx.createOscillator();
+              const g = ctx.createGain();
+              o.type = "sine";
+              o.frequency.setValueAtTime(140, t);
+              o.frequency.exponentialRampToValueAtTime(48, t + 0.11);
+              const v = (0.16 + h * 0.035) * mg;
+              g.gain.setValueAtTime(0.0001, t);
+              g.gain.exponentialRampToValueAtTime(v, t + 0.006);
+              g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+              o.connect(g); g.connect(ctx.destination);
+              o.start(t); o.stop(t + 0.22);
+              if (h >= 4 && idx % 8 === 0) scheduleBass(ctx, t, 110, 0.16); // bar root, A2
+            } else if (h >= 2) {
+              scheduleHihat(ctx, t, 0.05 + h * 0.012);
+            }
+          }
+        }
+      }
+
       // Spawn notes that are now visible (notes whose fall window has started)
       const visible: (NoteDef & { spawnedAt: number; holdState?: "held" | "dropped" })[] = [];
-      for (const n of chartRef.current) {
+      for (const src of chartRef.current) {
+        // HEAT: a tile's fall time is fixed the moment it appears, from the heat
+        // at that moment, so tiles already on screen never jump.
+        let tv = travelLockRef.current.get(src.id);
+        if (tv === undefined) {
+          const eff = phase === "playing" ? Math.max(HEAT_MIN_TRAVEL, src.travel * HEAT_FALL[heatRef.current]) : src.travel;
+          if (now < src.time - eff) continue;
+          travelLockRef.current.set(src.id, eff);
+          tv = eff;
+        }
+        const n = tv === src.travel ? src : { ...src, travel: tv };
         if (now >= n.time - n.travel && now <= n.time + (n.hold ?? 0) + GOOD_WINDOW + 0.3) {
           if (!spawnedRef.current.has(n.id)) spawnedRef.current.add(n.id);
           if (!missedRef.current.has(n.id)) {
@@ -1827,6 +1894,35 @@ export default function RhythmGamePage() {
     setPhase("finished");
   }, []);
 
+  // dev only: lets an automated test play the song (hit a lane at a chart time)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __rhythm?: unknown }).__rhythm = {
+      now: () => (performance.now() - startRef.current) / 1000,
+      chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
+      hit: hitLane, release: releaseLane, phase, heat: () => heatRef.current,
+      falls: () => [...travelLockRef.current.values()],
+    };
+  });
+
+  // ─── HEAT follows the combo ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const next = heatFor(combo);
+    const prev = heatRef.current;
+    if (next === prev) return;
+    heatRef.current = next;
+    setHeat(next);
+    if (next > prev) {
+      topHeatRef.current = Math.max(topHeatRef.current, next);
+      juice.fireCallout({ text: "SPEED UP!", sub: `×${HEAT_SPEED[next]} · KEEP THE COMBO`, color: HEAT_COLOR[next] }, 650);
+      haptic(18);
+    } else if (prev >= 2) {
+      juice.fireCallout({ text: "BACK TO SLOW", sub: "BUILD IT AGAIN", color: "#a78bfa" }, 600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combo, phase]);
+
   // ─── Personal best (device only, display only) ──────────────────────────────
   // When a run ends, compare it with the stored best once, and keep it if it
   // is higher. FinishedView reads `bestResult`.
@@ -1943,6 +2039,7 @@ export default function RhythmGamePage() {
       {(phase === "playing" || phase === "encore") && (
         <PlayingView
           paceDelta={phase === "playing" ? paceDelta : null}
+          heat={phase === "playing" ? heat : 0}
           score={score} combo={combo} timeLeft={timeLeft}
           bursts={bursts}
           comboToast={comboToast} flashLane={flashLane} feedback={feedback}
@@ -2008,6 +2105,7 @@ export default function RhythmGamePage() {
           score={score} maxCombo={maxCombo} hits={hits}
           accuracy={Math.round(accuracy * 100)}
           bestResult={bestResult}
+          topSpeed={HEAT_SPEED[topHeatRef.current]}
           gradeGap={nextGradeGap(mainStats.perfects, mainStats.goods, MAIN_NOTE_COUNT)}
           encoreLoop={encoreLoop}
           onPlayAgain={startGame}
@@ -2359,7 +2457,7 @@ function PetCenter({
 
 // ─── Playing: the actual game ─────────────────────────────────────────────────
 function PlayingView({
-  paceDelta,
+  paceDelta, heat,
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
@@ -2369,6 +2467,7 @@ function PlayingView({
   fever, perfectStreak, heldLanes,
 }: {
   paceDelta: number | null; // live score minus where your best run stood at this second
+  heat: number; // 0..5, how fast the tiles are falling right now
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
   comboToast: string | null; flashLane: number | null;
@@ -2499,7 +2598,24 @@ function PlayingView({
             }}>{paceDelta >= 0 ? `+${paceDelta}` : paceDelta} vs best</div>
           )}
         </div>
-        <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
+<div style={{ position: "relative" }}>
+          <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
+          {/* how fast the tiles are falling right now: earned by the combo, lost on a miss */}
+          <div style={{
+            position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+            display: "flex", alignItems: "center", gap: 4, padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+            fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em",
+            color: heat > 0 ? "#0b0320" : "rgba(220,210,255,0.8)",
+            background: heat > 0 ? HEAT_COLOR[heat] : "rgba(30,16,70,0.95)",
+            border: heat > 0 ? "none" : "1px solid rgba(167,139,250,0.4)",
+            boxShadow: heat > 0 ? `0 0 10px ${HEAT_COLOR[heat]}aa, 0 2px 6px rgba(0,0,0,0.5)` : "0 2px 6px rgba(0,0,0,0.5)",
+            transition: "background 0.2s, box-shadow 0.2s",
+          }}>
+            <span>SPEED ×{HEAT_SPEED[heat]}</span>
+            <span style={{ display: "flex", gap: 2 }}>{[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ width: 4, height: 4, borderRadius: 2, background: k <= heat ? "#0b0320" : "rgba(167,139,250,0.35)" }} />)}</span>
+          </div>
+        </div>
         {/* Third gem tells the run's current story: encore shows survival
             depth (LOOP N), main track shows fever state — burning ×2, or
             progress toward ignition (perfect streak / trigger). */}
@@ -2805,7 +2921,7 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
-  bestResult, gradeGap,
+  bestResult, gradeGap, topSpeed,
   grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
@@ -2815,6 +2931,7 @@ function FinishedView({
   bestResult: { prev: number | null; isNew: boolean } | null;
   // how many more PERFECT hits the next grade up was away (null at grade S)
   gradeGap: { letter: string; need: number } | null;
+  topSpeed: number; // fastest fall speed reached this run (×1 = never left slow)
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
   hits: { perfect: number; good: number; miss: number };
@@ -2954,6 +3071,14 @@ function FinishedView({
               }}>
                 {gradeGap.need <= 8 ? "Only " : ""}<b style={{ color: "#67e8f9" }}>{gradeGap.need}</b> more PERFECT{gradeGap.need === 1 ? "" : "s"} to grade <b style={{ color: "#67e8f9" }}>{gradeGap.letter}</b>
               </div>
+            )}
+            {topSpeed > 1 && (
+              <div style={{
+                display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, marginRight: 6, padding: "4px 12px", borderRadius: 999,
+                background: "rgba(103,232,249,0.1)", border: "1px solid rgba(103,232,249,0.45)",
+                fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+                color: "#a5f3fc", fontSize: 10.5, fontWeight: 900, letterSpacing: "0.16em",
+              }}>TOP SPEED ×{topSpeed}</div>
             )}
             {/* Survival badge — how deep into the accelerating encore this
                 run made it. The depth flex ("LOOP 5") replaces the old
