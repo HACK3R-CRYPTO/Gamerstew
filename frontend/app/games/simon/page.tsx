@@ -994,7 +994,10 @@ export default function SimonGamePage() {
       // Deep cosmic void — the device is the ONLY bright thing in the scene.
       // Background darkens outward so the glow from the Simon orb reads as
       // the room's light source, not just a colored sticker on a web page.
-      background: "radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
+      // A painted place to play in (a Lagos street-party stage / a retro arcade)
+      // under a dark wash, so the game on top stays the brightest thing on screen.
+      // The old plain gradient stays underneath as the colour while the image loads.
+      background: "linear-gradient(rgba(5,2,26,0.38), rgba(5,2,26,0.6)), url(/games/simon-arcade.webp) center / cover no-repeat, radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
       overflow: "hidden",
       fontFamily: "inherit",
       touchAction: "manipulation",
