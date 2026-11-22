@@ -38,6 +38,7 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { recentAverage, recordRun } from "@/lib/skillStart";
 import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
@@ -120,6 +121,12 @@ const HEAT_SPEED = [1, 1.1, 1.25, 1.4, 1.55, 1.7]; // what the player is shown
 const HEAT_COLOR = ["#a78bfa", "#67e8f9", "#4ade80", "#fbbf24", "#fb923c", "#f43f5e"];
 const HEAT_MIN_TRAVEL = 0.95;                      // never faster than this: still readable
 const heatFor = (combo: number) => HEAT_AT.filter((c) => combo >= c).length;
+// WARM START: a player whose recent runs reached high heat does not begin from
+// the crawl. Their runs start a couple of steps below the heat they usually
+// reach, and a miss drops them back to THAT level, not to zero. Recent rough
+// runs bring it down again. New players always start at 0.
+const HEAT_MAX = HEAT_FALL.length - 1;
+const warmStartFor = (avgTopHeat: number | null) => (avgTopHeat == null ? 0 : Math.max(0, Math.min(3, Math.round(avgTopHeat) - 2)));
 
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -679,6 +686,9 @@ export default function RhythmGamePage() {
   const [heat, setHeat] = useState(0);
   const travelLockRef = useRef<Map<number, number>>(new Map()); // each tile's fall time, fixed when it appears
   const beatIdxRef = useRef(-1);
+  const warmRef = useRef(0); // the heat this run starts from, and falls back to
+  const [warm, setWarm] = useState(0);
+  useEffect(() => { const w = warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); }, []);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [hits, setHits] = useState({ perfect: 0, good: 0, miss: 0 });
@@ -889,7 +899,7 @@ export default function RhythmGamePage() {
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
     paceRef.current = [];
-    heatRef.current = 0; topHeatRef.current = 0; setHeat(0);
+    { const w = warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
     travelLockRef.current = new Map(); beatIdxRef.current = -1;
     setPaceDelta(null);
     setBestResult(null);
@@ -1900,15 +1910,21 @@ export default function RhythmGamePage() {
     (window as unknown as { __rhythm?: unknown }).__rhythm = {
       now: () => (performance.now() - startRef.current) / 1000,
       chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
-      hit: hitLane, release: releaseLane, phase, heat: () => heatRef.current,
+      hit: hitLane, release: releaseLane, phase, heat: () => heatRef.current, warm: () => warmRef.current,
       falls: () => [...travelLockRef.current.values()],
     };
   });
 
+  // Tell a returning player why the tiles are already moving quickly.
+  useEffect(() => {
+    if (phase === "playing" && warmRef.current > 0) juice.fireCallout({ text: "WARM START", sub: `×${HEAT_SPEED[warmRef.current]} · YOU EARNED IT`, color: HEAT_COLOR[warmRef.current] }, 900);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   // ─── HEAT follows the combo ─────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "playing") return;
-    const next = heatFor(combo);
+    const next = Math.min(HEAT_MAX, warmRef.current + heatFor(combo));
     const prev = heatRef.current;
     if (next === prev) return;
     heatRef.current = next;
@@ -1917,8 +1933,8 @@ export default function RhythmGamePage() {
       topHeatRef.current = Math.max(topHeatRef.current, next);
       juice.fireCallout({ text: "SPEED UP!", sub: `×${HEAT_SPEED[next]} · KEEP THE COMBO`, color: HEAT_COLOR[next] }, 650);
       haptic(18);
-    } else if (prev >= 2) {
-      juice.fireCallout({ text: "BACK TO SLOW", sub: "BUILD IT AGAIN", color: "#a78bfa" }, 600);
+    } else if (prev - next >= 2) {
+      juice.fireCallout({ text: next === 0 ? "BACK TO SLOW" : `BACK TO ×${HEAT_SPEED[next]}`, sub: "BUILD IT AGAIN", color: "#a78bfa" }, 600);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combo, phase]);
@@ -1944,6 +1960,8 @@ export default function RhythmGamePage() {
       bestRef.current = next;
     }
     setBestResult({ prev: prev ? prev.score : null, isNew });
+    // feed the skill-matched start: how hot this run got
+    if (score > 0) recordRun("rhythm", topHeatRef.current);
   }, [phase, score]);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────

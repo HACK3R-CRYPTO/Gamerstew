@@ -37,6 +37,7 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { recentAverage, recordRun } from "@/lib/skillStart";
 import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
@@ -453,7 +454,11 @@ export default function SimonGamePage() {
   useEffect(() => { const b = readSimonBest(); bestRef.current = b; setBestRounds(b ? b.rounds : null); }, []);
   useEffect(() => {
     // re-armed when play starts (not on PLAY AGAIN, when the counters have just been zeroed)
-    if (phase === "showing" || phase === "playing" || phase === "countdown") { runCountedRef.current = false; if (phase === "countdown") setBestResult(null); return; }
+    if (phase === "showing" || phase === "playing" || phase === "countdown") {
+      runCountedRef.current = false;
+      if (phase === "countdown") { setBestResult(null); const h = readHeadStart(); headStartRef.current = h; setHeadStart(h); }
+      return;
+    }
     if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
     runCountedRef.current = true;
     const prev = bestRef.current;
@@ -465,11 +470,22 @@ export default function SimonGamePage() {
       setBestRounds(sequences);
     }
     setBestResult({ prev: prev ? prev.rounds : null, isNew });
+    recordRun("simon", sequences); // feeds the skill-matched start of the next run
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, sequences, score]);
 
   // ─── Timing helpers — flashes get faster each round (skill ceiling) ──────────
-  const getFlashDur = (round: number) => Math.max(MIN_FLASH, BASE_FLASH - round * 30);
-  const getSeqDelay = (round: number) => Math.max(MIN_DELAY, BASE_DELAY - round * 35);
+  // FAST START: someone who usually clears many rounds does not need rounds 1 to
+  // 5 shown at teaching speed. The playback starts `headStart` rounds "ahead" in
+  // speed (never in the pattern: every round is still played, one colour longer
+  // each time). It comes from the average of the last few runs and eases back
+  // down after rough ones. New players get 0.
+  const headStartRef = useRef(0);
+  const [headStart, setHeadStart] = useState(0);
+  const readHeadStart = () => { const avg = recentAverage("simon"); return avg == null ? 0 : Math.max(0, Math.min(8, Math.floor(avg * 0.6))); };
+  useEffect(() => { const h = readHeadStart(); headStartRef.current = h; setHeadStart(h); }, []);
+  const getFlashDur = (round: number) => Math.max(MIN_FLASH, BASE_FLASH - (round + headStartRef.current) * 30);
+  const getSeqDelay = (round: number) => Math.max(MIN_DELAY, BASE_DELAY - (round + headStartRef.current) * 35);
 
   // ─── Flash a single button: light it up, play its tone, then unlight ────────
   const flashButton = useCallback((colorId: string, duration: number, onDone: (() => void) | null) => {
@@ -1045,7 +1061,8 @@ export default function SimonGamePage() {
           score={score}
           round={sequences + 1}
           bestRounds={bestRounds}
-          speed={Math.round((BASE_DELAY / Math.max(MIN_DELAY, BASE_DELAY - sequences * 35)) * 10) / 10}
+          speed={Math.round((BASE_DELAY / Math.max(MIN_DELAY, BASE_DELAY - (sequences + headStart) * 35)) * 10) / 10}
+          fastStart={headStart > 0 && sequences === 0}
           bonusUnlocked={bonusUnlocked}
           activeBtn={activeBtn}
           isShowingSequence={isShowingSequence}
@@ -1386,12 +1403,13 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
 //   once unlocked at round 5).
 // Bottom: SCORE chip + progress dots showing taps remaining this round.
 function PlayingView({
-  bestRounds, speed,
+  bestRounds, speed, fastStart,
   score, round, bonusUnlocked, activeBtn, isShowingSequence, roundFlash,
   pet, petEvent, tappedCount, totalInRound, isMobile, timeLeftMs, onButtonClick, onQuit,
 }: {
   bestRounds: number | null; // deepest round ever cleared on this device
   speed: number; // how much faster the sequence plays now than in round 1
+  fastStart: boolean; // true in round 1 when this player's history earned a quicker start
   score: number;
   round: number;
   bonusUnlocked: boolean;
@@ -1444,7 +1462,7 @@ function PlayingView({
         return (
           <>
             <div style={{ ...chip, left: 14, borderColor: speed >= 1.5 ? "rgba(251,146,60,0.6)" : speed > 1 ? "rgba(103,232,249,0.5)" : "rgba(167,139,250,0.3)" }}>
-              <span style={lab}>SPEED</span>
+              <span style={lab}>{fastStart ? "FAST START" : "SPEED"}</span>
               <b style={{ fontSize: 14, color: speed >= 1.5 ? "#fb923c" : speed > 1 ? "#67e8f9" : "#e9e2ff", fontVariantNumeric: "tabular-nums" }}>×{speed.toFixed(1)}</b>
             </div>
             <div style={{ ...chip, right: 14, borderColor: beat ? "rgba(251,191,36,0.75)" : "rgba(167,139,250,0.3)", boxShadow: beat ? "0 0 14px rgba(251,191,36,0.35)" : "none" }}>
