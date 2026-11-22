@@ -37,6 +37,7 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -437,6 +438,34 @@ export default function SimonGamePage() {
     (a: { type: string; walletClientType?: string }) =>
       a.type === "wallet" && a.walletClientType === "privy"
   );
+
+  // dev only: lets an automated test play (read the pattern, tap a colour)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __simon?: unknown }).__simon = { pattern: () => [...patternRef.current], showing: isShowingSequence, phase, tap: handleButtonClick, tapped: () => userPatternRef.current.length };
+  });
+
+  // ─── Personal best (device only, display only) ──────────────────────────────
+  const bestRef = useRef<SimonBest | null>(null);
+  const [bestRounds, setBestRounds] = useState<number | null>(null);
+  const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
+  const runCountedRef = useRef(false);
+  useEffect(() => { const b = readSimonBest(); bestRef.current = b; setBestRounds(b ? b.rounds : null); }, []);
+  useEffect(() => {
+    // re-armed when play starts (not on PLAY AGAIN, when the counters have just been zeroed)
+    if (phase === "showing" || phase === "playing" || phase === "countdown") { runCountedRef.current = false; if (phase === "countdown") setBestResult(null); return; }
+    if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
+    runCountedRef.current = true;
+    const prev = bestRef.current;
+    const isNew = sequences > 0 && (!prev || sequences > prev.rounds);
+    if (isNew) {
+      const next = { rounds: sequences, score };
+      saveSimonBest(next);
+      bestRef.current = next;
+      setBestRounds(sequences);
+    }
+    setBestResult({ prev: prev ? prev.rounds : null, isNew });
+  }, [phase, sequences, score]);
 
   // ─── Timing helpers — flashes get faster each round (skill ceiling) ──────────
   const getFlashDur = (round: number) => Math.max(MIN_FLASH, BASE_FLASH - round * 30);
@@ -1015,6 +1044,8 @@ export default function SimonGamePage() {
         <PlayingView
           score={score}
           round={sequences + 1}
+          bestRounds={bestRounds}
+          speed={Math.round((BASE_DELAY / Math.max(MIN_DELAY, BASE_DELAY - sequences * 35)) * 10) / 10}
           bonusUnlocked={bonusUnlocked}
           activeBtn={activeBtn}
           isShowingSequence={isShowingSequence}
@@ -1042,6 +1073,7 @@ export default function SimonGamePage() {
           grade={grade}
           score={score}
           rounds={sequences}
+          bestResult={bestResult}
           gameTimeMs={gameTimeMs}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
@@ -1354,9 +1386,12 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
 //   once unlocked at round 5).
 // Bottom: SCORE chip + progress dots showing taps remaining this round.
 function PlayingView({
+  bestRounds, speed,
   score, round, bonusUnlocked, activeBtn, isShowingSequence, roundFlash,
   pet, petEvent, tappedCount, totalInRound, isMobile, timeLeftMs, onButtonClick, onQuit,
 }: {
+  bestRounds: number | null; // deepest round ever cleared on this device
+  speed: number; // how much faster the sequence plays now than in round 1
   score: number;
   round: number;
   bonusUnlocked: boolean;
@@ -1392,6 +1427,38 @@ function PlayingView({
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+
+      {/* Two quiet readouts either side of the pet. Left: how fast the sequence
+          now plays (it speeds up every round). Right: the chase, your best round
+          and how far off it is, turning gold the moment you pass it. */}
+      {(() => {
+        const cleared = round - 1;
+        const chip: React.CSSProperties = {
+          position: "absolute", top: 70, zIndex: 6, pointerEvents: "none", padding: "5px 10px", borderRadius: 12, textAlign: "center",
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', lineHeight: 1.15,
+          background: "rgba(20,10,50,0.72)", border: "1px solid rgba(167,139,250,0.3)",
+        };
+        const lab: React.CSSProperties = { display: "block", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.16em", color: "rgba(200,180,255,0.6)" };
+        const beat = bestRounds != null && cleared > bestRounds;
+        const ms = nextSimonMilestone(cleared);
+        return (
+          <>
+            <div style={{ ...chip, left: 14, borderColor: speed >= 1.5 ? "rgba(251,146,60,0.6)" : speed > 1 ? "rgba(103,232,249,0.5)" : "rgba(167,139,250,0.3)" }}>
+              <span style={lab}>SPEED</span>
+              <b style={{ fontSize: 14, color: speed >= 1.5 ? "#fb923c" : speed > 1 ? "#67e8f9" : "#e9e2ff", fontVariantNumeric: "tabular-nums" }}>×{speed.toFixed(1)}</b>
+            </div>
+            <div style={{ ...chip, right: 14, borderColor: beat ? "rgba(251,191,36,0.75)" : "rgba(167,139,250,0.3)", boxShadow: beat ? "0 0 14px rgba(251,191,36,0.35)" : "none" }}>
+              {bestRounds == null ? (
+                ms ? (<><span style={lab}>NEXT</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{ms.name} · {ms.at - cleared} to go</b></>) : null
+              ) : beat ? (
+                <><span style={{ ...lab, color: "#fde68a" }}>NEW BEST</span><b style={{ fontSize: 14, color: "#fbbf24" }}>🏆 ROUND {cleared}</b></>
+              ) : (
+                <><span style={lab}>BEST · ROUND {bestRounds}</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{bestRounds - cleared + 1} to beat it</b></>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ═══ TOP HUD — quit (left) · score pill (right). Pet moves to its own
                centered stage below so it's a present companion, not a corner widget. */}
@@ -1856,11 +1923,13 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bestResult,
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  bestResult: { prev: number | null; isNew: boolean } | null; // deepest round before this run, and whether this run beat it
   grade: ReturnType<typeof gradeFor>;
   score: number; rounds: number; gameTimeMs: number;
   onPlayAgain: () => void;
@@ -1972,6 +2041,19 @@ function FinishedView({
               lineHeight: 1, marginTop: 4,
               letterSpacing: "0.01em",
             }}>{score.toLocaleString()}</div>
+            {/* against your own best, and how far the next named round was */}
+            {bestResult && rounds > 0 && (
+              <div style={{ marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 12, fontWeight: 800, color: bestResult.isNew ? "#fde68a" : "rgba(220,210,255,0.72)" }}>
+                {bestResult.isNew
+                  ? (bestResult.prev == null ? `🏆 Your first best: round ${rounds}` : `🏆 New best! Round ${rounds}, ${rounds - bestResult.prev} deeper than before`)
+                  : bestResult.prev === rounds ? `Tied your best, round ${rounds}. One more beats it` : `Your best is round ${bestResult.prev} · ${bestResult.prev! - rounds + 1} more to beat it`}
+              </div>
+            )}
+            {(() => { const ms = nextSimonMilestone(rounds); return ms && ms.at - rounds <= 3 ? (
+              <div style={{ marginTop: 4, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 11.5, fontWeight: 700, color: "rgba(220,210,255,0.72)" }}>
+                Only <b style={{ color: "#67e8f9" }}>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b style={{ color: "#67e8f9" }}>{ms.name}</b>
+              </div>
+            ) : null; })()}
           </div>
 
           {/* Stats · Simon has only rounds + time */}
