@@ -38,6 +38,7 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -647,6 +648,15 @@ export default function RhythmGamePage() {
   }, [audioSettings.hapticsOn]);
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
+  // Personal best + live pace against it (see lib/rhythmBest.ts)
+  const scoreLiveRef = useRef(0);
+  useEffect(() => { scoreLiveRef.current = score; }, [score]);
+  const paceRef = useRef<number[]>([]);
+  const bestRef = useRef<RhythmBest | null>(null);
+  const runCountedRef = useRef(false);
+  const [paceDelta, setPaceDelta] = useState<number | null>(null);
+  const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
+  useEffect(() => { bestRef.current = readRhythmBest(); }, []);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [hits, setHits] = useState({ perfect: 0, good: 0, miss: 0 });
@@ -856,6 +866,9 @@ export default function RhythmGamePage() {
     setFeverActive(false);
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
+    paceRef.current = [];
+    setPaceDelta(null);
+    setBestResult(null);
     setHits({ perfect: 0, good: 0, miss: 0 });
     setTimeLeft(TRACK_DURATION);
     setBursts([]);
@@ -1590,6 +1603,12 @@ export default function RhythmGamePage() {
         if (sec !== lastTimerSecond) {
           lastTimerSecond = sec;
           setTimeLeft(Math.max(0, TRACK_DURATION - now));
+          // Race your own best: note the score at this second, and compare it
+          // with where the best run stood at the same moment.
+          const at = Math.max(0, Math.floor(now));
+          paceRef.current[at] = scoreLiveRef.current;
+          const b = bestRef.current;
+          if (b && typeof b.pace[at] === "number" && at >= 5) setPaceDelta(scoreLiveRef.current - b.pace[at]);
         }
       }
 
@@ -1808,6 +1827,29 @@ export default function RhythmGamePage() {
     setPhase("finished");
   }, []);
 
+  // ─── Personal best (device only, display only) ──────────────────────────────
+  // When a run ends, compare it with the stored best once, and keep it if it
+  // is higher. FinishedView reads `bestResult`.
+  useEffect(() => {
+    // A run can only be counted once it has actually been played: the flag is
+    // re-armed when play starts, not when PLAY AGAIN is tapped (at that moment
+    // the phase is still "finished" and the score has just been zeroed, which
+    // used to count an empty run and then skip the real one).
+    if (phase === "playing") { runCountedRef.current = false; return; }
+    if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
+    runCountedRef.current = true;
+    const prev = bestRef.current;
+    const ms = mainTrackStatsRef.current;
+    const acc = Math.min(1, (ms.perfects + ms.goods * 0.5) / MAIN_NOTE_COUNT);
+    const isNew = score > 0 && (!prev || score > prev.score);
+    if (isNew) {
+      const next: RhythmBest = { score, accuracy: acc, pace: fillPace(paceRef.current, TRACK_DURATION) };
+      saveRhythmBest(next);
+      bestRef.current = next;
+    }
+    setBestResult({ prev: prev ? prev.score : null, isNew });
+  }, [phase, score]);
+
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
   // Grade + accuracy come from the MAIN-TRACK snapshot (taken at every exit
@@ -1900,6 +1942,7 @@ export default function RhythmGamePage() {
       {/* ═══ PLAYING + ENCORE (same view, different HUD treatment) ═══ */}
       {(phase === "playing" || phase === "encore") && (
         <PlayingView
+          paceDelta={phase === "playing" ? paceDelta : null}
           score={score} combo={combo} timeLeft={timeLeft}
           bursts={bursts}
           comboToast={comboToast} flashLane={flashLane} feedback={feedback}
@@ -1964,6 +2007,8 @@ export default function RhythmGamePage() {
           grade={grade}
           score={score} maxCombo={maxCombo} hits={hits}
           accuracy={Math.round(accuracy * 100)}
+          bestResult={bestResult}
+          gradeGap={nextGradeGap(mainStats.perfects, mainStats.goods, MAIN_NOTE_COUNT)}
           encoreLoop={encoreLoop}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
@@ -2314,6 +2359,7 @@ function PetCenter({
 
 // ─── Playing: the actual game ─────────────────────────────────────────────────
 function PlayingView({
+  paceDelta,
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
@@ -2322,6 +2368,7 @@ function PlayingView({
   isEncore, encoreLives, encoreLoop,
   fever, perfectStreak, heldLanes,
 }: {
+  paceDelta: number | null; // live score minus where your best run stood at this second
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
   comboToast: string | null; flashLane: number | null;
@@ -2437,7 +2484,21 @@ function PlayingView({
         padding: "0 16px 10px",
         display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px",
       }}>
-        <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
+        <div style={{ position: "relative" }}>
+          <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
+          {/* racing your own best: ahead in green, behind in red */}
+          {paceDelta !== null && (
+            <div style={{
+              position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+              padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+              fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", fontVariantNumeric: "tabular-nums",
+              color: paceDelta >= 0 ? "#052e16" : "#fff",
+              background: paceDelta >= 0 ? "#4ade80" : "#ef4444",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+            }}>{paceDelta >= 0 ? `+${paceDelta}` : paceDelta} vs best</div>
+          )}
+        </div>
         <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
         {/* Third gem tells the run's current story: encore shows survival
             depth (LOOP N), main track shows fever state — burning ×2, or
@@ -2744,11 +2805,16 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bestResult, gradeGap,
   grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  // personal best on this device: what it was before this run, and whether this run beat it
+  bestResult: { prev: number | null; isNew: boolean } | null;
+  // how many more PERFECT hits the next grade up was away (null at grade S)
+  gradeGap: { letter: string; need: number } | null;
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
   hits: { perfect: number; good: number; miss: number };
@@ -2868,6 +2934,27 @@ function FinishedView({
               lineHeight: 1, marginTop: 4,
               letterSpacing: "0.01em",
             }}>{score.toLocaleString()}</div>
+            {/* Where this run stands: against your own best, and how close the
+                next grade was. The two lines that make a player go again. */}
+            {bestResult && score > 0 && (
+              <div style={{
+                marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+                fontSize: 12, fontWeight: 800, letterSpacing: "0.02em",
+                color: bestResult.isNew ? "#fde68a" : "rgba(220,210,255,0.72)",
+              }}>
+                {bestResult.isNew
+                  ? (bestResult.prev == null ? "🏆 Your first best" : `🏆 New best! +${(score - bestResult.prev).toLocaleString()} on your old one`)
+                  : `Your best ${bestResult.prev!.toLocaleString()} · ${(bestResult.prev! - score).toLocaleString()} short`}
+              </div>
+            )}
+            {gradeGap && (
+              <div style={{
+                marginTop: 4, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+                fontSize: 11.5, fontWeight: 700, color: "rgba(220,210,255,0.72)",
+              }}>
+                {gradeGap.need <= 8 ? "Only " : ""}<b style={{ color: "#67e8f9" }}>{gradeGap.need}</b> more PERFECT{gradeGap.need === 1 ? "" : "s"} to grade <b style={{ color: "#67e8f9" }}>{gradeGap.letter}</b>
+              </div>
+            )}
             {/* Survival badge — how deep into the accelerating encore this
                 run made it. The depth flex ("LOOP 5") replaces the old
                 million-point flex the flat encore used to hand out. */}
