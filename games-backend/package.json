@@ -10,7 +10,8 @@
     "dev": "npm run build && node --watch server.js",
     "pretest": "npm run build",
     "test": "node --test --test-timeout=60000 lib/*.test.js \"dist/**/*.test.js\"",
-    "smoke": "npm run build && node scripts/smoke/run.js"
+    "smoke": "npm run build && node scripts/smoke/run.js",
+    "env:example": "npm run build && node -e \"require('fs').writeFileSync('.env.example', require('./dist').envExample())\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

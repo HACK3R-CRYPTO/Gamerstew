@@ -58,6 +58,14 @@ const app = express();
 // with a message naming it, not later inside a request.
 const config = platform.loadConfig();
 for (const w of config.warnings) console.warn(`⚠️  config: ${w}`);
+// Check every setting against the catalogue (src/platform/env.ts). A malformed
+// value is reported here, at boot, by name; it never stops the server.
+{
+  const report = platform.checkEnv();
+  for (const p of report.problems) console.warn(`⚠️  setting: ${p}`);
+  for (const m of report.missing) console.warn(`⚠️  setting: ${m} is required and not set`);
+  console.log(`⚙️  settings: ${report.set} set (${report.secretsSet} secrets), ${report.problems.length} problem(s)`);
+}
 const PORT = config.port;
 // Time every request, per route. Mounted first so it measures everything.
 const metrics = platform.createMetrics({ slowMs: config.slowRequestMs, timeoutMs: config.requestTimeoutMs });

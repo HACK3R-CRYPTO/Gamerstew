@@ -14,3 +14,4 @@ export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/ad
 export { catchAsync, hardenApp, installErrorHandlers, fetchWithTimeout } from './platform/http';
 export { guardWalletParams, guardWalletFields, isWallet } from './platform/validate';
 export { createJobs } from './platform/jobs';
+export { checkEnv, describeEnv, envExample, SETTINGS } from './platform/env';
