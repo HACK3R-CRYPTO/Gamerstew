@@ -42,6 +42,7 @@ import { recentAverage, recordRun } from "@/lib/skillStart";
 import SONG_FILE from "@/lib/rhythmSongs.json";
 import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
 import DuelEntry from "@/components/DuelEntry";
+import NextUp from "@/components/NextUp";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -3433,6 +3434,9 @@ function FinishedView({
               score={score}
             />
           )}
+
+          {/* What this run added, and what is waiting tomorrow. */}
+          <NextUp accent="#f0abfc" />
 
           {/* CTAs. While the score is still saving (wallet signature +
               on-chain confirm), leaving would abort the save and the

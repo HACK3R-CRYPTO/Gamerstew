@@ -40,6 +40,7 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
 import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
 import DuelEntry from "@/components/DuelEntry";
+import NextUp from "@/components/NextUp";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -2228,6 +2229,9 @@ function FinishedView({
               score={score}
             />
           )}
+
+          {/* What this run added, and what is waiting tomorrow. */}
+          <NextUp accent="#67e8f9" />
 
           {/* CTAs. Lock the exits while the score is still saving so a
               reflexive tap can't abort the on-chain save. The MARKOV

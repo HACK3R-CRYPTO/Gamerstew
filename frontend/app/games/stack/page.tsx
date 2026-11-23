@@ -52,6 +52,7 @@ import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
 import { useEquipped } from "@/lib/cosmetics";
 import DuelEntry from "@/components/DuelEntry";
+import NextUp from "@/components/NextUp";
 
 // Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
 // tower in icy glass. Purely visual, zero gameplay effect.
@@ -1341,6 +1342,9 @@ export default function StackTowerPage() {
                   {d > 0 ? `🔥 You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}
                 </div>
               ); })()}
+
+              {/* What this run added, and what is waiting tomorrow. */}
+              <NextUp accent="#67e8f9" />
 
               {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
               {mode !== "ranked" ? (
