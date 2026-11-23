@@ -2838,14 +2838,22 @@ function PlayingView({
       <PetCenter pet={pet} combo={combo} feedback={feedback} />
 
 
-      {/* ═══ PLAY FIELD (lanes + falling notes) ═══ */}
+      {/* ═══ PLAY FIELD (lanes + falling notes) ═══
+          Still a flat 2D field, but tilted back into the screen so it reads as a
+          highway running away from you: far tiles are small and slow, and they
+          grow and speed up as they reach the keys, like a real road does. The
+          tilt is one CSS transform on the whole field (the canvas inside draws
+          exactly as before, and hits are judged by time, not by position), so it
+          costs the phone almost nothing. The far end fades into the night. */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden", perspective: "780px", perspectiveOrigin: "50% 100%" }}>
       <div style={{
-        flex: 1,
-        position: "relative",
+        position: "absolute", left: 0, right: 0, bottom: 0, height: "185%",
+        transform: "rotateX(46deg)", transformOrigin: "50% 100%",
+        WebkitMaskImage: "linear-gradient(to top, #000 0%, #000 62%, transparent 96%)",
+        maskImage: "linear-gradient(to top, #000 0%, #000 62%, transparent 96%)",
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
         gap: "6px",
         padding: "0 10px 10px",
-        overflow: "hidden",
       }}>
         {LANES.map((theme, i) => (
           <Lane
@@ -2900,6 +2908,7 @@ function PlayingView({
             </div>
           );
         })}
+      </div>
       </div>
 
       {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══
