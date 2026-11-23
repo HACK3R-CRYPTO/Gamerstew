@@ -1390,8 +1390,13 @@ function MatchStage({
                 </>
               ) : (
                 <>
+                  {/* With the 3D fight on, the two moves are real objects acting out the
+                      rule in the ring, so the flat pictures step aside (a spacer keeps
+                      the result text where it was). */}
+                  {fight3d ? <div style={{ height: 118, width: 1 }} /> : (<>
                   <img src={MOVES[lastRound!.playerMove]!.art} alt={MOVES[lastRound!.playerMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashL 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
                   <img src={MOVES[lastRound!.aiMove]!.art} alt={MOVES[lastRound!.aiMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashR 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
+                  </>)}
                 </>
               )}
             </div>

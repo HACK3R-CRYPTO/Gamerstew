@@ -17,7 +17,7 @@
 
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import * as THREE from "three";
 
@@ -179,47 +179,240 @@ function Fighter({ url, dir, tint, state }: { url: string; dir: 1 | -1; tint: st
 
 interface Shared { beat: FightBeat; t: number; winner: "player" | "ai" | "tie" | null; over: "player" | "ai" | null; pMove: number; aMove: number }
 
-// The move itself, thrown across the ring as a spinning picture of rock, paper or scissors.
-function Throws({ art, state }: { art: readonly string[]; state: React.MutableRefObject<Shared> }) {
-  const tex = useTexture(art as string[]);
-  const a = useRef<THREE.Sprite>(null);
-  const b = useRef<THREE.Sprite>(null);
+// ─── The moves themselves, as real objects that do what the rule says ────────
+// Each fighter throws their move into the middle of the ring, and then the
+// winning move visibly beats the losing one:
+//   rock beats scissors   the rock slams into the scissors and they fly apart
+//   paper beats rock      the sheet flies over the rock and wraps round it
+//   scissors beat paper   the blades snip through the sheet; the halves fall
+//   same move             they crash together and bounce off
+// All three are built here from simple shapes (no model files): a chipped
+// boulder, a flexible sheet in two halves, and two blades on a pin.
+const ROCK = 0, PAPER = 1, SCISSORS = 2;
+const MID_Y = 1.22;
+const HALF_W = 0.3, SHEET_H = 0.78;
+
+function rockGeometry() {
+  const g = new THREE.IcosahedronGeometry(0.3, 1);
+  const p = g.getAttribute("position");
+  let sd = 7;
+  const r = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const seen = new Map<string, number>();
+  for (let i = 0; i < p.count; i++) {
+    const k = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+    if (!seen.has(k)) seen.set(k, 0.82 + r() * 0.36); // the same bump for a shared corner, so faces stay joined
+    const m = seen.get(k)!;
+    p.setXYZ(i, p.getX(i) * m, p.getY(i) * m * 0.9, p.getZ(i) * m);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function bladeGeometry() {
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.06, -0.04); sh.lineTo(0.06, -0.04); sh.lineTo(0.05, 0.3); sh.lineTo(0, 0.6); sh.lineTo(-0.03, 0.3); sh.closePath();
+  return new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false });
+}
+
+interface Slot {
+  root: THREE.Group; rock: THREE.Mesh; paper: THREE.Group; halves: [THREE.Mesh, THREE.Mesh]; base: [Float32Array, Float32Array];
+  scissors: THREE.Group; blades: [THREE.Group, THREE.Group];
+}
+
+function MoveObject({ slot }: { slot: React.MutableRefObject<Slot | null> }) {
+  const built = useMemo(() => {
+    const root = new THREE.Group();
+    const rock = new THREE.Mesh(rockGeometry(), new THREE.MeshStandardMaterial({ color: "#8b93a7", roughness: 0.85, metalness: 0.05, flatShading: true }));
+    root.add(rock);
+    // paper: two half sheets side by side, so scissors can part them
+    const paper = new THREE.Group();
+    // a ruled sheet with a red margin, drawn once, so it reads as paper even when wrapped
+    const cv = document.createElement("canvas"); cv.width = 128; cv.height = 256;
+    const cx = cv.getContext("2d")!;
+    cx.fillStyle = "#fbf7ea"; cx.fillRect(0, 0, 128, 256);
+    cx.strokeStyle = "#8fb4e8"; cx.lineWidth = 2;
+    for (let y = 30; y < 250; y += 20) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(128, y); cx.stroke(); }
+    cx.strokeStyle = "#f08a8a"; cx.beginPath(); cx.moveTo(22, 0); cx.lineTo(22, 256); cx.stroke();
+    const ptex = new THREE.CanvasTexture(cv); ptex.colorSpace = THREE.SRGBColorSpace;
+    const pm = new THREE.MeshStandardMaterial({ map: ptex, roughness: 0.9, side: THREE.DoubleSide, emissive: "#ffffff", emissiveMap: ptex, emissiveIntensity: 0.3 });
+    const halves = [-1, 1].map((sx) => {
+      const g = new THREE.PlaneGeometry(HALF_W, SHEET_H, 6, 12);
+      g.translate((sx * HALF_W) / 2, 0, 0);
+      const uv = g.getAttribute("uv");
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5 + (sx > 0 ? 0.5 : 0));
+      const m = new THREE.Mesh(g, pm);
+      paper.add(m);
+      return m;
+    }) as unknown as [THREE.Mesh, THREE.Mesh];
+    const base = halves.map((h) => Float32Array.from(h.geometry.getAttribute("position").array as Float32Array)) as [Float32Array, Float32Array];
+    root.add(paper);
+    // scissors: two blades crossing at a pin, each with a ring handle
+    const scissors = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: "#eef3fb", metalness: 0.55, roughness: 0.3, emissive: "#9fb4d8", emissiveIntensity: 0.25 });
+    const grip = new THREE.MeshStandardMaterial({ color: "#f43f5e", roughness: 0.5 });
+    const bg = bladeGeometry();
+    const blades = [-1, 1].map((sx) => {
+      const arm = new THREE.Group();
+      const blade = new THREE.Mesh(bg, steel);
+      blade.position.z = sx * 0.012;
+      arm.add(blade);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.036, 8, 18), grip);
+      ring.position.set(sx * 0.11, -0.24, 0.015);
+      arm.add(ring);
+      const stem = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.03), steel);
+      stem.position.set(sx * 0.05, -0.1, 0.015);
+      stem.rotation.z = -sx * 0.4;
+      arm.add(stem);
+      scissors.add(arm);
+      return arm;
+    }) as [THREE.Group, THREE.Group];
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.07, 10), new THREE.MeshStandardMaterial({ color: "#fbbf24", metalness: 0.8, roughness: 0.3 }));
+    pin.rotation.x = Math.PI / 2;
+    scissors.add(pin);
+    scissors.scale.setScalar(1.15);
+    root.add(scissors);
+    root.visible = false;
+    return { root, rock, paper, halves, base, scissors, blades };
+  }, []);
+  useEffect(() => { slot.current = built; return () => { slot.current = null; }; }, [built, slot]);
+  return <primitive object={built.root} />;
+}
+
+// Shape the sheet: a gentle flutter, and (wrap 0..1) curl it round a ball of radius R centred on the sheet.
+function shapePaper(sl: Slot, t: number, wrap: number, R: number) {
+  for (let h = 0; h < 2; h++) {
+    const pos = sl.halves[h].geometry.getAttribute("position") as THREE.BufferAttribute;
+    const b = sl.base[h];
+    for (let i = 0; i < pos.count; i++) {
+      const x = b[i * 3], y = b[i * 3 + 1];
+      const fx = x, fy = y, fz = Math.sin(x * 9 + t * 7) * 0.02 + Math.sin(y * 6 + t * 5) * 0.025;
+      if (wrap <= 0) { pos.setXYZ(i, fx, fy, fz); continue; }
+      // lay the sheet over the ball: x spreads round it, y over the top
+      const th = (x / HALF_W) * 1.25, ph = (y / (SHEET_H / 2)) * 1.15;
+      const wx = Math.sin(th) * Math.cos(ph) * R, wy = Math.sin(ph) * R, wz = Math.cos(th) * Math.cos(ph) * R;
+      pos.setXYZ(i, fx + (wx - fx) * wrap, fy + (wy - fy) * wrap, fz + (wz - fz) * wrap);
+    }
+    pos.needsUpdate = true;
+    sl.halves[h].geometry.computeVertexNormals();
+  }
+}
+
+function Clash({ state }: { state: React.MutableRefObject<Shared> }) {
+  const a = useRef<Slot | null>(null); // the player's move
+  const b = useRef<Slot | null>(null); // MARKOV's move
   const flash = useRef<THREE.Mesh>(null);
-  const mats = useMemo(() => tex.map((t) => { t.colorSpace = THREE.SRGBColorSpace; return new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }); }), [tex]);
+  const ease = (x: number) => { const c = Math.min(1, Math.max(0, x)); return c * c * (3 - 2 * c); };
   useFrame(() => {
     const s = state.current;
-    const show = s.beat === "impact" && s.winner !== null;
+    if (process.env.NODE_ENV !== "production") {
+      const f = (window as unknown as { __fightForce?: { p: number; a: number } }).__fightForce;
+      if (f && s.winner) { s.pMove = f.p; s.aMove = f.a; const d = (f.p - f.a + 3) % 3; s.winner = d === 0 ? "tie" : d === 1 ? "player" : "ai"; }
+    }
+    const A = a.current, B = b.current;
+    if (!A || !B) return;
+    const on = s.beat === "impact" && s.winner !== null;
+    A.root.visible = on; B.root.visible = on;
+    if (flash.current) flash.current.visible = false;
+    if (!on) return;
     const e = s.t;
-    const place = (sp: THREE.Sprite | null, from: 1 | -1, on: boolean, move: number, reach: number) => {
-      if (!sp) return;
-      sp.visible = on && e < 0.42;
-      if (!sp.visible) return;
-      sp.material = mats[move] ?? mats[0];
-      const k = Math.min(1, e / 0.26);
-      sp.position.set(-from * (SIDE - 0.25) + from * reach * k, 1.15 + Math.sin(k * Math.PI) * 0.35, 0.2);
-      sp.material.rotation = from * e * 14;
-      const sc = 0.5 + k * 0.3;
-      sp.scale.set(sc, sc, sc);
+    const set = (sl: Slot, move: number) => { sl.rock.visible = move === ROCK; sl.paper.visible = move === PAPER; sl.scissors.visible = move === SCISSORS; };
+    set(A, s.pMove); set(B, s.aMove);
+    // reset poses each frame; the rules below then act on them
+    for (const sl of [A, B]) {
+      sl.root.scale.setScalar(1); sl.root.rotation.set(0, 0, 0);
+      sl.rock.position.set(0, 0, 0); sl.rock.rotation.set(e * 2.2, e * 1.6, 0); sl.rock.scale.setScalar(1);
+      sl.paper.position.set(0, 0, 0); sl.paper.rotation.set(0, 0, 0);
+      sl.halves[0].position.set(0, 0, 0); sl.halves[1].position.set(0, 0, 0); sl.halves[0].rotation.set(0, 0, 0); sl.halves[1].rotation.set(0, 0, 0);
+      sl.scissors.position.set(0, 0, 0); sl.scissors.rotation.set(0, 0, 0);
+      sl.blades[0].position.set(0, 0, 0); sl.blades[1].position.set(0, 0, 0);
+    }
+    const snip = (sl: Slot, open: number) => { sl.blades[0].rotation.z = open; sl.blades[1].rotation.z = -open; };
+    snip(A, 0.32); snip(B, 0.32);
+    shapePaper(A, e, 0, 0.3); shapePaper(B, e + 1.3, 0, 0.3);
+
+    // 1. both moves are thrown in from their fighter and meet near the middle
+    const fly = ease(e / 0.3);
+    const meet = 0.34;
+    const arc = Math.sin(fly * Math.PI) * 0.3;
+    A.root.position.set(-(SIDE - 0.2) + (SIDE - 0.2 - meet) * fly, MID_Y + arc, 0.55);
+    B.root.position.set((SIDE - 0.2) - (SIDE - 0.2 - meet) * fly, MID_Y + arc, 0.55);
+    // scissors point at the opponent; paper faces the camera
+    A.scissors.rotation.z = -Math.PI / 2; B.scissors.rotation.z = Math.PI / 2;
+
+    const ring = (x: number, at: number, len = 0.32) => {
+      const f = flash.current; if (!f) return;
+      const k = e >= at ? Math.max(0, 1 - (e - at) / len) : 0;
+      f.visible = k > 0; f.position.set(x, MID_Y, 0.7); f.scale.setScalar(0.35 + (1 - k) * 1.5);
+      (f.material as THREE.MeshBasicMaterial).opacity = k * 0.9;
     };
-    const tie = s.winner === "tie";
-    // winner's move flies the whole way; in a tie both fly to the middle
-    place(a.current, 1, show && (s.winner === "player" || tie), s.pMove, tie ? SIDE - 0.3 : SIDE * 2 - 0.5);
-    place(b.current, -1, show && (s.winner === "ai" || tie), s.aMove, tie ? SIDE - 0.3 : SIDE * 2 - 0.5);
-    if (flash.current) {
-      const at = 0.26, k = show && e >= at ? Math.max(0, 1 - (e - at) / 0.3) : 0;
-      flash.current.visible = k > 0;
-      const hitX = tie ? 0 : s.winner === "player" ? SIDE - 0.2 : -(SIDE - 0.2);
-      flash.current.position.set(hitX, 1.15, 0.3);
-      flash.current.scale.setScalar(0.4 + (1 - k) * 1.6);
-      (flash.current.material as THREE.MeshBasicMaterial).opacity = k * 0.9;
+
+    if (s.winner === "tie") {
+      // crash together and bounce off
+      const k = e < 0.3 ? 0 : Math.min(1, (e - 0.3) / 0.5);
+      const back = Math.sin(k * Math.PI) * 0.26 + k * 0.1;
+      A.root.position.x = -meet + 0.2 * (e < 0.3 ? 0 : 1) - back - 0.2;
+      B.root.position.x = meet - 0.2 * (e < 0.3 ? 0 : 1) + back + 0.2;
+      A.root.rotation.z = k * 1.4; B.root.rotation.z = -k * 1.4;
+      ring(0, 0.3);
+      return;
+    }
+    const W = s.winner === "player" ? A : B, L = s.winner === "player" ? B : A;
+    const wm = s.winner === "player" ? s.pMove : s.aMove;
+    const wdir = s.winner === "player" ? 1 : -1; // direction the winner's move travels
+    const lx = wdir * meet;
+    const k = ease((e - 0.3) / 0.28); // the strike
+    const after = Math.max(0, e - 0.58);
+
+    if (wm === ROCK) {
+      // ROCK SMASHES SCISSORS: the rock drives through, the blades burst apart
+      W.root.position.x += (lx - W.root.position.x) * k;
+      W.rock.scale.setScalar(1 + Math.sin(k * Math.PI) * 0.35);
+      if (e > 0.5) {
+        const t2 = e - 0.5;
+        for (let i = 0; i < 2; i++) {
+          const sg = i ? 1 : -1;
+          L.blades[i].position.set(wdir * t2 * 1.5, sg * t2 * 1.5 - t2 * t2 * 2.4, sg * t2 * 0.5);
+          L.blades[i].rotation.z += t2 * 11 * sg;
+        }
+        L.root.scale.setScalar(Math.max(0, 1 - t2 / 0.9));
+      }
+      ring(lx, 0.5);
+    } else if (wm === PAPER) {
+      // PAPER COVERS ROCK: the sheet sails over and wraps round it
+      W.root.position.x += (lx - W.root.position.x) * k;
+      W.root.position.y += Math.sin(k * Math.PI) * 0.16;
+      const wrap = ease((e - 0.46) / 0.42);
+      shapePaper(W, e, wrap, 0.36);
+      W.paper.rotation.y = (1 - wrap) * 0.2;
+      // the rock stops spinning and is carried down inside the sheet
+      L.rock.rotation.set(0.4, 0.3, 0);
+      const drop = ease(after / 0.6) * 0.16;
+      W.root.position.y -= drop; L.root.position.y -= drop;
+      L.rock.scale.setScalar(1 - wrap * 0.08);
+      ring(lx, 0.84, 0.26);
+    } else {
+      // SCISSORS CUT PAPER: blades snip through, the two halves part and fall
+      W.root.position.x += (lx - wdir * 0.1 - W.root.position.x) * k + wdir * ease(after / 0.35) * 0.34;
+      snip(W, 0.34 * Math.abs(Math.cos(e * 16)));
+      if (e > 0.52) {
+        const t2 = e - 0.52;
+        for (let i = 0; i < 2; i++) {
+          const sg = i ? 1 : -1;
+          L.halves[i].position.set(sg * t2 * 0.32, sg * 0.06 * Math.min(1, t2 * 4) - t2 * t2 * 1.7, sg * t2 * 0.12);
+          L.halves[i].rotation.set(t2 * 2.2 * sg, t2 * 1.4, sg * t2 * 2.4);
+        }
+        L.root.scale.setScalar(Math.max(0, 1 - Math.max(0, t2 - 0.5) / 0.6));
+      }
+      // a sheet stands taller than it is wide, so the cut runs across the middle
+      L.paper.rotation.z = Math.PI / 2;
+      ring(lx, 0.52, 0.22);
     }
   });
   return (
     <>
-      <sprite ref={a} visible={false} />
-      <sprite ref={b} visible={false} />
+      <MoveObject slot={a} />
+      <MoveObject slot={b} />
       <mesh ref={flash} visible={false}>
-        <ringGeometry args={[0.32, 0.5, 24]} />
+        <ringGeometry args={[0.3, 0.46, 24]} />
         <meshBasicMaterial color="#fff7d6" transparent depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
       </mesh>
     </>
@@ -288,7 +481,7 @@ export default function FightStage3D(p: FightProps) {
       <Suspense fallback={null}>
         <Fighter url={HERO} dir={1} tint={null} state={state} />
         <Fighter url={BOT} dir={-1} tint={GOLD} state={state} />
-        <Throws art={p.moveArt} state={state} />
+        <Clash state={state} />
       </Suspense>
     </Canvas>
   );
