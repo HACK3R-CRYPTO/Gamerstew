@@ -658,6 +658,8 @@ export default function HomePage() {
   // game, wait for it, read its start screen and press START. The dashboard is
   // one tap away after the run.
   const onPlayFree = () => { playWhooshIn(); router.push("/games/stack?play=1"); };
+  // have the game's code ready before the button is pressed
+  useEffect(() => { const t = setTimeout(() => router.prefetch("/games/stack"), 800); return () => clearTimeout(t); }, [router]);
   // Three states:
   //   1. Privy authed AND wallet connected  → /verify (whitelist gate)
   //   2. Privy authed but wallet DISCONNECTED (Rabby logged out, etc.)

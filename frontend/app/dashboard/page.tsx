@@ -397,7 +397,7 @@ export default function DashboardPage() {
     if (id === "aimode") { router.push("/games/challenge-ai"); return; }
     // The weekly challenge counts every game, so its button goes straight into
     // the game most people here play. The full board is one tap away on the card.
-    if (id === "weekly") { router.push("/games/stack"); return; }
+    if (id === "weekly") { router.push("/games/stack?play=1"); return; } // "Play to earn" plays
     // 3D games open straight into their own world.
     const world = GAMES_3D.find(x => x.id === id);
     if (world) { router.push(world.href); return; }
@@ -415,9 +415,11 @@ export default function DashboardPage() {
     // feels stuck on a slow one. Same pattern as /games/page.tsx.
     const gameType: GameTypeId | null =
       id === "rhythm" ? 0 : id === "simon" ? 1 : id === "stack" ? 2 : null;
-    const tasks: Promise<unknown>[] = [new Promise(r => setTimeout(r, 600))];
-    if (gameType !== null) tasks.push(fetchPreview(gameType).catch(() => null));
-    await Promise.all(tasks);
+    // Open the game at once. This used to wait a fixed 600 ms on every tap so the
+    // loading card could be seen, then wait again for the leaderboard preview.
+    // A wait the player can feel is never worth a prettier loading card. The
+    // preview is still fetched; it just no longer holds the door.
+    if (gameType !== null) fetchPreview(gameType).catch(() => null);
 
     router.push(g.href);
     // Overlay stays mounted until the route change unmounts the page ·
@@ -458,6 +460,13 @@ export default function DashboardPage() {
       .catch(() => { /* no card is better than a wrong card */ });
     return () => { live = false; };
   }, [heroAddress]);
+  // Fetch the 2D games' code while the player is still looking at this screen,
+  // so the game opens the moment they tap. The 3D worlds are left out: they are
+  // large, and fetching them unasked would cost data on a phone.
+  useEffect(() => {
+    const t = setTimeout(() => { for (const href of ["/games/stack", "/games/simon", "/games/rhythm", "/games/challenge-ai"]) router.prefetch(href); }, 1200);
+    return () => clearTimeout(t);
+  }, [router]);
   const stack = GAMES.find((g) => g.id === "stack") ?? GAMES[0];
   const heroList = [...(weekly ? [weeklyHero(weekly)] : []), stack, ...GAMES_3D, AI_HERO, ...heroes.filter((g) => g.id !== stack.id)];
   const [heroIdx, setHeroIdx] = useState(0);

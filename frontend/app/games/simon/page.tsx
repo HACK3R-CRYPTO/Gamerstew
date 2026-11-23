@@ -990,6 +990,18 @@ export default function SimonGamePage() {
     getAudioCtx();  // warm up audio on user gesture
   }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint, isGuest]);
 
+  // Arriving with ?play=1 starts a run at once (see the same door in Stack Tower).
+  const autoStartRef = useRef(false);
+  useEffect(() => {
+    if (autoStartRef.current || authPending) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("play") !== "1") return;
+    autoStartRef.current = true;
+    q.delete("play");
+    window.history.replaceState(null, "", window.location.pathname + (q.toString() ? `?${q}` : ""));
+    startGame();
+  }, [authPending, startGame]);
+
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
   // pauses for sequence-flashes don't desync the countdown. At 0, ends the
