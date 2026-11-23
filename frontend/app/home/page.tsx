@@ -653,7 +653,11 @@ export default function HomePage() {
     return () => { cancelled = true; };
   }, []);
 
-  const onPlayFree = () => { playWhooshIn(); router.push("/dashboard"); };
+  // "Play free" means play: it opens the game most people here play and starts a
+  // run. It used to open the dashboard, where a new visitor still had to pick a
+  // game, wait for it, read its start screen and press START. The dashboard is
+  // one tap away after the run.
+  const onPlayFree = () => { playWhooshIn(); router.push("/games/stack?play=1"); };
   // Three states:
   //   1. Privy authed AND wallet connected  → /verify (whitelist gate)
   //   2. Privy authed but wallet DISCONNECTED (Rabby logged out, etc.)
@@ -758,7 +762,7 @@ export default function HomePage() {
         <Onboarding
           onComplete={completeOnboarding}
           onClose={dismissOnboarding}
-          onPlayFree={() => { dismissOnboarding(); router.push("/dashboard"); }}
+          onPlayFree={() => { dismissOnboarding(); router.push("/games/stack?play=1"); }}
         />
       )}
       {showAbout && (

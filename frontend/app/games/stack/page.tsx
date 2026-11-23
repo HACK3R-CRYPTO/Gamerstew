@@ -634,6 +634,29 @@ export default function StackTowerPage() {
     startingRef.current = false;
   }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest]);
 
+  // ── Straight into play ─────────────────────────────────────────────────────
+  // Arriving with ?play=1 (the landing page's "Play free", or any "play now"
+  // link) starts a run at once: no menu to read, no second button to find. The
+  // start screen is still there after the run, with the modes and the board.
+  // The flag is taken off the address so a refresh does not start another run.
+  const autoStartRef = useRef(false);
+  const [showHowTo, setShowHowTo] = useState(false);
+  useEffect(() => {
+    if (autoStartRef.current || authPending) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("play") !== "1") return;
+    autoStartRef.current = true;
+    q.delete("play");
+    window.history.replaceState(null, "", window.location.pathname + (q.toString() ? `?${q}` : ""));
+    setShowHowTo(true); // they skipped the screen that explains the game, so say it in the game
+    startGame();
+  }, [authPending, startGame]);
+  useEffect(() => {
+    if (!showHowTo || phase !== "playing") return;
+    const t = setTimeout(() => setShowHowTo(false), 6000);
+    return () => clearTimeout(t);
+  }, [showHowTo, phase]);
+
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "countdown") return;
@@ -1097,6 +1120,12 @@ export default function StackTowerPage() {
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            {phase === "playing" && showHowTo && (
+              <div aria-live="polite" style={{ position: "absolute", left: 0, right: 0, top: "22%", zIndex: 6, textAlign: "center", pointerEvents: "none", fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+                <div style={{ display: "inline-block", padding: "9px 16px", borderRadius: 999, background: "rgba(4,0,20,0.72)", border: "1px solid rgba(103,232,249,0.5)", color: "#fff", fontSize: 15, fontWeight: 900, letterSpacing: "0.04em" }}>👆 TAP TO DROP THE BLOCK</div>
+                <div style={{ marginTop: 6, color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 700, textShadow: "0 1px 4px #000" }}>Line it up. Whatever hangs over gets cut off.</div>
+              </div>
+            )}
             {phase === "playing" && (
               <div style={{
                 padding: "6px 12px", borderRadius: 12,
