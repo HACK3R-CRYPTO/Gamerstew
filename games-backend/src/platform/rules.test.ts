@@ -48,36 +48,61 @@ test('a wallet in the path, the query or the body must be a wallet, before any r
   } finally { server.close(); }
 });
 
+// These tests drive the job by hand (runNow is exactly what the timer calls), so
+// they do not depend on how fast the machine running them is.
 test('a job never overlaps itself, and a slow run is reported, not stacked', async () => {
   const logs: string[] = [];
   const jobs = createJobs({ log: (m) => logs.push(m) });
-  let live = 0, peak = 0, runs = 0;
-  jobs.every('slow', 15, async () => { live++; peak = Math.max(peak, live); runs++; await sleep(70); live--; });
-  await sleep(200);
+  let live = 0, peak = 0, started = 0;
+  let finish: () => void = () => {};
+  const job = jobs.every('slow', 3_600_000, () => { started++; live++; peak = Math.max(peak, live); return new Promise<void>((r) => { finish = () => { live--; r(); }; }); });
+  const settle = () => new Promise((r) => setImmediate(r));
+  job.runNow(); // the timer fires: a run starts
+  await settle();
+  for (let i = 0; i < 12; i++) job.runNow(); // it fires twelve more times while that run is still going
+  await settle();
+  assert.strictEqual(started, 1); // none of them started a second run
+  assert.strictEqual(peak, 1);
+  assert.deepStrictEqual([jobs.status()[0]!.running, jobs.status()[0]!.skipped, jobs.status()[0]!.runs], [true, 12, 0]);
+  assert.strictEqual(logs.filter((l) => l.includes('previous run still going')).length, 1); // said once, not twelve times
+  finish();
+  await settle();
+  assert.deepStrictEqual([jobs.status()[0]!.running, jobs.status()[0]!.runs], [false, 1]);
+  job.runNow(); // the next tick after it finished runs normally
+  await settle();
+  assert.strictEqual(started, 2);
+  job.runNow(); // and a new slow run is reported once again
+  await settle();
+  assert.strictEqual(logs.filter((l) => l.includes('previous run still going')).length, 2);
+  finish();
   await jobs.stopAll(200);
-  assert.strictEqual(peak, 1); // never two at once
-  assert.ok(runs >= 2 && runs <= 3, `runs ${runs}`); // about 200/70, not 200/15
-  const st = jobs.status()[0]!;
-  assert.ok(st.skipped >= 5);
-  assert.strictEqual(st.runs, runs);
-  assert.ok((st.lastMs ?? 0) >= 60);
-  assert.strictEqual(logs.filter((l) => l.includes('previous run still going')).length, 1); // said once, not on every tick
 });
 
 test('a job that throws or rejects is logged by name and keeps running', async () => {
   const logs: string[] = [];
   const jobs = createJobs({ log: (m) => logs.push(m) });
+  const settle = () => new Promise((r) => setImmediate(r));
   let n = 0;
-  jobs.every('flaky', 15, () => { n++; if (n === 1) throw new Error('sync boom'); if (n === 2) return Promise.reject(new Error('async boom')); return undefined; });
-  await sleep(90);
-  await jobs.stopAll();
+  const job = jobs.every('flaky', 3_600_000, () => { n++; if (n === 1) throw new Error('sync boom'); if (n === 2) return Promise.reject(new Error('async boom')); return undefined; });
+  for (let i = 0; i < 3; i++) { job.runNow(); await settle(); }
   const st = jobs.status()[0]!;
-  assert.ok(n >= 3); // it carried on after both failures
-  assert.strictEqual(st.failures, 2);
-  assert.strictEqual(st.lastError, null); // the latest run was fine
-  assert.deepStrictEqual(logs.slice(0, 2), ['⚠️  job flaky failed:', '⚠️  job flaky failed:']);
+  assert.strictEqual(n, 3); // it carried on after both failures
+  assert.deepStrictEqual([st.runs, st.failures, st.lastError], [3, 2, null]); // the latest run was fine
+  assert.deepStrictEqual(logs, ['⚠️  job flaky failed:', '⚠️  job flaky failed:']);
+  job.runNow(); await settle();
+  assert.strictEqual(jobs.status()[0]!.runs, 4);
+  await jobs.stopAll(); // a job left scheduled would keep the test process alive
+});
+
+test('the timer really fires, and stopAll really stops it', async () => {
+  const jobs = createJobs({ log: () => {} });
+  let n = 0;
+  jobs.every('tick', 5, () => { n++; });
+  for (let i = 0; i < 200 && n < 2; i++) await sleep(5); // wait for two ticks, however slow the machine
+  assert.ok(n >= 2);
+  await jobs.stopAll();
   const after = n;
-  await sleep(50);
+  await sleep(40);
   assert.strictEqual(n, after); // stopped means stopped
 });
 

@@ -25,15 +25,18 @@ export function createJobs(opts: { log?: (msg: string, extra?: unknown) => void;
 
   function every(name: string, everyMs: number, fn: () => unknown) {
     const status: JobStatus = { name, everyMs, runs: 0, failures: 0, skipped: 0, running: false, lastStartedAt: null, lastMs: null, lastError: null };
+    let skippedThisRun = 0;
     const job: (typeof jobs)[number] = { status, timer: null, inFlight: null };
     const tick = () => {
       if (status.running) {
         status.skipped++;
-        // say so once per pile-up, not on every tick
-        if (status.skipped === 1 || status.skipped % 10 === 0) log(`⏭️  job ${name}: previous run still going after ${now() - (status.lastStartedAt ?? now())} ms, skipping (${status.skipped} skipped)`);
+        skippedThisRun++;
+        // say so once per slow run (and again every 100 ticks if it never ends), not on every tick
+        if (skippedThisRun === 1 || skippedThisRun % 100 === 0) log(`⏭️  job ${name}: previous run still going after ${now() - (status.lastStartedAt ?? now())} ms, skipping (${status.skipped} skipped)`);
         return;
       }
       status.running = true;
+      skippedThisRun = 0;
       status.lastStartedAt = now();
       job.inFlight = Promise.resolve()
         .then(fn)
