@@ -39,6 +39,7 @@ import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
 import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
+import DuelEntry from "@/components/DuelEntry";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -1314,6 +1315,8 @@ function IdleView({ mode, onPickMode, challenge, onStart, onExit, onLeaderboard,
         </div>
         <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
       </div>
+      {/* Play a friend for a stake, in this game. */}
+      <DuelEntry game="simon" />
 
       {/* START button */}
       <div role="button" tabIndex={0} onClick={onStart}

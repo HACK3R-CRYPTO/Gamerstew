@@ -41,6 +41,7 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
 import SONG_FILE from "@/lib/rhythmSongs.json";
 import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
+import DuelEntry from "@/components/DuelEntry";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -2418,6 +2419,8 @@ function IdleView({ songs, songId, todayId, onPickSong, mode, onPickMode, challe
         </div>
         <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
       </div>
+      {/* Play a friend for a stake, in this game. */}
+      <DuelEntry game="rhythm" />
 
       {/* Pick a song. Every song has the same notes and the same top score, so
           they all count on one leaderboard; today's is marked for everyone. */}

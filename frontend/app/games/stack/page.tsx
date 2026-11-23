@@ -51,6 +51,7 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
 import { useEquipped } from "@/lib/cosmetics";
+import DuelEntry from "@/components/DuelEntry";
 
 // Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
 // tower in icy glass. Purely visual, zero gameplay effect.
@@ -1237,6 +1238,8 @@ export default function StackTowerPage() {
             </div>
             <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
           </div>
+          {/* Play a friend for a stake, in this game. */}
+          <DuelEntry game="stack" />
 
           <div role="button" tabIndex={0} onClick={startGame}
             style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>

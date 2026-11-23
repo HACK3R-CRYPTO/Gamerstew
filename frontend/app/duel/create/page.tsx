@@ -58,8 +58,22 @@ export default function CreateRoomPage() {
   const [runsHrs, setRunsHrs] = useState(24);
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [gating, setGating] = useState<"code" | "allowlist">("code");
-  const [code] = useState(randomCode());
+  // The join code is random, so it is made after the page loads. Made during
+  // render, the server and the browser each picked a different one and React
+  // threw the whole page away to rebuild it.
+  const [code, setCode] = useState("");
+  useEffect(() => { setCode(randomCode()); }, []);
   const [busy, setBusy] = useState(false);
+
+  // Arriving from a game ("Duel a friend"): that game is already chosen, and the
+  // room is a head-to-head staked duel. Read from the address bar after mount,
+  // so the page still renders the same on the server.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const g = DUEL_GAMES.find((x) => x.key === q.get("game"));
+    if (g) setGames([g.type]);
+    if (q.get("mode") === "duel") { setMode("duel"); setCapacity(2); }
+  }, []);
   const [err, setErr] = useState<string | null>(null);
 
   const isPool = mode === "pool";
