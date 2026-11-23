@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
@@ -87,7 +88,8 @@ type Game = {
   active: boolean;
   href: string;
   isNew?: boolean;
-  kind?: "event" | "aimode" | "tug"; // "event" → Arena Cup gold teaser (its copy is
+  weekly?: WeeklyInfo; // live numbers for the "weekly" hero
+  kind?: "event" | "aimode" | "tug" | "weekly"; // "event" → Arena Cup gold teaser (its copy is
                                      // hardcoded, so it is NOT a generic event slide)
                                      // "aimode" → cyan AI feature-drop
                                      // "tug"    → Verified Tug of War
@@ -135,6 +137,27 @@ const EVENT_HERO: Game = {
 // day it starts. The pre-event window is when a player has to get VERIFIED —
 // the bounty is first-come and a first-ever GoodDollar check is a real face
 // scan, so anyone who turns up on day one unverified has already lost slots.
+// The weekly community challenge, as the server reports it right now. The hero
+// that leads the home screen is built from this and nothing else, so it can
+// never show an event that has ended: the last two event heroes were constants,
+// and both stayed on the busiest screen for months after their events closed.
+interface WeeklyInfo { target: number; progress: number; playersIn: number; hit: boolean; daysLeft: number; rewardG: number; capPerPlayer: number; perGameG: number; myContribution: number | null; myProjectedG: number | null }
+function weeklyHero(w: WeeklyInfo): Game {
+  return {
+    id: "weekly",
+    title: "This week's challenge",
+    subtitle: `${w.daysLeft} day${w.daysLeft === 1 ? "" : "s"} left`,
+    desc: `Every game you finish earns ${w.perGameG} G$ once we reach ${w.target.toLocaleString()} games together.`,
+    art: "/event-prize.png",
+    bg: "linear-gradient(115deg, #78350f 0%, #2a1266 55%, #14532d 100%)",
+    glow: "#fbbf24",
+    active: true,
+    href: "/leaderboard",
+    kind: "weekly",
+    weekly: w,
+  };
+}
+
 const TUG_HERO: Game = {
   id: "tug",
   title: "Tug of War",
@@ -372,6 +395,9 @@ export default function DashboardPage() {
     // The AI-mode hero routes into the Challenge lobby, where the YOU/YOUR AI
     // switch and the deploy-on-GoodAgents CTA both live.
     if (id === "aimode") { router.push("/games/challenge-ai"); return; }
+    // The weekly challenge counts every game, so its button goes straight into
+    // the game most people here play. The full board is one tap away on the card.
+    if (id === "weekly") { router.push("/games/stack"); return; }
     // 3D games open straight into their own world.
     const world = GAMES_3D.find(x => x.id === id);
     if (world) { router.push(world.href); return; }
@@ -414,7 +440,26 @@ export default function DashboardPage() {
   // A dead promise on the app's busiest surface costs more trust than an empty
   // slot. If a fixed-prize event runs again, drive this from /api/challenge
   // rather than a constant so it can never outlive its own window again.
-  const heroList = [TUG_HERO, ...GAMES_3D, AI_HERO, ...(heroes.length > 0 ? heroes : [GAMES[0]])];
+  // What leads the home screen, in order:
+  //   1. this week's challenge, when the server says one is running. It is the
+  //      one thing that has reliably brought players back.
+  //   2. Stack Tower. It is more than half of all games played here.
+  //   3. the 3D games, MARKOV, then anything else flagged new.
+  // TUG_HERO is gone from the rail: Tug of War ended on 30 September and the
+  // card still said "Starts Wednesday".
+  const [weekly, setWeekly] = useState<WeeklyInfo | null>(null);
+  const { address: heroAddress } = useAccount();
+  useEffect(() => {
+    let live = true;
+    const backend = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    fetch(`${backend}/api/weekly-challenge${heroAddress ? `?wallet=${heroAddress.toLowerCase()}` : ""}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d && typeof d.target === "number" && d.target > 0 && typeof d.daysLeft === "number") setWeekly(d as WeeklyInfo); })
+      .catch(() => { /* no card is better than a wrong card */ });
+    return () => { live = false; };
+  }, [heroAddress]);
+  const stack = GAMES.find((g) => g.id === "stack") ?? GAMES[0];
+  const heroList = [...(weekly ? [weeklyHero(weekly)] : []), stack, ...GAMES_3D, AI_HERO, ...heroes.filter((g) => g.id !== stack.id)];
   const [heroIdx, setHeroIdx] = useState(0);
   // Manual interactions (dot tap / swipe) bump this to restart the timer —
   // auto-advance snatching the banner right after a swipe feels broken.
@@ -426,17 +471,18 @@ export default function DashboardPage() {
     });
     setHeroBump((b) => b + 1);
   }, [heroList.length]);
-  // Random starting slide (client-only, post-hydration) — every hero gets
-  // its share of first impressions instead of slide 0 always leading.
-  useEffect(() => {
-    if (heroList.length > 1) setHeroIdx(Math.floor(Math.random() * heroList.length));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The first slide always leads. It used to be picked at random, which gave
+  // the week's event the front of the home screen one visit in six. When the
+  // weekly card arrives (it loads a moment after the page) the rail returns to it.
+  useEffect(() => { if (weekly) setHeroIdx(0); }, [weekly]);
+  // Slides advance on their own. The weekly card holds twice as long: it has
+  // numbers to read and a button to press, and six seconds took it away first.
+  const onWeekly = !!weekly && heroIdx % heroList.length === 0;
   useEffect(() => {
     if (heroList.length < 2) return;
-    const t = setInterval(() => setHeroIdx(i => (i + 1) % heroList.length), 6000);
-    return () => clearInterval(t);
-  }, [heroList.length, heroBump]);
+    const t = setTimeout(() => setHeroIdx(i => (i + 1) % heroList.length), onWeekly ? 12000 : 6000);
+    return () => clearTimeout(t);
+  }, [heroList.length, heroBump, heroIdx, onWeekly]);
 
   return (
     <div style={{
@@ -961,6 +1007,51 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
   // that branch's copy is hardcoded to the Arena Cup ($150, the cup countdown,
   // the GoodAgents credit), so anything else routed through it silently renders
   // as the Cup regardless of its own title and prize.
+  if (game.kind === "weekly" && game.weekly) {
+    const w = game.weekly;
+    const pct = Math.max(0, Math.min(100, Math.round((w.progress / w.target) * 100)));
+    const mine = w.myContribution ?? 0;
+    const left = Math.max(0, w.target - w.progress);
+    return (
+      <div style={{
+        position: "relative", overflow: "hidden", width: "100%", borderRadius: 20, textAlign: "left",
+        border: "1px solid rgba(251,191,36,0.5)", background: game.bg,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.14)`,
+        minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
+      }}>
+        <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(120% 90% at 92% 8%, rgba(251,191,36,0.28) 0%, transparent 55%)" }} />
+        <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          {/* the countdown rides in the pill: the slide dots sit in the top-right corner */}
+          <Pill color="#fde68a">🏆 THIS WEEK · {game.subtitle.toUpperCase()}</Pill>
+        </div>
+        <div style={{ padding: "8px 14px 0", position: "relative", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fff", lineHeight: 1, textShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>{w.rewardG.toLocaleString()} G$</span>
+            <span style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 800, color: "rgba(255,255,255,0.8)" }}>to share</span>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 600, color: "rgba(255,255,255,0.86)", marginTop: 5, lineHeight: 1.35 }}>
+            {w.hit ? `Unlocked! Every game this week pays ${w.perGameG} G$.` : game.desc}
+          </div>
+        </div>
+        <div style={{ padding: "10px 14px 14px", position: "relative", zIndex: 1 }}>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={w.target} aria-valuenow={w.progress} style={{ height: 9, borderRadius: 6, background: "rgba(0,0,0,0.42)", overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)" }}>
+            <div style={{ width: `${Math.max(pct, w.progress > 0 ? 3 : 0)}%`, height: "100%", borderRadius: 6, background: "linear-gradient(90deg, #fbbf24, #4ade80)", transition: "width .6s ease" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 5, fontFamily: T.body, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>
+            <span>{w.hit ? "Target reached" : `${w.progress.toLocaleString()} of ${w.target.toLocaleString()} games · ${left.toLocaleString()} to go`}</span>
+            <span>{mine > 0 ? `You: ${mine} game${mine === 1 ? "" : "s"}${w.myProjectedG ? ` · ${w.myProjectedG.toLocaleString()} G$` : ""}` : `${w.playersIn} playing`}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => onPlayGame(game.id)} style={{ flex: 1, cursor: "pointer", border: "none", borderRadius: 12, padding: "11px 0", fontFamily: T.display, fontSize: 15, color: "#1a0b33", background: "#fbbf24", boxShadow: "0 3px 0 #b45309" }}>
+              {mine >= w.capPerPlayer ? "You hit the cap. Keep playing" : mine > 0 ? "Play another" : "Play to earn"}
+            </button>
+            <Link href="/leaderboard" style={{ textDecoration: "none", borderRadius: 12, padding: "11px 14px", fontFamily: T.body, fontSize: 13, fontWeight: 800, color: "#fff", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.22)" }}>Board</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (game.kind === "tug") {
     return (
       <button onClick={() => onPlayGame(game.id)} style={{
