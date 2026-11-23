@@ -1186,6 +1186,7 @@ export default function Game() {
   const [slow, setSlow] = useState(false); // strike cam: time runs at a quarter speed
   const slowRef = useRef(false);
   const setSlowOnce = useCallback((on: boolean) => { if (slowRef.current !== on) { slowRef.current = on; setSlow(on); } }, []);
+  const [pickOpen, setPickOpen] = useState(false);
   const [idle, setIdle] = useState(false); // nobody has rolled for a while: show how again
   const [touch] = useState(() => typeof window !== "undefined" && (("ontouchstart" in window) || navigator.maxTouchPoints > 0));
   const rolls = allRolls[turn] ?? [];
@@ -1428,6 +1429,31 @@ export default function Game() {
     };
   });
 
+  // the three tyres as cards: used in the start sheet and in the swap sheet
+  const tyreCards = (
+    <>
+          {TYRES.map((t, i) => {
+            const on = i === tyreIx;
+            return (
+              <button key={t.id} onClick={() => { setTyreIx(i); setPickOpen(false); }} aria-pressed={on} style={{ pointerEvents: "auto", cursor: "pointer", flex: "1 1 0", minWidth: 0, maxWidth: 150, padding: "8px 6px 9px", borderRadius: 14, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(42,18,64,0.92))" : "rgba(10,1,32,0.72)", border: `1px solid ${on ? GA.goldLight : "rgba(255,255,255,0.16)"}`, boxShadow: on ? "0 0 16px -4px rgba(251,191,36,0.7)" : "none", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}>
+                <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 5 }}>
+                  {t.paint.map((c, k) => <i key={k} style={{ width: 14, height: 5, borderRadius: 3, background: c }} />)}
+                </div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 6 }}>{t.note}</div>
+                {([["Power", t.power, "#ff8a4a"], ["Curve", t.curve, "#c084fc"], ["Control", t.control, "#4ade80"]] as const).map(([label, n, c]) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+                    <span style={{ width: 40, textAlign: "left", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", color: "rgba(244,241,234,0.72)" }}>{label}</span>
+                    <span style={{ flex: 1, display: "flex", gap: 2 }} aria-label={`${label} ${n} of 5`}>
+                      {[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ flex: 1, height: 5, borderRadius: 2, background: k <= n ? c : "rgba(255,255,255,0.14)" }} />)}
+                    </span>
+                  </div>
+                ))}
+              </button>
+            );
+          })}
+    </>
+  );
   const tone = banner?.tone === "big" ? GA.goldLight : banner?.tone === "bad" ? "#ff8a8a" : "#8ff0a4";
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", background: GA.purpleNight, touchAction: "none", fontFamily: BODY }}>
@@ -1514,18 +1540,18 @@ export default function Game() {
 
       {/* whose turn it is, and what to do. Always on screen while a roll is owed. */}
       {phase === "aim" && !setup && !handoff && (
-        <div style={{ position: "absolute", bottom: `calc(${me.cpu ? 40 : 138}px + env(safe-area-inset-bottom))`, left: 0, right: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", bottom: "calc(58px + env(safe-area-inset-bottom))", left: 0, right: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
           <div style={{ ...chip, fontSize: 14, borderColor: me.cpu ? "rgba(255,255,255,0.18)" : GA.goldLight }}>
             {me.cpu ? "CPU is rolling…" : <><b style={{ color: GA.goldLight, fontWeight: 400 }}>{turnLabel}</b>{` · Frame ${Math.min(s.frame + 1, FRAMES)} · Roll ${s.ball + 1}`}</>}
           </div>
-          {!me.cpu && (hint || !started) && <div style={{ ...chip, fontFamily: BODY, fontWeight: 500, fontSize: 13, background: "rgba(10,1,32,0.78)", textAlign: "center", lineHeight: 1.35, maxWidth: "86%" }}>{hint ?? (touch ? "Slide to pick your spot · swipe up to roll" : "Drag sideways to aim · drag up to roll")}</div>}
+          {!me.cpu && hint && <div style={{ ...chip, fontFamily: BODY, fontWeight: 500, fontSize: 13, background: "rgba(10,1,32,0.78)", textAlign: "center", lineHeight: 1.35, maxWidth: "86%" }}>{hint ?? (touch ? "Slide to pick your spot · swipe up to roll" : "Drag sideways to aim · drag up to roll")}</div>}
         </div>
       )}
 
       {/* The move, shown like a game tutorial: a hand slides up the road from the
           tyre, again and again, until the player rolls. It comes back if they stall. */}
       {canPlay && (!started || idle) && (
-        <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: "34%", bottom: "calc(150px + env(safe-area-inset-bottom))", zIndex: 9, pointerEvents: "none", display: "flex", justifyContent: "center" }}>
+        <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: "36%", bottom: "calc(176px + env(safe-area-inset-bottom))", zIndex: 9, pointerEvents: "none", display: "flex", justifyContent: "center" }}>
           <div style={{ position: "relative", width: 120, height: "100%" }}>
             <div style={{ position: "absolute", left: 57, top: "8%", bottom: "6%", width: 6, borderRadius: 3, background: `repeating-linear-gradient(180deg, ${GA.goldLight} 0 10px, transparent 10px 20px)`, opacity: 0.85, animation: "ssDash 0.5s linear infinite", filter: `drop-shadow(0 0 8px ${GA.gold})` }} />
             <div style={{ position: "absolute", left: 60, top: "8%", width: 0, height: 0, marginLeft: -15, marginTop: -22, borderLeft: "15px solid transparent", borderRight: "15px solid transparent", borderBottom: `24px solid ${GA.goldLight}`, filter: `drop-shadow(0 0 10px ${GA.gold})` }} />
@@ -1574,40 +1600,23 @@ export default function Game() {
                 ))}
               </div>
             )}
+
+<div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(244,241,234,0.55)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
             <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Start</button>
-            <ol style={{ margin: "12px 0 0", padding: "10px 12px 10px 30px", borderRadius: 14, background: "rgba(255,255,255,0.05)", fontSize: 13, fontWeight: 500, lineHeight: 1.6, color: "rgba(244,241,234,0.86)" }}>
-              <li><b style={{ color: GA.goldLight }}>Slide</b> the tyre to pick your spot.</li>
-              <li><b style={{ color: GA.goldLight }}>Swipe up</b> to roll: faster swipe, faster tyre.</li>
-              <li><b style={{ color: GA.goldLight }}>Curve</b> your swipe to hook it.</li>
-            </ol>
             <div style={{ textAlign: "center", fontSize: 12, color: "rgba(244,241,234,0.55)", marginTop: 8 }}>{mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
           </div>
         </div>
       )}
 
-      {/* pick your tyre: each one really rolls differently */}
-      {canPlay && !s.done && (
-        <div style={{ position: "absolute", bottom: "calc(14px + env(safe-area-inset-bottom))", left: 0, right: 0, zIndex: 10, display: "flex", justifyContent: "center", gap: 8, padding: "0 12px", pointerEvents: "none" }}>
-          {TYRES.map((t, i) => {
-            const on = i === tyreIx;
-            return (
-              <button key={t.id} onClick={() => setTyreIx(i)} aria-pressed={on} style={{ pointerEvents: "auto", cursor: "pointer", flex: "1 1 0", minWidth: 0, maxWidth: 150, padding: "8px 6px 9px", borderRadius: 14, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(42,18,64,0.92))" : "rgba(10,1,32,0.72)", border: `1px solid ${on ? GA.goldLight : "rgba(255,255,255,0.16)"}`, boxShadow: on ? "0 0 16px -4px rgba(251,191,36,0.7)" : "none", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}>
-                <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 5 }}>
-                  {t.paint.map((c, k) => <i key={k} style={{ width: 14, height: 5, borderRadius: 3, background: c }} />)}
-                </div>
-                <div style={{ fontFamily: DISPLAY, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 6 }}>{t.note}</div>
-                {([["Power", t.power, "#ff8a4a"], ["Curve", t.curve, "#c084fc"], ["Control", t.control, "#4ade80"]] as const).map(([label, n, c]) => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
-                    <span style={{ width: 40, textAlign: "left", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", color: "rgba(244,241,234,0.72)" }}>{label}</span>
-                    <span style={{ flex: 1, display: "flex", gap: 2 }} aria-label={`${label} ${n} of 5`}>
-                      {[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ flex: 1, height: 5, borderRadius: 2, background: k <= n ? c : "rgba(255,255,255,0.14)" }} />)}
-                    </span>
-                  </div>
-                ))}
-              </button>
-            );
-          })}
+      {/* The play screen stays clear: the tyre must be visible and under the thumb.
+          One small button swaps tyres between rolls. */}
+      {canPlay && !s.done && !pickOpen && (
+        <button onClick={() => setPickOpen(true)} style={{ ...chip, position: "absolute", left: 12, bottom: "calc(14px + env(safe-area-inset-bottom))", zIndex: 10, cursor: "pointer", fontSize: 12.5, padding: "8px 12px" }}>🛞 {tyre.name.replace(" tyre", "")} ⇄</button>
+      )}
+      {canPlay && pickOpen && (
+        <div onClick={() => setPickOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 16, display: "flex", alignItems: "flex-end", background: "rgba(10,1,32,0.45)" }}>
+          <div style={{ width: "100%", display: "flex", justifyContent: "center", gap: 8, padding: "0 12px calc(14px + env(safe-area-inset-bottom))" }}>{tyreCards}</div>
         </div>
       )}
 
