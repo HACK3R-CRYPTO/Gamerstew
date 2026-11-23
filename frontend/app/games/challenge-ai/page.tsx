@@ -17,13 +17,16 @@
 // is revealed at match end; every MARKOV decision derives deterministically
 // from seed + observed history, so the match is replayable and verifiable.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AgentArena, { agentHue as lobbyAgentHue, useAgentLaunch, type LaunchPhase } from "@/components/AgentArena";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import { getSettingsCached, prefetchAgentData } from "@/lib/agentPrefetch";
 import AppHeader from "@/components/AppHeader";
+import dynamic from "next/dynamic";
+// The 3D fight loads only when a match starts, so the lobby stays light.
+const FightStage3D = dynamic(() => import("@/components/FightStage3D"), { ssr: false });
 import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount, useReadContract } from "wagmi";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
@@ -1057,6 +1060,14 @@ function VsSting({ pet }: { pet: PetStage }) {
 }
 
 // ═══ Match stage ══════════════════════════════════════════════════════════════
+// If WebGL is missing or the 3D scene throws, fall back to the 2D fighters.
+class FightGuard extends Component<{ onFail: () => void; children: ReactNode }, { dead: boolean }> {
+  state = { dead: false };
+  static getDerivedStateFromError() { return { dead: true }; }
+  componentDidCatch() { this.props.onFail(); }
+  render() { return this.state.dead ? null : this.props.children; }
+}
+
 function MatchStage({
   pet, score, roundNum, beat, chantIdx, lastRound, matchStreak, onThrow,
 }: {
@@ -1070,6 +1081,7 @@ function MatchStage({
   onThrow: (m: number) => void;
 }) {
   const armed = beat === "armed";
+  const [fight3d, setFight3d] = useState(true);
   const impact = beat === "impact" && lastRound;
   const playerWonRound = impact && lastRound!.result === "win";
   const aiWonRound = impact && lastRound!.result === "loss";
@@ -1153,7 +1165,7 @@ function MatchStage({
       >
         {/* The floor: a grid of light lying flat and running away from you, so the
             two fighters stand ON something with depth, not against a flat wall. */}
-        <div aria-hidden style={{ position: "absolute", left: "-20%", right: "-20%", bottom: 0, height: "46%", perspective: "260px", perspectiveOrigin: "50% 0%", pointerEvents: "none", zIndex: 1 }}>
+        <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "-20%", right: "-20%", bottom: 0, height: "46%", perspective: "260px", perspectiveOrigin: "50% 0%", pointerEvents: "none", zIndex: 1 }}>
           <div style={{
             position: "absolute", inset: 0, transform: "rotateX(66deg)", transformOrigin: "50% 100%",
             backgroundImage: `repeating-linear-gradient(90deg, ${sudden ? "rgba(248,113,113,0.5)" : "rgba(192,132,252,0.42)"} 0 1.5px, transparent 1.5px 44px), repeating-linear-gradient(0deg, ${sudden ? "rgba(248,113,113,0.42)" : "rgba(192,132,252,0.34)"} 0 1.5px, transparent 1.5px 44px)`,
@@ -1197,10 +1209,30 @@ function MatchStage({
           </div>
         )}
 
+        {/* The fight itself, in 3D: two fighters on the platform acting out each
+            round. The server still decides the round; this only shows it. If the
+            3D scene cannot start on this device the 2D fighters below take over. */}
+        {fight3d && (
+          <FightGuard onFail={() => setFight3d(false)}>
+            <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+              <FightStage3D
+                beat={beat}
+                result={impact ? lastRound!.result : null}
+                playerMove={lastRound ? lastRound.playerMove : null}
+                aiMove={lastRound ? lastRound.aiMove : null}
+                moveArt={MOVES.map((m) => m.art)}
+                matchOver={lastRound?.final ? (lastRound.final.outcome === "player_won" ? "win" : lastRound.final.outcome === "ai_won" ? "loss" : null) : null}
+                playerColor={pet.color}
+                danger={sudden}
+              />
+            </div>
+          </FightGuard>
+        )}
+
         {/* combatants — corners, watching the fight */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "14px 20px 22px", position: "relative", zIndex: 2 }}>
           <div style={{ textAlign: "center", width: 124, position: "relative" }}>
-            <div aria-hidden style={{ position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: `radial-gradient(ellipse, ${pet.color}99 0%, ${pet.color}33 45%, transparent 72%)`, boxShadow: `0 0 0 2px ${pet.color}66, 0 6px 0 rgba(0,0,0,0.45)` }} />
+            <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: `radial-gradient(ellipse, ${pet.color}99 0%, ${pet.color}33 45%, transparent 72%)`, boxShadow: `0 0 0 2px ${pet.color}66, 0 6px 0 rgba(0,0,0,0.45)` }} />
             <img
               src={pet.src}
               alt="you"
@@ -1208,6 +1240,7 @@ function MatchStage({
                 position: "relative",
                 width: 112,
                 height: 112,
+                visibility: fight3d ? "hidden" : "visible", // the 3D fighter stands here instead
                 filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: playerWonRound
@@ -1254,7 +1287,7 @@ function MatchStage({
           </div>
 
           <div style={{ textAlign: "center", width: 124, position: "relative" }}>
-            <div aria-hidden style={{ position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,191,36,0.6) 0%, rgba(251,191,36,0.2) 45%, transparent 72%)", boxShadow: "0 0 0 2px rgba(251,191,36,0.45), 0 6px 0 rgba(0,0,0,0.45)" }} />
+            <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,191,36,0.6) 0%, rgba(251,191,36,0.2) 45%, transparent 72%)", boxShadow: "0 0 0 2px rgba(251,191,36,0.45), 0 6px 0 rgba(0,0,0,0.45)" }} />
             <img
               src={MARKOV_ART}
               alt="MARKOV"
@@ -1262,6 +1295,7 @@ function MatchStage({
                 position: "relative",
                 width: 112,
                 height: 112,
+                visibility: fight3d ? "hidden" : "visible", // the 3D fighter stands here instead
                 filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: aiWonRound
