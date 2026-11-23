@@ -1666,6 +1666,10 @@ function PlayingView({
       <div style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         padding: "0 16px", position: "relative",
+        // The device is a thick disc lying on the arcade floor, seen from where
+        // you stand: this gives the tilt its depth. Taps still land exactly on
+        // the slices, because the browser hit-tests the tilted shape.
+        perspective: "900px", perspectiveOrigin: "50% 30%",
       }}>
         <SimonCircle
           round={round}
@@ -1770,6 +1774,7 @@ function SimonCircle({
       position: "relative",
       width: "min(380px, 88vw)",
       aspectRatio: "1",
+      transform: "rotateX(42deg) scale(0.88)", transformOrigin: "50% 60%",
       // Desktop: triple drop-shadow for depth + colored bleed + wide ambient.
       // Mobile: single modest shadow — the 200px blur filter was causing
       // renderer OOMs ("Aww, snap!" / "Can't open this page") on low-end
@@ -1793,6 +1798,17 @@ function SimonCircle({
         pointerEvents: "none",
       }} />
 
+      {/* The body of the device: the same disc pushed down, so a thick side wall
+          shows below the face and the wheel reads as a solid object on the floor. */}
+      {[44, 30, 16].map((dy, i) => (
+        <div key={dy} style={{
+          position: "absolute", inset: "-12px", borderRadius: "50%", pointerEvents: "none",
+          transform: `translateY(${dy}px)`,
+          background: ["#0d0428", "#1a0a45", "#2a1266"][i],
+          boxShadow: i === 0 ? "0 3px 0 rgba(192,132,252,0.75), 0 22px 34px rgba(0,0,0,0.75)" : "none",
+        }} />
+      ))}
+
       {/* Outer bezel — dark ring that frames the "screen" */}
       <div style={{
         position: "absolute", inset: "-12px",
@@ -1803,7 +1819,12 @@ function SimonCircle({
           inset 0 0 40px rgba(0,0,0,0.95),
           inset 0 0 0 2px rgba(167,139,250,0.4),
           inset 0 0 0 5px rgba(0,0,0,0.75),
-          inset 0 0 0 7px rgba(167,139,250,0.2)
+          inset 0 0 0 7px rgba(167,139,250,0.2),
+          0 12px 0 #3a1a8a,
+          0 24px 0 #2a1266,
+          0 36px 0 #1a0a45,
+          0 48px 0 #0d0428,
+          0 52px 0 rgba(192,132,252,0.6)
         `,
         transition: "box-shadow 0.15s",
       }} />
