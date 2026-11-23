@@ -1138,9 +1138,11 @@ function MatchStage({
       <div
         style={{
           position: "relative",
-          minHeight: 300,
+          // The stage is a painted night arena now, and taller: it used to be a
+          // small dark box with half the screen empty beneath it.
+          minHeight: "clamp(300px, 47dvh, 440px)",
           borderRadius: 22,
-          background: "linear-gradient(180deg, rgba(8,2,32,0.55) 0%, rgba(15,8,44,0.85) 100%)",
+          background: "linear-gradient(180deg, rgba(8,2,32,0.5) 0%, rgba(8,2,32,0.15) 45%, rgba(10,4,34,0.55) 100%), url(/games/challenge-arena.webp) center 72% / cover no-repeat, #0a0424",
           border: `1px solid ${sudden ? "rgba(239,68,68,0.45)" : "rgba(255,255,255,0.1)"}`,
           overflow: "hidden",
           display: "flex",
@@ -1149,6 +1151,17 @@ function MatchStage({
           animation: sudden ? "dangerPulse 1.4s ease-in-out infinite" : undefined,
         }}
       >
+        {/* The floor: a grid of light lying flat and running away from you, so the
+            two fighters stand ON something with depth, not against a flat wall. */}
+        <div aria-hidden style={{ position: "absolute", left: "-20%", right: "-20%", bottom: 0, height: "46%", perspective: "260px", perspectiveOrigin: "50% 0%", pointerEvents: "none", zIndex: 1 }}>
+          <div style={{
+            position: "absolute", inset: 0, transform: "rotateX(66deg)", transformOrigin: "50% 100%",
+            backgroundImage: `repeating-linear-gradient(90deg, ${sudden ? "rgba(248,113,113,0.5)" : "rgba(192,132,252,0.42)"} 0 1.5px, transparent 1.5px 44px), repeating-linear-gradient(0deg, ${sudden ? "rgba(248,113,113,0.42)" : "rgba(192,132,252,0.34)"} 0 1.5px, transparent 1.5px 44px)`,
+            WebkitMaskImage: "linear-gradient(to top, #000 0%, #000 45%, transparent 100%)",
+            maskImage: "linear-gradient(to top, #000 0%, #000 45%, transparent 100%)",
+          }} />
+        </div>
+
         {/* arena floor glow */}
         <div aria-hidden style={{ position: "absolute", left: "10%", right: "10%", bottom: 18, height: 26, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(167,139,250,0.28), transparent 70%)", filter: "blur(4px)" }} />
 
@@ -1186,13 +1199,16 @@ function MatchStage({
 
         {/* combatants — corners, watching the fight */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "14px 20px 22px", position: "relative", zIndex: 2 }}>
-          <div style={{ textAlign: "center", width: 104 }}>
+          <div style={{ textAlign: "center", width: 124, position: "relative" }}>
+            <div aria-hidden style={{ position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: `radial-gradient(ellipse, ${pet.color}99 0%, ${pet.color}33 45%, transparent 72%)`, boxShadow: `0 0 0 2px ${pet.color}66, 0 6px 0 rgba(0,0,0,0.45)` }} />
             <img
               src={pet.src}
               alt="you"
               style={{
-                width: 88,
-                height: 88,
+                position: "relative",
+                width: 112,
+                height: 112,
+                filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: playerWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
@@ -1237,13 +1253,16 @@ function MatchStage({
             )}
           </div>
 
-          <div style={{ textAlign: "center", width: 104 }}>
+          <div style={{ textAlign: "center", width: 124, position: "relative" }}>
+            <div aria-hidden style={{ position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,191,36,0.6) 0%, rgba(251,191,36,0.2) 45%, transparent 72%)", boxShadow: "0 0 0 2px rgba(251,191,36,0.45), 0 6px 0 rgba(0,0,0,0.45)" }} />
             <img
               src={MARKOV_ART}
               alt="MARKOV"
               style={{
-                width: 88,
-                height: 88,
+                position: "relative",
+                width: 112,
+                height: 112,
+                filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: aiWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
@@ -1387,8 +1406,11 @@ function MatchStage({
             disabled={!armed}
             style={{
               flex: 1,
-              background: armed ? "rgba(15,11,38,0.92)" : "rgba(30,20,60,0.55)",
-              border: `1px solid ${armed ? "rgba(167,139,250,0.5)" : "rgba(255,255,255,0.06)"}`,
+              // Thick arcade keys: a lit face on a dark wall, which sinks when pressed.
+              background: armed ? "linear-gradient(180deg, #2b1f6b 0%, #170f45 100%)" : "rgba(30,20,60,0.55)",
+              border: `1px solid ${armed ? "rgba(192,132,252,0.7)" : "rgba(255,255,255,0.06)"}`,
+              boxShadow: armed ? "inset 0 2px 0 rgba(255,255,255,0.22), 0 7px 0 #0a0527, 0 14px 22px rgba(0,0,0,0.55)" : "0 3px 0 #0a0527",
+              marginBottom: 7,
               borderRadius: 18,
               padding: "16px 0 12px",
               cursor: armed ? "pointer" : "default",
@@ -1396,11 +1418,13 @@ function MatchStage({
               transform: "scale(1)",
               transition: "transform 0.12s cubic-bezier(0.22,1.4,0.36,1), opacity 0.2s ease",
             }}
-            onMouseDown={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.92)"; }}
+            onMouseDown={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(6px) scale(0.98)"; }}
+            onTouchStart={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(6px) scale(0.98)"; }}
+            onTouchEnd={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
             onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
           >
-            <img src={m.art} alt={m.name} style={{ height: 44, filter: armed ? "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" : "grayscale(0.5)" }} />
+            <img src={m.art} alt={m.name} style={{ height: 52, filter: armed ? "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" : "grayscale(0.5)" }} />
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.75)", marginTop: 4 }}>
               {m.name}
             </div>
