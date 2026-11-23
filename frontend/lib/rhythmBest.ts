@@ -14,11 +14,12 @@ export interface RhythmBest {
   pace: number[]; // score at each whole second of the main track
 }
 
-const KEY = "rhythm_best_v1";
+// One best per mode, so a practice variant never overwrites the ranked best.
+const KEY = (mode = "ranked") => (mode === "ranked" ? "rhythm_best_v1" : `rhythm_best_v1_${mode}`);
 
-export function readRhythmBest(): RhythmBest | null {
+export function readRhythmBest(mode = "ranked"): RhythmBest | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY(mode));
     if (!raw) return null;
     const b = JSON.parse(raw) as RhythmBest;
     return typeof b?.score === "number" && Array.isArray(b.pace) ? b : null;
@@ -27,9 +28,9 @@ export function readRhythmBest(): RhythmBest | null {
   }
 }
 
-export function saveRhythmBest(b: RhythmBest) {
+export function saveRhythmBest(b: RhythmBest, mode = "ranked") {
   try {
-    localStorage.setItem(KEY, JSON.stringify(b));
+    localStorage.setItem(KEY(mode), JSON.stringify(b));
   } catch {
     /* private mode or storage full: the run still counts on screen */
   }

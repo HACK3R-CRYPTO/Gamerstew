@@ -129,6 +129,34 @@ const heatFor = (combo: number) => HEAT_AT.filter((c) => combo >= c).length;
 const HEAT_MAX = HEAT_FALL.length - 1;
 const warmStartFor = (avgTopHeat: number | null) => (avgTopHeat == null ? 0 : Math.max(0, Math.min(3, Math.round(avgTopHeat) - 2)));
 
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been: it counts on the leaderboard and is
+// replayed by the server. Everything else is a free practice variant that
+// changes the rules for fun and never leaves the device: nothing is signed,
+// nothing is sent, no gas is needed. That is what makes them safe to play with.
+type ModeId = "ranked" | "practice" | "speed" | "mirror" | "sudden";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same song, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "speed", name: "Max Speed", tag: "FREE", blurb: "Top speed from the first note. No warm-up, no mercy.", color: "#f43f5e" },
+  { id: "mirror", name: "Mirror", tag: "FREE", blurb: "Every lane is flipped. Your hands will argue with you.", color: "#c084fc" },
+  { id: "sudden", name: "Sudden Death", tag: "FREE", blurb: "One miss and the run is over. How far can you get?", color: "#fb923c" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+
+// A challenge from a friend arrives as a link: /games/rhythm?beat=640&song=ode&mode=ranked&by=Tunde
+type Challenge = { score: number; song: string; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const score = Number(q.get("beat"));
+  if (!Number.isFinite(score) || score <= 0 || score > 1_000_000) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { score: Math.round(score), song: q.get("song") || DEFAULT_SONG_ID, mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
+const DEFAULT_SONG_ID = "turca";
+
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -684,6 +712,14 @@ export default function RhythmGamePage() {
   const [paceDelta, setPaceDelta] = useState<number | null>(null);
   const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
   useEffect(() => { bestRef.current = readRhythmBest(); }, []);
+  // Mode + an incoming friend challenge
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  useEffect(() => { modeRef.current = mode; bestRef.current = readRhythmBest(mode); }, [mode]);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); setMode(c.mode); } }, []);
+  const [suddenOver, setSuddenOver] = useState(false);
+
   // Song choice. Only the original is offered until the server confirms which
   // songs it can score (GET /api/rhythm/songs): a newer game must never let a
   // run be replayed against the wrong chart by an older server.
@@ -698,7 +734,8 @@ export default function RhythmGamePage() {
       const ok = SONGS.map((x) => x.id).filter((id) => d.songs.includes(id));
       if (ok.length < 2) return;
       setSongIds(ok);
-      setSongId(todaysSongId(ok)); // start on today's song; the player can switch
+      const ch = readChallenge();
+      setSongId(ch && ok.includes(ch.song) ? ch.song : todaysSongId(ok)); // a friend's challenge picks their song; else today's
     }).catch(() => { /* older server or offline: the original song only */ });
     return () => { dead = true; };
   }, []);
@@ -890,6 +927,8 @@ export default function RhythmGamePage() {
   // Reset game state
   const reset = useCallback(() => {
     chartRef.current = buildChart(songIdRef.current);
+    if (modeRef.current === "mirror") chartRef.current = chartRef.current.map((n) => ({ ...n, lane: LANES.length - 1 - n.lane }));
+    setSuddenOver(false);
     spawnedRef.current = new Set();
     missedRef.current = new Set();
     encoreMissesRef.current = 0;
@@ -921,7 +960,7 @@ export default function RhythmGamePage() {
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
     paceRef.current = [];
-    { const w = warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
+    { const w = modeRef.current === "speed" ? HEAT_MAX : warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
     travelLockRef.current = new Map(); beatIdxRef.current = -1;
     setPaceDelta(null);
     setBestResult(null);
@@ -961,7 +1000,9 @@ export default function RhythmGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    const ranked = modeRef.current === "ranked";
+    // Practice variants never touch the chain: no gas check, no session ticket.
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands (wallet under the fresh threshold,
       // faucet funded), the wallet now has gas so the score will save — proceed
@@ -988,7 +1029,7 @@ export default function RhythmGamePage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time. If we
     // can't get one, surface a quiet error and don't enter the run.
-    if (address && !needsMint) {
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -1069,6 +1110,7 @@ export default function RhythmGamePage() {
   //                          Supabase, awards XP, unlocks achievements
   useEffect(() => {
     if (phase !== "finished") return;
+    if (modeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -1825,6 +1867,7 @@ export default function RhythmGamePage() {
             setFeverActive(false);
           }
           setHits(h => ({ ...h, miss: h.miss + 1 }));
+          if (modeRef.current === "sudden" && phase === "playing") setSuddenOver(true); // one miss ends it
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
           // Floating "MISS" popup at the lane + light screen shake.
           // Encore misses shake harder because each one costs a life.
@@ -1934,7 +1977,7 @@ export default function RhythmGamePage() {
     (window as unknown as { __rhythm?: unknown }).__rhythm = {
       now: () => (performance.now() - startRef.current) / 1000,
       chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
-      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
+      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setMode, mode, setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
       falls: () => [...travelLockRef.current.values()],
     };
   });
@@ -1963,6 +2006,15 @@ export default function RhythmGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combo, phase]);
 
+  // Sudden Death: the first miss ends the run, the same way QUIT does.
+  useEffect(() => {
+    if (!suddenOver || phase !== "playing") return;
+    mainTrackStatsRef.current = { misses: hits.miss, goods: hits.good, perfects: hits.perfect };
+    juice.fireCallout({ text: "SUDDEN DEATH", sub: "ONE MISS. RUN OVER.", color: "#fb923c" }, 700);
+    setPhase("finished");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suddenOver]);
+
   // ─── Personal best (device only, display only) ──────────────────────────────
   // When a run ends, compare it with the stored best once, and keep it if it
   // is higher. FinishedView reads `bestResult`.
@@ -1980,12 +2032,12 @@ export default function RhythmGamePage() {
     const isNew = score > 0 && (!prev || score > prev.score);
     if (isNew) {
       const next: RhythmBest = { score, accuracy: acc, pace: fillPace(paceRef.current, TRACK_DURATION) };
-      saveRhythmBest(next);
+      saveRhythmBest(next, modeRef.current);
       bestRef.current = next;
     }
     setBestResult({ prev: prev ? prev.score : null, isNew });
     // feed the skill-matched start: how hot this run got
-    if (score > 0) recordRun("rhythm", topHeatRef.current);
+    if (score > 0 && (modeRef.current === "ranked" || modeRef.current === "practice")) recordRun("rhythm", topHeatRef.current);
   }, [phase, score]);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
@@ -2042,6 +2094,9 @@ export default function RhythmGamePage() {
           songId={songId}
           todayId={songIds.length > 1 ? todaysSongId(songIds) : null}
           onPickSong={setSongId}
+          mode={mode}
+          onPickMode={setMode}
+          challenge={challenge}
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
@@ -2088,6 +2143,7 @@ export default function RhythmGamePage() {
       {(phase === "playing" || phase === "encore") && (
         <PlayingView
           paceDelta={phase === "playing" ? paceDelta : null}
+          target={challenge && phase === "playing" ? { by: challenge.by, left: challenge.score - score } : null}
           heat={phase === "playing" ? heat : 0}
           score={score} combo={combo} timeLeft={timeLeft}
           bursts={bursts}
@@ -2154,6 +2210,14 @@ export default function RhythmGamePage() {
           score={score} maxCombo={maxCombo} hits={hits}
           accuracy={Math.round(accuracy * 100)}
           bestResult={bestResult}
+          practice={mode === "ranked" ? null : modeById(mode).name}
+          challenge={challenge}
+          onChallenge={() => {
+            const url = `${window.location.origin}/games/rhythm?beat=${score}&song=${songIdRef.current}&mode=${modeRef.current}&by=${encodeURIComponent("A friend")}`;
+            const text = `I scored ${score.toLocaleString()} on ${songById(songIdRef.current).name} in Rhythm Rush. Beat it if you can 🔥`;
+            if (navigator.share) navigator.share({ title: "Rhythm Rush", text, url }).catch(() => {});
+            else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+          }}
           topSpeed={HEAT_SPEED[topHeatRef.current]}
           gradeGap={nextGradeGap(mainStats.perfects, mainStats.goods, MAIN_NOTE_COUNT)}
           encoreLoop={encoreLoop}
@@ -2215,8 +2279,9 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ songs, songId, todayId, onPickSong, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ songs, songId, todayId, onPickSong, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
   songs: Song[]; songId: string; todayId: string | null; onPickSong: (id: string) => void;
+  mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
@@ -2235,8 +2300,10 @@ function IdleView({ songs, songId, todayId, onPickSong, onStart, onExit, onLeade
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: "32px", padding: "24px",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "safe center",
+      // The lobby now also holds modes, a song picker and sometimes a challenge
+      // banner, so it tightens up on short phones and scrolls if it must.
+      gap: "clamp(12px, 2.2vh, 32px)", padding: "20px 24px", overflowY: "auto", overscrollBehavior: "contain",
     }}>
       {/* Back X */}
       <button onClick={onExit} style={{
@@ -2300,10 +2367,38 @@ function IdleView({ songs, songId, todayId, onPickSong, onStart, onExit, onLeade
           Showing who you're chasing is the START motivation. */}
       <RhythmTopPlayersPreview onViewAll={onLeaderboard} />
 
+      {/* A friend sent a score to beat */}
+      {challenge && (
+        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
+          <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
+          <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} scored <span style={{ color: "#fde68a" }}>{challenge.score.toLocaleString()}</span>. Beat it.</div>
+        </div>
+      )}
+
+      {/* Choose how to play. Ranked counts; the rest are free variants. */}
+      <div style={{ width: "100%", maxWidth: 360, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
+          {MODES.map((m) => {
+            const on = m.id === mode;
+            return (
+              <button key={m.id} onClick={() => onPickMode(m.id)} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
+                flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
+                background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
+                boxShadow: on ? `0 0 14px ${m.color}66` : "none",
+              }}>
+                <span style={{ fontSize: 12.5 }}>{m.name}</span>
+                <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
+      </div>
+
       {/* Pick a song. Every song has the same notes and the same top score, so
           they all count on one leaderboard; today's is marked for everyone. */}
       {songs.length > 1 && (
-        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto 14px", padding: "0 4px" }}>
+        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "0 4px" }}>
           <div style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "rgba(220,200,255,0.6)", textAlign: "center", marginBottom: 7 }}>CHOOSE YOUR SONG</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {songs.map((sg) => {
@@ -2534,7 +2629,7 @@ function PetCenter({
 
 // ─── Playing: the actual game ─────────────────────────────────────────────────
 function PlayingView({
-  paceDelta, heat,
+  paceDelta, heat, target,
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
@@ -2545,6 +2640,7 @@ function PlayingView({
 }: {
   paceDelta: number | null; // live score minus where your best run stood at this second
   heat: number; // 0..5, how fast the tiles are falling right now
+  target: { by: string; left: number } | null; // a friend's score being chased: points still needed
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
   comboToast: string | null; flashLane: number | null;
@@ -2664,7 +2760,15 @@ function PlayingView({
         <div style={{ position: "relative" }}>
           <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
           {/* racing your own best: ahead in green, behind in red */}
-          {paceDelta !== null && (
+          {target ? (
+            <div style={{
+              position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+              padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+              fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", fontVariantNumeric: "tabular-nums",
+              color: target.left <= 0 ? "#052e16" : "#fff", background: target.left <= 0 ? "#4ade80" : "#ea580c", boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+            }}>{target.left <= 0 ? `AHEAD OF ${target.by.toUpperCase()}` : `${target.left} to beat ${target.by}`}</div>
+          ) : paceDelta !== null && (
             <div style={{
               position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
               padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
@@ -3047,7 +3151,7 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
-  bestResult, gradeGap, topSpeed,
+  bestResult, gradeGap, topSpeed, practice, challenge, onChallenge,
   grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
@@ -3058,6 +3162,9 @@ function FinishedView({
   // how many more PERFECT hits the next grade up was away (null at grade S)
   gradeGap: { letter: string; need: number } | null;
   topSpeed: number; // fastest fall speed reached this run (×1 = never left slow)
+  practice: string | null; // name of the practice variant just played, null for a ranked run
+  challenge: Challenge | null; // a friend's score this run was chasing
+  onChallenge: () => void; // send this score to a friend to beat
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
   hits: { perfect: number; good: number; miss: number };
@@ -3179,6 +3286,11 @@ function FinishedView({
             }}>{score.toLocaleString()}</div>
             {/* Where this run stands: against your own best, and how close the
                 next grade was. The two lines that make a player go again. */}
+            {challenge && score > 0 && (
+              <div style={{ marginTop: 8, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 13, fontWeight: 900, color: score > challenge.score ? "#86efac" : "#fdba74" }}>
+                {score > challenge.score ? `🔥 You beat ${challenge.by} by ${(score - challenge.score).toLocaleString()}!` : score === challenge.score ? `Level with ${challenge.by}. One more point takes it` : `${(challenge.score - score).toLocaleString()} short of ${challenge.by}. Go again`}
+              </div>
+            )}
             {bestResult && score > 0 && (
               <div style={{
                 marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -3266,7 +3378,12 @@ function FinishedView({
               · guest (no wallet)      → sign in to save
               · connected, no GamePass → mint to save (conversion moment)
               · full player            → normal reward/save panel */}
-          {guest ? (
+          {practice ? (
+            <div style={{ margin: "4px 0 2px", padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#a5f3fc" }}>{practice.toUpperCase()} · FREE PLAY</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(220,210,255,0.78)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
+            </div>
+          ) : guest ? (
             <GuestScorePrompt nextPath="/games/rhythm" />
           ) : needsMint ? (
             <MintScorePrompt score={score} />
@@ -3295,6 +3412,14 @@ function FinishedView({
                   <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
                   <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
                 </div>
+                {/* Send this score to a friend as a dare. They open the link and play to beat it. */}
+                {score > 0 && !saving && (
+                  <button onClick={onChallenge} style={{
+                    marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                    color: "#fff", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
+                    border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
+                  }}>⚔️ CHALLENGE A FRIEND TO BEAT {score.toLocaleString()}</button>
+                )}
                 {saving && (
                   <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
                     💾 Saving your score · hold on a sec
