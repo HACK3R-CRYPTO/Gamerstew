@@ -9,3 +9,5 @@ export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/route
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';
 export { registerBoardRoutes } from './modules/board/routes';
 export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';
+export { registerSeasonsRoutes } from './modules/seasons/routes';
+export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/adapters';

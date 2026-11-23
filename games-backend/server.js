@@ -508,16 +508,19 @@ const SCORE_EVENT_IFACE = new ethers.Interface([
 //    so the map doesn't grow to infinity as new wallets hit the backend) ──
 const USERNAME_CACHE_MAX = 5000;
 const usernameCache = new Map();
-async function resolveUsername(addr) {
+// The same lookup, but it also says whether it really got an answer. `ok` is
+// false when the chain could not be asked, which is different from "this player
+// has no name" and matters to anything that remembers the result.
+async function resolveUsernameChecked(addr) {
   const lower = addr.toLowerCase();
   if (usernameCache.has(lower)) {
     // Touch: move to end so it survives the next eviction round.
     const v = usernameCache.get(lower);
     usernameCache.delete(lower);
     usernameCache.set(lower, v);
-    return v;
+    return { name: v, ok: true };
   }
-  if (!passContract) return null;
+  if (!passContract) return { name: null, ok: false };
   try {
     const name = await passContract.getUsername(addr);
     if (name) {
@@ -529,8 +532,11 @@ async function resolveUsername(addr) {
       }
       usernameCache.set(lower, name);
     }
-    return name || null;
-  } catch (_) { return null; }
+    return { name: name || null, ok: true };
+  } catch (_) { return { name: null, ok: false }; }
+}
+async function resolveUsername(addr) {
+  return (await resolveUsernameChecked(addr)).name;
 }
 
 async function resolveOnChain(wagerId, score) {
@@ -1375,130 +1381,18 @@ platform.registerBoardRoutes(app, {
 });
 
 // ─── GET /api/seasons ───────────────────────────────────────────────────────
-app.get('/api/seasons', async (_, res) => {
-  const cached = cacheGet('seasons:global');
-  if (cached) return res.json(cached);
-  const current = currentSeasonNumber();
-  const { start, end } = seasonBounds(current);
-  const startDate = new Date(start * 1000).toISOString();
-
-  // Dedup by wallet — keep best score per user this week
-  const dedupScores = (rows, limit = 10) => {
-    const seen = new Map();
-    for (const row of (rows || [])) {
-      const key = row.wallet_address?.toLowerCase();
-      if (!key) continue;
-      if (!seen.has(key) || row.score > seen.get(key).score) seen.set(key, row);
-    }
-    return Array.from(seen.values()).sort((a, b) => b.score - a.score).slice(0, limit);
-  };
-
-  // Live current-season standings · one query per registered game so
-  // Stack Tower (and any future game) gets picked up automatically.
-  const liveByGame = Object.fromEntries(
-    await Promise.all(VALID_GAMES.map(async (game) => {
-      const { data } = await supabase
-        .from('activity')
-        .select('*')
-        .eq('game', game)
-        .gte('created_at', startDate)
-        .order('score', { ascending: false })
-        .limit(500);
-      return [game, data || []];
-    }))
-  );
-
-  // Past sealed seasons
-  const { data: pastSeasons } = await supabase
-    .from('seasons')
-    .select('*')
-    .eq('sealed', true)
-    .order('season_number', { ascending: false });
-
-  // Fetch actual scores for each past season from the activity table.
-  // Fan out one query per registered game per past season so stack
-  // (and any future game) flows through without per-game code.
-  const pastWithScores = await Promise.all((pastSeasons || []).map(async (s) => {
-    const startIso = new Date(s.start_ts * 1000).toISOString();
-    const endIso   = new Date(s.end_ts   * 1000).toISOString();
-
-    const rawByGame = Object.fromEntries(
-      await Promise.all(VALID_GAMES.map(async (game) => {
-        const { data } = await supabase
-          .from('activity')
-          .select('*')
-          .eq('game', game)
-          .gte('created_at', startIso)
-          .lt('created_at', endIso)
-          .order('score', { ascending: false })
-          .limit(500);
-        return [game, data || []];
-      }))
-    );
-
-    // Count distinct players across every game played that week
-    const allPlayers = new Set(
-      VALID_GAMES.flatMap(g => rawByGame[g].map(e => e.wallet_address))
-    );
-
-    // Prefetch usernames ONCE per unique wallet. Without this, a wallet in
-    // three games' top-10s fired three concurrent uncached contract reads
-    // (the LRU only stores completed lookups) — up to 150 RPC calls per
-    // /api/seasons hit. After the prefetch, fmt() below is pure cache hits.
-    await Promise.all([...allPlayers].map((w) => resolveUsername(w)));
-
-    const fmt = async (e) => ({
-      player: e.wallet_address,
-      username: await resolveUsername(e.wallet_address) || null,
-      score: e.score,
-      gameTime: e.game_time,
-      timestamp: Math.floor(new Date(e.created_at).getTime() / 1000),
-      tx_hash: e.tx_hash,
-    });
-
-    // Build per-game top-10 lists for the response
-    const perGame = Object.fromEntries(
-      await Promise.all(VALID_GAMES.map(async (game) => [
-        game,
-        await Promise.all(dedupScores(rawByGame[game], 10).map(fmt)),
-      ]))
-    );
-
-    return {
-      season:       s.season_number,
-      startTs:      s.start_ts,
-      endTs:        s.end_ts,
-      prizePot:     s.prize_pot,
-      sealedAt:     Math.floor(new Date(s.created_at).getTime() / 1000),
-      totalPlayers: allPlayers.size,
-      ...perGame,
-    };
-  }));
-
-  // Format for frontend — same shape as /api/leaderboard so fmt() works correctly
-  const formatEntry = async (e) => ({
-    player: e.wallet_address,
-    username: await resolveUsername(e.wallet_address) || null,
-    score: e.score,
-    gameTime: e.game_time,
-    wagered: e.wagered,
-    timestamp: Math.floor(new Date(e.created_at).getTime() / 1000),
-    tx_hash: e.tx_hash,
-  });
-
-  const payload = {
-    currentSeason: current,
-    currentEndsAt: end,
-    live: Object.fromEntries(
-      await Promise.all(VALID_GAMES.map(async (game) => [
-        game,
-        await Promise.all(dedupScores(liveByGame[game]).map(formatEntry)),
-      ]))
-    ),
-    past: pastWithScores,
-  };
-  cacheSet('seasons:global', payload, MEM_TTL.global);
-  res.json(payload);
+// This week's standings and every sealed week before it. Each sealed season is
+// read from the database once per process and kept, because it can never
+// change. Logic: src/modules/seasons/service.ts.
+const seasonsService = platform.registerSeasonsRoutes(app, {
+  games: VALID_GAMES,
+  currentSeason: () => currentSeasonNumber(),
+  seasonBounds: (season) => seasonBounds(season),
+  topActivity: platform.supabaseTopActivity(supabase),
+  sealedSeasons: platform.supabaseSealedSeasons(supabase),
+  resolveUsername: (wallet) => resolveUsernameChecked(wallet),
+  cache: { get: (key) => cacheGet(key), set: (key, value, ttlMs) => cacheSet(key, value, ttlMs) },
+  ttlMs: MEM_TTL.global,
 });
 
 // ─── GET /api/badges/:address ───────────────────────────────────────────────
@@ -5871,6 +5765,10 @@ const server = app.listen(PORT, () => {
 
 // A stray rejected promise is logged instead of killing the server, and a
 // redeploy lets requests in flight finish before the process exits.
+// Read the finished seasons once, now, so the first visitor to the leaderboard
+// does not pay for it. If it fails the first request simply does the work.
+seasonsService.seasons().catch((e) => console.warn('seasons warm-up failed:', e?.message || e));
+
 platform.installLifecycle(server, {
   graceMs: config.shutdownGraceMs,
   // Live-match spectators hold a stream open for the whole match. End those
