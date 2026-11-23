@@ -33,6 +33,7 @@ import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.j
 import WindowBlock from "../world/WindowBlock";
 import Batch from "../world/Batch";
 import { score, PINS, type ScoreState } from "./scoring";
+import { ADS, type Ad } from "./ads";
 import { armSfx, closeSfx, setMuted, setRumble, bottleHit, bottleRoll, sfxCount, thud, buzz, crowdSound } from "./sfx";
 
 // ── Tuning (metres, seconds) ─────────────────────────────────────────────────
@@ -62,6 +63,8 @@ export interface Throw {
   speed: number;
   spin: number;
 }
+// strike cam state, shared by the roll loop and the camera
+const cine = { t: -1, side: 1, armed: true };
 type Phase = "lobby" | "aim" | "rolling" | "settling" | "over";
 
 // Three tyres that really play differently, like choosing a ball at an alley.
@@ -365,6 +368,77 @@ function Neons({ x }: { x: number }) {
   );
 }
 
+// ── Billboards: the street's ad space ────────────────────────────────────────
+// Lagos roads are lined with them, so they belong here, and each one is a slot
+// a brand can buy (see ads.ts). A board cycles through the ad list on its own.
+function adTex(ad: Ad, onLoad: () => void) {
+  const W = 1024, H = 512;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d")!;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const bgd = g.createLinearGradient(0, 0, W, H); bgd.addColorStop(0, ad.bg[0]); bgd.addColorStop(1, ad.bg[1]);
+  g.fillStyle = bgd; g.fillRect(0, 0, W, H);
+  // big soft shapes so a poster never reads as a flat colour
+  g.globalAlpha = 0.16; g.fillStyle = ad.accent;
+  g.beginPath(); g.arc(W * 0.86, H * 0.18, 230, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(W * 0.1, H * 1.05, 260, 0, Math.PI * 2); g.fill();
+  g.globalAlpha = 1;
+  g.fillStyle = ad.accent; g.fillRect(64, 96, 12, H - 192);
+  g.textBaseline = "middle"; g.textAlign = "left";
+  const fit = (text: string, weight: number, size: number, max: number) => { do { g.font = `${weight} ${size}px "Arial Black", "Fredoka", system-ui, sans-serif`; size -= 6; } while (g.measureText(text).width > max && size > 30); };
+  if (ad.kicker) { fit(ad.kicker, 800, 46, W - 190); g.fillStyle = ad.accent; g.fillText(ad.kicker, 104, 140); }
+  fit(ad.title, 900, 150, W - 190); g.fillStyle = ad.ink; g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = 18; g.fillText(ad.title, 104, 262); g.shadowBlur = 0;
+  if (ad.sub) { fit(ad.sub, 700, 50, W - 190); g.fillStyle = "rgba(255,255,255,0.88)"; g.fillText(ad.sub, 104, 384); }
+  if (ad.image) {
+    const img = new Image();
+    img.onload = () => { g.drawImage(img, 0, 0, W, H); t.needsUpdate = true; onLoad(); };
+    img.src = ad.image;
+  }
+  return t;
+}
+// where the boards stand: [x, y, z, width, height, turn toward the lane, ad offset, legs]
+const BOARDS: [number, number, number, number, number, number, number, number][] = [
+  [2.75, 4.05, DECK_END - 3.1, 4.6, 2.3, -0.2, 0, 2], // the big one over the end wall
+  [-2.9, 3.7, DECK_END - 3.5, 3.6, 1.8, 0.24, 1, 1],
+  [-(LANE_W / 2 + GUTTER_W + 3.05), 1.5, -8.6, 1.5, 0.75, 1.15, 2, 2], // a roadside lightbox
+  [LANE_W / 2 + GUTTER_W + 3.05, 1.5, -5.6, 1.5, 0.75, -1.15, 3, 2],
+];
+function Billboards({ lowPerf }: { lowPerf: boolean }) {
+  const { invalidate } = useThree();
+  const texs = useMemo(() => ADS.map((a) => adTex(a, invalidate)), [invalidate]);
+  const mats = useMemo(() => BOARDS.map((b) => new THREE.MeshBasicMaterial({ map: texs[b[6] % texs.length], toneMapped: false })), [texs]);
+  const steel = useMemo(() => flat("#2a2438", { roughness: 0.6, metalness: 0.4 }), []);
+  const lamp = useMemo(() => new THREE.MeshBasicMaterial({ color: "#fff3cf", toneMapped: false }), []);
+  // every board turns to its next ad on a slow clock, staggered so they never all change together
+  const clock = useRef(0);
+  const shown = useRef(BOARDS.map((b) => b[6]));
+  useFrame((_, dt) => {
+    clock.current += dt;
+    BOARDS.forEach((b, i) => {
+      const ix = (b[6] + Math.floor((clock.current + i * 3.5) / 14)) % texs.length;
+      if (ix !== shown.current[i]) { shown.current[i] = ix; mats[i].map = texs[ix]; mats[i].needsUpdate = true; }
+    });
+  });
+  const list = lowPerf ? BOARDS.slice(0, 3) : BOARDS;
+  return (
+    <group>
+      {list.map(([x, y, z, w, h, ry, , legs], i) => (
+        <group key={i} position={[x, 0, z]} rotation={[0, ry, 0]}>
+          <mesh position={[0, y, 0]} material={steel}><boxGeometry args={[w + 0.22, h + 0.22, 0.16]} /></mesh>
+          <mesh position={[0, y, 0.085]} material={mats[i]}><planeGeometry args={[w, h]} /></mesh>
+          {(legs === 2 ? [-w * 0.32, w * 0.32] : [0]).map((lx) => (
+            <mesh key={lx} position={[lx, (y - h / 2) / 2, -0.06]} material={steel}><boxGeometry args={[legs === 2 ? 0.1 : 0.26, y - h / 2, 0.1]} /></mesh>
+          ))}
+          {/* a row of lamps washing the poster from below, the way real boards are lit */}
+          {h > 1 && [-0.34, 0, 0.34].map((k) => (
+            <mesh key={k} position={[k * w, y - h / 2 - 0.1, 0.34]} material={lamp}><boxGeometry args={[0.2, 0.05, 0.1]} /></mesh>
+          ))}
+        </group>
+      ))}
+    </group>
+  );
+}
+
 // ── The street the game is played on ─────────────────────────────────────────
 function Street({ lowPerf }: { lowPerf: boolean }) {
   const M = useMemo(
@@ -539,6 +613,7 @@ function Brain({
   onPhase,
   rackKey,
   tyre,
+  setSlow,
 }: {
   tyre: (typeof TYRES)[number];
   phase: Phase;
@@ -547,6 +622,7 @@ function Brain({
   onResult: (down: boolean[], gutter: boolean) => void;
   onPhase: (p: Phase) => void;
   rackKey: number;
+  setSlow: (on: boolean) => void;
 }) {
   const ball = useRef<RapierRigidBody | null>(null);
   const bottles = useRef<(RapierRigidBody | null)[]>([]);
@@ -709,6 +785,32 @@ function Brain({
           phaseRef.current = "counted"; // report once
           onResult(down, wentGutter.current && !down.some(Boolean));
         }
+      }
+    }
+
+    // STRIKE CAM. A tyre that arrives dead on the head bottle with a full rack is
+    // about to scatter everything, so that roll gets the big-moment treatment:
+    // time slows and the camera drops low beside the rack to watch the bottles fly.
+    if (ph === "aim") cine.armed = true;
+    if (ph === "rolling" && cine.armed && cine.t < 0 && p.z < -LANE_LEN + 1.1 && Math.abs(p.x) < 0.17 && standing.every(Boolean)) {
+      cine.armed = false;
+      cine.t = 0;
+      cine.side = p.x >= 0 ? -1 : 1;
+      setSlow(true);
+    }
+    if (cine.t >= 0) {
+      cine.t += rawDt;
+      const k = Math.min(1, cine.t / 1.7);
+      const e = k * k * (3 - 2 * k);
+      const cx = cine.side * (1.75 - e * 0.7), cy = 0.42 + e * 0.5, cz = -LANE_LEN + 1.5 + e * 1.1;
+      const f = Math.min(1, rawDt * 9);
+      camera.position.set(camera.position.x + (cx - camera.position.x) * f, camera.position.y + (cy - camera.position.y) * f, camera.position.z + (cz - camera.position.z) * f);
+      camera.lookAt(0, 0.22, -LANE_LEN - 0.55);
+      if (cine.t > 1.7 || ph === "aim" || ph === "over") { cine.t = -1; setSlow(false); }
+      else {
+        if (cine.t > 1.0) setSlow(false); // back to full speed for the last half, still on the close camera
+        camZ.current = camera.position.z;
+        return;
       }
     }
 
@@ -1069,7 +1171,24 @@ function Scenery({ children }: { children: ReactNode }) {
 
 // ── Page shell: canvas + HUD + input ─────────────────────────────────────────
 export default function Game() {
-  const [rolls, setRolls] = useState<number[]>([]);
+  // Who is playing. One list of rolls per seat; `turn` is the seat on the line.
+  const [mode, setMode] = useState<Mode>("solo");
+  const [level, setLevel] = useState(1); // CPU: 0 easy, 1 medium, 2 hard
+  const [setup, setSetup] = useState(true); // the "how do you want to play" sheet
+  const seats = useMemo(() => seatsFor(mode), [mode]);
+  const [allRolls, setAllRolls] = useState<number[][]>([[]]);
+  const allRef = useRef<number[][]>([[]]);
+  const [turn, setTurn] = useState(0);
+  const turnRef = useRef(0);
+  const modeRef = useRef<Mode>("solo");
+  const [handoff, setHandoff] = useState(false); // pass-the-phone: wait for the next player to say ready
+  const [hint, setHint] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false); // strike cam: time runs at a quarter speed
+  const slowRef = useRef(false);
+  const setSlowOnce = useCallback((on: boolean) => { if (slowRef.current !== on) { slowRef.current = on; setSlow(on); } }, []);
+  const [idle, setIdle] = useState(false); // nobody has rolled for a while: show how again
+  const [touch] = useState(() => typeof window !== "undefined" && (("ontouchstart" in window) || navigator.maxTouchPoints > 0));
+  const rolls = allRolls[turn] ?? [];
   const [phase, setPhase] = useState<Phase>("aim");
   const [standing, setStanding] = useState<boolean[]>(() => Array(PINS).fill(true));
   const [rackKey, setRackKey] = useState(0);
@@ -1084,10 +1203,13 @@ export default function Game() {
   const [tyreIx, setTyreIx] = useState(0);
   const tyre = TYRES[tyreIx];
   const apiRef = useRef<Api | null>(null);
-  const rollsRef = useRef<number[]>([]);
   const standingRef = useRef(standing);
   standingRef.current = standing;
   const s: ScoreState = useMemo(() => score(rolls, FRAMES), [rolls]);
+  const cards = useMemo(() => seats.map((_, i) => score(allRolls[i] ?? [], FRAMES)), [seats, allRolls]);
+  const me = seats[turn] ?? seats[0];
+  const canPlay = phase === "aim" && !setup && !handoff && !me.cpu;
+  const turnLabel = me.name === "You" ? "Your turn" : `${me.name}'s turn`;
 
   useEffect(() => {
     try {
@@ -1102,9 +1224,20 @@ export default function Game() {
   const onResult = useCallback((down: boolean[], gutter: boolean) => {
     const before = standingRef.current;
     const count = down.filter(Boolean).length;
-    const nextRolls = [...rollsRef.current, count];
-    rollsRef.current = nextRolls;
+    const seat = turnRef.current;
+    const prevFrame = score(allRef.current[seat] ?? [], FRAMES).frame;
+    const nextRolls = [...(allRef.current[seat] ?? []), count];
+    allRef.current = allRef.current.map((r, i) => (i === seat ? nextRolls : r));
     const st = score(nextRolls, FRAMES);
+    // With more than one seat, players swap after each frame. Whoever still has
+    // frames left goes next; when nobody does, the game is over.
+    const n = allRef.current.length;
+    let next = seat;
+    if (n > 1 && (st.done || st.frame > prevFrame)) {
+      next = -1;
+      for (let k = 1; k <= n; k++) { const c = (seat + k) % n; if (!score(allRef.current[c], FRAMES).done) { next = c; break; } }
+    }
+    const allDone = n > 1 ? next === -1 : st.done;
     const cleared = before.filter(Boolean).length === count;
     const mark = [...st.frames].reverse().find((f) => f.marks.length)?.marks.slice(-1)[0];
     if (mark === "X") {
@@ -1133,14 +1266,17 @@ export default function Game() {
       say2(count === 0 ? "Zero! " + say("weak") : `${count} down`, count === 0 ? "bad" : "good");
     }
 
-    setRolls(nextRolls);
-    if (st.done) {
+    setAllRolls(allRef.current);
+    setHint(null);
+    if (allDone) {
       setPhase("over");
-      try {
+      // your best is your own score: seat 0, and never in pass-the-phone
+      if (modeRef.current !== "pass") try {
+        const mine = score(allRef.current[0], FRAMES).total;
         const prev = Number(localStorage.getItem("streetstrike.best")) || 0;
-        if (st.total > prev) {
-          localStorage.setItem("streetstrike.best", String(st.total));
-          setBest(st.total);
+        if (mine > prev) {
+          localStorage.setItem("streetstrike.best", String(mine));
+          setBest(mine);
           setBeat(true);
         }
       } catch { /* ignore */ }
@@ -1148,7 +1284,16 @@ export default function Game() {
     }
     // hold on the result for a beat, then set up the next roll
     window.setTimeout(() => {
-      if (st.freshRack) {
+      if (next !== seat) {
+        // the next player always starts on a full rack
+        turnRef.current = next;
+        setTurn(next);
+        setStanding(Array(PINS).fill(true));
+        setRackKey((k) => k + 1);
+        const who = seatsFor(modeRef.current)[next];
+        if (modeRef.current === "pass") setHandoff(true);
+        else say2(who.cpu ? "CPU's turn" : "Your turn", "good");
+      } else if (st.freshRack) {
         setStanding(Array(PINS).fill(true));
         setRackKey((k) => k + 1);
       } else {
@@ -1158,9 +1303,15 @@ export default function Game() {
     }, cleared ? 1500 : 1000);
   }, []);
 
-  const restart = () => {
-    rollsRef.current = [];
-    setRolls([]);
+  const restart = (m: Mode = modeRef.current) => {
+    modeRef.current = m;
+    setMode(m);
+    allRef.current = seatsFor(m).map(() => []);
+    setAllRolls(allRef.current);
+    turnRef.current = 0;
+    setTurn(0);
+    setHandoff(false);
+    setHint(null);
     setStanding(Array(PINS).fill(true));
     setRackKey((k) => k + 1);
     setBanner(null);
@@ -1174,7 +1325,8 @@ export default function Game() {
   const toLaneX = (px: number, w: number) => ((px / w) - 0.5) * LANE_W * 1.15;
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
     armSfx();
-    if (phase !== "aim") return;
+    if (!canPlay) return;
+    setIdle(false);
     // one finger owns a swipe. A second finger used to get mixed into the same
     // trail and could fire a full-power throw nobody made.
     if (finger.current !== null) return;
@@ -1199,11 +1351,14 @@ export default function Game() {
     armSfx(); // wakes the sound again if the phone put it to sleep
     const pts = trail.current;
     trail.current = [];
-    if (pts.length < 2 || phase !== "aim") return;
+    if (pts.length < 2 || !canPlay) return;
     const a = pts[0];
     const b = { x: e.clientX, y: e.clientY, t: performance.now() };
     const dy = a.y - b.y;
-    if (dy < 36) return; // a tap or a sideways drag: just positioning
+    if (dy < 36) { // a tap or a sideways drag: just positioning
+      if (dy > 8 || pts.length > 4) setHint("Swipe UP toward the bottles, a bit longer");
+      return;
+    }
     const dx = b.x - a.x;
     const ms = Math.max(40, b.t - a.t);
     const speed = SPEED_MIN + Math.min(1, Math.max(0, (dy / ms - 0.35) / 1.7)) * (SPEED_MAX - SPEED_MIN);
@@ -1221,7 +1376,7 @@ export default function Game() {
   const keyX = useRef(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (phase !== "aim" || (e.target as HTMLElement)?.tagName === "BUTTON") return;
+      if (!canPlay || (e.target as HTMLElement)?.tagName === "BUTTON") return;
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         keyX.current = THREE.MathUtils.clamp(keyX.current + (e.key === "ArrowLeft" ? -0.08 : 0.08), -LANE_W / 2, LANE_W / 2);
         apiRef.current?.aimX(keyX.current);
@@ -1235,7 +1390,30 @@ export default function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase]);
+  }, [canPlay]);
+
+  // If a player is on the line and nothing happens for a few seconds, play the
+  // "how to roll" demo again. Most people who stall simply do not know the move.
+  useEffect(() => {
+    setIdle(false);
+    if (!canPlay) return;
+    const id = window.setTimeout(() => setIdle(true), 5000);
+    return () => window.clearTimeout(id);
+  }, [canPlay, rolls.length, turn, tyreIx]);
+
+  // The computer's roll. It aims at the middle of whatever is still standing and
+  // misses by an amount set by the difficulty, so Easy really is beatable.
+  useEffect(() => {
+    if (phase !== "aim" || setup || !me.cpu) return;
+    const id = window.setTimeout(() => {
+      const up = standingRef.current.map((u, i) => (u ? HOME[i][0] : null)).filter((v): v is number => v !== null);
+      const aim = up.length ? up.reduce((a, b) => a + b, 0) / up.length : 0;
+      const miss = [0.5, 0.27, 0.1][level] ?? 0.27;
+      const r = () => Math.random() * 2 - 1;
+      apiRef.current?.throwIt({ x: THREE.MathUtils.clamp(aim + r() * miss, -LANE_W / 2, LANE_W / 2), angle: r() * miss * 0.08, speed: 8.2 + Math.random() * 1.6, spin: r() * 4 * (1 - level * 0.3) });
+    }, 1500);
+    return () => window.clearTimeout(id);
+  }, [phase, setup, me.cpu, turn, rolls.length, level]);
 
   // dev hook for automated play-tests
   useEffect(() => {
@@ -1244,9 +1422,11 @@ export default function Game() {
       throwIt: (t: Throw) => apiRef.current?.throwIt(t),
       setTyre: (i: number) => setTyreIx(i),
       sound: () => ({ ...sfxCount }),
-      state: () => ({ phase, rolls: rollsRef.current, total: score(rollsRef.current, FRAMES).total, standing: standingRef.current.filter(Boolean).length, done: score(rollsRef.current, FRAMES).done }),
+      start: (m: Mode, lv = 1) => { setLevel(lv); restart(m); setSetup(false); },
+      ready: () => setHandoff(false),
+      state: () => ({ phase, mode: modeRef.current, turn: turnRef.current, handoff, setup, all: allRef.current, totals: allRef.current.map((r) => score(r, FRAMES).total), rolls: allRef.current[turnRef.current], total: score(allRef.current[turnRef.current], FRAMES).total, standing: standingRef.current.filter(Boolean).length, done: allRef.current.every((r) => score(r, FRAMES).done) }),
     };
-  }, [phase]);
+  });
 
   const tone = banner?.tone === "big" ? GA.goldLight : banner?.tone === "bad" ? "#ff8a8a" : "#8ff0a4";
   return (
@@ -1266,10 +1446,13 @@ export default function Game() {
         <Scenery>
           <Crowd lowPerf={isMobile} />
         </Scenery>
+        <Scenery>
+          <Billboards lowPerf={isMobile} />
+        </Scenery>
         <Suspense fallback={null}>
-          <Physics gravity={[0, -9.81, 0]} timeStep={1 / 60}>
+          <Physics gravity={[0, -9.81, 0]} timeStep={slow ? 1 / 240 : 1 / 60}>
             <Colliders />
-            <Brain phase={phase} standing={standing} apiRef={apiRef} onResult={onResult} onPhase={setPhase} rackKey={rackKey} tyre={tyre} />
+            <Brain phase={phase} standing={standing} apiRef={apiRef} onResult={onResult} onPhase={setPhase} rackKey={rackKey} tyre={tyre} setSlow={setSlowOnce} />
           </Physics>
           <Confetti />
         </Suspense>
@@ -1293,15 +1476,30 @@ export default function Game() {
         <button onClick={() => { setMute(!mute); setMuted(!mute); }} style={{ ...chip, pointerEvents: "auto", cursor: "pointer" }} aria-label={mute ? "Unmute" : "Mute"}>{mute ? "🔇" : "🔊"}</button>
       </div>
 
-      {/* scorecard */}
-      <div style={{ position: "absolute", top: "calc(58px + env(safe-area-inset-top))", left: 0, right: 0, zIndex: 10, display: "flex", justifyContent: "center", gap: 5, pointerEvents: "none" }}>
-        {s.frames.map((f, i) => {
-          const active = !s.done && i === s.frame;
+      {/* scorecard: one row of frames each. The row that is lit is the player on the line. */}
+      <div style={{ position: "absolute", top: "calc(58px + env(safe-area-inset-top))", left: 0, right: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, pointerEvents: "none", opacity: setup ? 0 : 1, transition: "opacity .3s" }}>
+        {cards.map((card, p) => {
+          const duel = seats.length > 1;
+          const mine = !duel || p === turn;
           return (
-            <div key={i} style={{ width: i === FRAMES - 1 ? 74 : 56, borderRadius: 12, padding: "5px 6px 6px", textAlign: "center", color: "#fff", background: active ? "linear-gradient(180deg, rgba(124,58,237,0.75), rgba(42,18,64,0.9))" : "rgba(10,1,32,0.72)", border: `1px solid ${active ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: active ? "0 0 16px -4px rgba(251,191,36,0.7)" : "none" }}>
-              <div style={{ fontSize: 9.5, letterSpacing: "0.12em", opacity: 0.6 }}>{i + 1}</div>
-              <div style={{ fontFamily: DISPLAY, fontSize: 15, minHeight: 20, color: f.marks.includes("X") ? GA.goldLight : f.marks.includes("/") ? "#8ff0a4" : "#fff" }}>{f.marks.join(" ") || " "}</div>
-              <div style={{ fontFamily: DISPLAY, fontSize: 17, minHeight: 22, fontVariantNumeric: "tabular-nums" }}>{f.total ?? ""}</div>
+            <div key={p} style={{ display: "flex", alignItems: "stretch", gap: duel ? 4 : 5, padding: duel ? "4px 6px" : 0, borderRadius: 14, background: duel ? (mine && phase !== "over" ? "linear-gradient(180deg, rgba(124,58,237,0.6), rgba(42,18,64,0.86))" : "rgba(10,1,32,0.6)") : "none", border: duel ? `1.5px solid ${mine && phase !== "over" ? GA.goldLight : "rgba(255,255,255,0.1)"}` : "none", boxShadow: duel && mine && phase !== "over" ? "0 0 18px rgba(251,191,36,0.35)" : "none", opacity: duel && !mine && phase !== "over" ? 0.72 : 1, transition: "all .25s" }}>
+              {duel && (
+                <div style={{ width: 62, display: "flex", flexDirection: "column", justifyContent: "center", color: "#fff", paddingLeft: 2 }}>
+                  <div style={{ fontFamily: DISPLAY, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{seats[p].name}</div>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", fontWeight: 600, color: mine && phase !== "over" ? GA.goldLight : "rgba(244,241,234,0.5)" }}>{mine && phase !== "over" ? "ROLLING" : card.done ? "DONE" : "WAITING"}</div>
+                </div>
+              )}
+              {card.frames.map((f, i) => {
+                const active = mine && !card.done && i === card.frame;
+                return (
+                  <div key={i} style={{ width: duel ? (i === FRAMES - 1 ? 50 : 38) : (i === FRAMES - 1 ? 74 : 56), borderRadius: duel ? 8 : 12, padding: duel ? "2px 3px 3px" : "5px 6px 6px", textAlign: "center", color: "#fff", background: active ? "linear-gradient(180deg, rgba(124,58,237,0.75), rgba(42,18,64,0.9))" : "rgba(10,1,32,0.72)", border: `1px solid ${active ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: active && !duel ? "0 0 14px rgba(251,191,36,0.4)" : "none" }}>
+                    {!duel && <div style={{ fontSize: 9.5, letterSpacing: "0.12em", opacity: 0.6 }}>{i + 1}</div>}
+                    <div style={{ fontFamily: DISPLAY, fontSize: duel ? 11.5 : 15, minHeight: duel ? 15 : 20, color: f.marks.includes("X") ? GA.goldLight : f.marks.includes("/") ? "#8ff0a4" : "#fff" }}>{f.marks.join(" ") || " "}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: duel ? 12.5 : 17, minHeight: duel ? 16 : 22, fontVariantNumeric: "tabular-nums" }}>{f.total ?? ""}</div>
+                  </div>
+                );
+              })}
+              {duel && <div style={{ width: 40, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: DISPLAY, fontSize: 19, color: GA.goldLight, fontVariantNumeric: "tabular-nums" }}>{card.total}</div>}
             </div>
           );
         })}
@@ -1314,18 +1512,81 @@ export default function Game() {
         </div>
       )}
 
-      {/* coaching */}
-      {phase === "aim" && !s.done && (
-        <div style={{ position: "absolute", bottom: "calc(138px + env(safe-area-inset-bottom))", left: 0, right: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
-          <div style={{ ...chip, fontSize: 14 }}>
-            {started ? `Frame ${Math.min(s.frame + 1, FRAMES)} · Roll ${s.ball + 1}` : "👆 Swipe up to roll the tyre"}
+      {/* whose turn it is, and what to do. Always on screen while a roll is owed. */}
+      {phase === "aim" && !setup && !handoff && (
+        <div style={{ position: "absolute", bottom: `calc(${me.cpu ? 40 : 138}px + env(safe-area-inset-bottom))`, left: 0, right: 0, zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
+          <div style={{ ...chip, fontSize: 14, borderColor: me.cpu ? "rgba(255,255,255,0.18)" : GA.goldLight }}>
+            {me.cpu ? "CPU is rolling…" : <><b style={{ color: GA.goldLight, fontWeight: 400 }}>{turnLabel}</b>{` · Frame ${Math.min(s.frame + 1, FRAMES)} · Roll ${s.ball + 1}`}</>}
           </div>
-          {!started && <div style={{ color: "rgba(244,241,234,0.8)", fontSize: 12.5, fontWeight: 500, textShadow: "0 1px 4px #000", textAlign: "center", padding: "0 56px", lineHeight: 1.35 }}>Start where you want to release. Curve your swipe to hook.</div>}
+          {!me.cpu && (hint || !started) && <div style={{ ...chip, fontFamily: BODY, fontWeight: 500, fontSize: 13, background: "rgba(10,1,32,0.78)", textAlign: "center", lineHeight: 1.35, maxWidth: "86%" }}>{hint ?? (touch ? "Slide to pick your spot · swipe up to roll" : "Drag sideways to aim · drag up to roll")}</div>}
+        </div>
+      )}
+
+      {/* The move, shown like a game tutorial: a hand slides up the road from the
+          tyre, again and again, until the player rolls. It comes back if they stall. */}
+      {canPlay && (!started || idle) && (
+        <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: "34%", bottom: "calc(150px + env(safe-area-inset-bottom))", zIndex: 9, pointerEvents: "none", display: "flex", justifyContent: "center" }}>
+          <div style={{ position: "relative", width: 120, height: "100%" }}>
+            <div style={{ position: "absolute", left: 57, top: "8%", bottom: "6%", width: 6, borderRadius: 3, background: `repeating-linear-gradient(180deg, ${GA.goldLight} 0 10px, transparent 10px 20px)`, opacity: 0.85, animation: "ssDash 0.5s linear infinite", filter: `drop-shadow(0 0 8px ${GA.gold})` }} />
+            <div style={{ position: "absolute", left: 60, top: "8%", width: 0, height: 0, marginLeft: -15, marginTop: -22, borderLeft: "15px solid transparent", borderRight: "15px solid transparent", borderBottom: `24px solid ${GA.goldLight}`, filter: `drop-shadow(0 0 10px ${GA.gold})` }} />
+            <div style={{ position: "absolute", left: 60, bottom: "0%", marginLeft: -27, fontSize: 54, lineHeight: 1, animation: "ssSwipe 1.5s cubic-bezier(.5,0,.2,1) infinite", filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.7))" }}>👆</div>
+            <div style={{ position: "absolute", left: "50%", top: "-4%", transform: "translate(-50%, -100%)", whiteSpace: "nowrap", fontFamily: DISPLAY, fontSize: "clamp(22px,6.4vw,34px)", color: "#fff", textShadow: `0 0 18px ${GA.purple}, 0 3px 0 rgba(0,0,0,0.5)`, animation: "ssPulse 1.5s ease-in-out infinite" }}>{touch ? "SWIPE UP TO ROLL" : "DRAG UP TO ROLL"}</div>
+            {!touch && <div style={{ position: "absolute", left: "50%", top: "-4%", transform: "translate(-50%, 4px)", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600, color: "rgba(244,241,234,0.85)", textShadow: "0 1px 4px #000" }}>or press SPACE · arrows to aim</div>}
+          </div>
+        </div>
+      )}
+
+      {/* pass the phone: nobody can roll until the next player says they have it */}
+      {handoff && phase === "aim" && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "rgba(10,1,32,0.62)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+          <div style={{ width: "100%", maxWidth: 360, borderRadius: 26, padding: "22px 18px 18px", textAlign: "center", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.95), rgba(10,1,32,0.97))", border: `1.5px solid ${GA.goldLight}`, boxShadow: "0 18px 50px rgba(0,0,0,0.6)" }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>PASS THE PHONE</div>
+            <div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1.1, color: GA.goldLight, margin: "6px 0 4px" }}>{me.name}</div>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.8)", marginBottom: 6 }}>It is your turn · Frame {Math.min(s.frame + 1, FRAMES)}</div>
+            <div style={{ fontSize: 13, color: "rgba(244,241,234,0.6)", marginBottom: 14 }}>{seats.map((p, i) => `${p.name} ${cards[i].total}`).join("  ·  ")}</div>
+            <button onClick={() => { armSfx(); setHandoff(false); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>I have the phone</button>
+          </div>
+        </div>
+      )}
+
+      {/* how do you want to play: the first thing anyone sees */}
+      {setup && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, rgba(10,1,32,0.8) 62%)" }}>
+          <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "16px 14px 14px", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.9), rgba(10,1,32,0.96))", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 -10px 40px rgba(0,0,0,0.5)" }}>
+            <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: GA.goldLight }}>Strike</span></div>
+            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(244,241,234,0.72)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {MODES.map((m) => {
+                const on = m.id === mode;
+                return (
+                  <button key={m.id} onClick={() => setMode(m.id)} aria-pressed={on} style={{ flex: "1 1 0", minWidth: 0, cursor: "pointer", padding: "10px 6px 9px", borderRadius: 16, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(76,29,149,0.9))" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                    <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: 14.5, marginTop: 3 }}>{m.name}</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {mode === "cpu" && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.06)" }}>
+                {["Easy", "Medium", "Hard"].map((l, i) => (
+                  <button key={l} onClick={() => setLevel(i)} aria-pressed={level === i} style={{ flex: 1, cursor: "pointer", padding: "8px 0", borderRadius: 10, border: "none", fontFamily: DISPLAY, fontSize: 14, color: level === i ? "#1a0b33" : "#fff", background: level === i ? "#fff" : "transparent" }}>{l}</button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Start</button>
+            <ol style={{ margin: "12px 0 0", padding: "10px 12px 10px 30px", borderRadius: 14, background: "rgba(255,255,255,0.05)", fontSize: 13, fontWeight: 500, lineHeight: 1.6, color: "rgba(244,241,234,0.86)" }}>
+              <li><b style={{ color: GA.goldLight }}>Slide</b> the tyre to pick your spot.</li>
+              <li><b style={{ color: GA.goldLight }}>Swipe up</b> to roll: faster swipe, faster tyre.</li>
+              <li><b style={{ color: GA.goldLight }}>Curve</b> your swipe to hook it.</li>
+            </ol>
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(244,241,234,0.55)", marginTop: 8 }}>{mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
+          </div>
         </div>
       )}
 
       {/* pick your tyre: each one really rolls differently */}
-      {phase === "aim" && !s.done && (
+      {canPlay && !s.done && (
         <div style={{ position: "absolute", bottom: "calc(14px + env(safe-area-inset-bottom))", left: 0, right: 0, zIndex: 10, display: "flex", justifyContent: "center", gap: 8, padding: "0 12px", pointerEvents: "none" }}>
           {TYRES.map((t, i) => {
             const on = i === tyreIx;
@@ -1355,18 +1616,47 @@ export default function Game() {
         <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, rgba(10,1,32,0.8) 100%)" }}>
           <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.82), rgba(10,1,32,0.94))", border: "1px solid rgba(255,255,255,0.14)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>STREET STRIKE · FINAL</div>
-            <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: GA.goldLight }}>{s.total}</div>
+            {seats.length > 1 ? (
+              <>
+                <div style={{ fontFamily: DISPLAY, fontSize: "clamp(30px,9vw,44px)", lineHeight: 1.1, color: GA.goldLight }}>{verdict(seats, cards)}</div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 18, margin: "8px 0 4px" }}>
+                  {seats.map((p, k) => (
+                    <div key={k}><div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1 }}>{cards[k].total}</div><div style={{ fontSize: 12, fontWeight: 600, color: "rgba(244,241,234,0.7)" }}>{p.name}</div></div>
+                  ))}
+                </div>
+              </>
+            ) : <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: GA.goldLight }}>{cards[0].total}</div>}
             <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.78)", marginBottom: 12 }}>
-              {beat ? "New best! Street champion 🏆" : best != null ? `Your best ${best}. ${best - s.total} more to beat it` : "out of 150"}
+              {mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
             </div>
-            <button onClick={restart} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)" }}>Play again</button>
+            <button onClick={() => restart()} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)" }}>Play again</button>
+            <button onClick={() => { restart(); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Change mode</button>
             <Link href="/games" style={{ display: "inline-block", marginTop: 10, color: "#9b93b8", fontSize: 13, textDecoration: "none" }}>← Arena</Link>
           </div>
         </div>
       )}
-      <style>{`@keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
+      <style>{`@keyframes ssSwipe { 0% { transform: translateY(0) scale(1); opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-34vh) scale(0.8); opacity: 0; } } @keyframes ssDash { to { background-position: 0 -20px; } } @keyframes ssPulse { 0%, 100% { transform: translate(-50%, -100%) scale(1); } 50% { transform: translate(-50%, -100%) scale(1.07); } } @keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
     </div>
   );
+}
+
+type Mode = "solo" | "cpu" | "pass";
+interface Seat { name: string; cpu: boolean }
+const MODES: { id: Mode; icon: string; name: string; note: string }[] = [
+  { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best" },
+  { id: "cpu", icon: "🤖", name: "Vs computer", note: "Take turns with the CPU" },
+  { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone" },
+];
+function seatsFor(m: Mode): Seat[] {
+  if (m === "cpu") return [{ name: "You", cpu: false }, { name: "CPU", cpu: true }];
+  if (m === "pass") return [{ name: "Player 1", cpu: false }, { name: "Player 2", cpu: false }];
+  return [{ name: "You", cpu: false }];
+}
+function verdict(seats: Seat[], cards: ScoreState[]) {
+  const top = Math.max(...cards.map((c) => c.total));
+  const who = seats.filter((_, i) => cards[i].total === top);
+  if (who.length > 1) return "It's a draw!";
+  return who[0].name === "You" ? "You win! 🏆" : `${who[0].name} wins!`;
 }
 
 const chip: CSSProperties = {
