@@ -225,6 +225,12 @@ async function competitionRankings() {
   return rankings;
 }
 
+// The competition is over, so its table is worked out once now, at startup,
+// and the first visitor to the leaderboard does not wait for it.
+if (Date.now() >= core.seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]).end * 1000) {
+  setImmediate(() => core.results.get('competition:rankings', { ttlMs: 30 * 60_000, compute: competitionRankings }).catch((e) => console.warn('competition warm-up failed:', e?.message || e)));
+}
+
 core.app.get('/api/competition', async (_, res) => {
   const compEndMs = core.seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]).end * 1000;
   let rankings;
@@ -255,12 +261,16 @@ core.app.get('/api/competition', async (_, res) => {
   // to 0 so the live card hides and only the COMPLETED EVENTS card renders.
   // Without this, an admin force-freeze would put the same comp in both
   // sections of the UI, which reads as a bug to the player.
-  const { data: frozenRow } = await core.supabase
-    .from('competition_winners')
-    .select('id')
-    .eq('id', core.COMPETITION_ID)
-    .limit(1);
-  if (frozenRow && frozenRow.length > 0) weeksLeft = 0;
+  // The only thing this lookup can do is turn weeksLeft into 0. Once the weeks
+  // are over it already is 0, so the database is not asked.
+  if (weeksLeft > 0) {
+    const { data: frozenRow } = await core.supabase
+      .from('competition_winners')
+      .select('id')
+      .eq('id', core.COMPETITION_ID)
+      .limit(1);
+    if (frozenRow && frozenRow.length > 0) weeksLeft = 0;
+  }
 
   res.json({
     weeks: COMPETITION_WEEKS,

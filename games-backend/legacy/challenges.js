@@ -226,6 +226,11 @@ async function aggregateViaPagination(startIso, endIso) {
 // Pre-event visibility window — show the "STARTS IN ..." teaser up to 7
 // days before CHALLENGE_START. Builds anticipation, lets players see what's
 // coming, and bumps Games/Leaderboard engagement ahead of launch.
+// Same for a challenge that has ended: build its table once at startup.
+if (Date.now() / 1000 >= CHALLENGE_END) {
+  setImmediate(() => getChallengePlays().catch((e) => console.warn('challenge warm-up failed:', e?.message || e)));
+}
+
 const CHALLENGE_PREVIEW_SECONDS = 7 * 24 * 60 * 60;
 
 core.app.get('/api/challenge', async (req, res) => {
