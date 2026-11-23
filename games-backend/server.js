@@ -169,7 +169,9 @@ app.use((req, res, next) => {
   // Public live-match SSE feed · any origin may subscribe (partner sites embed
   // it). The stream is read-only, non-sensitive match data, so it bypasses the
   // origin allowlist with permissive CORS instead of a 403.
-  if (req.path.startsWith('/api/arena/live/')) {
+  // The Rhythm Rush song list is public too: a fixed list of song ids, read by
+  // the game on any deployment (including preview builds) before it offers them.
+  if (req.path.startsWith('/api/arena/live/') || req.path === '/api/rhythm/songs') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Vary', 'Origin');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
