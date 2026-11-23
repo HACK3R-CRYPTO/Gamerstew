@@ -1240,14 +1240,6 @@ async function sealCompletedSeasons() {
   }
 }
 
-// ─── Validation ─────────────────────────────────────────────────────────────
-function validateScore({ score, gameTime, game }) {
-  if (!VALID_GAMES.includes(game)) return { valid: false, reason: 'Unknown game' };
-  if (typeof score !== 'number' || score < 0 || score > 1_000_000) return { valid: false, reason: 'Score out of range' };
-  if (typeof gameTime !== 'number' || gameTime < 5000) return { valid: false, reason: 'Game time too short' };
-  return { valid: true };
-}
-
 // ─── POST /api/start-session ───────────────────────────────────────────────
 // SECURITY (2026-07-17 audit): this had NO requireSecret, so any script could
 // forge an Origin header and ask the VALIDATOR KEY to sign a payload for any
@@ -1321,261 +1313,45 @@ platform.registerScoreRoutes(app, {
 });
 
 // ─── POST /api/submit-score ─────────────────────────────────────────────────
-app.post('/api/submit-score', requireSecret, gameSubmitLimiter, async (req, res) => {
-  const { playerAddress, scoreData, session } = req.body;
-
-  const isInternalCall = req.headers['x-internal-secret'] === INTERNAL_SECRET && INTERNAL_SECRET;
-
-  if (!playerAddress || !scoreData) {
-    return res.status(400).json({ error: 'Missing playerAddress or scoreData' });
-  }
-
-  // 1. Verify "Silent" Session Integrity (skipped for trusted server-action calls)
-  //
-  // ⚠️ AUDIT NOTE (2026-07-17): this branch is UNREACHABLE. `requireSecret`
-  // above already rejects every request without the secret, so isInternalCall
-  // is always true and the speed-hack detection below has never actually run.
-  // Do not read this block as active protection. The real anti-cheat is the
-  // on-chain path: start-game → sign-score → tx → verifyScoreTx (receipt must
-  // target GamePass), which is what genuinely gates scores today.
-  //
-  // Left in place, not deleted, because reviving speed-hack detection should be
-  // a deliberate decision (it would need to move ABOVE requireSecret, or the
-  // session would need threading through the server action).
-  if (!isInternalCall) {
-    if (!session) return res.status(400).json({ error: 'Missing session token' });
-    try {
-      const { token, timestamp, nonce, playerAddress: tokenPlayer } = session;
-
-      if (tokenPlayer.toLowerCase() !== playerAddress.toLowerCase()) {
-        return res.status(403).json({ error: 'Session player mismatch' });
-      }
-
-      const payload = `${playerAddress.toLowerCase()}:${timestamp}:${nonce}`;
-      const recoveredAddress = ethers.verifyMessage(payload, token);
-
-      if (recoveredAddress.toLowerCase() !== validator.address.toLowerCase()) {
-        return res.status(403).json({ error: 'Invalid session token' });
-      }
-
-      const actualElapsed = Date.now() - timestamp;
-      const reportedTime = scoreData.gameTime || 0;
-
-      if (actualElapsed < (reportedTime - 2000)) {
-        console.warn(`🚨 Anti-cheat: Speed hack detected from ${playerAddress}. Reported ${reportedTime}ms, but only ${actualElapsed}ms elapsed.`);
-        return res.status(403).json({ error: 'Cheating detected: Speed hack' });
-      }
-
-      if (actualElapsed > 11 * 60 * 1000) {
-        return res.status(403).json({ error: 'Session expired' });
-      }
-    } catch (e) {
-      return res.status(400).json({ error: 'Session verification failed' });
-    }
-  }
-
-  const check = validateScore(scoreData);
-  if (!check.valid) {
-    return res.status(400).json({ error: 'Validation failed', reason: check.reason });
-  }
-
-  const { game, score, gameTime, wagered, wagerId, fullCombo, allPerfect } = scoreData;
-  const season = currentSeasonNumber();
-
-  // Track unique user + update streak
-  const streak = await registerUser(playerAddress);
-
-  // Resolve wager on-chain if applicable
-  let wagerTxHash = null;
-  if (wagerId) {
-    wagerTxHash = await resolveOnChain(wagerId, score);
-  }
-
-  // On-chain tx is now submitted by the player via recordScoreWithBackendSig.
-  // Frontend passes the resulting txHash here after the wallet confirms.
-  const scoreTxHash = scoreData.txHash || null;
-  const txHash = wagerTxHash || scoreTxHash;
-
-  // ═══ Defense in depth: REQUIRE an on-chain proof ═══
-  // Every score must reference a successful on-chain write — either a wager
-  // resolution (wagerTxHash) or the player's recordScoreWithBackendSig tx
-  // (scoreTxHash). Without this guard, a compromised INTERNAL_SECRET could be
-  // used to inject scores directly into the DB with no on-chain counterpart.
-  // With it, the Supabase state can only ever be a strict subset of what
-  // happened on-chain — no "ghost scores" like the 4268 entry from earlier.
-  const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
-  if (!txHash || !TX_HASH_RE.test(txHash)) {
-    return res.status(400).json({
-      error: 'Missing on-chain proof',
-      reason: 'txHash required — every score must reference a GamePass contract tx',
-    });
-  }
-
-  // ═══ Verify the on-chain proof actually landed ═══
-  // Format-only checks let "ghost ranks" through · a tx hash with the right
-  // shape but no successful receipt would still credit XP and activity. Now
-  // we fetch the receipt, require status===1, and confirm a ScoreRecorded
-  // log for THIS player + game exists. Only applied to player-submitted
-  // score txs (scoreTxHash); wager-resolution txs (wagerTxHash) come from
-  // resolveOnChain which already awaits the receipt before returning.
-  // Gasless saves skip this: the tx was submitted by the BACKEND (score already
-  // validated in sign-score), so we trust its hash instead of waiting on a Celo
-  // mine to re-verify it. Player-submitted (legacy) txs are still fully verified.
-  if (scoreTxHash && !_isGaslessTx(scoreTxHash)) {
-    const gameTypeNum = GAME_TYPE[game];
-    if (gameTypeNum === undefined) {
-      return res.status(400).json({ error: 'Unknown game · cannot verify on-chain proof' });
-    }
-    const verified = await verifyScoreTx(scoreTxHash, playerAddress, gameTypeNum);
-    if (!verified.ok) {
-      console.warn(`🚨 submit-score rejected: ${playerAddress.slice(0, 10)}.. game=${game} tx=${scoreTxHash.slice(0, 10)}.. · ${verified.reason}`);
-      return res.status(400).json({
-        error: 'On-chain proof verification failed',
-        reason: verified.reason,
-      });
-    }
-  }
-
-  // Read previous best for this game IN THE CURRENT SEASON. PBs are a
-  // per-season concept — saves are already scoped to season_number, so the
-  // comparison should match. An all-time query would let last season's high
-  // score lock the player out of the "🏆 New PB!" celebration + XP_NEW_PB
-  // bonus + opt-in trigger forever, which is the wrong reward shape.
-  const lower = playerAddress.toLowerCase();
-  const { data: prevRows } = await supabase
-    .from('scores')
-    .select('score')
-    .eq('wallet_address', lower)
-    .eq('game', game)
-    .eq('season_number', season)
-    .order('score', { ascending: false })
-    .limit(1);
-  const prevBest = (prevRows && prevRows.length > 0) ? (prevRows[0].score || 0) : 0;
-
-  // Save actual game score to Supabase (per-season, not all-time best)
-  await saveScore({
-    wallet_address: lower,
-    game,
-    score,
-    game_time: gameTime,
-    season_number: season,
-    wagered: wagered || null,
-    wager_id: wagerId || null,
-    tx_hash: txHash,
-  });
-
-  // Bust caches so this player's rank is computed against the score they
-  // just saved, not a 30s-stale leaderboard. Without this, post-submit
-  // rank lookups returned -1 → 0 → the rank tile rendered empty on the
-  // results screen, and global stats lagged by a full TTL window.
-  cacheInvalidatePrefix(`lb:${game}`);
-  cacheInvalidatePrefix('act:');
-  memCache.delete('stats:global');
-  memCache.delete('seasons:global');
-
-  // Award XP — base for playing + bonuses for win and new personal best
-  const winThreshold = WIN_THRESHOLD[game] || Infinity;
-  const isWin    = score >= winThreshold;
-  const isNewPb  = score > prevBest;
-  const xpEarned = XP_PLAYED + (isWin ? XP_WIN : 0) + (isNewPb ? XP_NEW_PB : 0);
-  const xpResult = await awardXp(lower, xpEarned, [
-    'played',
-    isWin   && 'win',
-    isNewPb && 'new PB',
-  ].filter(Boolean).join(' + '));
-
-  // Update today's mission progress for this player
-  try {
-    await updateMissionProgress(lower, { game, score, isWin, isNewPb });
-  } catch (e) {
-    console.warn('mission progress update failed:', e.message);
-  }
-
-  // Wager resolved — notify the player of their outcome. Only fires when the
-  // on-chain resolveWager succeeded (we have a tx hash) so we don't ping on
-  // pending or failed resolutions. Won path leads with the wagered amount;
-  // lost path is gentle. Per-wager category bypasses same-day dedup so a
-  // player who runs multiple wagers gets pinged for each.
-  if (wagerId && wagerTxHash) {
-    const gameLabel = GAME_LABEL[game];
-    const payload = isWin
-      ? push.wagerWonNotification(wagered, gameLabel)
-      : push.wagerLostNotification(gameLabel);
-    push.sendToWallet(supabase, lower, `wager_${wagerId}`, payload).catch(() => {});
-  }
-
-  // Check + unlock any new achievements for this player. Rhythm-specific skill
-  // flags (fullCombo, allPerfect) come from the frontend and unlock rhythm_fc /
-  // rhythm_ap respectively. The backend trusts the frontend for these because
-  // the score itself is already bound on-chain via the EIP-712 voucher — a
-  // lying client can't claim FC without also providing a matching tx receipt.
-  let newAchievements = [];
-  try {
-    newAchievements = await checkAndUnlockAchievements(lower, {
-      game, score, isWin, isNewPb,
-      fullCombo:  !!fullCombo,
-      allPerfect: !!allPerfect,
-    });
-  } catch (e) {
-    console.warn('achievement check failed:', e.message);
-  }
-
-  // Rank is read from the subgraph — single source of truth for on-chain
-  // scores. The on-chain ScoreRecorded event is what the subgraph indexes,
-  // and we already require an on-chain proof above, so by the time we hit
-  // here the player's score is canonical.
-  let rank = 0;
-  try {
-    const seasonStart = SEASON_EPOCH + (season - 1) * SEASON_DAYS * 86400;
-    const gameTypeInt = GAME_TYPE[game];
-    rank = await subgraph.seasonRank(lower, score, gameTypeInt, seasonStart);
-
-    // Rank change notification — only fires if submitter just landed in
-    // top-3 (the dramatic moment). We simulate the after-state since the
-    // subgraph hasn't indexed the new tx yet.
-    if (rank > 0 && rank <= 3) {
-      try {
-        const before = await subgraph.leaderboard(gameTypeInt, seasonStart, 50);
-        const without = before.filter(e => e.wallet_address !== lower);
-        const after = [...without, {
-          wallet_address: lower,
-          score,
-          username: null,
-          created_at: new Date().toISOString(),
-          tx_hash: txHash,
-        }].sort((a, b) => b.score - a.score);
-        // Fire-and-forget; don't block the response on notification delivery
-        notifyRankDisplacement(game, lower, before, after).catch(() => {});
-      } catch (_) { /* best-effort */ }
-    }
-  } catch (e) {
-    console.warn('rank lookup failed:', e?.message || e);
-  }
-
-  // Achievement notifications — one per new unlock. Fires inline since the
-  // unlock list is right here. Players who are subscribed to push get an
-  // immediate ding when they earn a trophy.
-  if (newAchievements && newAchievements.length > 0) {
-    for (const a of newAchievements) {
-      const payload = push.achievementNotification(a.name || a.id, a.icon);
-      // Per-day dedup category includes the achievement id so multiple
-      // unlocks in one day each fire (rare but possible).
-      push.sendToWallet(supabase, lower, `achievement_${a.id || a.name}`, payload).catch(() => {});
-    }
-  }
-
-  console.log(`✅ [${game}] ${lower.slice(0, 8)}... → ${score} pts (rank #${rank}) +${xpEarned} XP ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
-
-  res.json({
-    success:   true,
-    score, rank, txHash, streak, xpEarned,
-    xp:        xpResult?.xp,
-    level:     xpResult?.level,
-    leveledUp: !!xpResult?.leveledUp,
-    isNewPb,
-    prevBest,
-    newAchievements,
-  });
+// Saves a score once it is on-chain, then hands out XP, missions, achievements,
+// rank and notifications. The logic is src/modules/scores/submit.ts; everything
+// below is a plain pass-through to the helpers in this file.
+platform.registerSubmitRoute(app, {
+  requireSecret,
+  limiter: gameSubmitLimiter,
+  internalSecret: () => INTERNAL_SECRET,
+  gameTypes: GAME_TYPE,
+  gameLabels: GAME_LABEL,
+  winThreshold: WIN_THRESHOLD,
+  xp: { played: XP_PLAYED, win: XP_WIN, newPb: XP_NEW_PB },
+  currentSeason: () => currentSeasonNumber(),
+  seasonStartSec: (season) => SEASON_EPOCH + (season - 1) * SEASON_DAYS * 86400,
+  registerUser: (wallet) => registerUser(wallet),
+  resolveWager: (wagerId, score) => resolveOnChain(wagerId, score),
+  isGaslessTx: (hash) => _isGaslessTx(hash),
+  verifyScoreTx: (hash, player, gameType) => verifyScoreTx(hash, player, gameType),
+  bestThisSeason: platform.supabaseBestThisSeason(supabase),
+  saveScore: (row) => saveScore(row),
+  invalidateCaches: (game) => {
+    cacheInvalidatePrefix(`lb:${game}`);
+    cacheInvalidatePrefix('act:');
+    memCache.delete('stats:global');
+    memCache.delete('seasons:global');
+  },
+  awardXp: (wallet, amount, reason) => awardXp(wallet, amount, reason),
+  updateMissions: (wallet, run) => updateMissionProgress(wallet, run),
+  unlockAchievements: (wallet, run) => checkAndUnlockAchievements(wallet, run),
+  seasonRank: (wallet, score, gameType, seasonStart) => subgraph.seasonRank(wallet, score, gameType, seasonStart),
+  leaderboard: (gameType, seasonStart, limit) => subgraph.leaderboard(gameType, seasonStart, limit),
+  notifyRankDisplacement: (game, wallet, before, after) => notifyRankDisplacement(game, wallet, before, after),
+  push: {
+    wagerWon: (wagered, label) => push.wagerWonNotification(wagered, label),
+    wagerLost: (label) => push.wagerLostNotification(label),
+    achievement: (name, icon) => push.achievementNotification(name, icon),
+    send: (wallet, category, payload) => push.sendToWallet(supabase, wallet, category, payload),
+  },
+  recoverSigner: (payload, signature) => ethers.verifyMessage(payload, signature),
+  validatorAddress: () => validator.address,
 });
 
 // ─── GET /api/leaderboard?game=rhythm|simon ─────────────────────────────────

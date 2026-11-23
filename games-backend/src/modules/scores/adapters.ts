@@ -69,3 +69,11 @@ export function ethersChain(parts: ChainParts): Chain {
     signVoucher: (player, gameType, score, nonce) => parts.validator()!.signTypedData(parts.domain, parts.types, { player, gameType, score: BigInt(score), nonce }),
   };
 }
+
+/** The player's best score for one game in one season; 0 if they have none. */
+export function supabaseBestThisSeason(db: SupabaseLike) {
+  return async (wallet: string, game: string, season: number): Promise<number> => {
+    const { data } = await db.from('scores').select('score').eq('wallet_address', wallet).eq('game', game).eq('season_number', season).order('score', { ascending: false }).limit(1);
+    return data && data.length > 0 ? data[0].score || 0 : 0;
+  };
+}
