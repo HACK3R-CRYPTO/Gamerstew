@@ -9,7 +9,8 @@
     "start": "node server.js",
     "dev": "npm run build && node --watch server.js",
     "pretest": "npm run build",
-    "test": "node --test lib/*.test.js \"dist/**/*.test.js\""
+    "test": "node --test lib/*.test.js \"dist/**/*.test.js\"",
+    "smoke": "npm run build && node scripts/smoke/run.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
