@@ -311,7 +311,7 @@ async function sendSeasonEndingPings() {
   }
 }
 
-setInterval(sendSeasonEndingPings, 15 * 60 * 1000);
+core.jobs.every('sendSeasonEndingPings', 15 * 60 * 1000, sendSeasonEndingPings);
 },
 
 ];

@@ -12,3 +12,5 @@ export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters
 export { registerSeasonsRoutes } from './modules/seasons/routes';
 export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/adapters';
 export { catchAsync, hardenApp, installErrorHandlers, fetchWithTimeout } from './platform/http';
+export { guardWalletParams, guardWalletFields, isWallet } from './platform/validate';
+export { createJobs } from './platform/jobs';

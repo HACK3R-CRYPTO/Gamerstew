@@ -204,9 +204,9 @@ async function sendStreakWarnings() {
 }
 
 // Run every hour. Cheap query; subscriptions are sparse early on.
-setInterval(sendStreakWarnings, 60 * 60 * 1000);
+core.jobs.every('sendStreakWarnings', 60 * 60 * 1000, sendStreakWarnings);
 // Cup deadline cron — every 15 min so the 1-hour-before-end window is always caught
-setInterval(core.sendCupDeadlineWarnings, 15 * 60 * 1000);
+core.jobs.every('sendCupDeadlineWarnings', 15 * 60 * 1000, core.sendCupDeadlineWarnings);
 
 // ─── Close-rank cron — predictive "you're about to be passed" / "1 point
 //     away from #N" pings. Fires hourly. Scans top-5 of each game; for any
@@ -256,7 +256,7 @@ async function sendCloseRankPings() {
   }
 }
 
-setInterval(sendCloseRankPings, 60 * 60 * 1000);
+core.jobs.every('sendCloseRankPings', 60 * 60 * 1000, sendCloseRankPings);
 },
 
 // ── Mission-expiring cron ──
@@ -317,7 +317,7 @@ async function sendMissionExpiringPings() {
   }
 }
 
-setInterval(sendMissionExpiringPings, 15 * 60 * 1000);
+core.jobs.every('sendMissionExpiringPings', 15 * 60 * 1000, sendMissionExpiringPings);
 
 // ─── Daily G$ claim reminder ─────────────────────────────────────────────────
 // Fires every hour. In the window 9:00-10:00 WAT (= 08:00-09:00 UTC), sends
@@ -354,7 +354,7 @@ async function sendDailyClaimPings() {
     console.warn('daily claim ping cron failed:', e?.message || e);
   }
 }
-setInterval(sendDailyClaimPings, 60 * 60 * 1000);
+core.jobs.every('sendDailyClaimPings', 60 * 60 * 1000, sendDailyClaimPings);
 },
 
 // ── Re-engagement cron — lapsed-user pings ──
@@ -405,15 +405,15 @@ async function sendReengagementPings() {
 
 // Run on startup + every 6 hours so all four lapse buckets get covered each day.
 sendReengagementPings();
-setInterval(sendReengagementPings, 6 * 60 * 60 * 1000);
+core.jobs.every('sendReengagementPings', 6 * 60 * 60 * 1000, sendReengagementPings);
 
 // Seal seasons on startup and every hour
 core.sealCompletedSeasons();
-setInterval(core.sealCompletedSeasons, 60 * 60 * 1000);
+core.jobs.every('sealCompletedSeasons', 60 * 60 * 1000, core.sealCompletedSeasons);
 
 // Index chain scores on startup then every 5 min
 core.indexOnChainScores();
-setInterval(core.indexOnChainScores, 5 * 60 * 1000);
+core.jobs.every('indexOnChainScores', 5 * 60 * 1000, core.indexOnChainScores);
 
 // Duel Rooms (P2) · create/join happen on-chain from the player's own wallet;
 // this module mirrors rooms for the hub and lets the validator resolve payouts.
@@ -423,7 +423,7 @@ require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supaba
 core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
-core.app.get('/internal/metrics', core.requireSecret, (_req, res) => res.json({ uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot() }));
+core.app.get('/internal/metrics', core.requireSecret, (_req, res) => res.json({ uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot(), jobs: core.jobs.status() }));
 
 // Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
 require('../lib/sprint').registerSprintRoutes(core.app);
@@ -453,6 +453,7 @@ core.lifecycle = core.platform.installLifecycle(server, {
   // Live-match spectators hold a stream open for the whole match. End those
   // streams when a redeploy starts, or the shutdown would wait on them.
   beforeClose: () => {
+    core.jobs.stopAll(); // no new job run starts once shutdown has begun
     for (const h of core.liveMatchHub.values()) for (const res of h.clients) { try { res.end(); } catch { /* already gone */ } }
   },
 });

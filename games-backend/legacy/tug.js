@@ -564,7 +564,7 @@ async function sendTugNotifications() {
     console.warn('tug notification cron failed:', e?.message || e);
   }
 }
-setInterval(sendTugNotifications, 60 * 60 * 1000);
+core.jobs.every('sendTugNotifications', 60 * 60 * 1000, sendTugNotifications);
 },
 
 ];

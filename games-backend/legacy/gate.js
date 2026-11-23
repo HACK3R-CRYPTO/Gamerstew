@@ -30,6 +30,8 @@ const allowedOrigins = core.config.allowedOrigins;
 // can verify its HMAC signature over them (JSON.parse + re-stringify would not
 // byte-match what Vatar signed). Negligible cost for every other route.
 core.app.use(core.express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+// A body or query field named like a wallet must be a wallet, before any route sees it.
+core.app.use(core.platform.guardWalletFields());
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
 // Three buckets, each keyed appropriately:

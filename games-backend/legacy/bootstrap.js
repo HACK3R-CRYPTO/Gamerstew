@@ -67,6 +67,10 @@ app.use(metrics.middleware);
 platform.catchAsync(app);
 // Request ids, security headers, and /healthz (answers before the origin gate).
 platform.hardenApp(app, { isStopping: () => !!core.lifecycle && core.lifecycle.isStopping() });
+// Any route with :address or :wallet in its path refuses a value that is not a wallet.
+platform.guardWalletParams(app);
+// Timed jobs: one run at a time, failures logged by name, status in /internal/metrics.
+core.jobs = platform.createJobs();
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads X-Forwarded-For correctly
 app.set('trust proxy', 1);

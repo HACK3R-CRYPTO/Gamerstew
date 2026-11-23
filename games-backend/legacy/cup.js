@@ -433,7 +433,7 @@ async function sendCupStartingPings() {
   }
 }
 
-setInterval(sendCupStartingPings, 15 * 60 * 1000);
+core.jobs.every('sendCupStartingPings', 15 * 60 * 1000, sendCupStartingPings);
 },
 
 ];

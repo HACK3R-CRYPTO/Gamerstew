@@ -338,7 +338,7 @@ async function sendIdentityExpiryWarnings() {
     console.warn('identity expiry cron failed:', e?.message || e);
   }
 }
-setInterval(sendIdentityExpiryWarnings, 60 * 60 * 1000);
+core.jobs.every('sendIdentityExpiryWarnings', 60 * 60 * 1000, sendIdentityExpiryWarnings);
 },
 
 ];
