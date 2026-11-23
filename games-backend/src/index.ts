@@ -7,3 +7,5 @@ export { createMetrics } from './platform/metrics';
 export { registerStrikeRoutes } from './modules/strike/routes';
 export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/routes';
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';
+export { registerBoardRoutes } from './modules/board/routes';
+export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';

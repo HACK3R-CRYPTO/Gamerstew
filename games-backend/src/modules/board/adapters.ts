@@ -1,0 +1,24 @@
+// The real database and subgraph, behind the board ports.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface SupabaseLike { from(table: string): any }
+
+/** Play streaks for a page of wallets, in one read. */
+export function supabaseStreaks(db: SupabaseLike) {
+  return async (wallets: string[]): Promise<Map<string, number>> => {
+    const { data } = await db.from('users').select('wallet_address, play_streak').in('wallet_address', wallets);
+    return new Map(((data || []) as { wallet_address: string; play_streak: number | null }[]).map((r) => [r.wallet_address.toLowerCase(), r.play_streak || 0]));
+  };
+}
+
+/** Wallets with a score since `sinceSec`, from the subgraph (first 500 score rows). */
+export function subgraphSeasonPlayers(gql: (query: string, vars: Record<string, unknown>) => Promise<{ scores?: { player: { id: string } }[] }>) {
+  return async (sinceSec: number): Promise<string[]> => {
+    const data = await gql(
+      `query SU($s: BigInt!) {
+        scores(first: 500, where: { blockTimestamp_gte: $s }) { player { id } }
+      }`,
+      { s: sinceSec.toString() },
+    );
+    return (data.scores || []).map((r) => r.player.id);
+  };
+}

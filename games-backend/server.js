@@ -1354,174 +1354,24 @@ platform.registerSubmitRoute(app, {
   validatorAddress: () => validator.address,
 });
 
-// ─── GET /api/leaderboard?game=rhythm|simon ─────────────────────────────────
-// Reads from the Goldsky subgraph (on-chain truth), not Supabase. Supabase
-// is reserved for off-chain state only — this endpoint is purely a view of
-// indexed score events.
-app.get('/api/leaderboard', async (req, res) => {
-  const game = req.query.game;
-  if (!VALID_GAMES.includes(game)) {
-    return res.status(400).json({ error: 'game must be rhythm or simon' });
-  }
-  const limit = Math.min(50, parseInt(req.query.limit) || 20);
-  const offset = Math.max(0, parseInt(req.query.offset) || 0);
-  const page = offset > 0 ? null : Math.max(1, parseInt(req.query.page) || 1);
-  const start = offset > 0 ? offset : (page - 1) * limit;
-
-  // Pull current-season leaderboard from the subgraph
-  const seasonStart = SEASON_EPOCH + (currentSeasonNumber() - 1) * SEASON_DAYS * 86400;
-  const gameTypeInt = GAME_TYPE[game];
-  let all = [];
-  try {
-    all = await subgraph.leaderboard(gameTypeInt, seasonStart); // no cap · every player who scored this season
-  } catch (e) {
-    console.warn('subgraph leaderboard failed:', e?.message || e);
-  }
-  const total = all.length;
-  const slice = all.slice(start, start + limit);
-
-  // Streaks are off-chain (Supabase). Username comes from the subgraph row.
-  // Single batch query keeps Supabase egress minimal — one tiny read per
-  // page instead of one per row.
-  const wallets = slice.map(e => e.wallet_address.toLowerCase());
-  let streakMap = new Map();
-  if (wallets.length > 0) {
-    const { data: streakRows } = await supabase
-      .from('users')
-      .select('wallet_address, play_streak')
-      .in('wallet_address', wallets);
-    streakMap = new Map((streakRows || []).map(r => [r.wallet_address.toLowerCase(), r.play_streak || 0]));
-  }
-
-  const enriched = slice.map(e => ({
-    player: e.wallet_address,
-    score: e.score,
-    timestamp: Math.floor(new Date(e.created_at).getTime() / 1000),
-    tx_hash: e.tx_hash,
-    username: e.username,
-    streak: streakMap.get(e.wallet_address.toLowerCase()) || 0,
-  }));
-  const listTotal = Math.max(0, total - (offset > 0 ? offset : 0));
-  res.json({ leaderboard: enriched, total, page, limit, pages: Math.ceil(listTotal / limit) });
-});
-
-// ─── GET /api/usernames?wallets=0xa,0xb,... ─────────────────────────────────
-// Batch lookup of on-chain usernames (from the GamePass NFT contract).
-// Surfaces names to other services — the Season 1 Solo Ladder reads from
-// the Supabase ledger, which has no username column, so it can't enrich
-// rows without this endpoint. The resolveUsername LRU caches results so
-// repeat callers don't pay an RPC per wallet.
-app.get('/api/usernames', async (req, res) => {
-  const raw = String(req.query.wallets || '').trim();
-  if (!raw) return res.json({ usernames: {} });
-  const wallets = [...new Set(raw.split(',').map(s => s.trim().toLowerCase()).filter(s => /^0x[a-f0-9]{40}$/.test(s)))].slice(0, 500);
-  const entries = await Promise.all(wallets.map(async (w) => {
-    const name = await resolveUsername(w).catch(() => null);
-    return [w, name || null];
-  }));
-  res.json({ usernames: Object.fromEntries(entries) });
-});
-
-// ─── GET /api/activity ──────────────────────────────────────────────────────
-// Recent score events from the subgraph. Profile pages pass ?player=0x...
-// to scope to a single wallet; the global feed shows the last 10 plays.
-app.get('/api/activity', async (req, res) => {
-  const player = typeof req.query.player === 'string' ? req.query.player : null;
-  const limit = player ? 30 : 10;
-  let entries = [];
-  try {
-    entries = await subgraph.recentActivity(limit, player);
-  } catch (e) {
-    console.warn('subgraph activity failed:', e?.message || e);
-  }
-  const enriched = entries.map(e => ({
-    player: e.wallet_address,
-    game: e.game,
-    score: e.score,
-    tx_hash: e.tx_hash,
-    timestamp: Math.floor(new Date(e.created_at).getTime() / 1000),
-    username: e.username,
-  }));
-  res.json({ activity: enriched });
-});
-
-// ─── GET /api/stats ─────────────────────────────────────────────────────────
-// All aggregates come from the subgraph's GlobalStat row in one query —
-// no more pulling thousands of activity rows just to count them.
-app.get('/api/stats', async (_, res) => {
-  const cached = cacheGet('stats:global');
-  if (cached) return res.json(cached);
-  const season = currentSeasonNumber();
-  const { start, end } = seasonBounds(season);
-
-  let g = null;
-  try {
-    g = await subgraph.globalStats();
-  } catch (e) {
-    console.warn('subgraph stats failed:', e?.message || e);
-  }
-
-  const totalUsers     = g ? Number(g.totalPlayers)      : 0;
-  const totalGames     = g ? Number(g.totalScores)       : 0;
-  const rhythmPlayers  = g ? Number(g.totalRhythmPlays)  : 0;
-  const simonPlayers   = g ? Number(g.totalSimonPlays)   : 0;
-  const totalWagered   = g ? Number(BigInt(g.totalWageredG || '0') / 10n ** 16n) / 100 : 0;
-
-  // UBI impact — the cumulative G$ GameArena has routed to GoodCollective
-  // through habitat unlocks. Surfaced as the "community impact" number on
-  // the Games page so players see what their donations have built.
-  // Both fields stay as raw 18-decimal strings; the frontend formats them.
-  const totalUbiDonatedG  = g ? (g.totalUbiDonatedG  || '0') : '0';
-  const totalTreasuryG    = g ? (g.totalTreasuryG    || '0') : '0';
-  const totalHabitatUnlocks = g ? Number(g.totalHabitatUnlocks) : 0;
-
-  // Season-active users — one tiny subgraph query for current season scores
-  let seasonUsers = 0;
-  try {
-    const seasonScores = await subgraph.gql(
-      `query SU($s: BigInt!) {
-        scores(first: 500, where: { blockTimestamp_gte: $s }) { player { id } }
-      }`,
-      { s: start.toString() },
-    );
-    seasonUsers = new Set((seasonScores.scores || []).map(r => r.player.id)).size;
-  } catch (_) { }
-
-  // Top scores from subgraph (also one query each)
-  const seasonStartUnix = start;
-  const [topR, topS] = await Promise.all([
-    subgraph.leaderboard(0, seasonStartUnix, 1).catch(() => []),
-    subgraph.leaderboard(1, seasonStartUnix, 1).catch(() => []),
-  ]);
-  const leaderboardR = topR.length ? topR : [{ score: 0 }];
-  const leaderboardS = topS.length ? topS : [{ score: 0 }];
-
-  // Prize pot still on chain
-  let estimatedPrizePot = '0.00';
-  try {
-    const bal = await getTreasuryBalance();
-    estimatedPrizePot = (parseFloat(bal) * 0.10).toFixed(2);
-  } catch (_) { }
-
-  const payload = {
-    totalUsers,
-    seasonUsers,
-    totalGames: totalGames || 0,
-    rhythmPlayers: rhythmPlayers || 0,
-    simonPlayers: simonPlayers || 0,
-    topRhythm: leaderboardR[0]?.score ?? 0,
-    topSimon: leaderboardS[0]?.score ?? 0,
-    totalWagered: totalWagered.toFixed(2),
-    currentSeason: season,
-    seasonEndsAt: end,
-    estimatedPrizePot,
-    // UBI impact (raw 18-decimal G$ strings; frontend formats)
-    totalUbiDonatedG,
-    totalTreasuryG,
-    totalHabitatUnlocks,
-  };
-  cacheSet('stats:global', payload, MEM_TTL.global);
-  res.json(payload);
+// ─── GET /api/leaderboard · /api/usernames · /api/activity · /api/stats ──────
+// The public boards. Read-only views of the subgraph (on-chain truth) plus
+// streaks from the database. Logic: src/modules/board/service.ts.
+platform.registerBoardRoutes(app, {
+  gameTypes: GAME_TYPE,
+  currentSeason: () => currentSeasonNumber(),
+  seasonBounds: (season) => seasonBounds(season),
+  subgraph: {
+    leaderboard: (gameType, seasonStart, limit) => subgraph.leaderboard(gameType, seasonStart, limit),
+    recentActivity: (limit, player) => subgraph.recentActivity(limit, player),
+    globalStats: () => subgraph.globalStats(),
+    seasonPlayerIds: platform.subgraphSeasonPlayers((query, vars) => subgraph.gql(query, vars)),
+  },
+  streaks: platform.supabaseStreaks(supabase),
+  resolveUsername: (wallet) => resolveUsername(wallet),
+  treasuryBalance: () => getTreasuryBalance(),
+  cache: { get: (key) => cacheGet(key), set: (key, value, ttlMs) => cacheSet(key, value, ttlMs) },
+  statsTtlMs: MEM_TTL.global,
 });
 
 // ─── GET /api/seasons ───────────────────────────────────────────────────────
