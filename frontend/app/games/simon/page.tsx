@@ -65,6 +65,31 @@ const MIN_DELAY  = 350;   // ms — floor on gap
 const BASE_SCORE = 10;    // points per cleared round
 const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
 
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been and the only mode that is signed
+// and submitted. The others change the rules for fun and never leave the
+// device: no gas check, no session ticket, no score signing.
+type ModeId = "ranked" | "practice" | "lightning" | "reverse";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "lightning", name: "Lightning", tag: "FREE", blurb: "The sequence plays at top speed from round 1.", color: "#f43f5e" },
+  { id: "reverse", name: "Reverse", tag: "FREE", blurb: "Watch it forwards. Tap it back BACKWARDS.", color: "#c084fc" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+
+// A challenge from a friend arrives as a link: /games/simon?beat=9&mode=ranked&by=Tunde
+type Challenge = { rounds: number; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const rounds = Number(q.get("beat"));
+  if (!Number.isFinite(rounds) || rounds < 1 || rounds > 500) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { rounds: Math.floor(rounds), mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
+
 // ─── Hard time limit ─────────────────────────────────────────────────────────
 // 10 minutes per run. Visible countdown in the HUD, game ends cleanly at 0
 // so the score always submits inside the backend session window (11 min TTL).
@@ -443,20 +468,29 @@ export default function SimonGamePage() {
   // dev only: lets an automated test play (read the pattern, tap a colour)
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
-    (window as unknown as { __simon?: unknown }).__simon = { pattern: () => [...patternRef.current], showing: isShowingSequence, phase, tap: handleButtonClick, tapped: () => userPatternRef.current.length };
+    (window as unknown as { __simon?: unknown }).__simon = { pattern: () => [...patternRef.current], showing: isShowingSequence, phase, tap: handleButtonClick, tapped: () => userPatternRef.current.length, setMode, runMode: () => runModeRef.current };
   });
+
+  // ─── Mode + an incoming friend challenge ─────────────────────────────────────
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  // The mode a run is PLAYED with, pinned when it starts. The rules and whether
+  // it is submitted read this, never the live lobby choice.
+  const runModeRef = useRef<ModeId>("ranked");
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); setMode(c.mode); } }, []);
 
   // ─── Personal best (device only, display only) ──────────────────────────────
   const bestRef = useRef<SimonBest | null>(null);
   const [bestRounds, setBestRounds] = useState<number | null>(null);
   const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
   const runCountedRef = useRef(false);
-  useEffect(() => { const b = readSimonBest(); bestRef.current = b; setBestRounds(b ? b.rounds : null); }, []);
+  useEffect(() => { modeRef.current = mode; const b = readSimonBest(mode); bestRef.current = b; setBestRounds(b ? b.rounds : null); }, [mode]);
   useEffect(() => {
     // re-armed when play starts (not on PLAY AGAIN, when the counters have just been zeroed)
     if (phase === "showing" || phase === "playing" || phase === "countdown") {
       runCountedRef.current = false;
-      if (phase === "countdown") { setBestResult(null); const h = readHeadStart(); headStartRef.current = h; setHeadStart(h); }
+      if (phase === "countdown") { setBestResult(null); const h = runModeRef.current === "lightning" ? 20 : readHeadStart(); headStartRef.current = h; setHeadStart(h); }
       return;
     }
     if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
@@ -465,12 +499,12 @@ export default function SimonGamePage() {
     const isNew = sequences > 0 && (!prev || sequences > prev.rounds);
     if (isNew) {
       const next = { rounds: sequences, score };
-      saveSimonBest(next);
+      saveSimonBest(next, runModeRef.current);
       bestRef.current = next;
       setBestRounds(sequences);
     }
     setBestResult({ prev: prev ? prev.rounds : null, isNew });
-    recordRun("simon", sequences); // feeds the skill-matched start of the next run
+    if (runModeRef.current === "ranked" || runModeRef.current === "practice") recordRun("simon", sequences); // feeds the skill-matched start of the next run
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, sequences, score]);
 
@@ -543,6 +577,7 @@ export default function SimonGamePage() {
 
     // A retried run submits normally — using a retry counts on the weekly board.
 
+    if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
@@ -752,11 +787,14 @@ export default function SimonGamePage() {
     // Wrong tap → game over (pet wilts in handleGameOver). Big shake +
     // a floating "WRONG" popup at the failed button so the player sees
     // exactly which one they hit (and which one they should have).
-    if (patternRef.current[idx] !== colorId) {
+    // Reverse mode: the answer is the sequence read from the end.
+    const want = runModeRef.current === "reverse" ? patternRef.current[patternRef.current.length - 1 - idx] : patternRef.current[idx];
+    if (want !== colorId) {
       juice.bump(22);
       juice.lossPopup(50, 60, "WRONG");
-      // Offer a retry (casual) before ending — signed-in, minted players only.
-      if (address && !needsMint) {
+      // Offer a retry (casual) before ending — signed-in, minted players only,
+      // and only for a run that will actually be submitted.
+      if (runModeRef.current === "ranked" && address && !needsMint) {
         pendingEndRef.current = { score: scoreRef.current, time: Date.now() - startTimeRef.current };
         setActiveBtn(null);
         setIsShowingSequence(false);
@@ -863,7 +901,9 @@ export default function SimonGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    runModeRef.current = modeRef.current; // pinned for the whole run
+    const ranked = runModeRef.current === "ranked";
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands, the wallet now has gas so the score
       // will save — proceed into play. Only if it can't help do we open the sheet.
@@ -906,7 +946,8 @@ export default function SimonGamePage() {
 
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time.
-    if (address && !needsMint) {
+    // Free modes submit nothing, so they need no ticket.
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -1016,6 +1057,9 @@ export default function SimonGamePage() {
       {/* IDLE */}
       {phase === "idle" && (
         <IdleView
+          mode={mode}
+          onPickMode={setMode}
+          challenge={challenge}
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/simon/leaderboard")}
@@ -1064,6 +1108,8 @@ export default function SimonGamePage() {
           score={score}
           round={sequences + 1}
           bestRounds={bestRounds}
+          target={challenge ? { by: challenge.by, rounds: challenge.rounds } : null}
+          backwards={mode === "reverse"}
           speed={Math.round((BASE_DELAY / Math.max(MIN_DELAY, BASE_DELAY - (sequences + headStart) * 35)) * 10) / 10}
           fastStart={headStart > 0 && sequences === 0}
           bonusUnlocked={bonusUnlocked}
@@ -1094,6 +1140,14 @@ export default function SimonGamePage() {
           score={score}
           rounds={sequences}
           bestResult={bestResult}
+          practice={mode === "ranked" ? null : modeById(mode).name}
+          challenge={challenge}
+          onChallenge={() => {
+            const url = `${window.location.origin}/games/simon?beat=${sequences}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+            const text = `I reached round ${sequences} in Simon Memory. Go deeper if you can 🔥`;
+            if (navigator.share) navigator.share({ title: "Simon Memory", text, url }).catch(() => {});
+            else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+          }}
           gameTimeMs={gameTimeMs}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
@@ -1150,7 +1204,8 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
@@ -1168,8 +1223,9 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup
   return (
     <div style={{
       position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: "32px", padding: "24px",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "safe center",
+      // modes and a challenge banner live here too: tighten on short phones, scroll if it must
+      gap: "clamp(12px, 2.2vh, 32px)", padding: "24px", overflowY: "auto", overscrollBehavior: "contain",
     }}>
       {/* Back X */}
       <button onClick={onExit} style={{
@@ -1230,6 +1286,34 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup
           surface, not chrome in the corner. Reads live Season N data so it
           stays in sync with the leaderboard's LIVE tab. */}
       <SimonTopPlayersPreview onViewAll={onLeaderboard} />
+
+      {/* A friend sent a round to beat */}
+      {challenge && (
+        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
+          <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
+          <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} reached <span style={{ color: "#fde68a" }}>round {challenge.rounds}</span>. Go deeper.</div>
+        </div>
+      )}
+
+      {/* Choose how to play. Ranked counts; the rest are free variants. */}
+      <div style={{ width: "100%", maxWidth: 360, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
+          {MODES.map((m) => {
+            const on = m.id === mode;
+            return (
+              <button key={m.id} onClick={() => onPickMode(m.id)} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
+                flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
+                background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
+                boxShadow: on ? `0 0 14px ${m.color}66` : "none",
+              }}>
+                <span style={{ fontSize: 12.5 }}>{m.name}</span>
+                <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
+      </div>
 
       {/* START button */}
       <div role="button" tabIndex={0} onClick={onStart}
@@ -1406,13 +1490,15 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
 //   once unlocked at round 5).
 // Bottom: SCORE chip + progress dots showing taps remaining this round.
 function PlayingView({
-  bestRounds, speed, fastStart,
+  bestRounds, speed, fastStart, target, backwards,
   score, round, bonusUnlocked, activeBtn, isShowingSequence, roundFlash,
   pet, petEvent, tappedCount, totalInRound, isMobile, timeLeftMs, onButtonClick, onQuit,
 }: {
   bestRounds: number | null; // deepest round ever cleared on this device
   speed: number; // how much faster the sequence plays now than in round 1
   fastStart: boolean; // true in round 1 when this player's history earned a quicker start
+  target: { by: string; rounds: number } | null; // a friend's round being chased
+  backwards: boolean; // Reverse mode: tap the sequence from the end
   score: number;
   round: number;
   bonusUnlocked: boolean;
@@ -1428,7 +1514,7 @@ function PlayingView({
   onButtonClick: (id: string) => void;
   onQuit: () => void;
 }) {
-  const statusLabel = isShowingSequence ? "WATCH" : "YOUR TURN";
+  const statusLabel = isShowingSequence ? "WATCH" : backwards ? "TAP IT BACKWARDS" : "YOUR TURN";
   const statusColor = isShowingSequence ? "#fbbf24" : "#67e8f9";
 
   // Timer display · MM:SS countdown with color escalation as time burns down.
@@ -1469,7 +1555,11 @@ function PlayingView({
               <b style={{ fontSize: 14, color: speed >= 1.5 ? "#fb923c" : speed > 1 ? "#67e8f9" : "#e9e2ff", fontVariantNumeric: "tabular-nums" }}>×{speed.toFixed(1)}</b>
             </div>
             <div style={{ ...chip, right: 14, borderColor: beat ? "rgba(251,191,36,0.75)" : "rgba(167,139,250,0.3)", boxShadow: beat ? "0 0 14px rgba(251,191,36,0.35)" : "none" }}>
-              {bestRounds == null ? (
+              {target ? (
+                cleared > target.rounds
+                  ? <><span style={{ ...lab, color: "#86efac" }}>AHEAD OF</span><b style={{ fontSize: 12.5, color: "#4ade80" }}>{target.by}</b></>
+                  : <><span style={{ ...lab, color: "#fdba74" }}>BEAT {target.by.toUpperCase()}</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{target.rounds - cleared + 1} rounds to go</b></>
+              ) : bestRounds == null ? (
                 ms ? (<><span style={lab}>NEXT</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{ms.name} · {ms.at - cleared} to go</b></>) : null
               ) : beat ? (
                 <><span style={{ ...lab, color: "#fde68a" }}>NEW BEST</span><b style={{ fontSize: 14, color: "#fbbf24" }}>🏆 ROUND {cleared}</b></>
@@ -1944,13 +2034,16 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
-  bestResult,
+  bestResult, practice, challenge, onChallenge,
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
   bestResult: { prev: number | null; isNew: boolean } | null; // deepest round before this run, and whether this run beat it
+  practice: string | null; // name of the free mode just played, null for a ranked run
+  challenge: Challenge | null; // a friend's round this run was chasing
+  onChallenge: () => void; // send this run to a friend to beat
   grade: ReturnType<typeof gradeFor>;
   score: number; rounds: number; gameTimeMs: number;
   onPlayAgain: () => void;
@@ -2062,6 +2155,11 @@ function FinishedView({
               lineHeight: 1, marginTop: 4,
               letterSpacing: "0.01em",
             }}>{score.toLocaleString()}</div>
+            {challenge && rounds > 0 && (
+              <div style={{ marginTop: 8, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 13, fontWeight: 900, color: rounds > challenge.rounds ? "#86efac" : "#fdba74" }}>
+                {rounds > challenge.rounds ? `🔥 You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
+              </div>
+            )}
             {/* against your own best, and how far the next named round was */}
             {bestResult && rounds > 0 && (
               <div style={{ marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 12, fontWeight: 800, color: bestResult.isNew ? "#fde68a" : "rgba(220,210,255,0.72)" }}>
@@ -2087,7 +2185,12 @@ function FinishedView({
           </div>
 
           {/* Reward panel (or guest CTA) — unchanged behavior */}
-          {guest ? (
+          {practice ? (
+            <div style={{ margin: "4px 0 2px", padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#a5f3fc" }}>{practice.toUpperCase()} · FREE PLAY</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(220,210,255,0.78)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
+            </div>
+          ) : guest ? (
             <GuestScorePrompt nextPath="/games/simon" />
           ) : needsMint ? (
             <MintScorePrompt score={score} />
@@ -2113,6 +2216,13 @@ function FinishedView({
                   <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
                   <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
                 </div>
+                {rounds > 0 && (
+                  <button onClick={onChallenge} style={{
+                    marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                    color: "#fff", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
+                    border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
+                  }}>⚔️ CHALLENGE A FRIEND TO BEAT ROUND {rounds}</button>
+                )}
                 {saving && (
                   <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
                     💾 Saving your score · hold on a sec

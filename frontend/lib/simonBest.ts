@@ -6,22 +6,23 @@ export interface SimonBest {
   score: number;
 }
 
-const KEY = "simon_best_v1";
+// One best per mode, so a practice variant never overwrites the ranked best.
+const KEY = (mode = "ranked") => (mode === "ranked" ? "simon_best_v1" : `simon_best_v1_${mode}`);
 
-export function readSimonBest(): SimonBest | null {
+export function readSimonBest(mode = "ranked"): SimonBest | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(KEY(mode));
     if (!raw) return null;
     const b = JSON.parse(raw) as SimonBest;
-    return typeof b?.rounds === "number" ? b : null;
+    return typeof b?.rounds === "number" && Number.isFinite(b.rounds) ? b : null;
   } catch {
     return null;
   }
 }
 
-export function saveSimonBest(b: SimonBest) {
+export function saveSimonBest(b: SimonBest, mode = "ranked") {
   try {
-    localStorage.setItem(KEY, JSON.stringify(b));
+    localStorage.setItem(KEY(mode), JSON.stringify(b));
   } catch {
     /* private mode or storage full: the run still counts on screen */
   }
