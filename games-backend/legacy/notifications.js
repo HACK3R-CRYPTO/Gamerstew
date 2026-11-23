@@ -448,7 +448,7 @@ const server = core.app.listen(core.PORT, () => {
 // does not pay for it. If it fails the first request simply does the work.
 core.seasonsService.seasons().catch((e) => console.warn('seasons warm-up failed:', e?.message || e));
 
-core.platform.installLifecycle(server, {
+core.lifecycle = core.platform.installLifecycle(server, {
   graceMs: core.config.shutdownGraceMs,
   // Live-match spectators hold a stream open for the whole match. End those
   // streams when a redeploy starts, or the shutdown would wait on them.

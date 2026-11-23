@@ -18,7 +18,7 @@ const outFile = process.argv[2] || null;
 const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-smoke-'));
 function listRoutes() {
   const found = new Map();
-  const scan = (t) => { for (const m of t.matchAll(/app\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]/g)) found.set(`${m[1]} ${m[2]}`, [m[1].toUpperCase(), m[2]]); };
+  const scan = (t) => { for (const m of t.matchAll(/app\.(get|post|put|delete|patch)\(\s*['"`](\/[^'"`]*)['"`]/g)) found.set(`${m[1]} ${m[2]}`, [m[1].toUpperCase(), m[2]]); };
   const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (/\.(js|ts)$/.test(f.name) && !/test/.test(f.name)) scan(fs.readFileSync(p, 'utf8')); } };
   for (const d of ['legacy', 'src', 'lib']) walk(path.join(B, d));
   return [...found.values()];

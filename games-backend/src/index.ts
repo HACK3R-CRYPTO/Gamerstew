@@ -11,3 +11,4 @@ export { registerBoardRoutes } from './modules/board/routes';
 export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';
 export { registerSeasonsRoutes } from './modules/seasons/routes';
 export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/adapters';
+export { catchAsync, hardenApp, installErrorHandlers, fetchWithTimeout } from './platform/http';

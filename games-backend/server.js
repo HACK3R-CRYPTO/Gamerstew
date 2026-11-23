@@ -62,3 +62,7 @@ const ORDER = [
 const parts = ORDER.map(([file, k]) => require(`./legacy/${file}`)[k](core));
 for (const part of parts) part.next(); // publish shared names
 for (const part of parts) part.next(); // run
+
+// Every route is registered by now. Last of all: an unknown path gets a JSON
+// 404, and any error a route let through gets one logged, non-leaking 500.
+core.platform.installErrorHandlers(core.app);

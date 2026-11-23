@@ -1,0 +1,41 @@
+# Backend checks. Every push or pull request that touches games-backend must
+# build, pass the unit tests, and survive the smoke boot (the whole server
+# started with no credentials and every route called) before it can be trusted.
+name: backend-ci
+
+on:
+  push:
+    paths: ['games-backend/**', '.github/workflows/backend-ci.yml']
+  pull_request:
+    paths: ['games-backend/**', '.github/workflows/backend-ci.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: games-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: games-backend/package-lock.json
+      - run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Smoke boot (no credentials, no network)
+        run: npm run smoke
+      - name: Known vulnerabilities in what ships
+        run: npm audit --omit=dev --audit-level=high

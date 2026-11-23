@@ -13,6 +13,8 @@ export interface Config {
   slowRequestMs: number;
   /** a request with no reply after this long is answered with a 504 */
   requestTimeoutMs: number;
+  /** a database call that has not answered by now is abandoned */
+  dbTimeoutMs: number;
   /** how long in-flight requests get to finish when the platform stops us */
   shutdownGraceMs: number;
   /** things that were tolerated but should be fixed */
@@ -52,6 +54,7 @@ export function loadConfig(env: Env = process.env): Config {
     allowedOrigins,
     slowRequestMs: int('SLOW_REQUEST_MS', 1500, 50, 60000),
     requestTimeoutMs: int('REQUEST_TIMEOUT_MS', 30000, 1000, 300000),
+    dbTimeoutMs: int('DB_TIMEOUT_MS', 12000, 500, 60000),
     shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 10000, 0, 60000),
     warnings,
   };

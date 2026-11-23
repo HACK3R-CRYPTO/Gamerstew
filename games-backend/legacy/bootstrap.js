@@ -62,6 +62,11 @@ const PORT = config.port;
 // Time every request, per route. Mounted first so it measures everything.
 const metrics = platform.createMetrics({ slowMs: config.slowRequestMs, timeoutMs: config.requestTimeoutMs });
 app.use(metrics.middleware);
+// From here on, every route registered is guarded: a handler that throws or
+// rejects reaches the error handler instead of leaving the request unanswered.
+platform.catchAsync(app);
+// Request ids, security headers, and /healthz (answers before the origin gate).
+platform.hardenApp(app, { isStopping: () => !!core.lifecycle && core.lifecycle.isStopping() });
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads X-Forwarded-For correctly
 app.set('trust proxy', 1);
