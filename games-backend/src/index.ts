@@ -1,0 +1,7 @@
+// The compiled entry the legacy server.js loads. Everything new is written in
+// TypeScript under src/ and reaches the old file through here, one module at a
+// time, until the old file is empty.
+export { loadConfig, type Config } from './platform/config';
+export { installLifecycle } from './platform/lifecycle';
+export { createMetrics } from './platform/metrics';
+export { registerStrikeRoutes } from './modules/strike/routes';

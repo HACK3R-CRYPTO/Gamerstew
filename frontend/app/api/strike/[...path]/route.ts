@@ -31,7 +31,12 @@ async function forward(req: Request, path: string[], method: "GET" | "POST") {
     const r = await fetch(`${backend}${to}`, {
       method,
       cache: "no-store",
-      headers: { "content-type": "application/json", "x-internal-secret": process.env.INTERNAL_SECRET || "" },
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_SECRET || "",
+        // the player's own address, so the backend can cap how many rooms one person makes
+        "x-client-ip": (req.headers.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 64) || "unknown",
+      },
       body,
     });
     const data = await r.json().catch(() => ({ error: "bad_reply" }));

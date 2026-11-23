@@ -14,6 +14,7 @@ const WORDS: Record<string, string> = {
   need_two: "You need at least 2 players to start.",
   unreachable: "Cannot reach the game server. Check your connection.",
   busy: "The server is busy. Try again in a moment.",
+  slow_down: "You have made a lot of rooms. Wait a few minutes and try again.",
 };
 export const explain = (code: string) => WORDS[code] ?? "Something went wrong. Try again.";
 

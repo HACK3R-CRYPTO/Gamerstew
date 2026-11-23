@@ -1,4 +1,8 @@
 require('dotenv').config();
+// New code is TypeScript under src/, compiled to dist/. Compile now if a deploy
+// skipped the build step, so the server can never start without it.
+require('./scripts/ensure-build').ensureBuild();
+const platform = require('./dist');
 const express = require('express');
 const { ethers } = require('ethers');
 const { createClient } = require('@supabase/supabase-js');
@@ -15,13 +19,20 @@ const { computeSimonScore } = require('./lib/simonScoring');
 const { computeNepaScore, computeNepaHumanness } = require('./lib/nepaScoring');
 
 const app = express();
-const PORT = process.env.PORT || 3005;
+// Settings are read once, checked and typed. A bad value stops the boot here
+// with a message naming it, not later inside a request.
+const config = platform.loadConfig();
+for (const w of config.warnings) console.warn(`⚠️  config: ${w}`);
+const PORT = config.port;
+// Time every request, per route. Mounted first so it measures everything.
+const metrics = platform.createMetrics({ slowMs: config.slowRequestMs, timeoutMs: config.requestTimeoutMs });
+app.use(metrics.middleware);
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads X-Forwarded-For correctly
 app.set('trust proxy', 1);
 
 // ─── CORS — only allowed origins or trusted server-to-server calls ───────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS).split(',').map(o => o.trim());
+const allowedOrigins = config.allowedOrigins;
 // Keep the exact raw bytes of each JSON body on req.rawBody so the Vatar webhook
 // can verify its HMAC signature over them (JSON.parse + re-stringify would not
 // byte-match what Vatar signed). Negligible cost for every other route.
@@ -6545,7 +6556,10 @@ setInterval(indexOnChainScores, 5 * 60 * 1000);
 require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validator, isVerified, requireSecret });
 
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
-require('./lib/strikeRooms').registerStrikeRoutes(app, { requireSecret });
+platform.registerStrikeRoutes(app, { requireSecret });
+
+// Which routes are slow, and how slow (median, tail, failures). Internal only.
+app.get('/internal/metrics', requireSecret, (_req, res) => res.json({ uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: metrics.snapshot() }));
 
 // Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
 require('./lib/sprint').registerSprintRoutes(app);
@@ -6555,7 +6569,7 @@ require('./lib/sprint').registerSprintRoutes(app);
 // PARTNER_KEY_* env are set. See lib/partner.js and /sdk.
 require('./lib/partner')(app, { supabase, saveScore, ethers, enqueueScoreWrite, hasGamePass, resolveUsername });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🎮 Games backend on http://localhost:${PORT} — Season ${currentSeasonNumber()}`);
   // Surface whether on-chain addresses came from env or a hardcoded fallback,
   // so a missing Railway env var is loud in the deploy logs instead of silent.
@@ -6563,3 +6577,15 @@ app.listen(PORT, () => {
   console.log(`📍 SOLO_WAGER_ADDRESS:      ${process.env.SOLO_WAGER_ADDRESS ? 'env' : 'unset'}`);
   console.log(`📍 HABITAT_REGISTRY_ADDRESS: ${process.env.HABITAT_REGISTRY_ADDRESS ? 'env' : 'unset'}`);
 });
+
+// A stray rejected promise is logged instead of killing the server, and a
+// redeploy lets requests in flight finish before the process exits.
+platform.installLifecycle(server, {
+  graceMs: config.shutdownGraceMs,
+  // Live-match spectators hold a stream open for the whole match. End those
+  // streams when a redeploy starts, or the shutdown would wait on them.
+  beforeClose: () => {
+    for (const h of liveMatchHub.values()) for (const res of h.clients) { try { res.end(); } catch { /* already gone */ } }
+  },
+});
+
