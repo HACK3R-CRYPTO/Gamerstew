@@ -190,106 +190,106 @@ interface Shared { beat: FightBeat; t: number; winner: "player" | "ai" | "tie" |
 // boulder, a flexible sheet in two halves, and two blades on a pin.
 const ROCK = 0, PAPER = 1, SCISSORS = 2;
 const MID_Y = 1.22;
-const HALF_W = 0.3, SHEET_H = 0.78;
-
-function rockGeometry() {
-  const g = new THREE.IcosahedronGeometry(0.3, 1);
-  const p = g.getAttribute("position");
-  let sd = 7;
-  const r = () => ((sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const seen = new Map<string, number>();
-  for (let i = 0; i < p.count; i++) {
-    const k = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
-    if (!seen.has(k)) seen.set(k, 0.82 + r() * 0.36); // the same bump for a shared corner, so faces stay joined
-    const m = seen.get(k)!;
-    p.setXYZ(i, p.getX(i) * m, p.getY(i) * m * 0.9, p.getZ(i) * m);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-function bladeGeometry() {
-  const sh = new THREE.Shape();
-  sh.moveTo(-0.06, -0.04); sh.lineTo(0.06, -0.04); sh.lineTo(0.05, 0.3); sh.lineTo(0, 0.6); sh.lineTo(-0.03, 0.3); sh.closePath();
-  return new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false });
-}
+const SHEET_W = 0.6, SHEET_H = 0.78;
+const ROCK_GLB = "/games/challenge-ai-v2/models/rock.glb";
+const SCISSORS_GLB = "/games/challenge-ai-v2/models/scissors.glb";
 
 interface Slot {
-  root: THREE.Group; rock: THREE.Mesh; paper: THREE.Group; halves: [THREE.Mesh, THREE.Mesh]; base: [Float32Array, Float32Array];
-  scissors: THREE.Group; blades: [THREE.Group, THREE.Group];
+  root: THREE.Group; rock: THREE.Object3D; paper: THREE.Group; halves: [THREE.Mesh, THREE.Mesh]; base: [Float32Array, Float32Array];
+  scissors: THREE.Group; blades: [THREE.Object3D, THREE.Object3D];
 }
 
+// The sheet's face: ruled notebook paper with a red margin and a smug look.
+// Eyes sit above the middle and the smirk below, so a cut runs between them.
+let paperTex: THREE.CanvasTexture | null = null;
+function paperTexture() {
+  if (paperTex) return paperTex;
+  const W = 256, H = 332;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const c = cv.getContext("2d")!;
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#fffdf3"); g.addColorStop(1, "#f1ead2");
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.strokeStyle = "#9cc0ee"; c.lineWidth = 2.5;
+  for (let y = 44; y < H - 10; y += 26) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  c.strokeStyle = "#f28b8b"; c.lineWidth = 3; c.beginPath(); c.moveTo(40, 0); c.lineTo(40, H); c.stroke();
+  c.fillStyle = "#e9e1c6"; for (const y of [50, 166, 282]) { c.beginPath(); c.arc(18, y, 8, 0, Math.PI * 2); c.fill(); } // punch holes
+  c.fillStyle = "#2a2140"; c.strokeStyle = "#2a2140"; c.lineCap = "round";
+  for (const x of [104, 184]) { // half-lidded eyes
+    c.beginPath(); c.ellipse(x, 120, 17, 13, 0, 0, Math.PI); c.fill();
+    c.lineWidth = 7; c.beginPath(); c.moveTo(x - 22, 118); c.lineTo(x + 22, 118); c.stroke();
+    c.fillStyle = "#ffffff"; c.beginPath(); c.arc(x + 6, 124, 4, 0, Math.PI * 2); c.fill(); c.fillStyle = "#2a2140";
+  }
+  c.lineWidth = 7; c.beginPath(); c.moveTo(112, 208); c.quadraticCurveTo(150, 232, 186, 196); c.stroke(); // smirk
+  c.strokeStyle = "rgba(0,0,0,0.12)"; c.lineWidth = 6; c.strokeRect(0, 0, W, H);
+  paperTex = new THREE.CanvasTexture(cv); paperTex.colorSpace = THREE.SRGBColorSpace; paperTex.anisotropy = 4;
+  return paperTex;
+}
+
+// Rock and scissors are modelled in Blender (tools/blender/rps.py). The paper is
+// built here, because it has to bend: it curls like a scroll, wraps and tears.
 function MoveObject({ slot }: { slot: React.MutableRefObject<Slot | null> }) {
+  const rockFile = useGLTF(ROCK_GLB);
+  const scFile = useGLTF(SCISSORS_GLB);
   const built = useMemo(() => {
     const root = new THREE.Group();
-    const rock = new THREE.Mesh(rockGeometry(), new THREE.MeshStandardMaterial({ color: "#8b93a7", roughness: 0.85, metalness: 0.05, flatShading: true }));
+    const lift = (o: THREE.Object3D, glow: number) => o.traverse((n) => {
+      const m = n as THREE.Mesh;
+      if (!m.isMesh) return;
+      const one = (src: THREE.Material) => {
+        const c = (src as THREE.MeshStandardMaterial).clone();
+        // no environment map in this scene, so tone the metal down and let colour carry it
+        c.metalness = Math.min(c.metalness, 0.35);
+        if (c.emissive.getHex() === 0) { c.emissive = c.color.clone(); c.emissiveIntensity = glow; }
+        return c;
+      };
+      m.material = Array.isArray(m.material) ? m.material.map(one) : one(m.material);
+    });
+    const rock = rockFile.scene.clone(true); lift(rock, 0.12); rock.scale.setScalar(1.1);
     root.add(rock);
-    // paper: two half sheets side by side, so scissors can part them
+    // paper: a top and a bottom half, so scissors can cut straight across it
     const paper = new THREE.Group();
-    // a ruled sheet with a red margin, drawn once, so it reads as paper even when wrapped
-    const cv = document.createElement("canvas"); cv.width = 128; cv.height = 256;
-    const cx = cv.getContext("2d")!;
-    cx.fillStyle = "#fbf7ea"; cx.fillRect(0, 0, 128, 256);
-    cx.strokeStyle = "#8fb4e8"; cx.lineWidth = 2;
-    for (let y = 30; y < 250; y += 20) { cx.beginPath(); cx.moveTo(0, y); cx.lineTo(128, y); cx.stroke(); }
-    cx.strokeStyle = "#f08a8a"; cx.beginPath(); cx.moveTo(22, 0); cx.lineTo(22, 256); cx.stroke();
-    const ptex = new THREE.CanvasTexture(cv); ptex.colorSpace = THREE.SRGBColorSpace;
-    const pm = new THREE.MeshStandardMaterial({ map: ptex, roughness: 0.9, side: THREE.DoubleSide, emissive: "#ffffff", emissiveMap: ptex, emissiveIntensity: 0.3 });
-    const halves = [-1, 1].map((sx) => {
-      const g = new THREE.PlaneGeometry(HALF_W, SHEET_H, 6, 12);
-      g.translate((sx * HALF_W) / 2, 0, 0);
+    const tex = paperTexture();
+    const pm = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide, emissive: "#ffffff", emissiveMap: tex, emissiveIntensity: 0.32 });
+    const halves = [1, -1].map((sy) => {
+      const g = new THREE.PlaneGeometry(SHEET_W, SHEET_H / 2, 12, 12);
+      g.translate(0, (sy * SHEET_H) / 4, 0);
       const uv = g.getAttribute("uv");
-      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5 + (sx > 0 ? 0.5 : 0));
+      for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 0.5 + (sy > 0 ? 0.5 : 0));
       const m = new THREE.Mesh(g, pm);
       paper.add(m);
       return m;
     }) as unknown as [THREE.Mesh, THREE.Mesh];
     const base = halves.map((h) => Float32Array.from(h.geometry.getAttribute("position").array as Float32Array)) as [Float32Array, Float32Array];
     root.add(paper);
-    // scissors: two blades crossing at a pin, each with a ring handle
     const scissors = new THREE.Group();
-    const steel = new THREE.MeshStandardMaterial({ color: "#eef3fb", metalness: 0.55, roughness: 0.3, emissive: "#9fb4d8", emissiveIntensity: 0.25 });
-    const grip = new THREE.MeshStandardMaterial({ color: "#f43f5e", roughness: 0.5 });
-    const bg = bladeGeometry();
-    const blades = [-1, 1].map((sx) => {
-      const arm = new THREE.Group();
-      const blade = new THREE.Mesh(bg, steel);
-      blade.position.z = sx * 0.012;
-      arm.add(blade);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.036, 8, 18), grip);
-      ring.position.set(sx * 0.11, -0.24, 0.015);
-      arm.add(ring);
-      const stem = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.03), steel);
-      stem.position.set(sx * 0.05, -0.1, 0.015);
-      stem.rotation.z = -sx * 0.4;
-      arm.add(stem);
-      scissors.add(arm);
-      return arm;
-    }) as [THREE.Group, THREE.Group];
-    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.07, 10), new THREE.MeshStandardMaterial({ color: "#fbbf24", metalness: 0.8, roughness: 0.3 }));
-    pin.rotation.x = Math.PI / 2;
-    scissors.add(pin);
-    scissors.scale.setScalar(1.15);
+    const sc = scFile.scene.clone(true); lift(sc, 0.2); sc.scale.setScalar(0.8);
+    scissors.add(sc);
+    const blades = [sc.getObjectByName("armA") ?? new THREE.Group(), sc.getObjectByName("armB") ?? new THREE.Group()] as [THREE.Object3D, THREE.Object3D];
     root.add(scissors);
     root.visible = false;
     return { root, rock, paper, halves, base, scissors, blades };
-  }, []);
+  }, [rockFile, scFile]);
   useEffect(() => { slot.current = built; return () => { slot.current = null; }; }, [built, slot]);
   return <primitive object={built.root} />;
 }
 
-// Shape the sheet: a gentle flutter, and (wrap 0..1) curl it round a ball of radius R centred on the sheet.
+// Shape the sheet. At rest it is a scroll: the top rolls forward, the foot kicks
+// out, and it ripples in the air. `wrap` (0..1) folds it round a ball of radius R.
 function shapePaper(sl: Slot, t: number, wrap: number, R: number) {
+  const top = SHEET_H / 2 - 0.13, foot = -(SHEET_H / 2 - 0.09), r1 = 0.05, r2 = 0.07;
   for (let h = 0; h < 2; h++) {
     const pos = sl.halves[h].geometry.getAttribute("position") as THREE.BufferAttribute;
     const b = sl.base[h];
     for (let i = 0; i < pos.count; i++) {
       const x = b[i * 3], y = b[i * 3 + 1];
-      const fx = x, fy = y, fz = Math.sin(x * 9 + t * 7) * 0.02 + Math.sin(y * 6 + t * 5) * 0.025;
-      if (wrap <= 0) { pos.setXYZ(i, fx, fy, fz); continue; }
+      let fy = y, fz = Math.sin(x * 8 + t * 7) * 0.018 + Math.sin(y * 6 + t * 5) * 0.022;
+      if (y > top) { const a = (y - top) / r1; fy = top + r1 * Math.sin(a); fz += r1 * (1 - Math.cos(a)); }
+      else if (y < foot) { const a = (foot - y) / r2; fy = foot - r2 * Math.sin(a); fz += r2 * (1 - Math.cos(a)); }
+      if (wrap <= 0) { pos.setXYZ(i, x, fy, fz); continue; }
       // lay the sheet over the ball: x spreads round it, y over the top
-      const th = (x / HALF_W) * 1.25, ph = (y / (SHEET_H / 2)) * 1.15;
+      const th = (x / (SHEET_W / 2)) * 1.25, ph = (y / (SHEET_H / 2)) * 1.15;
       const wx = Math.sin(th) * Math.cos(ph) * R, wy = Math.sin(ph) * R, wz = Math.cos(th) * Math.cos(ph) * R;
-      pos.setXYZ(i, fx + (wx - fx) * wrap, fy + (wy - fy) * wrap, fz + (wz - fz) * wrap);
+      pos.setXYZ(i, x + (wx - x) * wrap, fy + (wy - fy) * wrap, fz + (wz - fz) * wrap);
     }
     pos.needsUpdate = true;
     sl.halves[h].geometry.computeVertexNormals();
@@ -319,11 +319,11 @@ function Clash({ state }: { state: React.MutableRefObject<Shared> }) {
     // reset poses each frame; the rules below then act on them
     for (const sl of [A, B]) {
       sl.root.scale.setScalar(1); sl.root.rotation.set(0, 0, 0);
-      sl.rock.position.set(0, 0, 0); sl.rock.rotation.set(e * 2.2, e * 1.6, 0); sl.rock.scale.setScalar(1);
+      sl.rock.position.set(0, 0, 0); sl.rock.rotation.set(0, Math.sin(e * 5) * 0.25, Math.sin(e * 7) * 0.12); sl.rock.scale.setScalar(1.1);
       sl.paper.position.set(0, 0, 0); sl.paper.rotation.set(0, 0, 0);
       sl.halves[0].position.set(0, 0, 0); sl.halves[1].position.set(0, 0, 0); sl.halves[0].rotation.set(0, 0, 0); sl.halves[1].rotation.set(0, 0, 0);
       sl.scissors.position.set(0, 0, 0); sl.scissors.rotation.set(0, 0, 0);
-      sl.blades[0].position.set(0, 0, 0); sl.blades[1].position.set(0, 0, 0);
+      sl.blades[0].position.set(0, 0, 0); sl.blades[1].position.set(0, 0, 0); sl.blades[0].rotation.set(0, 0, 0); sl.blades[1].rotation.set(0, 0, 0);
     }
     const snip = (sl: Slot, open: number) => { sl.blades[0].rotation.z = open; sl.blades[1].rotation.z = -open; };
     snip(A, 0.32); snip(B, 0.32);
@@ -365,7 +365,7 @@ function Clash({ state }: { state: React.MutableRefObject<Shared> }) {
     if (wm === ROCK) {
       // ROCK SMASHES SCISSORS: the rock drives through, the blades burst apart
       W.root.position.x += (lx - W.root.position.x) * k;
-      W.rock.scale.setScalar(1 + Math.sin(k * Math.PI) * 0.35);
+      W.rock.scale.setScalar(1.1 + Math.sin(k * Math.PI) * 0.4);
       if (e > 0.5) {
         const t2 = e - 0.5;
         for (let i = 0; i < 2; i++) {
@@ -381,13 +381,13 @@ function Clash({ state }: { state: React.MutableRefObject<Shared> }) {
       W.root.position.x += (lx - W.root.position.x) * k;
       W.root.position.y += Math.sin(k * Math.PI) * 0.16;
       const wrap = ease((e - 0.46) / 0.42);
-      shapePaper(W, e, wrap, 0.36);
+      shapePaper(W, e, wrap, 0.4);
       W.paper.rotation.y = (1 - wrap) * 0.2;
       // the rock stops spinning and is carried down inside the sheet
-      L.rock.rotation.set(0.4, 0.3, 0);
+      L.rock.rotation.set(0, 0, 0);
       const drop = ease(after / 0.6) * 0.16;
       W.root.position.y -= drop; L.root.position.y -= drop;
-      L.rock.scale.setScalar(1 - wrap * 0.08);
+      L.rock.scale.setScalar(1.1 - wrap * 0.3);
       ring(lx, 0.84, 0.26);
     } else {
       // SCISSORS CUT PAPER: blades snip through, the two halves part and fall
@@ -397,13 +397,12 @@ function Clash({ state }: { state: React.MutableRefObject<Shared> }) {
         const t2 = e - 0.52;
         for (let i = 0; i < 2; i++) {
           const sg = i ? 1 : -1;
-          L.halves[i].position.set(sg * t2 * 0.32, sg * 0.06 * Math.min(1, t2 * 4) - t2 * t2 * 1.7, sg * t2 * 0.12);
-          L.halves[i].rotation.set(t2 * 2.2 * sg, t2 * 1.4, sg * t2 * 2.4);
+          const sg2 = -sg; // halves[0] is the top
+          L.halves[i].position.set(sg2 * t2 * 0.14, sg2 * 0.09 * Math.min(1, t2 * 5) - t2 * t2 * 1.7, sg2 * t2 * 0.12);
+          L.halves[i].rotation.set(-sg2 * t2 * 2.0, t2 * 0.9, sg2 * t2 * 1.5);
         }
         L.root.scale.setScalar(Math.max(0, 1 - Math.max(0, t2 - 0.5) / 0.6));
       }
-      // a sheet stands taller than it is wide, so the cut runs across the middle
-      L.paper.rotation.z = Math.PI / 2;
       ring(lx, 0.52, 0.22);
     }
   });
