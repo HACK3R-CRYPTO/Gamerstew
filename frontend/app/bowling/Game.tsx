@@ -788,30 +788,40 @@ function Brain({
       }
     }
 
-    // STRIKE CAM. A tyre that arrives dead on the head bottle with a full rack is
-    // about to scatter everything, so that roll gets the big-moment treatment:
-    // time slows and the camera drops low beside the rack to watch the bottles fly.
+    // STRIKE CAM. The moment the last bottle goes over, the roll gets the big
+    // treatment: time slows, and the camera drops beside the rack and circles up
+    // and round it, so you watch every bottle down and the street going wild.
+    // It fires on what really happened, never on a guess.
     if (ph === "aim") cine.armed = true;
-    if (ph === "rolling" && cine.armed && cine.t < 0 && p.z < -LANE_LEN + 1.1 && Math.abs(p.x) < 0.17 && standing.every(Boolean)) {
-      cine.armed = false;
-      cine.t = 0;
-      cine.side = p.x >= 0 ? -1 : 1;
-      setSlow(true);
+    if ((ph === "rolling" || ph === "settling") && cine.armed && cine.t < 0 && p.z < -LANE_LEN + 0.4) {
+      let left = 0;
+      for (let i = 0; i < PINS; i++) {
+        const rb = standing[i] ? bottles.current[i] : null;
+        if (!rb) continue;
+        const q = rb.rotation();
+        const t = rb.translation();
+        const gone = 1 - 2 * (q.x * q.x + q.z * q.z) < 0.55 || t.y < -0.06 || Math.hypot(t.x - HOME[i][0], t.z - HOME[i][1]) > 0.55;
+        if (!gone) left++;
+      }
+      if (left === 0) {
+        cine.armed = false;
+        cine.t = 0;
+        cine.side = p.x >= 0 ? -1 : 1;
+        setSlow(true);
+      }
     }
     if (cine.t >= 0) {
       cine.t += rawDt;
-      const k = Math.min(1, cine.t / 1.7);
+      const k = Math.min(1, cine.t / 3.4);
       const e = k * k * (3 - 2 * k);
-      const cx = cine.side * (1.75 - e * 0.7), cy = 0.42 + e * 0.5, cz = -LANE_LEN + 1.5 + e * 1.1;
-      const f = Math.min(1, rawDt * 9);
+      const th = cine.side * (1.35 - e * 1.15), rad = 1.9 + e * 1.7;
+      const cx = Math.sin(th) * rad, cy = 0.4 + e * 1.35, cz = -LANE_LEN - 0.5 + Math.cos(th) * rad;
+      const f = Math.min(1, rawDt * 7);
       camera.position.set(camera.position.x + (cx - camera.position.x) * f, camera.position.y + (cy - camera.position.y) * f, camera.position.z + (cz - camera.position.z) * f);
-      camera.lookAt(0, 0.22, -LANE_LEN - 0.55);
-      if (cine.t > 1.7 || ph === "aim" || ph === "over") { cine.t = -1; setSlow(false); }
-      else {
-        if (cine.t > 1.0) setSlow(false); // back to full speed for the last half, still on the close camera
-        camZ.current = camera.position.z;
-        return;
-      }
+      camera.lookAt(0, 0.2 + e * 0.5, -LANE_LEN - 0.6);
+      if (cine.t > 0.9) setSlow(false); // slow for the fall, full speed for the party
+      if (cine.t > 3.6 || ph === "aim" || ph === "over") { cine.t = -1; setSlow(false); }
+      else { camZ.current = camera.position.z; return; }
     }
 
     // camera: sits behind the release line, rides after the tyre, stops short of the bottles
@@ -1301,7 +1311,7 @@ export default function Game() {
         setStanding(before.map((up, i) => up && !down[i]));
       }
       setPhase("aim");
-    }, cleared ? 1500 : 1000);
+    }, cleared ? 3000 : 1000); // a cleared rack holds longer: the strike camera is still circling
   }, []);
 
   const restart = (m: Mode = modeRef.current) => {
@@ -1533,7 +1543,7 @@ export default function Game() {
 
       {/* banner */}
       {banner && (
-        <div key={banner.key} style={{ position: "absolute", top: "30%", left: 0, right: 0, zIndex: 12, textAlign: "center", pointerEvents: "none", fontFamily: DISPLAY, fontSize: banner.tone === "big" ? "clamp(34px,10vw,64px)" : "clamp(24px,7vw,40px)", color: tone, textShadow: "0 4px 0 rgba(0,0,0,0.35), 0 0 30px rgba(0,0,0,0.6)", animation: "ssPop 1.5s ease-out forwards" }}>
+        <div key={banner.key} style={{ position: "absolute", top: "30%", left: 0, right: 0, zIndex: 12, textAlign: "center", pointerEvents: "none", fontFamily: DISPLAY, fontSize: banner.text.length > 14 ? "clamp(20px,6.2vw,40px)" : banner.tone === "big" ? "clamp(34px,10vw,64px)" : "clamp(24px,7vw,40px)", padding: "0 12px", color: tone, textShadow: "0 4px 0 rgba(0,0,0,0.35), 0 0 30px rgba(0,0,0,0.6)", animation: "ssPop 1.5s ease-out forwards" }}>
           {banner.text}
         </div>
       )}

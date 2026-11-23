@@ -6,8 +6,11 @@
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let rumble: { gain: GainNode; filter: BiquadFilterNode; beat: OscillatorNode; depth: GainNode } | null = null;
-const SAMPLES = { cheer: "/bowling/audio/crowd-cheer.mp3", yeah: "/bowling/audio/crowd-yeah.mp3", clap: "/bowling/audio/crowd-clap.mp3", g1: "/bowling/audio/glass-1.mp3", g2: "/bowling/audio/glass-2.mp3", g3: "/bowling/audio/glass-3.mp3", g4: "/bowling/audio/glass-4.mp3", g5: "/bowling/audio/glass-5.mp3", g6: "/bowling/audio/glass-6.mp3", night: "/bowling/audio/night.mp3" } as const;
+const SAMPLES = { cheer: "/bowling/audio/crowd-cheer.mp3", yeah: "/bowling/audio/crowd-yeah.mp3", clap: "/bowling/audio/crowd-clap.mp3", g1: "/bowling/audio/glass-1.mp3", g2: "/bowling/audio/glass-2.mp3", g3: "/bowling/audio/glass-3.mp3", g4: "/bowling/audio/glass-4.mp3", g5: "/bowling/audio/glass-5.mp3", g6: "/bowling/audio/glass-6.mp3", night: "/bowling/audio/night.mp3", music: "/bowling/audio/music.mp3" } as const;
 const GLASS = ["g1", "g2", "g3", "g4", "g5", "g6"] as const;
+const NIGHT = 0.16; // was 0.5: the insects were too loud on their own
+const MUSIC = 0.34;
+let music: GainNode | null = null; // the song the street is playing, under the game
 let night: GainNode | null = null; // the night itself: insects and still air, under everything
 let voices = 0; // glass sounds playing right now, capped so a full rack never turns to mush
 const bufs: Partial<Record<keyof typeof SAMPLES, AudioBuffer>> = {};
@@ -63,8 +66,20 @@ export function armSfx() {
           src.loop = true;
           night = c.createGain();
           night.gain.setValueAtTime(0, c.currentTime);
-          night.gain.linearRampToValueAtTime(0.5, c.currentTime + 2.5);
+          night.gain.linearRampToValueAtTime(NIGHT, c.currentTime + 2.5);
           src.connect(night).connect(master);
+          src.start();
+        }
+        // The song: a real funk recording, looped. It carries the mood now, so the
+        // insects sit far back behind it.
+        if (k === "music" && ctx === c && master && !music) {
+          const src = c.createBufferSource();
+          src.buffer = b;
+          src.loop = true;
+          music = c.createGain();
+          music.gain.setValueAtTime(0, c.currentTime);
+          music.gain.linearRampToValueAtTime(MUSIC, c.currentTime + 1.5);
+          src.connect(music).connect(master);
           src.start();
         }
       }).catch(() => { /* the game still plays without it */ });
@@ -83,6 +98,7 @@ export function closeSfx() {
   master = null;
   rumble = null;
   night = null;
+  music = null;
   voices = 0;
   muted = false; // the page's mute button starts un-muted on every visit, so match it
 }
@@ -154,8 +170,13 @@ function duckNight(sec: number) {
   if (!ctx || !night) return;
   const t = ctx.currentTime;
   night.gain.cancelScheduledValues(t);
-  night.gain.setTargetAtTime(0.18, t, 0.08);
-  night.gain.setTargetAtTime(0.5, t + sec, 0.6);
+  night.gain.setTargetAtTime(NIGHT * 0.4, t, 0.08);
+  night.gain.setTargetAtTime(NIGHT, t + sec, 0.6);
+  if (music) {
+    music.gain.cancelScheduledValues(t);
+    music.gain.setTargetAtTime(MUSIC * 0.5, t, 0.08);
+    music.gain.setTargetAtTime(MUSIC, t + sec, 0.6);
+  }
 }
 /** the street reacts out loud. "boo" is a synth groan: there is no recording for it yet */
 export function crowdSound(mood: "wild" | "yeah" | "clap" | "boo") {

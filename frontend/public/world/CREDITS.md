@@ -52,3 +52,4 @@
 - `public/bowling/audio/crowd-clap.mp3`: cut from "applause-2" by Sandermotions, CC0, via Wikimedia Commons.
 - `public/bowling/audio/glass-1..6.mp3`: cut from "Binging Glass" by hugh, public domain, via Wikimedia Commons.
 - `public/bowling/audio/night.mp3`: cut from "Country night noise", public domain, via Wikimedia Commons.
+- `public/bowling/audio/music.mp3`: "Funk Game Loop" by Kevin MacLeod (incompetech.com), licensed under Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/). Re-encoded and levelled. THIS LICENCE REQUIRES CREDIT: keep this line, and show the credit somewhere players can reach before a public launch.
