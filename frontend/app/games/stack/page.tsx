@@ -65,6 +65,16 @@ function drawSlab(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, hue: number, crystal: boolean, moving: boolean,
 ) {
+  // Every slab is a solid block seen slightly from above and to the left: a lit
+  // top face and a shaded right side are drawn behind the front face. The front
+  // face is still the one that counts for alignment, so the game plays exactly
+  // as before; the tower just looks like a real stack with ledges where a block
+  // was cut short.
+  const DX = 13, DY = 8;
+  ctx.fillStyle = crystal ? "hsl(188 90% 78%)" : `hsl(${hue} 88% ${moving ? 74 : 70}%)`;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + DX, y - DY); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = crystal ? "hsl(200 70% 18%)" : `hsl(${hue} 78% 20%)`;
+  ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + w + DX, y - DY + BLOCK_H); ctx.lineTo(x + w, y + BLOCK_H); ctx.closePath(); ctx.fill();
   if (crystal) {
     const fh = BLOCK_H - 3;                           // face height
     ctx.fillStyle = "hsl(200 65% 24%)";              // deep ice shadow
