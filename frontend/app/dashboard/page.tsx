@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
+import HomeGames from "@/components/home/HomeGames";
 import { useAccount, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
@@ -450,6 +451,7 @@ export default function DashboardPage() {
   // TUG_HERO is gone from the rail: Tug of War ended on 30 September and the
   // card still said "Starts Wednesday".
   const [weekly, setWeekly] = useState<WeeklyInfo | null>(null);
+  const [today, setToday] = useState<null | "claim" | "missions" | "vote" | "cup">(null);
   const { address: heroAddress } = useAccount();
   useEffect(() => {
     let live = true;
@@ -505,15 +507,8 @@ export default function DashboardPage() {
           page's column. */}
       <AppHeader />
 
-      {/* Guest banner — only when the player hasn't finished onboarding. The
-          design uses this strip as the soft second-prompt to sign in. */}
-      {!connected && !identityResolving && (
-        <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "8px auto 0" }}>
-          <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
-        </div>
-      )}
 
-      <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
 
         {/* Greeting — one quiet line so the hero (and the event) leads. Pills
             share a single muted style: informative, not a rainbow. */}
@@ -531,38 +526,45 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {isDesktop ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 16, alignItems: "start" }}>
-            <DashLeft heroes={heroList} heroActive={heroIdx % heroList.length} onHeroDot={goToHero} connected={connected} onPlayGame={onPlayGame} router={router} dash={dash} me={me} />
-            <DashRight walletReady={walletReady} connected={connected} dash={dash} me={me} address={address ?? null} onConnect={onConnect} router={router} />
-          </div>
-        ) : (
-          <>
-            {/* Hero (with the event) leads; the daily claim stays prominent right after. */}
-            <HeroCarousel heroes={heroList} active={heroIdx % heroList.length} onPlayGame={onPlayGame} onDot={setHeroIdx} />
-            <VerificationExpiryBanner router={router} />
-            <VerificationExpiryBanner router={router} />
-      <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />
-            <VoteCard connected={walletReady} onConnect={onConnect} router={router} />
-            <SectionLabel action={<ViewAll onClick={() => router.push("/games")} />}>Games</SectionLabel>
-            <GamesGrid onPlayGame={onPlayGame} />
-            <SectionLabel>Daily missions</SectionLabel>
-            <MissionCard connected={connected} onConnect={onConnect} />
-            <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Your cup</SectionLabel>
-            <ClimbCard connected={connected} dash={dash} address={address ?? null} onConnect={onConnect} router={router} />
-            <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
-            {(() => {
-              const feed = buildFeed(dash, me, connected);
-              return feed.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {feed.slice(0, 3).map((it, i) => <FeedRow key={i} item={it} />)}
-                </div>
-              ) : (
-                <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, padding: "6px 4px" }}>Nothing happening yet — play a game to be first.</div>
-              );
-            })()}
-          </>
+        {/* The home screen is the games. One Play button, one line for this
+            week's challenge, then the gallery (components/home/HomeGames.tsx).
+            The same layout serves every screen size. */}
+        <HomeGames weekly={weekly} display={T.display} />
+
+        {/* The sign-in nudge sits under the games now. Above them it pushed the
+            first row of games off a phone's screen. */}
+        {!connected && !identityResolving && (
+          <GuestBanner needsSetup={authedUnminted} onConnect={authedUnminted ? () => router.push("/home?ob=1") : onConnect} />
         )}
+
+        {/* Everything that is not a game waits behind four chips, so the page
+            stays one screen long. A chip opens its card right here. */}
+        <VerificationExpiryBanner router={router} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }} role="tablist" aria-label="Today">
+          {([["claim", "🎁 Daily G$"], ["missions", "🎯 Missions"], ["vote", "🗳️ Vote"], ["cup", "🏆 Your rank"]] as const).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={today === id} onClick={() => setToday(today === id ? null : id)} style={{
+              cursor: "pointer", padding: "9px 14px", borderRadius: 999, fontFamily: T.body, fontSize: 13, fontWeight: 800,
+              color: today === id ? "#1a0b33" : T.ink, background: today === id ? "#fff" : "rgba(255,255,255,0.07)",
+              border: `1px solid ${today === id ? "#fff" : T.hairlineHi}`, transition: "background .18s ease, color .18s ease",
+            }}>{label}</button>
+          ))}
+        </div>
+        {today === "claim" && <ClaimCard connected={walletReady} onConnect={onConnect} router={router} />}
+        {today === "missions" && <MissionCard connected={connected} onConnect={onConnect} />}
+        {today === "vote" && <VoteCard connected={walletReady} onConnect={onConnect} router={router} />}
+        {today === "cup" && <ClimbCard connected={connected} dash={dash} address={address ?? null} onConnect={onConnect} router={router} />}
+
+        {(() => {
+          const feed = buildFeed(dash, me, connected);
+          return feed.length ? (
+            <>
+              <SectionLabel action={<ViewAll onClick={() => router.push("/leaderboard")} />}>Live activity</SectionLabel>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 6 }}>
+                {feed.slice(0, 3).map((it, i) => <FeedRow key={i} item={it} />)}
+              </div>
+            </>
+          ) : null;
+        })()}
       </div>
 
       {/* Bottom nav — Home / Play / Events / Pet per CLAUDE.md IA. Renders
