@@ -15,3 +15,7 @@ export { catchAsync, hardenApp, installErrorHandlers, fetchWithTimeout } from '.
 export { guardWalletParams, guardWalletFields, isWallet } from './platform/validate';
 export { createJobs } from './platform/jobs';
 export { checkEnv, describeEnv, envExample, SETTINGS } from './platform/env';
+export { createProgression } from './modules/progression/service';
+export { registerProgressionRoutes } from './modules/progression/routes';
+export { supabaseProgression } from './modules/progression/store';
+export * as progressionCatalog from './modules/progression/catalog';
