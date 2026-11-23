@@ -74,6 +74,9 @@ export default function RoomPage() {
     setErr(null); setBusy(true);
     try {
       await joinRoom(id, urlCode, BigInt(room.stake_wei));
+      // Joining a room that is already running means "I want to play it now".
+      // Go straight into the game: a second button to press was one step too many.
+      if (duelPhase(room, Date.now()) === "live") { router.push(`/games/${gameKey(room.game_type)}`); return; }
       await load();
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
@@ -162,7 +165,7 @@ export default function RoomPage() {
           <>
             {!joined && !full && (
               <button onClick={onJoin} disabled={busy} style={{ padding: "15px", borderRadius: 16, border: "none", cursor: busy ? "wait" : "pointer", background: `linear-gradient(160deg, ${T.green}, #16a34a)`, color: "#04121a", fontFamily: T.display, fontSize: 16 }}>
-                {busy ? "Confirming on Celo…" : isPool ? "Join (free)" : `Join · stake ${stakeG} G$`}
+                {busy ? "Joining…" : isPool ? (phase === "live" ? "Join free and play" : "Join (free)") : phase === "live" ? `Match ${stakeG} G$ and play` : `Join · stake ${stakeG} G$`}
               </button>
             )}
             {joined && phase === "live" && (
