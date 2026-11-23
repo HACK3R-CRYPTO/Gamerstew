@@ -6544,6 +6544,9 @@ setInterval(indexOnChainScores, 5 * 60 * 1000);
 // this module mirrors rooms for the hub and lets the validator resolve payouts.
 require('./lib/duelRooms').registerDuelRoutes(app, { supabase, provider, validator, isVerified, requireSecret });
 
+// Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
+require('./lib/strikeRooms').registerStrikeRoutes(app, { requireSecret });
+
 // Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
 require('./lib/sprint').registerSprintRoutes(app);
 

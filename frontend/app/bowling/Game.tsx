@@ -34,6 +34,7 @@ import WindowBlock from "../world/WindowBlock";
 import Batch from "../world/Batch";
 import { score, PINS, type ScoreState } from "./scoring";
 import { ADS, type Ad } from "./ads";
+import { net, explain, type Room, type Session } from "./online";
 import { armSfx, closeSfx, setMuted, setRumble, bottleHit, bottleRoll, sfxCount, thud, buzz, crowdSound } from "./sfx";
 
 // ── Tuning (metres, seconds) ─────────────────────────────────────────────────
@@ -1185,7 +1186,17 @@ export default function Game() {
   const [mode, setMode] = useState<Mode>("solo");
   const [level, setLevel] = useState(1); // CPU: 0 easy, 1 medium, 2 hard
   const [setup, setSetup] = useState(true); // the "how do you want to play" sheet
-  const seats = useMemo(() => seatsFor(mode), [mode]);
+  // Online: a room on the server. Everyone in it bowls at once on their own phone.
+  const [room, setRoom] = useState<Room | null>(null);
+  const sess = useRef<Session | null>(null);
+  const roundRef = useRef(0);
+  const [nick, setNick] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [netErr, setNetErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const online = mode === "online";
+  const seats = useMemo(() => (mode === "online" && room ? room.players.map((p) => ({ name: p.name, cpu: false })) : seatsFor(mode)), [mode, room]);
   const [allRolls, setAllRolls] = useState<number[][]>([[]]);
   const allRef = useRef<number[][]>([[]]);
   const [turn, setTurn] = useState(0);
@@ -1217,10 +1228,13 @@ export default function Game() {
   const standingRef = useRef(standing);
   standingRef.current = standing;
   const s: ScoreState = useMemo(() => score(rolls, FRAMES), [rolls]);
-  const cards = useMemo(() => seats.map((_, i) => score(allRolls[i] ?? [], FRAMES)), [seats, allRolls]);
+  // online, the other players' cards come from the server; mine is always my own
+  const cards = useMemo(() => seats.map((_, i) => score(online && room && i !== turn ? room.players[i]?.rolls ?? [] : allRolls[i] ?? [], FRAMES)), [seats, allRolls, online, room, turn]);
+  const allOver = online ? room?.status === "over" : true;
+  const meIx = online ? turn : mode === "cpu" ? 0 : -1;
   const me = seats[turn] ?? seats[0];
   const canPlay = phase === "aim" && !setup && !handoff && !me.cpu;
-  const turnLabel = me.name === "You" ? "Your turn" : `${me.name}'s turn`;
+  const turnLabel = online ? "Your lane" : me.name === "You" ? "Your turn" : `${me.name}'s turn`;
 
   useEffect(() => {
     try {
@@ -1242,7 +1256,8 @@ export default function Game() {
     const st = score(nextRolls, FRAMES);
     // With more than one seat, players swap after each frame. Whoever still has
     // frames left goes next; when nobody does, the game is over.
-    const n = allRef.current.length;
+    const live = modeRef.current === "online"; // online, nobody swaps: this lane is mine alone
+    const n = live ? 1 : allRef.current.length;
     let next = seat;
     if (n > 1 && (st.done || st.frame > prevFrame)) {
       next = -1;
@@ -1279,11 +1294,12 @@ export default function Game() {
 
     setAllRolls(allRef.current);
     setHint(null);
+    if (live && sess.current) net.roll(sess.current, nextRolls).then(setRoom).catch(() => { /* the next poll sends it again */ });
     if (allDone) {
       setPhase("over");
       // your best is your own score: seat 0, and never in pass-the-phone
       if (modeRef.current !== "pass") try {
-        const mine = score(allRef.current[0], FRAMES).total;
+        const mine = score(allRef.current[live ? seat : 0], FRAMES).total;
         const prev = Number(localStorage.getItem("streetstrike.best")) || 0;
         if (mine > prev) {
           localStorage.setItem("streetstrike.best", String(mine));
@@ -1403,6 +1419,85 @@ export default function Game() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canPlay]);
 
+  // ── online room ────────────────────────────────────────────────────────────
+  const beginRound = useCallback((v: Room) => {
+    roundRef.current = v.round;
+    modeRef.current = "online";
+    allRef.current = v.players.map(() => []);
+    setAllRolls(allRef.current);
+    turnRef.current = v.you;
+    setTurn(v.you);
+    setStanding(Array(PINS).fill(true));
+    setRackKey((k) => k + 1);
+    setBanner(null);
+    setBeat(false);
+    setHandoff(false);
+    setHint(null);
+    setPhase("aim");
+    setSetup(false);
+  }, []);
+  const takeRoom = useCallback((v: Room) => {
+    setRoom(v);
+    if (v.status === "playing" && v.round !== roundRef.current && v.you >= 0) beginRound(v);
+    // a roll the server never got (a dropped request) is sent again here
+    const mine = allRef.current[v.you] ?? [];
+    if (v.status === "playing" && v.round === roundRef.current && v.you >= 0 && sess.current && (v.players[v.you]?.rolls.length ?? 0) < mine.length) net.roll(sess.current, mine).catch(() => {});
+  }, [beginRound]);
+  const leaveRoom = useCallback(() => {
+    if (sess.current) net.leave(sess.current);
+    sess.current = null;
+    roundRef.current = 0;
+    setRoom(null);
+    setNetErr(null);
+  }, []);
+  const hasRoom = !!room;
+  useEffect(() => {
+    if (!hasRoom) return;
+    let live = true;
+    const tick = () => {
+      const s0 = sess.current;
+      if (!s0) return;
+      net.get(s0).then((v) => { if (live && sess.current === s0) takeRoom(v); }).catch((e: Error) => {
+        if (live && e.message === "no_room") { leaveRoom(); setNetErr("The room closed."); setSetup(true); }
+      });
+    };
+    const id = window.setInterval(tick, 1500);
+    return () => { live = false; window.clearInterval(id); };
+  }, [hasRoom, takeRoom, leaveRoom]);
+  const enterRoom = async (how: "create" | "join") => {
+    const who = nick.trim() || "Player";
+    try { localStorage.setItem("streetstrike.name", who); } catch { /* ignore */ }
+    setBusy(true);
+    setNetErr(null);
+    try {
+      const s1 = how === "create" ? await net.create(who) : await net.join(joinCode.trim().toUpperCase(), who);
+      sess.current = s1;
+      takeRoom(await net.get(s1));
+    } catch (e) {
+      sess.current = null;
+      setNetErr(explain((e as Error).message));
+    }
+    setBusy(false);
+  };
+  const hostDo = async (what: "start" | "rematch") => {
+    if (!sess.current) return;
+    setBusy(true);
+    setNetErr(null);
+    try { takeRoom(await net[what](sess.current)); } catch (e) { setNetErr(explain((e as Error).message)); }
+    setBusy(false);
+  };
+  const shareUrl = room && typeof window !== "undefined" ? `${window.location.origin}/bowling?room=${room.code}` : "";
+  // a shared link opens straight on the join form with the code filled in
+  useEffect(() => {
+    try {
+      const n = localStorage.getItem("streetstrike.name");
+      if (n) setNick(n);
+      const c = new URLSearchParams(window.location.search).get("room");
+      if (c && /^[A-Za-z0-9]{5}$/.test(c)) { setMode("online"); setJoinCode(c.toUpperCase()); }
+    } catch { /* ignore */ }
+    return () => { if (sess.current) net.leave(sess.current); };
+  }, []);
+
   // If a player is on the line and nothing happens for a few seconds, play the
   // "how to roll" demo again. Most people who stall simply do not know the move.
   useEffect(() => {
@@ -1435,6 +1530,7 @@ export default function Game() {
       sound: () => ({ ...sfxCount }),
       start: (m: Mode, lv = 1) => { setLevel(lv); restart(m); setSetup(false); },
       ready: () => setHandoff(false),
+      room: () => room,
       state: () => ({ phase, mode: modeRef.current, turn: turnRef.current, handoff, setup, all: allRef.current, totals: allRef.current.map((r) => score(r, FRAMES).total), rolls: allRef.current[turnRef.current], total: score(allRef.current[turnRef.current], FRAMES).total, standing: standingRef.current.filter(Boolean).length, done: allRef.current.every((r) => score(r, FRAMES).done) }),
     };
   });
@@ -1522,7 +1618,7 @@ export default function Game() {
               {duel && (
                 <div style={{ width: 62, display: "flex", flexDirection: "column", justifyContent: "center", color: "#fff", paddingLeft: 2 }}>
                   <div style={{ fontFamily: DISPLAY, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{seats[p].name}</div>
-                  <div style={{ fontSize: 9, letterSpacing: "0.1em", fontWeight: 600, color: mine && phase !== "over" ? GA.goldLight : "rgba(244,241,234,0.5)" }}>{mine && phase !== "over" ? "ROLLING" : card.done ? "DONE" : "WAITING"}</div>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", fontWeight: 600, color: mine && phase !== "over" ? GA.goldLight : "rgba(244,241,234,0.5)" }}>{online ? (p === turn ? "YOU" : room?.players[p]?.away ? "AWAY" : card.done ? "DONE" : `FRAME ${card.frame + 1}`) : mine && phase !== "over" ? "ROLLING" : card.done ? "DONE" : "WAITING"}</div>
                 </div>
               )}
               {card.frames.map((f, i) => {
@@ -1588,16 +1684,16 @@ export default function Game() {
       {/* how do you want to play: the first thing anyone sees */}
       {setup && (
         <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, rgba(10,1,32,0.8) 62%)" }}>
-          <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "16px 14px 14px", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.9), rgba(10,1,32,0.96))", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 -10px 40px rgba(0,0,0,0.5)" }}>
+          <div style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 64px)", overflowY: "auto", borderRadius: 26, padding: "16px 14px 14px", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.9), rgba(10,1,32,0.96))", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 -10px 40px rgba(0,0,0,0.5)" }}>
             <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: GA.goldLight }}>Strike</span></div>
             <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(244,241,234,0.72)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: room ? "none" : "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {MODES.map((m) => {
                 const on = m.id === mode;
                 return (
-                  <button key={m.id} onClick={() => setMode(m.id)} aria-pressed={on} style={{ flex: "1 1 0", minWidth: 0, cursor: "pointer", padding: "10px 6px 9px", borderRadius: 16, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(76,29,149,0.9))" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                  <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(76,29,149,0.9))" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
                     <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
-                    <div style={{ fontFamily: DISPLAY, fontSize: 14.5, marginTop: 3 }}>{m.name}</div>
+                    <div style={{ fontFamily: DISPLAY, fontSize: 13, marginTop: 3, whiteSpace: "nowrap" }}>{m.name}</div>
                     <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
                   </button>
                 );
@@ -1613,8 +1709,48 @@ export default function Game() {
 
 <div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(244,241,234,0.55)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
-            <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Start</button>
-            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(244,241,234,0.55)", marginTop: 8 }}>{mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
+            {!online && (
+              <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Start</button>
+            )}
+            {online && !room && (
+              <div style={{ marginTop: 10 }}>
+                <input value={nick} onChange={(e) => setNick(e.target.value.slice(0, 14))} placeholder="Your name" maxLength={14} aria-label="Your name" style={field} />
+                <button disabled={busy} onClick={() => { armSfx(); enterRoom("create"); }} style={{ width: "100%", marginTop: 8, padding: "13px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 18, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d", opacity: busy ? 0.6 : 1 }}>Create a room</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 8px", fontSize: 11, letterSpacing: "0.16em", fontWeight: 600, color: "rgba(244,241,234,0.5)" }}><i style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} />OR JOIN A FRIEND<i style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} /></div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))} placeholder="CODE" aria-label="Room code" autoCapitalize="characters" style={{ ...field, flex: 1, textAlign: "center", letterSpacing: "0.3em", fontFamily: DISPLAY, fontSize: 20 }} />
+                  <button disabled={busy || joinCode.length !== 5} onClick={() => { armSfx(); enterRoom("join"); }} style={{ padding: "0 22px", borderRadius: 14, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 17, color: "#1a0b33", background: GA.goldLight, opacity: busy || joinCode.length !== 5 ? 0.45 : 1 }}>Join</button>
+                </div>
+                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 8, textAlign: "center" }}>{netErr}</div>}
+              </div>
+            )}
+            {online && room && (
+              <div style={{ marginTop: 4, textAlign: "center" }}>
+                <div style={{ fontSize: 10.5, letterSpacing: "0.2em", fontWeight: 600, color: "rgba(244,241,234,0.55)" }}>ROOM CODE</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 46, lineHeight: 1.1, letterSpacing: "0.18em", color: GA.goldLight, textShadow: "0 0 22px rgba(251,191,36,0.4)" }}>{room.code}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(244,241,234,0.75)", marginBottom: 10 }}>Send this to your friend. They tap Online, type the code and join.</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <a href={`https://wa.me/?text=${encodeURIComponent(`Come bowl me on Street Strike 🛞 Room ${room.code}: ${shareUrl}`)}`} target="_blank" rel="noreferrer" style={{ flex: 1, padding: "11px 0", borderRadius: 14, textDecoration: "none", fontFamily: DISPLAY, fontSize: 15, color: "#06230f", background: "#25d366" }}>WhatsApp</a>
+                  <button onClick={() => { navigator.clipboard?.writeText(shareUrl).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600); }).catch(() => {}); }} style={{ flex: 1, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+                </div>
+                <div style={{ margin: "12px 0 10px", padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,0.05)", textAlign: "left" }}>
+                  {room.players.map((pl, k) => (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", fontSize: 15, fontWeight: 500 }}>
+                      <i style={{ width: 9, height: 9, borderRadius: 9, background: pl.away ? "#6b6480" : "#4ade80", boxShadow: pl.away ? "none" : "0 0 8px #4ade80" }} />
+                      <span style={{ flex: 1 }}>{pl.name}{k === room.you ? " (you)" : ""}</span>
+                      {pl.host && <span style={{ fontSize: 10.5, letterSpacing: "0.12em", fontWeight: 600, color: GA.goldLight }}>HOST</span>}
+                    </div>
+                  ))}
+                  {room.players.length < 2 && <div style={{ padding: "5px 2px", fontSize: 13.5, color: "rgba(244,241,234,0.55)", animation: "ssPulse2 1.4s ease-in-out infinite" }}>Waiting for a friend to join…</div>}
+                </div>
+                {room.players[room.you]?.host
+                  ? <button disabled={busy || room.players.length < 2} onClick={() => { armSfx(); hostDo("start"); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d", opacity: busy || room.players.length < 2 ? 0.45 : 1 }}>{room.players.length < 2 ? "Need 2 players" : "Start the game"}</button>
+                  : <div style={{ padding: "13px 0", borderRadius: 16, fontFamily: DISPLAY, fontSize: 16, color: "rgba(244,241,234,0.85)", background: "rgba(255,255,255,0.06)" }}>You are in. Waiting for the host to start…</div>}
+                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 8 }}>{netErr}</div>}
+                <button onClick={leaveRoom} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "#9b93b8", fontSize: 13 }}>Leave room</button>
+              </div>
+            )}
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(244,241,234,0.55)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
           </div>
         </div>
       )}
@@ -1637,7 +1773,7 @@ export default function Game() {
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>STREET STRIKE · FINAL</div>
             {seats.length > 1 ? (
               <>
-                <div style={{ fontFamily: DISPLAY, fontSize: "clamp(30px,9vw,44px)", lineHeight: 1.1, color: GA.goldLight }}>{verdict(seats, cards)}</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: "clamp(30px,9vw,44px)", lineHeight: 1.1, color: GA.goldLight }}>{(allOver ? verdict(seats, cards, meIx) : "Waiting for the others…")}</div>
                 <div style={{ display: "flex", justifyContent: "center", gap: 18, margin: "8px 0 4px" }}>
                   {seats.map((p, k) => (
                     <div key={k}><div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1 }}>{cards[k].total}</div><div style={{ fontSize: 12, fontWeight: 600, color: "rgba(244,241,234,0.7)" }}>{p.name}</div></div>
@@ -1646,37 +1782,51 @@ export default function Game() {
               </>
             ) : <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: GA.goldLight }}>{cards[0].total}</div>}
             <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.78)", marginBottom: 12 }}>
-              {mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
+              {online ? (allOver ? "Good game!" : `${seats.filter((_, k) => !cards[k].done && !room?.players[k]?.away).map((p) => p.name).join(", ")} still bowling`) : mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
             </div>
+            {online ? (
+              <>
+                {allOver && room?.players[turn]?.host && <button disabled={busy} onClick={() => hostDo("rematch")} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Rematch</button>}
+                {allOver && !room?.players[turn]?.host && <div style={{ padding: "12px 0", fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.75)" }}>Waiting for the host to start a rematch…</div>}
+                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 6 }}>{netErr}</div>}
+                <button onClick={() => { leaveRoom(); restart("solo"); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Leave room</button>
+              </>
+            ) : (
+              <>
             <button onClick={() => restart()} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)" }}>Play again</button>
             <button onClick={() => { restart(); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Change mode</button>
+              </>
+            )}
             <Link href="/games" style={{ display: "inline-block", marginTop: 10, color: "#9b93b8", fontSize: 13, textDecoration: "none" }}>← Arena</Link>
           </div>
         </div>
       )}
-      <style>{`@keyframes ssSwipe { 0% { transform: translateY(0) scale(1); opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-34vh) scale(0.8); opacity: 0; } } @keyframes ssDash { to { background-position: 0 -20px; } } @keyframes ssPulse { 0%, 100% { transform: translate(-50%, -100%) scale(1); } 50% { transform: translate(-50%, -100%) scale(1.07); } } @keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
+      <style>{`@keyframes ssSwipe { 0% { transform: translateY(0) scale(1); opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-34vh) scale(0.8); opacity: 0; } } @keyframes ssDash { to { background-position: 0 -20px; } } @keyframes ssPulse2 { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } } @keyframes ssPulse { 0%, 100% { transform: translate(-50%, -100%) scale(1); } 50% { transform: translate(-50%, -100%) scale(1.07); } } @keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
     </div>
   );
 }
 
-type Mode = "solo" | "cpu" | "pass";
+type Mode = "solo" | "cpu" | "pass" | "online";
 interface Seat { name: string; cpu: boolean }
 const MODES: { id: Mode; icon: string; name: string; note: string }[] = [
   { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best" },
-  { id: "cpu", icon: "🤖", name: "Vs computer", note: "Take turns with the CPU" },
+  { id: "cpu", icon: "🤖", name: "Vs CPU", note: "Take turns" },
   { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone" },
+  { id: "online", icon: "🌍", name: "Online", note: "Play a friend" },
 ];
 function seatsFor(m: Mode): Seat[] {
   if (m === "cpu") return [{ name: "You", cpu: false }, { name: "CPU", cpu: true }];
   if (m === "pass") return [{ name: "Player 1", cpu: false }, { name: "Player 2", cpu: false }];
   return [{ name: "You", cpu: false }];
 }
-function verdict(seats: Seat[], cards: ScoreState[]) {
+function verdict(seats: Seat[], cards: ScoreState[], meIx: number) {
   const top = Math.max(...cards.map((c) => c.total));
-  const who = seats.filter((_, i) => cards[i].total === top);
+  const who = seats.map((_, i) => i).filter((i) => cards[i].total === top);
   if (who.length > 1) return "It's a draw!";
-  return who[0].name === "You" ? "You win! 🏆" : `${who[0].name} wins!`;
+  return who[0] === meIx ? "You win! 🏆" : `${seats[who[0]].name} wins!`;
 }
+
+const field: CSSProperties = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.07)", color: "#fff", fontFamily: BODY, fontSize: 16, fontWeight: 500, outline: "none" };
 
 const chip: CSSProperties = {
   color: "#fff",
