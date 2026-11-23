@@ -160,7 +160,11 @@ function* (core) {
 // community knows) while the data window covers all 4 weeks.
 const COMPETITION_WEEKS = [10, 11, 12, 13];
 
-core.app.get('/api/competition', async (_, res) => {
+// The standings are sixteen database reads plus a name lookup per player. The
+// competition's weeks ended long ago, so the result is kept (see
+// src/platform/resultCache.ts): half an hour once it is over, thirty seconds
+// while it runs. A read that fails throws, so a failure is never kept.
+async function competitionRankings() {
   const totals = new Map(); // wallet -> { username, rhythm, simon, weeks: { 11: n, 12: n, 13: n } }
 
   for (const week of COMPETITION_WEEKS) {
@@ -169,7 +173,7 @@ core.app.get('/api/competition', async (_, res) => {
     const endIso   = new Date(end   * 1000).toISOString();
 
     for (const game of core.VALID_GAMES) {
-      const { data: rows } = await core.supabase
+      const { data: rows, error } = await core.supabase
         .from('activity')
         .select('wallet_address, score')
         .eq('game', game)
@@ -177,6 +181,7 @@ core.app.get('/api/competition', async (_, res) => {
         .lt('created_at', endIso)
         .order('score', { ascending: false })
         .limit(500);
+      if (error) throw new Error(`competition read failed: ${error.message || 'unknown'}`);
 
       // Best score per player this week
       const weekBest = new Map();
@@ -216,6 +221,19 @@ core.app.get('/api/competition', async (_, res) => {
         username: await core.resolveUsername(e.wallet) || null,
       }))
   );
+
+  return rankings;
+}
+
+core.app.get('/api/competition', async (_, res) => {
+  const compEndMs = core.seasonBounds(COMPETITION_WEEKS[COMPETITION_WEEKS.length - 1]).end * 1000;
+  let rankings;
+  try {
+    rankings = await core.results.get('competition:rankings', { ttlMs: core.platform.eventTtl(compEndMs, Date.now(), 30_000), compute: competitionRankings });
+  } catch (e) {
+    console.warn('competition standings unavailable:', e?.message || e);
+    rankings = []; // as before: a failed read showed an empty table, not an error
+  }
 
   const current = core.currentSeasonNumber();
   // Count the current week as remaining if we're inside the competition

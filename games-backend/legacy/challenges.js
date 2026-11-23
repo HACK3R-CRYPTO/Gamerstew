@@ -112,9 +112,13 @@ const CHALLENGE_TOP_LIST     = 20;
 let challengeCache   = { at: 0, plays: new Map(), ranked: [] };
 let challengeRebuild = null;
 
+// While the challenge runs its table is rebuilt every ten seconds. Once it has
+// been over for ten minutes the table cannot change, so it is kept for half an
+// hour: this event ended months ago and was still being recomputed all day.
+// `at` is only set by a rebuild that succeeded, so a failure is never kept.
 const isCacheFresh = () =>
-  challengeCache.plays.size > 0 &&
-  Date.now() - challengeCache.at < CHALLENGE_CACHE_TTL_MS;
+  challengeCache.at > 0 &&
+  Date.now() - challengeCache.at < core.platform.eventTtl(CHALLENGE_END * 1000, Date.now(), CHALLENGE_CACHE_TTL_MS);
 
 async function getChallengePlays() {
   if (isCacheFresh()) {

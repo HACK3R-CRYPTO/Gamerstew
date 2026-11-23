@@ -79,6 +79,8 @@ platform.hardenApp(app, { isStopping: () => !!core.lifecycle && core.lifecycle.i
 platform.guardWalletParams(app);
 // Timed jobs: one run at a time, failures logged by name, status in /internal/metrics.
 core.jobs = platform.createJobs();
+// One cache for results that are expensive and rarely change (finished events).
+core.results = platform.createResultCache();
 
 // Trust Railway/Vercel reverse proxy so rate-limiter reads X-Forwarded-For correctly
 app.set('trust proxy', 1);

@@ -19,3 +19,4 @@ export { createProgression } from './modules/progression/service';
 export { registerProgressionRoutes } from './modules/progression/routes';
 export { supabaseProgression } from './modules/progression/store';
 export * as progressionCatalog from './modules/progression/catalog';
+export { createResultCache, eventTtl } from './platform/resultCache';
