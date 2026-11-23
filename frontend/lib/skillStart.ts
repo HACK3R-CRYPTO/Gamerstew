@@ -16,7 +16,8 @@ const KEEP = 5;
 export function recentRuns(game: string): number[] {
   try {
     const a = JSON.parse(localStorage.getItem(KEY(game)) || "[]");
-    return Array.isArray(a) ? a.filter((x) => typeof x === "number").slice(-KEEP) : [];
+    // finite numbers only: a hand-edited value like 1e999 parses to Infinity and would turn the average into NaN
+    return Array.isArray(a) ? a.filter((x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x < 1000).slice(-KEEP) : [];
   } catch {
     return [];
   }

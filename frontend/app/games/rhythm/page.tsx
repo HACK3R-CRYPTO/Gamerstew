@@ -719,6 +719,15 @@ export default function RhythmGamePage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); setMode(c.mode); } }, []);
   const [suddenOver, setSuddenOver] = useState(false);
+  // The song and mode a run is PLAYED with, pinned when the run is set up.
+  // Everything about the run (the chart, the rules, what is sent to the server)
+  // reads these, never the live lobby choice: the lobby stays tappable while the
+  // session ticket is fetched, and the song list can arrive from the server at
+  // any moment. Without the pin an honest run could be built on one song and
+  // submitted as another, and the server would score it as mostly misses.
+  const runSongRef = useRef<string>("turca");
+  const runModeRef = useRef<ModeId>("ranked");
+  const busyRef = useRef(false); // a run is being set up or played
 
   // Song choice. Only the original is offered until the server confirms which
   // songs it can score (GET /api/rhythm/songs): a newer game must never let a
@@ -734,6 +743,7 @@ export default function RhythmGamePage() {
       const ok = SONGS.map((x) => x.id).filter((id) => d.songs.includes(id));
       if (ok.length < 2) return;
       setSongIds(ok);
+      if (busyRef.current) return; // a run is already being set up or played: leave its song alone
       const ch = readChallenge();
       setSongId(ch && ok.includes(ch.song) ? ch.song : todaysSongId(ok)); // a friend's challenge picks their song; else today's
     }).catch(() => { /* older server or offline: the original song only */ });
@@ -926,8 +936,11 @@ export default function RhythmGamePage() {
 
   // Reset game state
   const reset = useCallback(() => {
-    chartRef.current = buildChart(songIdRef.current);
-    if (modeRef.current === "mirror") chartRef.current = chartRef.current.map((n) => ({ ...n, lane: LANES.length - 1 - n.lane }));
+    runSongRef.current = songIdRef.current;
+    runModeRef.current = modeRef.current;
+    busyRef.current = true;
+    chartRef.current = buildChart(runSongRef.current);
+    if (runModeRef.current === "mirror") chartRef.current = chartRef.current.map((n) => ({ ...n, lane: LANES.length - 1 - n.lane }));
     setSuddenOver(false);
     spawnedRef.current = new Set();
     missedRef.current = new Set();
@@ -960,7 +973,7 @@ export default function RhythmGamePage() {
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
     paceRef.current = [];
-    { const w = modeRef.current === "speed" ? HEAT_MAX : warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
+    { const w = runModeRef.current === "speed" ? HEAT_MAX : warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
     travelLockRef.current = new Map(); beatIdxRef.current = -1;
     setPaceDelta(null);
     setBestResult(null);
@@ -1000,7 +1013,9 @@ export default function RhythmGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    const ranked = modeRef.current === "ranked";
+    // Pin the mode now: every later check in this start reads the pinned value.
+    runModeRef.current = modeRef.current;
+    const ranked = runModeRef.current === "ranked";
     // Practice variants never touch the chain: no gas check, no session ticket.
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -1042,20 +1057,20 @@ export default function RhythmGamePage() {
           const token = await getAccessToken();
           if (!token) {
             setSubmitError("Sign in required to start a run.");
-            startingRef.current = false;
+            startingRef.current = false; busyRef.current = false;
             return;
           }
           res = await startGameAction(token, address, "rhythm");
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
-          startingRef.current = false;
+          startingRef.current = false; busyRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
-        startingRef.current = false;
+        startingRef.current = false; busyRef.current = false;
         return;
       }
     }
@@ -1110,7 +1125,7 @@ export default function RhythmGamePage() {
   //                          Supabase, awards XP, unlocks achievements
   useEffect(() => {
     if (phase !== "finished") return;
-    if (modeRef.current !== "ranked") return; // practice variants are never signed or sent
+    if (runModeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -1198,7 +1213,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
-            undefined, undefined, undefined, songIdRef.current,
+            undefined, undefined, undefined, runSongRef.current,
           );
         } else {
           authToken = await getAccessToken();
@@ -1211,7 +1226,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
-            undefined, undefined, undefined, songIdRef.current,
+            undefined, undefined, undefined, runSongRef.current,
           );
         }
 
@@ -1816,8 +1831,13 @@ export default function RhythmGamePage() {
         // at that moment, so tiles already on screen never jump.
         let tv = travelLockRef.current.get(src.id);
         if (tv === undefined) {
-          const eff = phase === "playing" ? Math.max(HEAT_MIN_TRAVEL, src.travel * HEAT_FALL[heatRef.current]) : src.travel;
+          let eff = phase === "playing" ? Math.max(HEAT_MIN_TRAVEL, src.travel * HEAT_FALL[heatRef.current]) : src.travel;
           if (now < src.time - eff) continue;
+          // After a miss the fall slows, so a tile that was waiting for the faster
+          // speed is suddenly "late". Start it at the top now with the time it has
+          // left, instead of letting it appear part-way down the lane.
+          const left = src.time - now;
+          if (phase === "playing" && left < eff && left >= HEAT_MIN_TRAVEL * 0.8) eff = left;
           travelLockRef.current.set(src.id, eff);
           tv = eff;
         }
@@ -1867,7 +1887,7 @@ export default function RhythmGamePage() {
             setFeverActive(false);
           }
           setHits(h => ({ ...h, miss: h.miss + 1 }));
-          if (modeRef.current === "sudden" && phase === "playing") setSuddenOver(true); // one miss ends it
+          if (runModeRef.current === "sudden" && phase === "playing") setSuddenOver(true); // one miss ends it
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
           // Floating "MISS" popup at the lane + light screen shake.
           // Encore misses shake harder because each one costs a life.
@@ -1884,7 +1904,8 @@ export default function RhythmGamePage() {
             encoreMissesRef.current++;
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
-              if (address && !needsMint) {
+              // Paying to save only makes sense for a run that will be submitted.
+              if (runModeRef.current === "ranked" && address && !needsMint) {
                 savePausedAtRef.current = performance.now(); // freeze the clock
                 setPhase("saving");
               } else {
@@ -1977,7 +1998,7 @@ export default function RhythmGamePage() {
     (window as unknown as { __rhythm?: unknown }).__rhythm = {
       now: () => (performance.now() - startRef.current) / 1000,
       chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
-      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setMode, mode, setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
+      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setMode, mode, runSong: () => runSongRef.current, runMode: () => runModeRef.current, setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
       falls: () => [...travelLockRef.current.values()],
     };
   });
@@ -2006,6 +2027,9 @@ export default function RhythmGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combo, phase]);
 
+  // Back in the lobby or on the result screen, nothing is in flight any more.
+  useEffect(() => { if (phase === "idle" || phase === "finished") busyRef.current = false; }, [phase]);
+
   // Sudden Death: the first miss ends the run, the same way QUIT does.
   useEffect(() => {
     if (!suddenOver || phase !== "playing") return;
@@ -2032,12 +2056,12 @@ export default function RhythmGamePage() {
     const isNew = score > 0 && (!prev || score > prev.score);
     if (isNew) {
       const next: RhythmBest = { score, accuracy: acc, pace: fillPace(paceRef.current, TRACK_DURATION) };
-      saveRhythmBest(next, modeRef.current);
+      saveRhythmBest(next, runModeRef.current);
       bestRef.current = next;
     }
     setBestResult({ prev: prev ? prev.score : null, isNew });
     // feed the skill-matched start: how hot this run got
-    if (score > 0 && (modeRef.current === "ranked" || modeRef.current === "practice")) recordRun("rhythm", topHeatRef.current);
+    if (score > 0 && (runModeRef.current === "ranked" || runModeRef.current === "practice")) recordRun("rhythm", topHeatRef.current);
   }, [phase, score]);
 
   // ─── Render helpers ──────────────────────────────────────────────────────────
@@ -2213,8 +2237,8 @@ export default function RhythmGamePage() {
           practice={mode === "ranked" ? null : modeById(mode).name}
           challenge={challenge}
           onChallenge={() => {
-            const url = `${window.location.origin}/games/rhythm?beat=${score}&song=${songIdRef.current}&mode=${modeRef.current}&by=${encodeURIComponent("A friend")}`;
-            const text = `I scored ${score.toLocaleString()} on ${songById(songIdRef.current).name} in Rhythm Rush. Beat it if you can 🔥`;
+            const url = `${window.location.origin}/games/rhythm?beat=${score}&song=${runSongRef.current}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+            const text = `I scored ${score.toLocaleString()} on ${songById(runSongRef.current).name} in Rhythm Rush. Beat it if you can 🔥`;
             if (navigator.share) navigator.share({ title: "Rhythm Rush", text, url }).catch(() => {});
             else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
           }}
