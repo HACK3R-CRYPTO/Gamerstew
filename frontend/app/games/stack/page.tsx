@@ -118,6 +118,33 @@ const SHARD_GRAVITY = 0.45;
 const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
 
 type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
+
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been and the only mode that is signed
+// and submitted. The others change the rules for fun and never leave the
+// device: no gas check, no session ticket, no score signing, no save prompt.
+type ModeId = "ranked" | "practice" | "turbo" | "thin";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "turbo", name: "Turbo", tag: "FREE", blurb: "Every block moves 60% faster. Blink and it is gone.", color: "#f43f5e" },
+  { id: "thin", name: "Thin Ice", tag: "FREE", blurb: "You start with a block half the width. No room for error.", color: "#c084fc" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+const TURBO = 1.6;
+const THIN = 0.5;
+
+// A challenge from a friend arrives as a link: /games/stack?beat=14&mode=ranked&by=Tunde
+type Challenge = { blocks: number; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const blocks = Number(q.get("beat"));
+  if (!Number.isFinite(blocks) || blocks < 1 || blocks > 2000) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { blocks: Math.floor(blocks), mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
 type Block = { x: number; w: number; hue: number };
 type Moving = { x: number; w: number; dir: 1 | -1; speed: number; hue: number };
 type Shard = { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; hue: number };
@@ -334,7 +361,7 @@ export default function StackTowerPage() {
     // tallest tower ever built on this device: the line you climb toward next time
     try {
       const built = Math.max(0, levelRef.current - 1);
-      if (built > bestHeightRef.current) { bestHeightRef.current = built; localStorage.setItem("stack_best_height", String(built)); }
+      if (built > bestHeightRef.current) { bestHeightRef.current = built; localStorage.setItem(heightKey(runModeRef.current), String(built)); }
     } catch { /* ignore */ }
     setPhase("finished");
   }, [blip, haptic, juice]);
@@ -365,7 +392,8 @@ export default function StackTowerPage() {
       movingRef.current = null;
       // Only signed-in, minted players can buy a save on-chain. Guests and
       // not-yet-minted players fall straight through to the finish screen.
-      if (address && !needsMint) {
+      // So does every free mode: paying to save a run that is never submitted makes no sense.
+      if (runModeRef.current === "ranked" && address && !needsMint) {
         savePausedAtRef.current = Date.now();
         setPhase("saving");
       } else {
@@ -437,8 +465,8 @@ export default function StackTowerPage() {
     // New moving block: alternate entry side, speed creeps up with height
     const top = stack[stack.length - 1];
     const fromLeft = newLevel % 2 === 0;
-    const speed = BASE_SPEED + newLevel * SPEED_RAMP
-      + Math.min(newLevel * newLevel * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const speed = (BASE_SPEED + newLevel * SPEED_RAMP
+      + Math.min(newLevel * newLevel * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP)) * (runModeRef.current === "turbo" ? TURBO : 1);
     const { w: cw } = sizeRef.current;
     movingRef.current = {
       x: fromLeft ? -top.w : cw,
@@ -459,8 +487,8 @@ export default function StackTowerPage() {
     const top = stack[stack.length - 1];
     const level = levelRef.current;
     const fromLeft = level % 2 === 0;
-    const speed = BASE_SPEED + level * SPEED_RAMP
-      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const speed = (BASE_SPEED + level * SPEED_RAMP
+      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP)) * (runModeRef.current === "turbo" ? TURBO : 1);
     const { w: cw } = sizeRef.current;
     movingRef.current = {
       x: fromLeft ? -top.w : cw,
@@ -510,7 +538,9 @@ export default function StackTowerPage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    runModeRef.current = modeRef.current; // pinned for the whole run
+    const ranked = runModeRef.current === "ranked";
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands, the wallet now has gas so the score
       // will save — proceed into play. Only if it can't help do we open the sheet.
@@ -527,12 +557,12 @@ export default function StackTowerPage() {
     startingRef.current = true;
 
     const { w } = sizeRef.current;
-    const startW = Math.min(280, Math.max(START_W_MIN, w * START_W_FRAC));
+    const startW = Math.min(280, Math.max(START_W_MIN, w * START_W_FRAC)) * (runModeRef.current === "thin" ? THIN : 1);
     stackRef.current = [
       { x: (w - startW) / 2, w: startW, hue: HUES[0] },
     ];
     movingRef.current = {
-      x: 0, w: startW, dir: 1, speed: BASE_SPEED, hue: HUES[1],
+      x: 0, w: startW, dir: 1, speed: BASE_SPEED * (runModeRef.current === "turbo" ? TURBO : 1), hue: HUES[1],
     };
     shardsRef.current = [];
     sparklesRef.current = [];
@@ -556,7 +586,8 @@ export default function StackTowerPage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══════
     // No ticket = backend refuses to sign the score at submit time. Guests
     // skip this branch and the run stays local-only (localStorage best).
-    if (address && !needsMint) {
+    // Free modes submit nothing, so they need no ticket either.
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -633,6 +664,7 @@ export default function StackTowerPage() {
   // Guests with no wallet skip this entirely · their best stays in localStorage.
   useEffect(() => {
     if (phase !== "finished") return;
+    if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -872,7 +904,7 @@ export default function StackTowerPage() {
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     (window as unknown as { __stack?: unknown }).__stack = {
-      phase, drop, level: () => levelRef.current,
+      phase, drop, level: () => levelRef.current, setMode, runMode: () => runModeRef.current, topW: () => stackRef.current[0]?.w, speed: () => movingRef.current?.speed,
       offset: () => { const m = movingRef.current, st = stackRef.current; return m && st.length ? m.x - st[st.length - 1].x : null; },
       setBest: (n: number) => { bestHeightRef.current = n; lineHeightRef.current = n; },
     };
@@ -882,12 +914,24 @@ export default function StackTowerPage() {
   // Tallest tower so far (blocks), drawn as a gold line across the sky. It is
   // fixed for the whole run, so passing it mid-run is a moment you can see.
   const bestHeightRef = useRef(0);
+  // Mode + an incoming friend challenge. runModeRef is the mode a run is PLAYED
+  // with, pinned when it starts: the rules and whether it submits read that.
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  const runModeRef = useRef<ModeId>("ranked");
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const challengeRef = useRef<Challenge | null>(null);
+  const heightKey = (m: ModeId) => (m === "ranked" ? "stack_best_height" : `stack_best_height_${m}`);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); challengeRef.current = c; setMode(c.mode); } }, []);
+  useEffect(() => {
+    modeRef.current = mode;
+    try { const n = Number(localStorage.getItem(heightKey(mode))); bestHeightRef.current = Number.isFinite(n) && n > 0 ? n : 0; } catch { bestHeightRef.current = 0; }
+    lineHeightRef.current = bestHeightRef.current;
+  }, [mode]);
   const lineHeightRef = useRef(0);   // the height the line shows this run
   const passedBestRef = useRef(false);
   const skyRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
-    try { bestHeightRef.current = Number(localStorage.getItem("stack_best_height")) || 0; } catch { /* ignore */ }
-    lineHeightRef.current = bestHeightRef.current;
     const img = new Image();
     img.onload = () => { skyRef.current = img; };
     img.src = "/games/stack-sky.webp";
@@ -945,6 +989,25 @@ export default function StackTowerPage() {
       ctx.fillStyle = passed ? "#86efac" : "#fde68a";
       ctx.textBaseline = "bottom";
       ctx.fillText(passed ? `BEATEN · WAS ${bestH}` : `YOUR BEST · ${bestH}`, 10, ly - 4);
+      ctx.restore();
+    }
+
+    // A friend's tower to beat, drawn as its own line in the sky.
+    const ch = challengeRef.current;
+    if (ch && ch.blocks >= 1) {
+      const ly = blockCenterY(ch.blocks + 1) + BLOCK_H / 2;
+      const beaten = levelRef.current - 1 > ch.blocks;
+      ctx.save();
+      ctx.strokeStyle = beaten ? "rgba(74,222,128,0.9)" : "rgba(251,146,60,0.95)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '900 11px ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif';
+      ctx.fillStyle = beaten ? "#86efac" : "#fdba74";
+      ctx.textBaseline = "bottom";
+      ctx.textAlign = "right";
+      ctx.fillText(beaten ? `${ch.by.toUpperCase()} BEATEN` : `${ch.by.toUpperCase()} · ${ch.blocks}`, w - 10, ly - 4);
       ctx.restore();
     }
 
@@ -1137,6 +1200,34 @@ export default function StackTowerPage() {
 
           <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
 
+          {/* A friend sent a tower to beat */}
+          {challenge && (
+            <div style={{ width: "100%", maxWidth: 360, padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
+              <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
+              <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} stacked <span style={{ color: "#fde68a" }}>{challenge.blocks} blocks</span>. Build higher.</div>
+            </div>
+          )}
+
+          {/* Choose how to play. Ranked counts; the rest are free variants. */}
+          <div style={{ width: "100%", maxWidth: 360 }}>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
+              {MODES.map((m) => {
+                const on = m.id === mode;
+                return (
+                  <button key={m.id} onClick={(e) => { e.stopPropagation(); setMode(m.id); }} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
+                    flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
+                    background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
+                    boxShadow: on ? `0 0 14px ${m.color}66` : "none",
+                  }}>
+                    <span style={{ fontSize: 12.5 }}>{m.name}</span>
+                    <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
+          </div>
+
           <div role="button" tabIndex={0} onClick={startGame}
             style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
             <div style={{
@@ -1231,8 +1322,20 @@ export default function StackTowerPage() {
                 </div>
               </div>
 
+              {/* How this run did against a friend's tower */}
+              {challenge && levelRef.current - 1 > 0 && (() => { const built = Math.max(0, levelRef.current - 1); const d = built - challenge.blocks; return (
+                <div style={{ marginTop: 12, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 13, fontWeight: 900, color: d > 0 ? "#86efac" : "#fdba74" }}>
+                  {d > 0 ? `🔥 You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}
+                </div>
+              ); })()}
+
               {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
-              {!authed ? (
+              {mode !== "ranked" ? (
+                <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#a5f3fc" }}>{modeById(mode).name.toUpperCase()} · FREE PLAY</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(220,210,255,0.78)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
+                </div>
+              ) : !authed ? (
                 <div style={{ marginTop: 14 }}>
                   <GuestScorePrompt nextPath="/games/stack" />
                 </div>
@@ -1285,6 +1388,21 @@ export default function StackTowerPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Send this tower to a friend as a dare. They open the link and build to beat it. */}
+              {!(submitting || signingOnChain) && levelRef.current - 1 > 0 && (
+                <button onClick={() => {
+                  const built = Math.max(0, levelRef.current - 1);
+                  const url = `${window.location.origin}/games/stack?beat=${built}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+                  const text = `I stacked ${built} blocks in Stack Tower. Build higher if you can 🔥`;
+                  if (navigator.share) navigator.share({ title: "Stack Tower", text, url }).catch(() => {});
+                  else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+                }} style={{
+                  marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                  color: "#fff", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
+                  border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
+                }}>⚔️ CHALLENGE A FRIEND TO BEAT {Math.max(0, levelRef.current - 1)} BLOCKS</button>
+              )}
 
               {/* MARKOV cross-promo is a navigation link · hide it while
                   the score is still saving so a reflexive tap can't abort
