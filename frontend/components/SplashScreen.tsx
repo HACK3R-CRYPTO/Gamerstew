@@ -2,10 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { preload } from "react-dom";
-import { preloadHomeData, getHomeData } from "@/lib/homePreload";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
-import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 const D = "/splash_screen_icons/dice.png";
 const G = "/splash_screen_icons/gamepad.png";
@@ -321,11 +319,6 @@ export default function SplashScreen() {
   const [textIndex, setTextIndex] = useState(0);
   const [displayed, setDisplayed] = useState(0);
   const router = useRouter();
-  // MiniPay users skip the /home landing entirely · their injected wallet
-  // is the identity, no Privy sign-in needed. After the splash they go
-  // straight to /dashboard like a signed-in player. Non-MiniPay traffic
-  // still hits /home for the Play Free / Sign In choice.
-  const isMiniPay = useIsMiniPay();
 
   // Referral capture happens BEFORE the typing animation finishes so
   // the ?ref query param on a share link survives the router.push to
@@ -334,30 +327,19 @@ export default function SplashScreen() {
   // no ref is present.
   useEffect(() => { captureReferralFromUrl(); }, []);
 
-  // Data-driven splash: no fixed duration. The splash leaves the moment
-  // /home's data is ready (live stats, top 3, climb), bounded by:
-  //   · MIN 1.2s on screen — no jarring flash on fast connections
-  //   · MAX 6s — a slow/failed API never strands the player here;
-  //     /home falls back to its own fetch state
+  // After the splash, everyone lands on the dashboard: the games, straight away.
+  // It used to stop at a "Play free or Sign in" page first, which made every
+  // visitor answer a question before seeing a single game, and waited up to six
+  // seconds for that page's numbers. Signing in is one tap away on the dashboard
+  // (its Sign in button opens /home), for the moment a player wants to keep a
+  // score. The splash stays up 1.2 s so it does not flash by.
   useEffect(() => {
-    preloadHomeData();
-    const dest = isMiniPay ? "/dashboard" : "/home";
+    const dest = "/dashboard";
     router.prefetch(dest);
-    const started = Date.now();
     let cancelled = false;
-    const MIN_MS = 1200;
-    const MAX_MS = 6000;
-    const go = () => {
-      if (cancelled) return;
-      const wait = Math.max(0, MIN_MS - (Date.now() - started));
-      setTimeout(() => { if (!cancelled) router.push(dest); }, wait);
-    };
-    Promise.race([
-      getHomeData(),
-      new Promise(res => setTimeout(res, MAX_MS)),
-    ]).then(go, go);
-    return () => { cancelled = true; };
-  }, [router, isMiniPay]);
+    const t = setTimeout(() => { if (!cancelled) router.push(dest); }, 1200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [router]);
 
   useEffect(() => {
     const current = loadingTexts[textIndex];

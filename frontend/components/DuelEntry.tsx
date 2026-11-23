@@ -157,7 +157,7 @@ export default function DuelEntry({ game, compact = false }: { game: DuelGame; c
             {busy ? "Opening the duel…" : short ? `You need ${entry.toLocaleString()} G$` : `Challenge · stake ${entry.toLocaleString()} G$`}
           </button>
         ) : (
-          <Link href="/home" style={{ ...ghost, flex: 1, color: "#1a0b33", background: GOLD, border: "none", fontWeight: 900, boxShadow: "0 3px 0 #b45309" }}>Sign in to stake G$</Link>
+          <Link href="/home?signin=1" style={{ ...ghost, flex: 1, color: "#1a0b33", background: GOLD, border: "none", fontWeight: 900, boxShadow: "0 3px 0 #b45309" }}>Sign in to stake G$</Link>
         )}
         <Link href="/duel" style={ghost}>Join</Link>
       </div>

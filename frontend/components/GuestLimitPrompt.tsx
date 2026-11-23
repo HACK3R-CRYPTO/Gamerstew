@@ -71,7 +71,7 @@ export default function GuestLimitPrompt({
         </div>
 
         <button
-          onClick={() => router.push("/home")}
+          onClick={() => router.push("/home?signin=1")}
           style={{
             marginTop: 16, width: "100%", cursor: "pointer", borderRadius: 12, padding: "12px",
             fontFamily: FONT, fontSize: 12.5, fontWeight: 900, letterSpacing: "0.12em", color: "#231005", border: "none",

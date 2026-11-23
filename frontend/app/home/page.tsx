@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { preload } from "react-dom";
 import { usePrivy, useLogin, useConnectWallet } from "@privy-io/react-auth";
 import { useAccount, useDisconnect } from "wagmi";
@@ -690,6 +690,20 @@ export default function HomePage() {
     }
     login();
   };
+
+  // Arriving from a "Sign in" button elsewhere in the app (/home?signin=1) opens
+  // the sign-in straight away. Without this the player pressed Sign in, landed
+  // here, and had to find and press Sign in a second time.
+  const autoSignInRef = useRef(false);
+  useEffect(() => {
+    if (autoSignInRef.current || !ready) return;
+    if (new URLSearchParams(window.location.search).get("signin") !== "1") return;
+    autoSignInRef.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!authenticated) login();
+    else if (walletAddress) setShowOnboarding(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, authenticated, walletAddress]);
 
   const onAbout = () => { playClick(); setShowAbout(true); };
 

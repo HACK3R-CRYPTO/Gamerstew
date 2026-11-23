@@ -870,7 +870,7 @@ function Lobby({
           /* Demo spent · this is the ask. Ranked play, a genuinely provable
              match, the ladder and G$ all live behind sign-in. The demo proved
              MARKOV reads you; this is where they come get the real one. */
-          <Link href="/home" style={{ textDecoration: "none" }}>
+          <Link href="/home?signin=1" style={{ textDecoration: "none" }}>
             <div style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}>
               <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
                 <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />

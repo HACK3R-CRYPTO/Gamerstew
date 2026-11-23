@@ -430,7 +430,7 @@ export default function DashboardPage() {
   // takes over for first-time signers. Opening the Privy modal directly
   // from a feed-style screen drops players into a disconnected popup
   // with no surrounding context.
-  const onConnect = () => router.push("/home");
+  const onConnect = () => router.push("/home?signin=1"); // opens the sign-in directly
   // Hero rotation · every game flagged isNew takes a turn as the banner
   // (Stack Tower launch + the Challenge AI rebuild). Crossfades every 6s;
   // falls back to the first game when nothing is flagged.

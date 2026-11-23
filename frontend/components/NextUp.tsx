@@ -78,7 +78,7 @@ export default function NextUp({ accent = "#fbbf24" }: { accent?: string }) {
     rows.push({
       key: "weekly", icon: "🏆",
       text: !address
-        ? <>This week every game earns <b>{weekly.perGameG} G$</b>. <Link href="/home" style={{ color: accent, fontWeight: 900 }}>Sign in</Link> and your games count.</>
+        ? <>This week every game earns <b>{weekly.perGameG} G$</b>. <Link href="/home?signin=1" style={{ color: accent, fontWeight: 900 }}>Sign in</Link> and your games count.</>
         : weekly.hit
           ? <>Weekly target reached. You are on <b>{mine} game{mine === 1 ? "" : "s"}</b>{weekly.myProjectedG ? <> · <b>{weekly.myProjectedG.toLocaleString()} G$</b></> : null}. {days}.</>
           : mine >= weekly.capPerPlayer

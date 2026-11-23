@@ -80,7 +80,7 @@ export default function GuestScorePrompt({
 
       {/* Sign-in CTA · matches the FinishedView's primary button shape */}
       <button
-        onClick={() => router.push("/home")}
+        onClick={() => router.push("/home?signin=1")}
         style={{
           marginTop: 12, width: "100%", cursor: "pointer",
           borderRadius: 12, padding: "11px 12px",

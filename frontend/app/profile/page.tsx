@@ -402,7 +402,7 @@ export default function ProfilePage() {
   // Always route Connect/Sign-in taps to /home so the Privy modal opens
   // from the home page surface (with onboarding overlay) instead of as
   // an orphan popup from inside a feature screen.
-  const onConnect = () => router.push("/home");
+  const onConnect = () => router.push("/home?signin=1");
 
   // ── GUEST · adopt-your-pet gate ────────────────────────────────────────
   if (!connected) {

@@ -398,7 +398,7 @@ export default function AppHeader() {
             </button>
           </>
         ) : (
-          <button onClick={() => router.push("/home")} style={{
+          <button onClick={() => router.push("/home?signin=1")} style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "9px 16px", borderRadius: 999, cursor: "pointer", flexShrink: 0,
             background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,

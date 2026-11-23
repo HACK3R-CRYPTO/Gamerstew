@@ -131,7 +131,7 @@ export default function ShopPage() {
           <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkDim, margin: "0 auto", maxWidth: 320, lineHeight: 1.5 }}>
             Sign in to browse the 10 habitats and unlock premium scenes with G$.
           </p>
-          <button onClick={() => router.push("/home")} style={{
+          <button onClick={() => router.push("/home?signin=1")} style={{
             fontFamily: T.display, fontSize: 16, color: "#fff",
             padding: "13px 30px", borderRadius: 14,
             background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,

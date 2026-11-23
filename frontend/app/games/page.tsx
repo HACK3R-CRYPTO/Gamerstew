@@ -423,7 +423,7 @@ export default function GamesPage() {
   // Always route Sign-in taps to /home — the Privy modal lives behind
   // the home page button so first-timers land in a real onboarding
   // surface, not an orphan popup over a feed.
-  const onConnect = () => router.push("/home");
+  const onConnect = () => router.push("/home?signin=1");
   const onPlay = async (id: string) => {
     // Spam-tap guard · ignore further taps while a load is already in
     // flight. The overlay covers the page so the player can't see the
