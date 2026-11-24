@@ -9,6 +9,7 @@
 // M1 BLOCKOUT: stylised low-poly, warm golden-hour, not final Lagos art. The
 // reactive NEPA light cycle (power on → NEPA cut → UP NEPA relight) is the point.
 
+import { toast } from "@/lib/toast";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Canvas } from "@react-three/fiber";
@@ -265,7 +266,9 @@ export default function World() {
     const giveUp = new Promise<null>((r) => setTimeout(() => r(null), 2500));
     void Promise.race([rankedRef.current.start().catch(() => null), giveUp]).then((o) => {
       opening.current = false;
-      setRankedRound(!!o && o.success && rankedRef.current.hasTicket());
+      const ok = !!o && o.success && rankedRef.current.hasTicket();
+      setRankedRound(ok);
+      if (!ok) toast("This round is not ranked: the game server could not open it. You can still play.");
       rStart();
     });
   };

@@ -7,6 +7,8 @@
 // the log. It never turns a page into an error.
 
 import { mergeBoards } from './plays';
+export const BOARD_TTL_MS = 20_000;
+
 export interface BoardRow { wallet_address: string; score: number; username: string | null; created_at: string; tx_hash: string | null; game?: string }
 export interface GlobalStat {
   totalPlayers?: unknown; totalScores?: unknown; totalRhythmPlays?: unknown; totalSimonPlays?: unknown;
@@ -28,6 +30,8 @@ export interface BoardDeps {
   /** Each player's best run from this server's own session ledger. The subgraph
    *  can stop indexing; with this, a board still shows what was really played. */
   ledgerBoard?(game: string, sinceSec: number): Promise<BoardRow[]>;
+  /** shared short-lived cache with one piece of work per key (platform/resultCache) */
+  results?: { get<T>(key: string, opts: { ttlMs: number; compute: () => Promise<T> }): Promise<T> };
   /** wallet (lowercase) → play streak, for the wallets given */
   streaks(wallets: string[]): Promise<Map<string, number>>;
   resolveUsername(wallet: string): Promise<string | null | undefined>;
@@ -72,19 +76,26 @@ export function createBoardService(deps: BoardDeps) {
     // `since` (unix seconds) lets a page ask for its own window; default is this season
     const since = int(query.since);
     const seasonStart = since > 0 ? since : deps.seasonBounds(deps.currentSeason()).start;
-    let all: BoardRow[] = [];
-    try {
-      all = await deps.subgraph.leaderboard(deps.gameTypes[game]!, seasonStart); // every player who scored this season
-    } catch (e) {
-      logger.warn('subgraph leaderboard failed:', why(e));
-    }
-    if (deps.ledgerBoard) {
+    // The merged board is worked out at most once every BOARD_TTL_MS per game and
+    // window, and everyone who asks in that time shares the one answer. A
+    // thousand people opening a board cost one read, not a thousand.
+    const build = async (): Promise<BoardRow[]> => {
+      let all: BoardRow[] = [];
       try {
-        all = mergeBoards(all, await deps.ledgerBoard(game, seasonStart));
+        all = await deps.subgraph.leaderboard(deps.gameTypes[game]!, seasonStart); // every player who scored this season
       } catch (e) {
-        logger.warn('ledger leaderboard failed:', why(e));
+        logger.warn('subgraph leaderboard failed:', why(e));
       }
-    }
+      if (deps.ledgerBoard) {
+        try {
+          all = mergeBoards(all, await deps.ledgerBoard(game, seasonStart));
+        } catch (e) {
+          logger.warn('ledger leaderboard failed:', why(e));
+        }
+      }
+      return all;
+    };
+    const all = deps.results ? await deps.results.get(`board:${game}:${Math.floor(seasonStart / 60)}`, { ttlMs: BOARD_TTL_MS, compute: build }) : await build();
     const total = all.length;
     const slice = all.slice(start, start + limit);
     // ledger rows carry no name: look up only the ones on this page

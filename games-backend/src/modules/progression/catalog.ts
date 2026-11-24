@@ -2,6 +2,10 @@
 // Pure data and pure functions. Nothing here touches a database. These numbers
 // are the game's economy, so they live in one file and are covered by tests.
 
+// ADDING A GAME: the database must be told too. game_sessions has a check that
+// lists every allowed game name; a name missing from it makes /api/start-game
+// answer 500 and the game silently plays unranked (this happened to ladder,
+// strike and nepa3d). Add the name in a migration under supabase-migrations/.
 export const GAME_TYPE: Record<string, number> = { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6, nepa3d: 7 };
 export const VALID_GAMES = Object.keys(GAME_TYPE);
 /** MARKOV matches are recorded on GamePass under this type (not a skill game) */

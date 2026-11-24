@@ -52,12 +52,22 @@ export function mergeCounts(a: Counts, b: Counts): Counts {
   return out;
 }
 
+// the database function when it exists, the row-by-row reader when it does not
+async function ledgerOrRpc(db: LedgerDb & Partial<RpcDb>, startIso: string, endIso: string): Promise<{ counts: Counts; ok: boolean }> {
+  try {
+    if (typeof db.rpc === 'function') { const fast = await rpcCounts(db as RpcDb, startIso, endIso); if (fast.ok) return fast; }
+    return await ledgerCounts(db, startIso, endIso);
+  } catch {
+    return { counts: new Map(), ok: false };
+  }
+}
+
 /** Counts for a window from both records. Never throws: a record that cannot be
  *  read contributes nothing, and `sources` says which ones answered. */
-export async function playCounts(deps: { subgraph: (startUnix: number, endUnix: number) => Promise<Counts>; db: LedgerDb }, startUnix: number, endUnix: number): Promise<{ counts: Counts; sources: { subgraph: boolean; ledger: boolean } }> {
+export async function playCounts(deps: { subgraph: (startUnix: number, endUnix: number) => Promise<Counts>; db: LedgerDb & Partial<RpcDb> }, startUnix: number, endUnix: number): Promise<{ counts: Counts; sources: { subgraph: boolean; ledger: boolean } }> {
   const [sg, ledger] = await Promise.all([
     deps.subgraph(startUnix, endUnix).then((c) => ({ c, ok: true })).catch(() => ({ c: new Map() as Counts, ok: false })),
-    ledgerCounts(deps.db, new Date(startUnix * 1000).toISOString(), new Date(endUnix * 1000).toISOString()).catch(() => ({ counts: new Map() as Counts, ok: false })),
+    ledgerOrRpc(deps.db, new Date(startUnix * 1000).toISOString(), new Date(endUnix * 1000).toISOString()),
   ]);
   return { counts: mergeCounts(sg.c, ledger.counts), sources: { subgraph: sg.ok, ledger: ledger.ok } };
 }
@@ -76,6 +86,12 @@ export interface LedgerBoardRow { wallet_address: string; score: number; usernam
  *  an empty list if the read fails: the caller merges it with the subgraph. */
 export function supabaseLedgerBoard(db: LedgerBoardDb) {
   return async (game: string, sinceSec: number): Promise<LedgerBoardRow[]> => {
+    const fn = (db as unknown as Partial<RpcDb>).rpc;
+    if (typeof fn === 'function') {
+      // the top 200 in one indexed query; nobody pages a board further than that
+      const fast = await rpcBoardPage(db as unknown as RpcDb, game, sinceSec, 200, 0).catch(() => null);
+      if (fast) return fast.rows;
+    }
     const best = new Map<string, LedgerBoardRow>();
     const sinceIso = new Date(sinceSec * 1000).toISOString();
     for (let page = 0; page < 100; page++) {
@@ -104,4 +120,30 @@ export function mergeBoards<T extends { wallet_address: string; score: number; u
     else if (!cur.username && row.username) out.set(key, { ...cur, username: row.username });
   }
   return [...out.values()].sort((x, y) => y.score - x.score);
+}
+
+// ── The same two reads, done inside the database ────────────────────────────
+// supabase-migrations/2026-11-24_new_games_and_fast_boards.sql adds two
+// functions that add up in SQL and return only what a page needs. These call
+// them. Until that migration has been run the functions do not exist, the call
+// reports an error, and the caller falls back to the row-by-row readers above.
+// So this is safe to deploy before the migration.
+export interface RpcDb { rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }> }
+
+/** One page of a board, with the board's full size. null = function missing or failed. */
+export async function rpcBoardPage(db: RpcDb, game: string, sinceSec: number, limit: number, offset: number): Promise<{ rows: LedgerBoardRow[]; total: number } | null> {
+  const { data, error } = await db.rpc('board_window', { p_game: game, p_since: new Date(sinceSec * 1000).toISOString(), p_limit: limit, p_offset: offset });
+  if (error || !Array.isArray(data)) return null;
+  const rows = (data as { wallet: string; best: number; last_at: string; total: number | string }[]).map((r) => ({ wallet_address: String(r.wallet).toLowerCase(), score: Number(r.best), username: null, created_at: String(r.last_at), tx_hash: null }));
+  const total = data.length ? Number((data[0] as { total: number | string }).total) : 0;
+  return { rows, total };
+}
+
+/** Whole-window counts in one call. `ok` false = function missing or failed. */
+export async function rpcCounts(db: RpcDb, startIso: string, endIso: string): Promise<{ counts: Counts; ok: boolean }> {
+  const { data, error } = await db.rpc('play_counts_window', { p_start: startIso, p_end: endIso });
+  if (error || !Array.isArray(data)) return { counts: new Map(), ok: false };
+  const counts: Counts = new Map();
+  for (const r of data as { wallet: string; plays: number | string }[]) counts.set(String(r.wallet).toLowerCase(), { username: null, count: Number(r.plays) });
+  return { counts, ok: true };
 }

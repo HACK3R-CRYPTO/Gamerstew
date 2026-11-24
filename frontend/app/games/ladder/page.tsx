@@ -17,6 +17,7 @@
 // itself and records it on-chain (hooks/useRankedRun.ts). Guests and the daily
 // ladder are played on the device only.
 
+import { toast } from "@/lib/toast";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -143,6 +144,7 @@ export default function WordLadderPage() {
       const opened = await ranked.start().catch(() => null);
       setOpening(false);
       if (opened?.success && opened.ladders?.length === ROUND) { list = opened.ladders; rankedRound = true; }
+      else toast("This round is not ranked: the game server could not open it. You can still play."); // never fall back to unranked without saying so
     }
     if (!list) list = deal();
     setIsRanked(rankedRound);

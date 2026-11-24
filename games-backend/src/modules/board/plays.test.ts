@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ledgerCounts, mergeCounts, playCounts, supabaseLedgerBoard, mergeBoards, type Counts, type LedgerDb, type LedgerBoardDb } from './plays';
+import { ledgerCounts, mergeCounts, playCounts, supabaseLedgerBoard, mergeBoards, rpcBoardPage, rpcCounts, type Counts, type LedgerDb, type LedgerBoardDb } from './plays';
 
 // a fake table that records the query it was asked and serves rows in pages
 function db(rows: { wallet: string | null }[], fail = false) {
@@ -69,4 +69,23 @@ test('mergeBoards: higher score per player wins, names are kept, best first', ()
   const sg: Row[] = [{ wallet_address: '0xA', score: 50, username: 'ada' }, { wallet_address: '0xb', score: 80, username: 'bo' }];
   const ledger: Row[] = [{ wallet_address: '0xa', score: 70, username: null }, { wallet_address: '0xc', score: 10, username: null }];
   assert.deepEqual(mergeBoards(sg, ledger).map((r) => [r.wallet_address.toLowerCase(), r.score, r.username]), [['0xb', 80, 'bo'], ['0xa', 70, 'ada'], ['0xc', 10, null]]);
+});
+
+test('database functions: used when they exist, with the exact arguments', async () => {
+  const calls: unknown[] = [];
+  const rpcDb = { rpc: async (fn: string, args: Record<string, unknown>) => { calls.push([fn, args]); return fn === 'board_window' ? { data: [{ wallet: '0xA', best: 90, plays: 3, last_at: 't', total: '2' }, { wallet: '0xb', best: 10, plays: 1, last_at: 'u', total: '2' }], error: null } : { data: [{ wallet: '0xA', plays: '7' }], error: null }; } };
+  const page = await rpcBoardPage(rpcDb, 'stack', 1_700_000_000, 50, 0);
+  assert.deepEqual(page, { rows: [{ wallet_address: '0xa', score: 90, username: null, created_at: 't', tx_hash: null }, { wallet_address: '0xb', score: 10, username: null, created_at: 'u', tx_hash: null }], total: 2 });
+  assert.deepEqual(calls[0], ['board_window', { p_game: 'stack', p_since: new Date(1_700_000_000 * 1000).toISOString(), p_limit: 50, p_offset: 0 }]);
+  const c = await rpcCounts(rpcDb, 'a', 'b');
+  assert.equal(c.ok, true); assert.equal(c.counts.get('0xa')!.count, 7);
+});
+
+test('database functions missing (migration not run yet): fall back to reading rows, same answer', async () => {
+  const rows = [{ wallet: '0xa' }, { wallet: '0xa' }, { wallet: '0xb' }];
+  const base = db(rows).d as LedgerDb & { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> };
+  base.rpc = async () => ({ data: null, error: { message: 'function play_counts_window does not exist' } });
+  const r = await playCounts({ subgraph: async () => new Map(), db: base }, 1, 2);
+  assert.equal(r.counts.get('0xa')!.count, 2);
+  assert.deepEqual(r.sources, { subgraph: true, ledger: true });
 });

@@ -17,6 +17,7 @@
 // On a phone: start your swipe where you want to release, swipe up to roll,
 // and curve the swipe to hook.
 
+import { toast } from "@/lib/toast";
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -1339,7 +1340,7 @@ export default function Game() {
     setRankedGame(false);
     // a solo game by a signed-in player is ranked; the ticket is opened in the
     // background so the first throw is never held up
-    if (m === "solo" && rankedRef.current.canRank) void rankedRef.current.start().then((o) => { if (o.success) { gameT0.current = Date.now(); setRankedGame(true); } }).catch(() => { /* play unranked */ });
+    if (m === "solo" && rankedRef.current.canRank) void rankedRef.current.start().then((o) => { if (o.success) { gameT0.current = Date.now(); setRankedGame(true); } else toast("This game is not ranked: the game server could not open it. You can still play."); }).catch(() => toast("This game is not ranked: the game server could not open it. You can still play."));
     modeRef.current = m;
     setMode(m);
     allRef.current = seatsFor(m).map(() => []);

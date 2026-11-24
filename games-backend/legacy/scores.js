@@ -143,6 +143,7 @@ core.platform.registerBoardRoutes(core.app, {
     seasonPlayerIds: core.platform.subgraphSeasonPlayers((query, vars) => core.subgraph.gql(query, vars)),
   },
   ledgerBoard: core.platform.supabaseLedgerBoard(core.supabase),
+  results: core.results,
   streaks: core.platform.supabaseStreaks(core.supabase),
   resolveUsername: (wallet) => core.resolveUsername(wallet),
   treasuryBalance: () => core.getTreasuryBalance(),
