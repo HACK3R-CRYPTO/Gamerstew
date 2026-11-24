@@ -1250,56 +1250,56 @@ export default function StackTowerPage() {
       {phase === "finished" && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(4,0,20,0.82)", backdropFilter: "blur(10px)",
+          background: "rgba(34,16,79,0.45)", backdropFilter: "blur(10px)",
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: 18, overflowY: "auto",
         }}>
           <div style={{
             width: "100%", maxWidth: 420,
-            borderRadius: 26, background: "#1a0550", paddingBottom: 7,
-            boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.6)",
+            borderRadius: 26, background: "#ddd0ff", paddingBottom: 7,
+            boxShadow: "0 0 0 1px rgba(76,29,149,0.16), 0 30px 50px -30px rgba(76,29,149,0.7)",
           }}>
             <div style={{
               borderRadius: "24px 24px 20px 20px",
-              background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 60%, #07021a 100%)",
+              background: "#fbf8ff",
               border: "2px solid rgba(255,255,255,0.12)",
               padding: "26px 22px", textAlign: "center",
             }}>
               <div style={{ fontSize: 38, marginBottom: 4 }}>🧱</div>
-              <div style={{ color: "#67e8f9", fontSize: 15, fontWeight: 900, letterSpacing: "0.16em" }}>
+              <div style={{ color: "#0e7490", fontSize: 15, fontWeight: 900, letterSpacing: "0.16em" }}>
                 TOWER DOWN
               </div>
 
               <div style={{ marginTop: 16 }}>
-                <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 10, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
-                <div style={{ color: "#fbbf24", fontSize: 44, fontWeight: 900, lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.8)" }}>{score}</div>
+                <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
+                <div style={{ color: "#92400e", fontSize: 44, fontWeight: 900, lineHeight: 1 }}>{score}</div>
                 {score >= localBest && score > 0 && (
-                  <div style={{ color: "#22d3ee", fontSize: 11, fontWeight: 900, marginTop: 4, letterSpacing: "0.1em" }}>★ NEW PERSONAL BEST</div>
+                  <div style={{ color: "#0e7490", fontSize: 11, fontWeight: 900, marginTop: 4, letterSpacing: "0.1em" }}>★ NEW PERSONAL BEST</div>
                 )}
               </div>
 
               <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div style={{
                   padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(255,255,255,0.05)",
+                  background: "rgba(76,29,149,0.05)",
                   border: "1px solid rgba(103,232,249,0.33)",
                 }}>
-                  <div style={{ color: "#67e8f9", fontSize: 19, fontWeight: 900 }}>{Math.max(0, levelRef.current - 1)}</div>
-                  <div style={{ color: "rgba(200,180,255,0.55)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>BLOCKS STACKED</div>
+                  <div style={{ color: "#0e7490", fontSize: 19, fontWeight: 900 }}>{Math.max(0, levelRef.current - 1)}</div>
+                  <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>BLOCKS STACKED</div>
                 </div>
                 <div style={{
                   padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(255,255,255,0.05)",
+                  background: "rgba(76,29,149,0.05)",
                   border: "1px solid rgba(232,121,249,0.33)",
                 }}>
-                  <div style={{ color: "#f0abfc", fontSize: 19, fontWeight: 900 }}>{combo}</div>
-                  <div style={{ color: "rgba(200,180,255,0.55)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>LAST COMBO</div>
+                  <div style={{ color: "#a21caf", fontSize: 19, fontWeight: 900 }}>{combo}</div>
+                  <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>LAST COMBO</div>
                 </div>
               </div>
 
               {/* How this run did against a friend's tower */}
               {challenge && levelRef.current - 1 > 0 && (() => { const built = Math.max(0, levelRef.current - 1); const d = built - challenge.blocks; return (
-                <div style={{ marginTop: 12, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 13, fontWeight: 900, color: d > 0 ? "#86efac" : "#fdba74" }}>
+                <div style={{ marginTop: 12, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 13, fontWeight: 900, color: d > 0 ? "#166534" : "#9a3412" }}>
                   {d > 0 ? `🔥 You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}
                 </div>
               ); })()}
@@ -1310,8 +1310,8 @@ export default function StackTowerPage() {
               {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
               {mode !== "ranked" ? (
                 <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#a5f3fc" }}>{modeById(mode).name.toUpperCase()} · FREE PLAY</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(220,210,255,0.78)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#0e7490" }}>{modeById(mode).name.toUpperCase()} · FREE PLAY</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(34,16,79,0.68)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
                 </div>
               ) : !authed ? (
                 <div style={{ marginTop: 14 }}>
@@ -1342,7 +1342,7 @@ export default function StackTowerPage() {
                       padding: "13px 8px", border: "2px solid rgba(255,255,255,0.5)",
                       boxShadow: "inset 0 4px 10px rgba(255,255,255,0.55)",
                     }}>
-                      <span style={{ color: "white", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>BUILD AGAIN</span>
+                      <span style={{ color: "#22104f", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em" }}>BUILD AGAIN</span>
                     </div>
                   </div>
                 </div>
@@ -1361,7 +1361,7 @@ export default function StackTowerPage() {
                       padding: "13px 8px", border: "2px solid rgba(255,255,255,0.4)",
                       boxShadow: "inset 0 4px 10px rgba(255,255,255,0.45)",
                     }}>
-                      <span style={{ color: "white", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>EXIT</span>
+                      <span style={{ color: "#22104f", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em" }}>EXIT</span>
                     </div>
                   </div>
                 </div>
@@ -1377,7 +1377,7 @@ export default function StackTowerPage() {
                   else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
                 }} style={{
                   marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-                  color: "#fff", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
+                  color: "#22104f", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
                   border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
                 }}>⚔️ CHALLENGE A FRIEND TO BEAT {Math.max(0, levelRef.current - 1)} BLOCKS</button>
               )}
@@ -1393,7 +1393,7 @@ export default function StackTowerPage() {
                   onClick={() => router.push("/games/stack/leaderboard")}
                   style={{
                     marginTop: 12, cursor: "pointer", textAlign: "center",
-                    color: "#67e8f9", fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
+                    color: "#0e7490", fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
                     opacity: 0.85,
                   }}>
                   SEE THE LEADERBOARD →
@@ -1477,11 +1477,11 @@ function StackRewardPanel({
         marginTop: 14, padding: 12, borderRadius: 10,
         background: "rgba(251,191,36,0.1)",
         border: "1px solid rgba(251,191,36,0.35)",
-        color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
+        color: "#92400e", fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
         textAlign: "center", boxShadow: "0 0 16px rgba(251,191,36,0.2)",
       }}>
         ✦ CONFIRM IN YOUR WALLET ✦
-        <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", marginTop: 4 }}>
+        <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", marginTop: 4 }}>
           Signing records your score on-chain
         </div>
       </div>
@@ -1493,7 +1493,7 @@ function StackRewardPanel({
         marginTop: 14, padding: "10px 12px", borderRadius: 10,
         background: "rgba(167,139,250,0.08)",
         border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(200,180,255,0.7)",
+        color: "rgba(34,16,79,0.68)",
         fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
         textAlign: "center",
       }}>SAVING SCORE…</div>
@@ -1516,7 +1516,7 @@ function StackRewardPanel({
             marginTop: 14, padding: "12px 14px", borderRadius: 10,
             background: "rgba(251,146,60,0.12)",
             border: "1px solid rgba(251,146,60,0.45)",
-            color: "#fdba74",
+            color: "#9a3412",
             cursor: "pointer", fontFamily: "inherit",
             display: "flex", alignItems: "center", gap: 10, textAlign: "left",
           }}
@@ -1524,7 +1524,7 @@ function StackRewardPanel({
           <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
           <span style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>Score not saved · needs a top up</div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#22104f", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
           </span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 6l6 6-6 6" />
@@ -1537,7 +1537,7 @@ function StackRewardPanel({
         marginTop: 14, padding: "10px 12px", borderRadius: 10,
         background: isGasError ? "rgba(251,146,60,0.1)" : "rgba(239,68,68,0.08)",
         border: `1px solid ${isGasError ? "rgba(251,146,60,0.32)" : "rgba(239,68,68,0.2)"}`,
-        color: isGasError ? "#fdba74" : "rgba(252,165,165,0.85)",
+        color: isGasError ? "#9a3412" : "#22104f",
         fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
         textAlign: "center", lineHeight: 1.45,
       }}>{txError}</div>
@@ -1549,7 +1549,7 @@ function StackRewardPanel({
         marginTop: 14, padding: "10px 12px", borderRadius: 10,
         background: "rgba(239,68,68,0.08)",
         border: "1px solid rgba(239,68,68,0.2)",
-        color: "rgba(252,165,165,0.85)",
+        color: "#22104f",
         fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
         textAlign: "center", lineHeight: 1.45,
       }}>{error}</div>
@@ -1569,8 +1569,8 @@ function StackRewardPanel({
             border: "1px solid rgba(251,191,36,0.28)",
             textAlign: "center",
           }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#fbbf24", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: 2 }}>
+            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
+            <div style={{ color: "#92400e", fontSize: 22, fontWeight: 900, marginTop: 2 }}>
               #{rank}
             </div>
           </div>
@@ -1582,8 +1582,8 @@ function StackRewardPanel({
             border: "1px solid rgba(167,139,250,0.3)",
             textAlign: "center",
           }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#a78bfa", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: 2 }}>
+            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
+            <div style={{ color: "#6d28d9", fontSize: 22, fontWeight: 900, marginTop: 2 }}>
               +{xpEarned}
             </div>
           </div>
@@ -1598,12 +1598,12 @@ function StackRewardPanel({
           textAlign: "center",
           boxShadow: "0 0 20px rgba(6,182,212,0.25)",
         }}>
-          <div style={{ color: "#67e8f9", fontSize: 12, fontWeight: 900, letterSpacing: "0.2em" }}>
+          <div style={{ color: "#0e7490", fontSize: 12, fontWeight: 900, letterSpacing: "0.2em" }}>
             ★ NEW PERSONAL BEST ★
           </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: 800, marginTop: 3 }}>
+          <div style={{ color: "#22104f", fontSize: 12, fontWeight: 800, marginTop: 3 }}>
             Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#86efac", fontWeight: 900 }}>+{Math.max(0, score - prevBest)}</span>
+            <span style={{ color: "#166534", fontWeight: 900 }}>+{Math.max(0, score - prevBest)}</span>
           </div>
         </div>
       )}
@@ -1617,9 +1617,9 @@ function StackRewardPanel({
         }}>
           <div style={{ fontSize: 22 }}>{a.icon || "🏆"}</div>
           <div style={{ textAlign: "left" }}>
-            <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>UNLOCKED</div>
-            <div style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>{a.name}</div>
-            {a.desc && <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 10, fontWeight: 700 }}>{a.desc}</div>}
+            <div style={{ color: "#92400e", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>UNLOCKED</div>
+            <div style={{ color: "#22104f", fontSize: 12, fontWeight: 800 }}>{a.name}</div>
+            {a.desc && <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 700 }}>{a.desc}</div>}
           </div>
         </div>
       ))}

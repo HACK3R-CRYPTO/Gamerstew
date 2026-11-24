@@ -20,7 +20,7 @@ export default function ArenaCrossPromo() {
             gap: 12,
             borderRadius: 14,
             padding: "10px 14px",
-            background: "linear-gradient(90deg, rgba(34,197,94,0.14) 0%, rgba(20,10,50,0.55) 100%)",
+            background: "linear-gradient(90deg, #14532d 0%, #22104f 100%)", // a solid dark card: its text is light
             border: "1px solid rgba(74,222,128,0.35)",
             cursor: "pointer",
           }}
@@ -42,7 +42,7 @@ export default function ArenaCrossPromo() {
           <span style={{ color: "#86efac", fontSize: 16, fontWeight: 900, flexShrink: 0 }}>›</span>
         </div>
       </Link>
-      <div style={{ textAlign: "center", marginTop: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(220,210,255,0.35)" }}>
+      <div style={{ textAlign: "center", marginTop: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(34,16,79,0.6)" }}>
         ⚔️ BUILT BY GAMEARENA
       </div>
     </div>

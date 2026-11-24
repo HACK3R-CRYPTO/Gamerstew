@@ -78,7 +78,7 @@ export default function NextUp({ accent = "#fbbf24" }: { accent?: string }) {
     rows.push({
       key: "weekly", icon: "🏆",
       text: !address
-        ? <>This week every game earns <b>{weekly.perGameG} G$</b>. <Link href="/home?signin=1" style={{ color: accent, fontWeight: 900 }}>Sign in</Link> and your games count.</>
+        ? <>This week every game earns <b>{weekly.perGameG} G$</b>. <Link href="/home?signin=1" style={{ color: "#6d28d9", fontWeight: 900 }}>Sign in</Link> and your games count.</>
         : weekly.hit
           ? <>Weekly target reached. You are on <b>{mine} game{mine === 1 ? "" : "s"}</b>{weekly.myProjectedG ? <> · <b>{weekly.myProjectedG.toLocaleString()} G$</b></> : null}. {days}.</>
           : mine >= weekly.capPerPlayer
@@ -102,16 +102,16 @@ export default function NextUp({ accent = "#fbbf24" }: { accent?: string }) {
     rows.push({
       key: "mission", icon: "🎯",
       text: mission.completed
-        ? <><b>{mission.label}</b> is done. <Link href="/dashboard" style={{ color: accent, fontWeight: 900 }}>Claim +{mission.rewardXp} XP</Link></>
+        ? <><b>{mission.label}</b> is done. <Link href="/dashboard" style={{ color: "#6d28d9", fontWeight: 900 }}>Claim +{mission.rewardXp} XP</Link></>
         : <><b>{mission.label}</b>: {mission.progress}/{mission.target}{togo === 1 ? ", one more does it" : ""} · +{mission.rewardXp} XP</>,
     });
   }
 
   if (rows.length === 0) return null;
   return (
-    <div style={{ marginTop: 14, borderRadius: 14, padding: "4px 12px", textAlign: "left", background: "rgba(255,255,255,0.05)", border: `1px solid ${accent}55`, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+    <div style={{ marginTop: 14, borderRadius: 14, padding: "4px 12px", textAlign: "left", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       {rows.map((r, i) => (
-        <div key={r.key} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "8px 0", borderTop: i ? "1px solid rgba(255,255,255,0.08)" : "none", fontSize: 12.5, lineHeight: 1.4, color: "rgba(255,255,255,0.86)" }}>
+        <div key={r.key} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "8px 0", borderTop: i ? "1px solid rgba(255,255,255,0.08)" : "none", fontSize: 12.5, lineHeight: 1.4, color: "#22104f" }}>
           <span aria-hidden style={{ fontSize: 15, lineHeight: 1.2, flexShrink: 0 }}>{r.icon}</span>
           <span style={{ minWidth: 0 }}>{r.text}</span>
         </div>

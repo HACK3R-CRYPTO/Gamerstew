@@ -57,14 +57,14 @@ export default function GuestScorePrompt({
         }} />
         <span style={{
           fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-          color: "#fde68a", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
+          color: "#92400e", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
           textTransform: "uppercase",
         }}>{eyebrow}</span>
       </div>
 
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(255,255,255,0.92)", fontSize: 14, fontWeight: 700,
+        color: "#22104f", fontSize: 14, fontWeight: 700,
         lineHeight: 1.35, marginTop: 8,
         letterSpacing: "-0.005em",
       }}>
@@ -72,7 +72,7 @@ export default function GuestScorePrompt({
       </div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
+        color: "rgba(34,16,79,0.68)", fontSize: 12, fontWeight: 500,
         lineHeight: 1.5, marginTop: 4,
       }}>
         {sub}
@@ -123,7 +123,7 @@ export function GuestPlayChip({ left }: { left?: number } = {}) {
         background: "#fbbf24", boxShadow: "0 0 6px #fbbf24",
       }} />
       <span style={{
-        color: "rgba(253,230,138,0.92)", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+        color: "#22104f", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
         textTransform: "uppercase",
       }}>{label}</span>
     </div>
@@ -144,7 +144,7 @@ export function SetupPlayChip({ onFinishSetup }: { onFinishSetup: () => void }) 
       fontFamily: "inherit",
     }}>
       <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", boxShadow: "0 0 6px #fbbf24" }} />
-      <span style={{ color: "rgba(253,230,138,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+      <span style={{ color: "#22104f", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
         Free play · finish setup to save scores ›
       </span>
     </button>

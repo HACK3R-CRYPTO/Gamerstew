@@ -214,11 +214,11 @@ function simonDrawColorId(seedHex: string, i: number): string {
 
 // ─── Grades — same bands as rhythm for UI consistency ────────────────────────
 function gradeFor(rounds: number) {
-  if (rounds >= 15) return { letter: "S", color: "#fbbf24", desc: "LEGENDARY" };
-  if (rounds >= 10) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
-  if (rounds >= 7)  return { letter: "B", color: "#67e8f9", desc: "GREAT" };
-  if (rounds >= 4)  return { letter: "C", color: "#22c55e", desc: "GOOD" };
-  return { letter: "D", color: "#f97316", desc: "KEEP PRACTICING" };
+  if (rounds >= 15) return { letter: "S", color: "#b45309", desc: "LEGENDARY" };
+  if (rounds >= 10) return { letter: "A", color: "#475569", desc: "EXCELLENT" };
+  if (rounds >= 7)  return { letter: "B", color: "#0e7490", desc: "GREAT" };
+  if (rounds >= 4)  return { letter: "C", color: "#15803d", desc: "GOOD" };
+  return { letter: "D", color: "#c2410c", desc: "KEEP PRACTICING" };
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
@@ -2028,7 +2028,7 @@ function FinishedView({
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(2,0,12,0.78)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      background: "#ffffff", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
       display: "flex", alignItems: "flex-end", justifyContent: "center",
       animation: "simon-sheet-fade 0.28s ease both",
     }}>
@@ -2036,7 +2036,7 @@ function FinishedView({
         width: "100%", maxWidth: "520px",
         maxHeight: "92vh", overflowY: "auto",
         borderRadius: "26px 26px 0 0",
-        background: "linear-gradient(180deg, rgba(8,30,52,0.98) 0%, rgba(4,12,30,0.99) 100%)",
+        background: "linear-gradient(180deg, #ffffff 0%, #ffffff 100%)",
         border: "1px solid rgba(6,182,212,0.22)",
         borderBottom: "none",
         boxShadow: "0 -24px 60px -10px rgba(6,182,212,0.22), 0 -2px 0 rgba(255,255,255,0.04) inset",
@@ -2053,7 +2053,7 @@ function FinishedView({
 
         {/* Drag handle */}
         <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.05)" }} />
         </div>
 
         <div style={{ padding: "8px 22px 22px", textAlign: "center", position: "relative" }}>
@@ -2092,14 +2092,13 @@ function FinishedView({
           }}>
             <div style={{
               width: "100%", height: "100%", borderRadius: "50%",
-              background: "linear-gradient(180deg, rgba(8,30,52,0.96) 0%, rgba(4,12,30,1) 100%)",
+              background: "linear-gradient(180deg, #ffffff 0%, #ffffff 100%)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <span style={{
                 fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
                 fontSize: 72, fontWeight: 900,
-                color: "#fff",
-                textShadow: `0 0 14px ${grade.color}, 0 0 30px ${grade.color}aa, 0 2px 4px rgba(0,0,0,0.7)`,
+                color: "#22104f",
                 WebkitTextStroke: `0.6px ${grade.color}`,
                 lineHeight: 1,
               }}>{grade.letter}</span>
@@ -2113,32 +2112,31 @@ function FinishedView({
           }}>
             <div style={{
               fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-              color: "rgba(220,210,255,0.5)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
+              color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
             }}>SCORE</div>
             <div style={{
               fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-              color: "#fde68a",
+              color: "#92400e",
               fontSize: "clamp(36px, 9vw, 46px)", fontWeight: 900,
-              textShadow: "0 0 22px rgba(251,191,36,0.55), 0 2px 8px rgba(0,0,0,0.55)",
               lineHeight: 1, marginTop: 4,
               letterSpacing: "0.01em",
             }}>{score.toLocaleString()}</div>
             {challenge && rounds > 0 && (
-              <div style={{ marginTop: 8, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 13, fontWeight: 900, color: rounds > challenge.rounds ? "#86efac" : "#fdba74" }}>
+              <div style={{ marginTop: 8, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 13, fontWeight: 900, color: rounds > challenge.rounds ? "#166534" : "#9a3412" }}>
                 {rounds > challenge.rounds ? `🔥 You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
               </div>
             )}
             {/* against your own best, and how far the next named round was */}
             {bestResult && rounds > 0 && (
-              <div style={{ marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 12, fontWeight: 800, color: bestResult.isNew ? "#fde68a" : "rgba(220,210,255,0.72)" }}>
+              <div style={{ marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 12, fontWeight: 800, color: bestResult.isNew ? "#92400e" : "rgba(34,16,79,0.68)" }}>
                 {bestResult.isNew
                   ? (bestResult.prev == null ? `🏆 Your first best: round ${rounds}` : `🏆 New best! Round ${rounds}, ${rounds - bestResult.prev} deeper than before`)
                   : bestResult.prev === rounds ? `Tied your best, round ${rounds}. One more beats it` : `Your best is round ${bestResult.prev} · ${bestResult.prev! - rounds + 1} more to beat it`}
               </div>
             )}
             {(() => { const ms = nextSimonMilestone(rounds); return ms && ms.at - rounds <= 3 ? (
-              <div style={{ marginTop: 4, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 11.5, fontWeight: 700, color: "rgba(220,210,255,0.72)" }}>
-                Only <b style={{ color: "#67e8f9" }}>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b style={{ color: "#67e8f9" }}>{ms.name}</b>
+              <div style={{ marginTop: 4, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 11.5, fontWeight: 700, color: "rgba(34,16,79,0.68)" }}>
+                Only <b style={{ color: "#0e7490" }}>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b style={{ color: "#0e7490" }}>{ms.name}</b>
               </div>
             ) : null; })()}
           </div>
@@ -2148,15 +2146,15 @@ function FinishedView({
             marginTop: 18,
             display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8,
           }}>
-            <StatChip label="ROUNDS" value={String(rounds)} color="#06b6d4" />
-            <StatChip label="TIME"   value={`${seconds}s`}  color="#22c55e" />
+            <StatChip label="ROUNDS" value={String(rounds)} color="#0e7490" />
+            <StatChip label="TIME"   value={`${seconds}s`}  color="#15803d" />
           </div>
 
           {/* Reward panel (or guest CTA) — unchanged behavior */}
           {practice ? (
             <div style={{ margin: "4px 0 2px", padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif' }}>
-              <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#a5f3fc" }}>{practice.toUpperCase()} · FREE PLAY</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(220,210,255,0.78)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
+              <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#0e7490" }}>{practice.toUpperCase()} · FREE PLAY</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(34,16,79,0.68)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
             </div>
           ) : guest ? (
             <GuestScorePrompt nextPath="/games/simon" />
@@ -2190,12 +2188,12 @@ function FinishedView({
                 {rounds > 0 && (
                   <button onClick={onChallenge} style={{
                     marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-                    color: "#fff", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
+                    color: "#22104f", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
                     border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
                   }}>⚔️ CHALLENGE A FRIEND TO BEAT ROUND {rounds}</button>
                 )}
                 {saving && (
-                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
+                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "#22104f" }}>
                     💾 Saving your score · hold on a sec
                   </div>
                 )}
@@ -2214,7 +2212,7 @@ function StatChip({ label, value, color }: { label: string; value: string; color
   return (
     <div style={{
       borderRadius: 11,
-      background: "rgba(255,255,255,0.03)",
+      background: "rgba(76,29,149,0.05)",
       border: `1px solid ${color}33`,
       padding: "9px 4px 7px",
       textAlign: "center",
@@ -2223,12 +2221,11 @@ function StatChip({ label, value, color }: { label: string; value: string; color
       <div style={{
         fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
         color, fontSize: 17, fontWeight: 900,
-        textShadow: `0 0 10px ${color}66`,
         lineHeight: 1,
       }}>{value}</div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(220,210,255,0.5)", fontSize: 8.5, fontWeight: 800,
+        color: "rgba(34,16,79,0.68)", fontSize: 8.5, fontWeight: 800,
         letterSpacing: "0.14em", marginTop: 4,
       }}>{label}</div>
     </div>
@@ -2245,7 +2242,7 @@ function SheetBtn({ label, variant, onClick }: { label: string; variant: "primar
       padding: "13px 10px",
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
       fontSize: 12.5, fontWeight: 900, letterSpacing: "0.14em",
-      color: "#fff",
+      color: "#22104f",
       background: primary
         ? "linear-gradient(180deg, #a5f3fc 0%, #06b6d4 50%, #0e7490 100%)"
         : "rgba(255,255,255,0.04)",
@@ -2276,14 +2273,14 @@ function RewardPanel({
         borderRadius: "10px",
         background: "rgba(251,191,36,0.1)",
         border: "1px solid rgba(251,191,36,0.35)",
-        color: "#fbbf24",
+        color: "#92400e",
         fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em",
         textAlign: "center",
         boxShadow: "0 0 16px rgba(251,191,36,0.2)",
       }}>
         ✦ CONFIRM IN YOUR WALLET ✦
         <div style={{
-          color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 700,
+          color: "rgba(34,16,79,0.68)", fontSize: "9px", fontWeight: 700,
           letterSpacing: "0.1em", marginTop: "4px",
         }}>Signing records your score on-chain</div>
       </div>
@@ -2297,7 +2294,7 @@ function RewardPanel({
         borderRadius: "10px",
         background: "rgba(167,139,250,0.08)",
         border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(200,180,255,0.7)",
+        color: "rgba(34,16,79,0.68)",
         fontSize: "11px", fontWeight: 900, letterSpacing: "0.14em",
         textAlign: "center",
       }}>
@@ -2333,7 +2330,7 @@ function RewardPanel({
         borderRadius: "10px",
         background: isQuickExit ? "rgba(167,139,250,0.08)" : "rgba(239,68,68,0.08)",
         border: `1px solid ${isQuickExit ? "rgba(167,139,250,0.25)" : "rgba(239,68,68,0.2)"}`,
-        color: isQuickExit ? "rgba(200,180,255,0.8)" : "rgba(252,165,165,0.85)",
+        color: isQuickExit ? "#22104f" : "#22104f",
         fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em",
         textAlign: "center", lineHeight: 1.45,
       }}>
@@ -2403,8 +2400,8 @@ function RewardContent({
             border: "1px solid rgba(251,191,36,0.28)",
             textAlign: "center",
           }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#fbbf24", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: "2px" }}>
+            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
+            <div style={{ color: "#92400e", fontSize: "22px", fontWeight: 900, marginTop: "2px" }}>
               #{rank}
             </div>
           </div>
@@ -2416,8 +2413,8 @@ function RewardContent({
             border: "1px solid rgba(167,139,250,0.3)",
             textAlign: "center",
           }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: "2px" }}>
+            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
+            <div style={{ color: "#6d28d9", fontSize: "22px", fontWeight: 900, marginTop: "2px" }}>
               +{xpEarned}
             </div>
           </div>
@@ -2433,12 +2430,12 @@ function RewardContent({
           boxShadow: "0 0 20px rgba(6,182,212,0.25)",
           animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+          <div style={{ color: "#0e7490", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
             ★ NEW PERSONAL BEST ★
           </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", fontWeight: 800, marginTop: "3px" }}>
+          <div style={{ color: "#22104f", fontSize: "12px", fontWeight: 800, marginTop: "3px" }}>
             Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#86efac", fontWeight: 900 }}>
+            <span style={{ color: "#166534", fontWeight: 900 }}>
               +{Math.max(0, score - prevBest)}
             </span>
           </div>
@@ -2452,10 +2449,10 @@ function RewardContent({
           textAlign: "center",
           animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+          <div style={{ color: "#0e7490", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
             ★ FIRST PERSONAL BEST ★
           </div>
-          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px", fontWeight: 700, marginTop: "3px" }}>
+          <div style={{ color: "rgba(34,16,79,0.68)", fontSize: "11px", fontWeight: 700, marginTop: "3px" }}>
             Your score is now on the leaderboard
           </div>
         </div>
@@ -2470,10 +2467,10 @@ function RewardContent({
           boxShadow: "0 0 20px rgba(251,191,36,0.2)",
           animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         }}>
-          <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
+          <div style={{ color: "#92400e", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
             ★ LEVEL UP ★
           </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", fontWeight: 800, marginTop: "3px" }}>
+          <div style={{ color: "#22104f", fontSize: "13px", fontWeight: 800, marginTop: "3px" }}>
             You&apos;re now Level {level}
           </div>
         </div>
@@ -2486,7 +2483,7 @@ function RewardContent({
           border: "1px solid rgba(34,197,94,0.35)",
           animation: "bounce-scale-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both",
         }}>
-          <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", textAlign: "center", marginBottom: "6px" }}>
+          <div style={{ color: "#166534", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", textAlign: "center", marginBottom: "6px" }}>
             ✦ NEW ACHIEVEMENT{newAchievements.length > 1 ? "S" : ""} ✦
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -2498,7 +2495,7 @@ function RewardContent({
               return (
                 <div key={a.id || i} style={{
                   display: "flex", alignItems: "center", gap: "8px",
-                  color: "rgba(255,255,255,0.9)", fontSize: "12px", fontWeight: 800,
+                  color: "#22104f", fontSize: "12px", fontWeight: 800,
                 }}>
                   <span style={{ fontSize: "16px" }}>{a.icon}</span>
                   <span>{a.name}</span>
@@ -2533,13 +2530,13 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         borderRadius: "10px",
         background: "rgba(239,68,68,0.1)",
         border: "1px solid rgba(239,68,68,0.35)",
-        color: "#fca5a5",
+        color: "#be123c",
         fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
         textAlign: "center",
       }}>
         {txError}
         <div style={{
-          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
+          color: "rgba(34,16,79,0.68)", fontSize: "9px", fontWeight: 700,
           letterSpacing: "0.1em", marginTop: "4px",
         }}>Tap PLAY AGAIN to try again</div>
       </div>
@@ -2572,10 +2569,9 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         gap: "8px",
-        color: "#fed7aa",
+        color: "#22104f",
         fontSize: "clamp(11px, 3vw, 12.5px)",
         fontWeight: 900, letterSpacing: "0.18em",
-        textShadow: "0 0 10px rgba(249,115,22,0.5)",
       }}>
         <span style={{ fontSize: "14px" }}>⛽</span>
         NEEDS A TOP UP TO SAVE
@@ -2604,7 +2600,7 @@ function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError:
         style={{
           background: "none", border: "none",
           padding: 0,
-          color: copied ? "#86efac" : "rgba(200,170,255,0.7)",
+          color: copied ? "#166534" : "rgba(34,16,79,0.68)",
           fontSize: "clamp(10px, 2.5vw, 10.5px)",
           fontWeight: 700, letterSpacing: "0.04em",
           cursor: "pointer", fontFamily: "inherit",

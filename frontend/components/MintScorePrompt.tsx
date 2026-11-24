@@ -51,14 +51,14 @@ export default function MintScorePrompt({
         <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80", boxShadow: "0 0 8px #4ade80" }} />
         <span style={{
           fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-          color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.2em",
+          color: "#166534", fontSize: 10, fontWeight: 800, letterSpacing: "0.2em",
           textTransform: "uppercase",
         }}>{eyebrow}</span>
       </div>
 
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(255,255,255,0.92)", fontSize: 14, fontWeight: 700,
+        color: "#22104f", fontSize: 14, fontWeight: 700,
         lineHeight: 1.35, marginTop: 8, letterSpacing: "-0.005em",
       }}>
         {headline
@@ -68,7 +68,7 @@ export default function MintScorePrompt({
       </div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(220,210,255,0.6)", fontSize: 12, fontWeight: 500,
+        color: "rgba(34,16,79,0.68)", fontSize: 12, fontWeight: 500,
         lineHeight: 1.5, marginTop: 4,
       }}>
         {sub}
