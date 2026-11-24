@@ -41,6 +41,7 @@ const WORDS: Record<string, string> = {
   need_two: "You need at least 2 players to start.",
   not_host: "Only the host can do that.",
   bad_run: "The server could not accept that run.",
+  already_done: "Your result for this round is already in.",
   unreachable: "Cannot reach the game server. Check your connection.",
   busy: "The server is busy. Try again in a moment.",
   slow_down: "You have made a lot of rooms. Wait a few minutes and try again.",
@@ -103,7 +104,17 @@ export function useFriendRoom(game: string) {
   }, [session]);
 
   // leaving the page leaves the room, so friends are not left waiting on a ghost
-  useEffect(() => () => { const s = sess.current; if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); }, []);
+  // Not at once, though: React also runs this when it only HIDES the screen for a
+  // moment (a 3D scene loading its models does that), and leaving then would
+  // throw the player out of a round that is just starting. So the goodbye waits
+  // two seconds and is called off if the screen comes back.
+  const goodbye = useRef<number | null>(null);
+  useEffect(() => {
+    if (goodbye.current != null) { window.clearTimeout(goodbye.current); goodbye.current = null; }
+    return () => {
+      goodbye.current = window.setTimeout(() => { goodbye.current = null; const s = sess.current; if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); }, 2000);
+    };
+  }, []);
 
   const act = useCallback((path: string, extra: Record<string, unknown> = {}) => {
     const s = sess.current;

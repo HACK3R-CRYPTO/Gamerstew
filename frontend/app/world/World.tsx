@@ -28,6 +28,8 @@ import { recordHigh, type High } from "./highscore";
 import { useFx } from "./fx";
 import { useShout } from "./shout";
 import ModeSelect from "./ModeSelect";
+import { useFriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 
 // ── Shared HUD / overlay styles ──────────────────────────────────────────────
 // Every live readout (score, timer, lives, combo) is one of these: a glass chip
@@ -256,10 +258,18 @@ export default function World() {
   rankedRef.current = ranked;
   const [rankedRound, setRankedRound] = useState(false);
   const opening = useRef(false);
+  // A friend room is a race: everyone starts Restore the Light at the same
+  // moment and the room ranks the results. A room round is never ranked.
+  const room = useFriendRoom("nepa3d");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+  const roomRun = useRef(false);
   const beginRestore = () => {
     armWorldAudio();
     if (opening.current) return;
     setRankedRound(false);
+    if (roomRun.current) { rStart(); return; }
     if (!rankedRef.current.canRank) { rStart(); return; }
     opening.current = true;
     // never hold the player up for long: if the server is slow, play unranked
@@ -277,6 +287,7 @@ export default function World() {
   useEffect(() => {
     if (!rSummary || rSent.current === rSummary) return;
     rSent.current = rSummary;
+    if (roomRun.current) { void roomRef.current.finish({ nepa3dRun: { won: rSummary.won, restored: rSummary.restored, timeTaken: rSummary.timeTaken, skill: rSummary.parts?.skill ?? 0 } }); return; }
     if (!rankedRef.current.hasTicket()) return;
     void rankedRef.current.finish({
       score: rSummary.score,
@@ -313,6 +324,26 @@ export default function World() {
     useAppStore.getState().setLobby(lobbyOpen);
     if (lobbyOpen) { worldControls.input.x = 0; worldControls.input.z = 0; }
   }, [lobbyOpen]);
+
+  // the host pressed start: everyone goes into Restore the Light now
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current || v.players[v.you]?.done) return;
+    roomRound.current = v.round;
+    roomRun.current = true;
+    pickFromLobby("restore");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // friends see how many breakers you have lit
+  useEffect(() => { if (roomRun.current && rState === "playing") roomRef.current.progress(rRestored); }, [rRestored, rState]);
+  // leaving the room, or a rematch being called, goes back to the lobby
+  useEffect(() => {
+    if (!roomRun.current) return;
+    if (!room.inRoom || room.view?.status === "waiting") { roomRun.current = false; toMenu(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
+  // dev only: lets an automated check end a round without playing the 3D street
+  useEffect(() => { if (process.env.NODE_ENV !== "production") (window as unknown as { __restore?: unknown }).__restore = { store: useRestoreStore, inRoomRun: () => roomRun.current }; }, []);
 
   const toMenu = () => {
     setModesOpen(true); // back from a game → straight to the lobby
@@ -1062,7 +1093,7 @@ export default function World() {
 
       {/* ── Mode picker — an on-demand launcher, not a blocking screen ─────── */}
       {appMode === "menu" && !driving && modesOpen && (
-        <ModeSelect touch={isMobile} onPick={pickFromLobby} />
+        <ModeSelect touch={isMobile} onPick={pickFromLobby} friends={<FriendsPlay room={room} gameName="UP NEPA 3D" sharePath="/world" atStart part="button" dark />} />
       )}
       {/* "Play a mode" launcher: roam freely, open the picker when you want it. */}
       {appMode === "menu" && !driving && !modesOpen && (
@@ -1121,8 +1152,11 @@ export default function World() {
         </div>
       )}
 
+      {/* friend room: the lobby sheet, who is how far, and the standings */}
+      <FriendsPlay room={room} gameName="UP NEPA 3D" sharePath="/world" atStart={modesOpen} progressMax={10} progressWord="breaker" part="overlays" />
+
       {/* ── Restore the Light RESULT overlay ──────────────────────────────── */}
-      {appMode === "restore" && (rState === "won" || rState === "over") && rSummary && (
+      {appMode === "restore" && (rState === "won" || rState === "over") && rSummary && !roomRun.current && (
         <div style={overlay}>
           <div style={card}>
             {rSummary.won && bestInfo.isBest && (

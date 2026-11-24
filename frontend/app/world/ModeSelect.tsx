@@ -129,7 +129,7 @@ const MODES: Mode[] = [
 // Modes that are planned but not built. Names only: no dates are promised.
 const SOON = ["Torch in the Dark", "Generator Hustle", "Power Thief"];
 
-export default function ModeSelect({ onPick, touch }: { onPick: (m: LobbyChoice) => void; touch: boolean }) {
+export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode }) {
   const rail = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(0);
   const onScroll = () => {
@@ -187,6 +187,7 @@ export default function ModeSelect({ onPick, touch }: { onPick: (m: LobbyChoice)
       <div className="nl-dots" aria-hidden>
         {[...MODES.map((m) => m.id), "soon"].map((id, i) => <button key={id} className={i === at ? "on" : ""} onClick={() => go(i)} tabIndex={-1} />)}
       </div>
+      {friends && <div className="nl-friends">{friends}</div>}
       <p className="nl-foot">{touch ? "In a round: left stick moves, drag the screen to look" : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
@@ -227,6 +228,7 @@ export default function ModeSelect({ onPick, touch }: { onPick: (m: LobbyChoice)
         .nl-card.soon li span { font-size: 12.5px; line-height: 1.35; font-weight: 500; }
         .nl-card.soon li b { display: block; font-size: 14.5px; font-weight: 600; color: rgba(244,241,234,0.9); }
         [data-ride-prompt] { display: none !important; } /* nothing in the world can be pressed behind the lobby */
+        .nl-friends { display: flex; justify-content: center; padding: 0 16px; }
         .nl-dots { display: flex; justify-content: center; gap: 6px; }
         .nl-dots button { width: 7px; height: 7px; padding: 0; border: none; border-radius: 99px; background: rgba(255,255,255,0.3); transition: width .25s ease, background .25s ease; }
         .nl-dots button.on { width: 22px; background: #fff; }

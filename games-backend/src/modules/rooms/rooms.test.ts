@@ -237,3 +237,21 @@ test('a restart does not end a room: it is written on every change that matters 
   await new Promise((r) => setTimeout(r, 5));
   assert.equal(disk.size, 0);
 });
+
+test('UP NEPA 3D room: a race the server times itself; unverified, so it can never carry a stake', async () => {
+  const clock = { t: 3_000_000 }; let n = 0;
+  const svc = createRoomService(ROOM_GAMES, { now: () => clock.t, randomHex: (b) => (++n).toString(16).padStart(b * 2, '0') });
+  const host = ok<Seat>(svc.create('nepa3d', 'Ada')); const guest = ok<Seat>(svc.join(host.code, 'Bo'));
+  const v = ok<RoomView>(svc.start(host.code, host.token));
+  assert.equal(v.verified, false); assert.equal(v.stakes, false);
+  clock.t += 20_000;
+  // a "win" in 5 seconds, sent 20 seconds in: faster than the street can be crossed
+  const tooFast = await svc.finish(host.code, host.token, { nepa3dRun: { won: true, restored: 10, timeTaken: 5, skill: 0 } });
+  assert.ok(isFail(tooFast) && tooFast.error === 'bad_run');
+  clock.t += 40_000; // a minute in
+  const win = ok<RoomView>(await svc.finish(host.code, host.token, { nepa3dRun: { won: true, restored: 10, timeTaken: 50, skill: 120 } }));
+  const lost = ok<RoomView>(await svc.finish(host.code, guest.token, { nepa3dRun: { won: false, restored: 6, timeTaken: null, skill: 9999 } }));
+  assert.ok(win.players[0]!.score! > 700, String(win.players[0]!.score));
+  assert.equal(lost.players[1]!.score, 240); // six of ten breakers, and nothing for skill on a lost run
+  assert.equal(lost.status, 'over');
+});

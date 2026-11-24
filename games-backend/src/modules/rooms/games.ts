@@ -1,6 +1,7 @@
 // What each game brings to a friend room. Add a game here and it has rooms.
 import type { GameRules } from './service';
 import * as ladder from '../ladder/rules';
+import * as nepa3d from '../nepa3d/rules';
 
 /** Word Ladder: everyone gets the same five ladders; the server replays the words. */
 const ladderRules: GameRules = {
@@ -81,4 +82,17 @@ const rhythmRules: GameRules = {
   },
 };
 
-export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules, rhythm: rhythmRules };
+/** UP NEPA 3D, Restore the Light: a race to light the street. The run cannot be
+ *  replayed (see nepa3d/rules.ts), so the server sets the time by its own clock
+ *  and bounds the rest. That is a plausibility check, NOT verified: no stakes. */
+const nepa3dRules: GameRules = {
+  verified: false,
+  deal: () => ({}),
+  maxProgress: nepa3d.POINTS, // breakers lit
+  async score(_seed, proof, elapsedMs) {
+    const v = nepa3d.verifyRestore((proof as { nepa3dRun?: unknown } | null)?.nepa3dRun, elapsedMs);
+    return v.ok ? { ok: true, score: v.total } : { ok: false, error: v.error };
+  },
+};
+
+export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules, rhythm: rhythmRules, nepa3d: nepa3dRules };
