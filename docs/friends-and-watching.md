@@ -55,11 +55,30 @@ Code: `games-backend/src/modules/friends/` (service, adapters, routes, tests), `
 
 **Known limit:** inside MiniPay there is no sign-in token, so the wallet is taken as given, the same trust a solo run has there. Nothing in friends moves money.
 
+### Meeting players who are not your friends
+
+The Friends page has three tabs: **Friends**, **Online now** and **Requests**.
+
+- "Online now" lists every signed-in player with the app open, friend or not, each with an Add button. A new player with no friends has people to add without knowing a name.
+- The page opens on Requests when one is waiting, and on Online now when the friends list is empty.
+- The tab layout follows the pattern players already know from chat apps (friends, online, pending), with the list of everyone as the default so offline friends are not hidden.
+
+### Room chat
+
+Players in a room can talk: in the lobby once a second player is in, and on the result card. Six quick replies sit above the text box. People watching can read the chat and cannot write in it.
+
+- A line is at most 140 characters. Tags and control characters are removed.
+- One line every 0.7 seconds per player. The room keeps its last 40 lines.
+
 ## 2. Watching a room
 
 Anyone with a room code can look on without playing.
 
-- `/watch` asks for a code. `/watch/CODE` shows the game, whether the round is live, each player's progress and score, the winner, and how many people are watching.
+- `/watch` lists the rounds being played right now, busiest first. Tap one to watch. No code is needed.
+- Each room has a second, public "watch name". The live list and the "Watch link" button use it. It lets anyone look on and can never be used to join, and a room's code never appears in the list or on a page reached from it.
+- Only a round in play between at least two people is listed.
+- The home page shows "2 rounds live · Watch" when there is something to see.
+- `/watch/CODE` still works for a friend who has the code. It shows the game, whether the round is live, each player's progress and score, the winner, and how many people are watching.
 - The room sheet has a "Watch link" button beside the invite.
 - A watcher is shown names, progress and scores. A watcher is never sent the round's deal, so watching cannot help a player.
 - The page asks the room for its state every 1.5 seconds, and only while the tab is visible.
@@ -82,7 +101,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 354 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 357 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

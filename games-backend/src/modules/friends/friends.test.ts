@@ -83,3 +83,12 @@ test('search: finds players by the start of a name, never yourself, and says whe
   assert.deepEqual((await w.f.search(A, 'b')).body.results, [], 'one letter is not enough');
   assert.deepEqual((await w.f.search(A, "x'; drop")).body.results, []);
 });
+
+test('people: everyone with the app open, friend or not, never yourself, with where you stand', async () => {
+  const w = world();
+  await w.f.request(A, B); w.f.ping(B); w.f.ping(C); w.f.ping(A);
+  const got = (await w.f.people(A)).body.people as { wallet: string; state: string }[];
+  assert.deepEqual(got.map((p) => [p.wallet, p.state]).sort(), [[B, 'asked'], [C, 'none']]);
+  w.clock.t += ONLINE_MS + 1;
+  assert.equal(((await w.f.people(A)).body.people as unknown[]).length, 0);
+});

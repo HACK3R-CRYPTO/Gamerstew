@@ -97,6 +97,20 @@ export function createFriends(deps: {
       return ok({ results: found.filter((p) => p.wallet !== me).slice(0, 6).map((p) => ({ ...p, state: where.get(p.wallet) ?? 'none' })) });
     },
 
+    /** Players with the app open right now, friends or not: the people a player
+     *  can meet without knowing a name. Never includes the caller. */
+    async people(walletRaw: unknown): Promise<Reply> {
+      const me = low(walletRaw);
+      if (!WALLET.test(me)) return bad('bad_wallet');
+      mark(me); const t = now();
+      const on = [...seen].filter(([w, at]) => w !== me && t - at < ONLINE_MS).sort((x, y) => y[1] - x[1]).slice(0, 24).map(([w]) => w);
+      const mine = await deps.store.list(me);
+      if (!mine.ok) return bad('unavailable', 503);
+      const where = new Map(mine.rows.map((r) => [r.a === me ? r.b : r.a, r.status === 'accepted' ? 'friends' : r.by === me ? 'asked' : 'incoming']));
+      const people = await Promise.all(on.map(async (w) => ({ wallet: w, name: await name(w), state: where.get(w) ?? 'none', online: true })));
+      return ok({ people, online: on.length });
+    },
+
     /** The app is open: called about once a minute by a signed-in player. */
     ping(walletRaw: unknown): Reply {
       const me = low(walletRaw);

@@ -26,8 +26,14 @@ export type StakeState = "collecting" | "ready" | "playing" | "settling" | "sett
 export type PayState = "paid" | "unpaid" | "expired";
 /** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */
 export interface RoomStake { entryWei: string; feeBps: number; state: StakeState; signed: boolean[]; winnerSeat: number; pays: (PayState | null)[]; txs: (string | null)[] }
+export interface ChatLine { id: number; seat: number; name: string; text: string; at: number }
 export interface RoomView {
   code: string; game: string; status: "waiting" | "playing" | "over"; round: number; verified: boolean; you: number; elapsed: number; players: RoomPlayer[]; deal?: unknown;
+  /** people looking on */
+  watching?: number;
+  /** the room's public watch name: a link built from it lets people look on, never join */
+  watchId?: string;
+  chat?: ChatLine[];
   /** this room can be played for G$ */
   stakes?: boolean;
   stakeTerms?: { spender: string; entries: string[]; feeBps: number };
@@ -156,6 +162,8 @@ export function useFriendRoom(game: string) {
     agreeEntry: (permit: unknown) => act("commit", { permit }),
     clearEntry: () => act("unstake"),
     say: (message: string | null) => setError(message),
+    /** a line of room chat. Quiet on failure: chat must never get in the way of a round. */
+    chat: async (text: string): Promise<boolean> => { const s = sess.current; if (!s) return false; try { setView(await call<RoomView>(`${s.code}/say`, { token: s.token, text })); return true; } catch { return false; } },
     leave: () => { const s = sess.current; setSession(null); setView(null); setError(null); if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); },
   };
 }

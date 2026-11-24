@@ -11,6 +11,7 @@
 import { gd, type FriendRoom, type RoomView } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
 import AddSeat from "@/components/AddSeat";
+import RoomChat from "@/components/RoomChat";
 import { useFriends } from "@/hooks/useFriends";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
@@ -76,6 +77,8 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
               </div>
             ); })()}
             {v.stake && v.status === "over" && <StakeResult view={v} />}
+            <RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} />
+            {(v.watching ?? 0) > 0 && <div className="fp-note">👁 {v.watching} watching</div>}
             {room.error && <div className="fp-err">{room.error}</div>}
             {v.status === "over"
               ? (room.isHost ? <button className="fp-go" style={{ fontFamily: DISPLAY }} disabled={room.busy} onClick={() => room.rematch()}>Play again</button> : <div className="fp-note">Waiting for the host to start another round…</div>)

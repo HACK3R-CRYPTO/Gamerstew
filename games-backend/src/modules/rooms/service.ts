@@ -40,7 +40,14 @@ export type ChainNote = { state: 'sending' | 'recorded' | 'failed'; tx?: string 
  *  it like any solo run (activity, XP, missions). Null = not recorded. */
 export type RecordRun = (run: { account: string; game: string; score: number; ref: string; ms: number }) => Promise<{ txHash: string } | null>;
 export interface Player { name: string; token: string; seen: number; left: boolean; score: number | null; done: boolean; progress: number; /** the signed-in wallet this seat plays as (the site checked it at the door). Not the same thing as `wallet`, which is a signed stake. */ account?: string; /** this round's trip to the chain */ chain?: ChainNote; /** the wallet staking for this seat, and its signed permit */ wallet?: string; permit?: Permit }
-export interface Room { code: string; game: string; status: 'waiting' | 'playing' | 'over'; round: number; seed: string; startedAt: number; touched: number; players: Player[]; stake?: Stake }
+export interface Room { code: string; game: string; status: 'waiting' | 'playing' | 'over'; round: number; seed: string; startedAt: number; touched: number; players: Player[]; stake?: Stake; /** a second, public name for the room. It lets anyone WATCH and can never be used to join. */ watch?: string; chat?: ChatLine[] }
+/** One line of room chat. `seat` is who said it. */
+export interface ChatLine { id: number; seat: number; name: string; text: string; at: number }
+export const CHAT_KEEP = 40;
+export const CHAT_MAX = 140;
+export const CHAT_GAP_MS = 700;
+/** A room as the "live now" list shows it. No code: a stranger can watch, not join. */
+export interface LiveRoom { watch: string; game: string; status: Room['status']; round: number; elapsed: number; players: string[]; watching: number; stake: boolean }
 
 // ─── Playing for G$ ──────────────────────────────────────────────────────────
 // A room can carry an entry, and NOBODY'S MONEY IS HELD: not by this server and
@@ -99,6 +106,10 @@ export interface RoomView {
   you: number;
   /** people looking on without a seat, seen in the last few seconds */
   watching: number;
+  /** the room's public watch name, for a link that lets people look on without being able to join */
+  watchId: string;
+  /** the last lines of room chat */
+  chat: ChatLine[];
   /** the progress value that means "finished" in this game, for drawing a bar */
   goal: number;
   /** seconds since the round began, by the server's clock */
@@ -135,6 +146,10 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   const rooms = new Map<string, Room>();
 
   const find = (code: unknown) => rooms.get(String(code ?? '').toUpperCase());
+  const WATCH_ID = /^[0-9a-f]{8}$/;
+  const watchName = (room: Room) => (room.watch ??= hex(4));
+  const findWatch = (id: string) => { for (const r of rooms.values()) if (r.watch === id) return r; return undefined; };
+  const lastSaid = new Map<string, number>(); // token -> when they last spoke
   const seatOf = (room: Room, token: unknown) => (typeof token === 'string' && token.length === 32 ? room.players.findIndex((p) => p.token === token) : -1);
   const gone = (room: Room, i: number, t: number) => { const p = room.players[i]; return !p || p.left || t - p.seen >= AWAY_MS; };
   const hostSeat = (room: Room) => room.players.findIndex((p) => !p.left);
@@ -171,7 +186,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   function view(room: Room, seat: number): RoomView {
     const t = now(); const host = hostSeat(room); const status = statusOf(room);
     const v: RoomView = {
-      code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, watching: watchingNow(room.code, t), goal: games[room.game]!.maxProgress, stakes: !!opts.stakes && games[room.game]!.verified,
+      code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, watching: watchingNow(room.code, t), watchId: watchName(room), chat: (room.chat ?? []).slice(-30), goal: games[room.game]!.maxProgress, stakes: !!opts.stakes && games[room.game]!.verified,
       elapsed: status === 'waiting' ? 0 : Math.max(0, Math.round((t - room.startedAt) / 1000)),
       // tokens are the players' keys to the room: they never leave the server
       players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t), ...(seat >= 0 && p.account ? { wallet: p.account } : {}), ...(p.chain ? { chain: { ...p.chain } } : {}) })),
@@ -250,6 +265,13 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
      *  one it is a spectator's: the same scores and progress, never the deal.
      *  `watcher` (anything that tells one onlooker from another) counts them. */
     get(code: unknown, token: unknown, watcher?: unknown): RoomView | Fail {
+      // by its watch name: always a spectator, and the reply never carries the code
+      if (typeof code === 'string' && WATCH_ID.test(code)) {
+        const seen = findWatch(code);
+        if (!seen) return fail('no_room', 404);
+        if (typeof watcher === 'string' && watcher) noteWatcher(seen.code, watcher.slice(0, 64), now());
+        return { ...view(seen, -1), code: '' };
+      }
       const room = find(code);
       if (!room) return fail('no_room', 404);
       const seat = seatOf(room, token);
@@ -319,6 +341,35 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       }
       // 'over' is never stored while a round is on: it is worked out each time, so
       // a friend whose phone went quiet can still come back and finish
+      return view(room, seat);
+    },
+
+    /** Rooms being played right now, for the "live" list. Busiest first. */
+    live(limit = 20): LiveRoom[] {
+      const t = now(); const out: LiveRoom[] = [];
+      for (const room of rooms.values()) {
+        const status = statusOf(room); const here = room.players.filter((p, i) => !p.left && !gone(room, i, t));
+        if (status !== 'playing' || here.length < 2) continue; // only a real round between people
+        out.push({ watch: watchName(room), game: room.game, status, round: room.round, elapsed: Math.max(0, Math.round((t - room.startedAt) / 1000)), players: here.map((p) => p.name), watching: watchingNow(room.code, t), stake: !!room.stake });
+      }
+      return out.sort((a, b) => b.watching - a.watching || a.elapsed - b.elapsed).slice(0, Math.max(1, Math.min(50, limit)));
+    },
+
+    /** Say something in the room. Players only; spectators read. */
+    say(code: unknown, token: unknown, textRaw: unknown): RoomView | Fail {
+      const room = find(code);
+      if (!room) return fail('no_room', 404);
+      const seat = seatOf(room, token);
+      if (seat < 0) return fail('not_in_room', 403);
+      const text = Array.from(String(textRaw ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, CHAT_MAX).join('');
+      if (!text) return fail('bad_run', 400, 'Say something first');
+      const t = now(); const key = room.players[seat]!.token;
+      if (lastSaid.size > 20000) lastSaid.clear();
+      if (t - (lastSaid.get(key) ?? 0) < CHAT_GAP_MS) return fail('slow_down', 429);
+      lastSaid.set(key, t); touch(room, seat);
+      const chat = (room.chat ??= []);
+      chat.push({ id: (chat[chat.length - 1]?.id ?? 0) + 1, seat, name: room.players[seat]!.name, text, at: t });
+      if (chat.length > CHAT_KEEP) chat.splice(0, chat.length - CHAT_KEEP);
       return view(room, seat);
     },
 

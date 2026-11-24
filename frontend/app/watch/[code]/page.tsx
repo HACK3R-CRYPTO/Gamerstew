@@ -10,6 +10,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RoomView } from "@/hooks/useFriendRoom";
 import { track } from "@/lib/track";
+import RoomChat from "@/components/RoomChat";
 
 type View = RoomView & { watching?: number; goal?: number };
 const GAMES: Record<string, { name: string; path: string }> = {
@@ -19,13 +20,13 @@ const GAMES: Record<string, { name: string; path: string }> = {
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 export default function WatchRoom({ params }: { params: Promise<{ code: string }> }) {
-  const code = use(params).code.toUpperCase(); const router = useRouter();
+  const raw = use(params).code; const byName = /^[0-9a-f]{8}$/.test(raw); const code = byName ? raw : raw.toUpperCase(); const router = useRouter();
   const [v, setV] = useState<View | null>(null);
   const [state, setState] = useState<"loading" | "live" | "gone" | "offline">("loading");
   const misses = useRef(0);
 
   useEffect(() => {
-    if (!/^[A-Z0-9]{5}$/.test(code)) { setState("gone"); return; }
+    if (!byName && !/^[A-Z0-9]{5}$/.test(code)) { setState("gone"); return; }
     track("room_watched"); let live = true;
     const look = async () => {
       try {
@@ -38,7 +39,7 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
     };
     void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 1500);
     return () => { live = false; clearInterval(t); };
-  }, [code]);
+  }, [code, byName]);
 
   const game = v ? GAMES[v.game] ?? { name: "GameArena", path: "/dashboard" } : null;
   const here = v ? v.players.map((p, seat) => ({ ...p, seat })) : [];
@@ -48,11 +49,12 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
   const goal = Math.max(1, v?.goal ?? 1);
 
   return (
+    <div className="wbg">
     <main className="w">
-      <header><button onClick={() => router.push("/dashboard")} aria-label="Back to games">←</button><b>Watching</b><span className="code">{code}</span></header>
+      <header><button onClick={() => router.push("/dashboard")} aria-label="Back to games">←</button><b>Watching</b>{byName ? <span className="code live">LIVE</span> : <span className="code">{code}</span>}</header>
 
       {state === "loading" && <p className="note">Finding the room…</p>}
-      {state === "gone" && <div className="empty"><b>This room has closed</b><span>Rooms end a while after the last round. Ask your friend for a new code.</span><button className="go" onClick={() => router.push("/watch")}>Enter another code</button></div>}
+      {state === "gone" && <div className="empty"><b>This room has closed</b><span>Rooms end a while after the last round. Ask your friend for a new code.</span><button className="go" onClick={() => router.push("/watch")}>See what is live</button></div>}
       {state === "offline" && !v && <div className="empty"><b>Cannot reach the room</b><span>Check your connection. This page keeps trying.</span></div>}
 
       {v && game && state !== "gone" && (
@@ -82,16 +84,19 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
           </ol>
 
           {v.status === "waiting" && <p className="note">{here.length < 2 ? "Waiting for a second player to join." : "Everyone is in. The host starts the round."}</p>}
-          <button className="go" onClick={() => router.push(`${game.path}?room=${code}`)}>{v.status === "waiting" ? "Join this room and play" : `Play ${game.name} yourself`}</button>
+          <RoomChat lines={v.chat ?? []} you={-1} />
+          {/* a room found on the live list can be watched, never joined: only someone given the code can take a seat */}
+          <button className="go" onClick={() => router.push(byName ? game.path : `${game.path}?room=${code}`)}>{!byName && v.status === "waiting" ? "Join this room and play" : `Play ${game.name} yourself`}</button>
         </>
       )}
 
       <style>{`
-        .w { min-height: 100dvh; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #efe6ff 55%, #e6dbff 100%); color: #22104f; padding: calc(10px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin: 0 auto; }
+        .wbg { min-height: 100dvh; width: 100%; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #efe6ff 55%, #e6dbff 100%); }
+        .w { color: #22104f; padding: calc(10px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin: 0 auto; }
         .w header { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; }
         .w header button { width: 44px; height: 44px; border-radius: 14px; border: none; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.14); font-size: 19px; color: #22104f; cursor: pointer; }
         .w header b { text-align: center; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(34,16,79,0.7); }
-        .code { font-weight: 900; letter-spacing: 0.2em; font-size: 15px; padding: 9px 12px; border-radius: 12px; background: #22104f; color: #fff; }
+        .code.live { background: #dc2626; letter-spacing: 0.14em; } .code { font-weight: 900; letter-spacing: 0.2em; font-size: 15px; padding: 9px 12px; border-radius: 12px; background: #22104f; color: #fff; }
         .head h1 { font-family: "Melon Pop", sans-serif; font-size: 34px; margin: 6px 0 10px; font-weight: 400; }
         .chips { display: flex; flex-wrap: wrap; gap: 8px; }
         .chip { padding: 7px 12px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.14); font-size: 13.5px; font-weight: 700; }
@@ -113,5 +118,6 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
         @media (prefers-reduced-motion: reduce) { .chip.playing { animation: none; } .bar i { transition: none; } }
       `}</style>
     </main>
+    </div>
   );
 }

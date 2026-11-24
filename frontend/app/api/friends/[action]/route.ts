@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const POSTS = new Set(["request", "accept", "remove", "invite", "ping"]);
 
 async function forward(req: Request, action: string, method: "GET" | "POST") {
-  if (method === "GET" ? action !== "list" && action !== "search" : !POSTS.has(action)) return NextResponse.json({ error: "bad_path" }, { status: 400 });
+  if (method === "GET" ? action !== "list" && action !== "search" && action !== "people" : !POSTS.has(action)) return NextResponse.json({ error: "bad_path" }, { status: 400 });
   const wallet = await checkedWallet(req);
   if (!wallet) return NextResponse.json({ error: "sign_in" }, { status: 401 });
   let body: string | undefined;

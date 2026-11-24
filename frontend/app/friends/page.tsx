@@ -42,8 +42,23 @@ export default function FriendsPage() {
     if (a.toLowerCase() === f.me) return;
     search(a).then((r) => { if (r[0]) setLinked(r[0]); }).catch(() => {});
   }, [f.state, f.me, search]);
-  // the button a result shows, and what tapping it does; the result changes at once and is put right if the server refuses
   const [local, setLocal] = useState<Record<string, Found["state"]>>({});
+  const stateOf0 = (p: Found) => local[p.wallet] ?? p.state;
+  // ── Tabs, and the players who are online right now ─────────────────────────
+  // "Online now" is everyone with the app open, friend or not, so a player with
+  // no friends still has people to add without knowing a name.
+  const [tab, setTab] = useState<"friends" | "online" | "requests">("friends"); const picked = useRef(false);
+  const [people, setPeople] = useState<Found[] | null>(null); const getPeople = f.people;
+  useEffect(() => {
+    if (f.state !== "ready") return;
+    let live = true; const look = () => getPeople().then((r) => { if (live) setPeople(r); }).catch(() => { if (live) setPeople((x) => x ?? []); });
+    void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 30000);
+    return () => { live = false; clearInterval(t); };
+  }, [f.state, getPeople]);
+  const others = (people ?? []).filter((p) => stateOf0(p) !== "friends");
+  // open on what needs the player: a waiting request first, people to meet when the list is empty
+  useEffect(() => { if (f.state !== "ready" || picked.current) return; picked.current = true; if (f.incoming.length) setTab("requests"); else if (f.friends.length === 0) setTab("online"); }, [f.state, f.incoming.length, f.friends.length]);
+  // the button a result shows, and what tapping it does; the result changes at once and is put right if the server refuses
   const stateOf = (p: Found) => local[p.wallet] ?? p.state;
   const tapFound = (p: Found) => {
     const was = stateOf(p); if (was === "asked" || was === "friends") return;
@@ -51,8 +66,8 @@ export default function FriendsPage() {
     setLocal((m) => ({ ...m, [p.wallet]: next })); setMsg(null); track("friend_request");
     (was === "incoming" ? f.accept(p.wallet) : f.ask(p.wallet)).then((d) => { if (d.state === "friends") setLocal((m) => ({ ...m, [p.wallet]: "friends" })); }).catch((e: Error) => { setLocal((m) => ({ ...m, [p.wallet]: was })); setMsg({ text: explainFriends(e.message), good: false }); });
   };
-  const FoundRow = ({ p }: { p: Found }) => { const st = stateOf(p); return (
-    <li><span className="av" style={{ background: tint(p.wallet) }}>{(p.name ?? p.wallet.slice(2)).slice(0, 1).toUpperCase()}</span><span className="nm"><b>{friendLabel(p)}</b></span>
+  const FoundRow = ({ p, online }: { p: Found; online?: boolean }) => { const st = stateOf(p); return (
+    <li><span className="av" style={{ background: tint(p.wallet) }}>{(p.name ?? p.wallet.slice(2)).slice(0, 1).toUpperCase()}{online && <i className="dot" aria-hidden />}</span><span className="nm"><b>{friendLabel(p)}</b></span>
       <span className="acts"><button className={st === "none" || st === "incoming" ? "yes" : "done"} disabled={st === "asked" || st === "friends"} onClick={() => tapFound(p)}>{st === "friends" ? "Friends ✓" : st === "asked" ? "Requested ✓" : st === "incoming" ? "Accept" : "Add"}</button></span></li>
   ); };
   const link = f.me && typeof window !== "undefined" ? `${window.location.origin}/friends?add=${f.me}` : "";
@@ -94,15 +109,31 @@ export default function FriendsPage() {
             <div className="sharerow"><a className="wa" href={`https://wa.me/?text=${encodeURIComponent(`Add me on GameArena and let's play: ${link}`)}`} target="_blank" rel="noreferrer">Send my link on WhatsApp</a><button className="share" onClick={share}>{copied ? "Copied ✓" : "Copy link"}</button></div>
           </section>
 
-          {f.incoming.length > 0 && <section><h2>Requests · {f.incoming.length}</h2><ul>{f.incoming.map((p) => <Row key={p.wallet} p={p}><button className="yes" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.accept(p.wallet), "You are now friends.")}>Accept</button><button className="no" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request declined.")}>Decline</button></Row>)}</ul></section>}
-
-          {f.outgoing.length > 0 && <section><h2>Waiting for an answer · {f.outgoing.length}</h2><ul>{f.outgoing.map((p) => <Row key={p.wallet} p={p}><button className="plain" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request cancelled.")}>Cancel</button></Row>)}</ul></section>}
           </div>
           <div className="col">
+          {/* one place for everyone you can play with: your friends, the players online right now, and requests */}
+          <div className="tabs" role="tablist">
+            <button role="tab" aria-selected={tab === "friends"} className={tab === "friends" ? "on" : ""} onClick={() => setTab("friends")}>Friends <i>{f.friends.length}</i></button>
+            <button role="tab" aria-selected={tab === "online"} className={tab === "online" ? "on" : ""} onClick={() => setTab("online")}><u /> Online now <i>{others.length}</i></button>
+            <button role="tab" aria-selected={tab === "requests"} className={tab === "requests" ? "on" : ""} onClick={() => setTab("requests")}>Requests {f.incoming.length > 0 ? <i className="hot">{f.incoming.length}</i> : <i>{f.outgoing.length}</i>}</button>
+          </div>
+          {tab === "friends" && (<>
           <section><h2>Your friends · {f.friends.length}{f.friends.some((p) => p.online) ? <em> · {f.friends.filter((p) => p.online).length} online</em> : null}</h2>
             {f.friends.length === 0 ? <p className="note left">No friends yet. Find a player above, or send your link on WhatsApp.</p> : <ul>{f.friends.map((p) => <Row key={p.wallet} p={p}>{sure === p.wallet ? <><button className="no" onClick={() => { setSure(""); void run(p.wallet, () => f.remove(p.wallet), "Removed."); }}>Remove</button><button className="plain" onClick={() => setSure("")}>Keep</button></> : <button className="plain" onClick={() => setSure(p.wallet)} aria-label={`Remove ${friendLabel(p)}`}>✕</button>}</Row>)}</ul>}
             {f.friends.length > 0 && <p className="note left">To play together, open a room in any game and tap “Invite a friend”.</p>}
           </section>
+          </>)}
+          {tab === "online" && (
+            <section><h2>Players online now · {others.length}</h2>
+              {people === null ? <p className="note left">Looking for players…</p> : others.length === 0 ? <p className="note left">Nobody else has the app open right now. Share your link and bring someone in.</p> : <ul className="found open">{others.map((p) => <FoundRow key={p.wallet} p={p} online />)}</ul>}
+              <p className="note left">These are players with GameArena open right now. Add one and invite them to a room.</p>
+            </section>
+          )}
+          {tab === "requests" && (<>
+          {f.incoming.length > 0 && <section><h2>Requests · {f.incoming.length}</h2><ul>{f.incoming.map((p) => <Row key={p.wallet} p={p}><button className="yes" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.accept(p.wallet), "You are now friends.")}>Accept</button><button className="no" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request declined.")}>Decline</button></Row>)}</ul></section>}
+          {f.outgoing.length > 0 && <section><h2>Waiting for an answer · {f.outgoing.length}</h2><ul>{f.outgoing.map((p) => <Row key={p.wallet} p={p}><button className="plain" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request cancelled.")}>Cancel</button></Row>)}</ul></section>}
+            {f.incoming.length === 0 && f.outgoing.length === 0 && <p className="note left">No requests waiting. When someone adds you, it shows here and in your notifications.</p>}
+          </>)}
           </div>
         </div>
       )}
@@ -111,6 +142,11 @@ export default function FriendsPage() {
       <style>{`
         .frp { min-height: 100dvh; width: 100%; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #efe6ff 55%, #e6dbff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
         .fr { padding: 14px 16px calc(120px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; max-width: 560px; margin: 0 auto; }
+        .tabs { display: flex; gap: 6px; padding: 5px; border-radius: 16px; background: rgba(255,255,255,0.7); box-shadow: 0 0 0 1px rgba(76,29,149,0.1); }
+        .tabs button { flex: 1; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; border-radius: 12px; background: transparent; color: rgba(34,16,79,0.7); font-weight: 800; font-size: 13.5px; cursor: pointer; white-space: nowrap; padding: 0 6px; }
+        .tabs button.on { background: #22104f; color: #fff; } .tabs i { font-style: normal; font-size: 11.5px; padding: 2px 7px; border-radius: 999px; background: rgba(109,40,217,0.14); } .tabs button.on i { background: rgba(255,255,255,0.2); } .tabs i.hot { background: #dc2626 !important; color: #fff; }
+        .tabs u { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; text-decoration: none; flex: 0 0 auto; }
+        .found.open li { background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.1); }
         .cols, .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
         .fr h1 em { font: 800 14px ui-sans-serif, system-ui, sans-serif; color: #15803d; margin-left: 12px; vertical-align: middle; display: inline-flex; align-items: center; gap: 6px; } .fr h1 em i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.2); }
         @media (min-width: 900px) {

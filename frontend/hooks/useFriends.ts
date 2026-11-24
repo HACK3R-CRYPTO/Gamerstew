@@ -66,6 +66,8 @@ export function useFriends() {
 
   // one function for the life of the sign-in: pages list it as an effect's dependency
   const search = useCallback(async (q: string): Promise<Found[]> => ((await call(`search?q=${encodeURIComponent(q)}`)).results as Found[]) ?? [], [call]);
+  /** players with the app open right now, friends or not */
+  const people = useCallback(async (): Promise<Found[]> => ((await call("people")).people as Found[]) ?? [], [call]);
   const act = useCallback(async (action: string, body: unknown) => { const d = await call(action, body); await refresh(); return d; }, [call, refresh]);
   return {
     signedIn, state, friends, incoming, outgoing, me: address?.toLowerCase() ?? null, refresh,
@@ -74,6 +76,6 @@ export function useFriends() {
     remove: (wallet: string) => act("remove", { wallet }),
     invite: (wallet: string, game: string, code: string) => call("invite", { wallet, game, code }),
     /** players to add, by the start of a name or a whole wallet */
-    search,
+    search, people,
   };
 }

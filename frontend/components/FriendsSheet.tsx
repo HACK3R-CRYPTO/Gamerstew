@@ -11,6 +11,7 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import type { FriendRoom } from "@/hooks/useFriendRoom";
 import InviteFriends from "@/components/InviteFriends";
 import AddSeat from "@/components/AddSeat";
+import RoomChat from "@/components/RoomChat";
 import { friendLabel, useFriends } from "@/hooks/useFriends";
 
 const NAME_KEY = "gamearena:roomName";
@@ -76,7 +77,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
               <a href={`https://wa.me/?text=${encodeURIComponent(invite)}`} target="_blank" rel="noreferrer">WhatsApp</a>
               <button onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
               {/* a link for people who only want to look on */}
-              <button onClick={() => { const w = `${window.location.origin}/watch/${room.session?.code ?? ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
+              <button onClick={() => { const w = `${window.location.origin}/watch/${v?.watchId || room.session?.code || ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
             </div>
             {v?.status === "waiting" && <InviteFriends game={room.session!.game} code={room.session!.code} />}
             <ul className="fs-players">
@@ -85,6 +86,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
               ))}
               {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty"><span>Waiting for a friend…</span></li>)}
             </ul>
+            {v && v.players.length > 1 && <RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} />}
             {v?.stakes && v.stakeTerms && <StakeBox room={room} view={v} active={active} />}
             {room.isHost
               ? <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || active < 2 || (!!v?.stake && v.stake.state !== "ready")} onClick={() => room.start()}>{active < 2 ? "Waiting for a friend" : v?.stake && v.stake.state !== "ready" ? "Waiting for everyone to agree" : `Start for ${active}`}</button>

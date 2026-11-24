@@ -30,6 +30,9 @@ export function registerRoomRoutes(app: Application, deps: { requireSecret?: Req
   const who = (req: Request) => String(req.headers['x-client-ip'] ?? 'shared').slice(0, 64);
 
   app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name, body(req).wallet) : { error: 'slow_down', status: 429 })));
+  // must be declared before /:code so "live" is not read as a room code
+  app.get('/api/rooms/live', gate, route(() => ({ rooms: service.live() })));
+  app.post('/api/rooms/:code/say', gate, route((req) => service.say(req.params.code, body(req).token, body(req).text)));
   app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name, body(req).wallet)));
   app.get('/api/rooms/:code', gate, route((req) => { paying(req.params.code); return service.get(req.params.code, req.query.token, req.query.watch ? who(req) : undefined); }));
   app.post('/api/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));

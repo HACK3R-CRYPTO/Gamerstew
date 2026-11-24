@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoomService, isFail, AWAY_MS, ROUND_MAX_MS, MAX_PLAYERS, type GameRules, type RoomView, type Seat } from './service';
+import { createRoomService, isFail, CHAT_GAP_MS, CHAT_KEEP, AWAY_MS, ROUND_MAX_MS, MAX_PLAYERS, type GameRules, type RoomView, type Seat } from './service';
 import { ROOM_GAMES, rhythmSongFor } from './games';
 import * as ladder from '../ladder/rules';
 import { VALID } from '../ladder/data';
@@ -304,4 +304,28 @@ test('a signed-in seat is named to the other players, so they can add each other
   const mine = ok<RoomView>(w.svc.get(host.code, host.token));
   assert.equal(mine.players[0]!.wallet, A); assert.equal(mine.players[1]!.wallet, undefined, 'a guest has none');
   assert.equal(ok<RoomView>(w.svc.get(host.code, undefined, 'onlooker')).players[0]!.wallet, undefined);
+});
+
+test('live list and watch name: a round between two people is listed without its code, and the watch name cannot join', () => {
+  const w = world(); const r = open(w);
+  assert.deepEqual(w.svc.live(), [], 'a room still waiting is not listed');
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  const [live] = w.svc.live();
+  assert.deepEqual(live!.players, ['Ada', 'Bo']); assert.equal(JSON.stringify(live).includes(r.code), false, 'the code never appears in the list');
+  const seen = ok<RoomView>(w.svc.get(live!.watch, undefined, 'tv'));
+  assert.equal(seen.code, ''); assert.equal(seen.you, -1); assert.equal(seen.deal, undefined); assert.equal(seen.players[0]!.name, 'Ada');
+  assert.equal(isFail(w.svc.join(live!.watch, 'Sneak')), true, 'a watch name is not a way in');
+  assert.equal(w.svc.live()[0]!.watching, 1);
+});
+
+test('chat: players talk, spectators read, text is cleaned, a flood is refused and old lines fall away', () => {
+  const w = world(); const r = open(w);
+  assert.equal(isFail(w.svc.say(r.code, 'f'.repeat(32), 'hi')), true, 'no seat, no voice');
+  const v = ok<RoomView>(w.svc.say(r.code, r.host.token, '  <b>good   luck</b>\n '));
+  assert.deepEqual(v.chat.map((c) => [c.name, c.text]), [['Ada', 'b good luck /b']]);
+  assert.equal(isFail(w.svc.say(r.code, r.host.token, 'again')), true, 'too soon');
+  for (let i = 0; i < CHAT_KEEP + 5; i++) { w.clock.t += CHAT_GAP_MS; ok<RoomView>(w.svc.say(r.code, r.others[0]!.token, `m${i}`)); }
+  const watcher = ok<RoomView>(w.svc.get(r.code, undefined, 'tv'));
+  assert.equal(watcher.chat.length, 30); assert.equal(watcher.chat[29]!.text, `m${CHAT_KEEP + 4}`);
+  assert.equal(isFail(w.svc.say(r.code, r.host.token, '   ')), true);
 });
