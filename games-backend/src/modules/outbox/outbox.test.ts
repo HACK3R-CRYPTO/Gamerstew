@@ -126,3 +126,29 @@ test('which errors are which', () => {
   assert.equal(isPermanent(new Error('socket hang up')), false);
   assert.deepEqual([backoffMs(1), backoffMs(2), backoffMs(20)], [5_000, 10_000, 300_000]);
 });
+
+// ── the fast path: a whole batch in one go ──
+test('batch sending: results line up with rows, and rows after a failed send are tried again at once, not lost', async () => {
+  const asked: number[][] = [];
+  const w = world({ submitMany: async (rows) => { asked.push(rows.map((r) => r.score)); return rows.length === 5 ? [{ hash: '0xa' }, { hash: '0xb' }, { error: new Error('nonce too low') }] : rows.map((_, i) => ({ hash: `0xz${i}` })); } });
+  for (let i = 1; i <= 5; i++) await w.box.enqueue(run(i));
+  assert.deepEqual(await w.box.sendDue(), { sent: 2, retried: 1, failed: 0, stopped: false });
+  assert.deepEqual(w.rows.map((r) => r.status), ['sent', 'sent', 'pending', 'pending', 'pending']);
+  assert.equal(w.sends.length, 0); // the one-at-a-time path was not used
+  assert.deepEqual(await w.box.sendDue(), { sent: 2, retried: 0, failed: 0, stopped: false }); // rows 4 and 5: due again straight away
+  assert.deepEqual(asked, [[11, 12, 13, 14, 15], [14, 15]]);
+  assert.equal(w.rows[2]!.status, 'pending'); // row 3 waits out its backoff
+});
+
+test('batch sending: out of gas pauses every row in the batch, and a batch that throws outright loses nothing', async () => {
+  const gas = world({ submitMany: async () => [{ error: new Error('insufficient funds for gas') }] });
+  for (let i = 1; i <= 3; i++) await gas.box.enqueue(run(i));
+  const r = await gas.box.sendDue();
+  assert.deepEqual([r.stopped, r.failed], [true, 0]);
+  assert.ok(gas.rows.every((x) => x.status === 'pending'));
+  const boom = world({ submitMany: async () => { throw new Error('rpc down'); } });
+  await boom.box.enqueue(run(1)); await boom.box.enqueue(run(2));
+  const b = await boom.box.sendDue();
+  assert.deepEqual([b.sent, b.failed], [0, 0]);
+  assert.ok(boom.rows.every((x) => x.status === 'pending'));
+});

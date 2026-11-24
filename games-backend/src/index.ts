@@ -10,6 +10,7 @@ export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain }
 export { registerBoardRoutes } from './modules/board/routes';
 export { createOutbox } from './modules/outbox/service';
 export { supabaseOutbox, ethersOutboxChain } from './modules/outbox/adapters';
+export { createBatchSender } from './modules/outbox/sender';
 export { playCounts, ledgerCounts, mergeCounts, supabaseLedgerBoard, mergeBoards } from './modules/board/plays';
 export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';
 export { registerSeasonsRoutes } from './modules/seasons/routes';

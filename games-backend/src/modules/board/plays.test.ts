@@ -89,3 +89,16 @@ test('database functions missing (migration not run yet): fall back to reading r
   assert.equal(r.counts.get('0xa')!.count, 2);
   assert.deepEqual(r.sources, { subgraph: true, ledger: true });
 });
+
+test('for money: only confirmed runs are counted, and an unreadable confirmed count adds nothing', async () => {
+  const asked: string[] = [];
+  const mk = (fail: boolean) => { const base = db([{ wallet: '0xa' }, { wallet: '0xa' }, { wallet: '0xa' }]).d as LedgerDb & { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> }; base.rpc = async (fn) => { asked.push(fn); return fail ? { data: null, error: { message: 'no such function' } } : { data: [{ wallet: '0xa', plays: 1 }], error: null }; }; return base; };
+  // three runs in the ledger, one confirmed: money counts one
+  const r = await playCounts({ subgraph: async () => new Map(), db: mk(false), confirmedOnly: true }, 1, 2);
+  assert.equal(r.counts.get('0xa')!.count, 1);
+  assert.deepEqual(asked, ['play_counts_confirmed']);
+  // the confirmed count cannot be read: do NOT fall back to counting everything
+  const x = await playCounts({ subgraph: async () => new Map(), db: mk(true), confirmedOnly: true }, 1, 2);
+  assert.equal(x.counts.size, 0);
+  assert.deepEqual(x.sources, { subgraph: true, ledger: false });
+});

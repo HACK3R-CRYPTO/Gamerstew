@@ -100,3 +100,19 @@ language sql as $$
       for update skip locked)
   returning o.*;
 $$;
+
+-- ── PART 5 · prizes count confirmed scores only ─────────────────────────────
+-- The payout list uses this. A run counts when its transaction is CONFIRMED in
+-- the outbox, or when it never went through the outbox (those were sent
+-- directly and were on-chain before the player was answered). A run still
+-- waiting, or failed for good, does not count toward money.
+create or replace function play_counts_confirmed(p_start timestamptz, p_end timestamptz)
+returns table (wallet text, plays bigint)
+language sql stable as $$
+  select lower(s.wallet) as wallet, count(*) as plays
+  from game_sessions s
+  left join chain_outbox o on o.session_token = s.token
+  where s.used and s.used_at >= p_start and s.used_at <= p_end
+    and (o.id is null or o.status = 'confirmed')
+  group by lower(s.wallet);
+$$;

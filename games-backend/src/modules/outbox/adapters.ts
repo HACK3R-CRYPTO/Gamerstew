@@ -62,8 +62,9 @@ export function supabaseOutbox(db: Db, now: () => number = Date.now): OutboxStor
 }
 
 /** `provider` is read at call time: it is created after boot. */
-export function ethersOutboxChain(deps: { provider: () => any; submitScore: (wallet: string, gameType: number, score: number) => Promise<{ hash: string }> }): OutboxChain {
+export function ethersOutboxChain(deps: { provider: () => any; submitScore: (wallet: string, gameType: number, score: number) => Promise<{ hash: string }>; submitMany?: OutboxChain['submitMany'] }): OutboxChain {
   return {
+    ...(deps.submitMany ? { submitMany: deps.submitMany } : {}),
     submitScore: (wallet, gameType, score) => deps.submitScore(wallet, gameType, score),
     async txState(hash) {
       const p = deps.provider();

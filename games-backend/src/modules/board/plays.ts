@@ -64,10 +64,12 @@ async function ledgerOrRpc(db: LedgerDb & Partial<RpcDb>, startIso: string, endI
 
 /** Counts for a window from both records. Never throws: a record that cannot be
  *  read contributes nothing, and `sources` says which ones answered. */
-export async function playCounts(deps: { subgraph: (startUnix: number, endUnix: number) => Promise<Counts>; db: LedgerDb & Partial<RpcDb> }, startUnix: number, endUnix: number): Promise<{ counts: Counts; sources: { subgraph: boolean; ledger: boolean } }> {
+export async function playCounts(deps: { subgraph: (startUnix: number, endUnix: number) => Promise<Counts>; db: LedgerDb & Partial<RpcDb>; /** for money: count only runs whose transaction is confirmed. If that cannot be read, the ledger adds nothing. */ confirmedOnly?: boolean }, startUnix: number, endUnix: number): Promise<{ counts: Counts; sources: { subgraph: boolean; ledger: boolean } }> {
   const [sg, ledger] = await Promise.all([
     deps.subgraph(startUnix, endUnix).then((c) => ({ c, ok: true })).catch(() => ({ c: new Map() as Counts, ok: false })),
-    ledgerOrRpc(deps.db, new Date(startUnix * 1000).toISOString(), new Date(endUnix * 1000).toISOString()),
+    deps.confirmedOnly
+      ? (typeof deps.db.rpc === 'function' ? rpcCounts(deps.db as RpcDb, new Date(startUnix * 1000).toISOString(), new Date(endUnix * 1000).toISOString(), 'play_counts_confirmed').catch(() => ({ counts: new Map() as Counts, ok: false })) : Promise.resolve({ counts: new Map() as Counts, ok: false }))
+      : ledgerOrRpc(deps.db, new Date(startUnix * 1000).toISOString(), new Date(endUnix * 1000).toISOString()),
   ]);
   return { counts: mergeCounts(sg.c, ledger.counts), sources: { subgraph: sg.ok, ledger: ledger.ok } };
 }
@@ -140,8 +142,8 @@ export async function rpcBoardPage(db: RpcDb, game: string, sinceSec: number, li
 }
 
 /** Whole-window counts in one call. `ok` false = function missing or failed. */
-export async function rpcCounts(db: RpcDb, startIso: string, endIso: string): Promise<{ counts: Counts; ok: boolean }> {
-  const { data, error } = await db.rpc('play_counts_window', { p_start: startIso, p_end: endIso });
+export async function rpcCounts(db: RpcDb, startIso: string, endIso: string, fn: 'play_counts_window' | 'play_counts_confirmed' = 'play_counts_window'): Promise<{ counts: Counts; ok: boolean }> {
+  const { data, error } = await db.rpc(fn, { p_start: startIso, p_end: endIso });
   if (error || !Array.isArray(data)) return { counts: new Map(), ok: false };
   const counts: Counts = new Map();
   for (const r of data as { wallet: string; plays: number | string }[]) counts.set(String(r.wallet).toLowerCase(), { username: null, count: Number(r.plays) });

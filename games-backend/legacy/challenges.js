@@ -614,8 +614,10 @@ core.app.get('/api/weekly-challenge/payout-list', core.requireSecret, async (_, 
     // matches (gameType 3). Matches /api/weekly-challenge so the payout list can
     // never diverge from what the pool card shows. The old Supabase `activity`
     // count dropped rows and under-paid real players.
+    // MONEY: with the outbox on, only runs confirmed on-chain count here. The
+    // public card above may show a run that is still on its way; this list may not.
     const { counts } = await core.platform.playCounts(
-      { subgraph: (a, b) => core.subgraph.playCountsInWindow(a, b), db: core.supabase },
+      { subgraph: (a, b) => core.subgraph.playCountsInWindow(a, b), db: core.supabase, confirmedOnly: core.outboxOn() },
       Math.floor(monday.getTime() / 1000),
       Math.floor(sunday.getTime() / 1000),
     );

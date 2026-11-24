@@ -61,9 +61,22 @@ core.app.post('/api/start-session', core.requireSecret, core.gameSubmitLimiter, 
 // while it is switched off.
 const outboxOn = () => String(process.env.SCORE_OUTBOX ?? 'false').toLowerCase() === 'true';
 const outboxStore = core.platform.supabaseOutbox(core.supabase);
+const batchSender = core.platform.createBatchSender({
+  provider: () => core.provider,
+  signer: () => core.passScoreWriter.runner,
+  contract: core.GAME_PASS_ADDR,
+  encode: (wallet, gameType, score) => core.passScoreWriter.interface.encodeFunctionData('recordScore', [wallet, gameType, score]),
+  hasPass: (wallet) => core.passScoreWriter.hasMinted(wallet),
+  serialize: (fn) => core.serializeSignerWrite(fn),
+});
 const outbox = core.platform.createOutbox({
   store: outboxStore,
-  chain: core.platform.ethersOutboxChain({ provider: () => core.provider, submitScore: (wallet, gameType, score) => core.enqueueScoreWrite(wallet, gameType, score) }),
+  chain: core.platform.ethersOutboxChain({
+    provider: () => core.provider,
+    submitScore: (wallet, gameType, score) => core.enqueueScoreWrite(wallet, gameType, score),
+    // one network call a score instead of eleven (src/modules/outbox/sender.ts)
+    submitMany: (rows) => batchSender.submitMany(rows),
+  }),
 });
 core.outbox = outbox;
 core.outboxOn = outboxOn;

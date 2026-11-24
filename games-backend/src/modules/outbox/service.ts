@@ -43,6 +43,9 @@ export interface OutboxChain {
   /** 'ok' mined and succeeded · 'reverted' mined and failed · 'pending' known,
    *  not mined yet · 'gone' the chain has no such transaction. */
   txState(hash: string): Promise<'ok' | 'reverted' | 'pending' | 'gone'>;
+  /** Optional fast path: send rows in order with one network call each. It stops
+   *  at the first failed send, so it may return fewer results than rows. */
+  submitMany?(rows: { wallet: string; game_type: number; score: number }[]): Promise<({ hash: string } | { error: unknown })[]>;
 }
 
 export const MAX_ATTEMPTS = 12;
@@ -72,12 +75,19 @@ export function createOutbox(deps: { store: OutboxStore; chain: OutboxChain; log
   /** Send what is due. Returns what happened, for the job log and the tests. */
   async function sendDue(): Promise<{ sent: number; retried: number; failed: number; stopped: boolean }> {
     const out = { sent: 0, retried: 0, failed: 0, stopped: false };
-    const rows = await deps.store.claim(BATCH, LEASE_MS);
-    for (const row of rows) {
-      // sent before, no receipt recorded: the confirm pass decides its fate, never a blind resend
-      if (row.tx_hash) continue;
+    const claimed = await deps.store.claim(BATCH, LEASE_MS);
+    // sent before, no receipt recorded: the confirm pass decides its fate, never a blind resend
+    const rows = claimed.filter((r) => !r.tx_hash);
+    // The fast path sends the batch in one go. Results line up with rows; a row
+    // with no result was not attempted and is made due again straight away.
+    const many = deps.chain.submitMany && rows.length > 0 ? await deps.chain.submitMany(rows).catch((e) => [{ error: e }] as ({ hash: string } | { error: unknown })[]) : null;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      if (many && i >= many.length) { await deps.store.retryLater(row.id, 0, 'not attempted: an earlier send in the batch failed'); continue; }
       try {
-        const tx = await deps.chain.submitScore(row.wallet, row.game_type, row.score);
+        const res = many ? many[i]! : null;
+        if (res && 'error' in res) throw res.error;
+        const tx = res && 'hash' in res ? res : await deps.chain.submitScore(row.wallet, row.game_type, row.score);
         await deps.store.markSent(row.id, tx.hash);
         outOfGas = false;
         out.sent++;
@@ -88,6 +98,7 @@ export function createOutbox(deps: { store: OutboxStore; chain: OutboxChain; log
           if (!outOfGas) log.warn('[outbox] the sending wallet is out of gas: queue paused, nothing lost');
           outOfGas = true; out.stopped = true;
           await deps.store.retryLater(row.id, 60_000, 'out of gas');
+          if (many) { for (let k = i + 1; k < rows.length; k++) await deps.store.retryLater(rows[k]!.id, 60_000, 'out of gas'); }
           break;
         }
         if (isPermanent(e) || row.attempts >= MAX_ATTEMPTS) {

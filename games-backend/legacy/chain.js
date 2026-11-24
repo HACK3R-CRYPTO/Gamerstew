@@ -13,6 +13,7 @@ function* (core) {
     passContract: { get: () => passContract, set: (v) => { passContract = v; }, enumerable: true, configurable: true },
     validator: { get: () => validator, set: (v) => { validator = v; }, enumerable: true, configurable: true },
     enqueueScoreWrite: { get: () => enqueueScoreWrite, enumerable: true, configurable: true },
+    serializeSignerWrite: { get: () => serializeSignerWrite, enumerable: true, configurable: true },
     BACKEND_APPROVAL_DOMAIN: { get: () => BACKEND_APPROVAL_DOMAIN, enumerable: true, configurable: true },
     BACKEND_APPROVAL_TYPES: { get: () => BACKEND_APPROVAL_TYPES, enumerable: true, configurable: true },
     GASLESS_SKILL_GAMES: { get: () => GASLESS_SKILL_GAMES, enumerable: true, configurable: true },
@@ -154,6 +155,15 @@ const GASLESS_SKILL_GAMES =
 // each step ~1-2s; returns the tx hash to the caller. Best-effort: the chain
 // survives a failed write so the next one still goes.
 let _signerWriteChain = Promise.resolve();
+// Run something in the signer's single write lane. Everything that spends one
+// of this wallet's nonces must go through here (or enqueueScoreWrite), or two
+// writers pick the same nonce and one of them reverts.
+function serializeSignerWrite(fn) {
+  const run = _signerWriteChain.then(fn);
+  _signerWriteChain = run.then(() => {}, () => {});
+  return run;
+}
+
 function enqueueScoreWrite(player, gameType, score) {
   // Resolves to the ethers TransactionResponse (has .hash and .wait()) once the
   // tx is SUBMITTED. The chain advances on submission, not mining, so callers
