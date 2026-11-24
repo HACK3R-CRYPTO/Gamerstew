@@ -23,7 +23,7 @@ import { useFrame } from "@react-three/fiber";
 import { worldControls } from "./controls";
 import {
   DEVICES, WEIGHT, STATION, SOCKET_COUNT, PICK_RADIUS, STATION_RADIUS, RESPAWN_DELAY, FINAL_MULT, TOTAL_WINDOWS,
-  live, hands, freeSocket, resetLive, useGameStore, streakMult, scaledValue, type SocketView,
+  live, hands, freeSocket, resetLive, useGameStore, streakMult, scaledValue, perks, rush, drawPerks, RUSH_MULT, type SocketView,
 } from "./game";
 import { useShout, pick, LINES } from "./shout";
 import { useFx } from "./fx";
@@ -164,7 +164,10 @@ export default function GameDirector() {
         if (d.where !== "socket" || !d.ready) continue;
         combo.current += 1;
         bestCombo.current = Math.max(bestCombo.current, combo.current);
-        const mult = streakMult(combo.current) * (finalLight ? FINAL_MULT : 1);
+        // a neighbour's rush job, done in time, pays double on top of everything else
+        const rushed = rush.idx === i;
+        if (rushed) { rush.idx = -1; useShout.getState().shout(`🙌 Neighbour happy! ${DEVICES[i].label} ×${RUSH_MULT}`, "big"); }
+        const mult = streakMult(combo.current) * (finalLight ? FINAL_MULT : 1) * (rushed ? RUSH_MULT : 1) * (1 + 0.2 * perks.price);
         const value = Math.round((scaledValue(DEVICES[i].value, wc.windowIndex) * mult) / 100) * 100;
         score.current += value;
         banked.current += 1;
@@ -192,7 +195,7 @@ export default function GameDirector() {
       if (d.where !== "socket" || d.ready) continue;
       if (lightOn) {
         charging += 1;
-        d.progress = Math.min(1, d.progress + dt / DEVICES[i].chargeTime);
+        d.progress = Math.min(1, d.progress + (dt / DEVICES[i].chargeTime) * (1 + 0.25 * perks.charge));
         if (d.progress >= 1) {
           d.ready = true;
           d.pulse = 1;
@@ -216,8 +219,15 @@ export default function GameDirector() {
     let roundOver = false;
     if (phase === "cut" && prevPhase.current !== "cut") {
       const caught: number[] = [];
+      // the small gen keeps your most valuable charging device alive through the cut
+      let saved = -1;
+      if (perks.gen > 0) {
+        for (let i = 0; i < DEVICES.length; i++) if (live[i].where === "socket" && !live[i].ready && (saved < 0 || DEVICES[i].value > DEVICES[saved].value)) saved = i;
+        if (saved >= 0) { perks.gen -= 1; live[saved].pulse = 1; useShout.getState().shout(`🛢️ Gen save your ${DEVICES[saved].label}!`, "good"); }
+      }
       for (let i = 0; i < DEVICES.length; i++) {
         const d = live[i];
+        if (i === saved) continue;
         if (d.where === "socket" && !d.ready) {
           caught.push(i);
           d.where = "home";
@@ -232,7 +242,21 @@ export default function GameDirector() {
         const big = caught.reduce((a, b) => (DEVICES[b].value > DEVICES[a].value ? b : a), caught[0]);
         store.pushCaught(0, `${pick(CAUGHT)} ${DEVICES[big].label}!`);
       }
+      if (rush.idx >= 0) { rush.idx = -1; useShout.getState().shout("😤 Neighbour vex. Rush job gone", "bad"); }
       if (wc.windowIndex >= TOTAL_WINDOWS - 1) roundOver = true;
+      // the blackout is when you choose one upgrade; the offer goes when the light is back
+      else { const offer = drawPerks(); if (offer.length) store.setLive({ offer }); }
+    }
+    if (phase === "on" && prevPhase.current !== "on") {
+      store.setLive({ offer: null });
+      // now and then a neighbour hands you a rush job for this light (never in the first, which teaches the game)
+      if (wc.windowIndex >= 1 && Math.random() < 0.65) {
+        const open = DEVICES.map((_, i) => i).filter((i) => live[i].where === "home" && live[i].respawn <= 0 && i !== hands.idx);
+        if (open.length) {
+          rush.idx = open[Math.floor(Math.random() * open.length)];
+          useShout.getState().shout(`🙋 Neighbour: charge my ${DEVICES[rush.idx].label} before light go! ×${RUSH_MULT}`, "big");
+        }
+      }
     }
     if (phase === "on" && prevPhase.current !== "on" && finalLight && !saidFinal.current) {
       saidFinal.current = true;
@@ -241,7 +265,7 @@ export default function GameDirector() {
     prevPhase.current = phase;
 
     // ── Carry weight + where the guide arrow points. ─────────────────────────
-    wc.speedMul = hands.idx >= 0 ? WEIGHT[DEVICES[hands.idx].id] ?? 1 : 1;
+    wc.speedMul = (hands.idx >= 0 && !perks.back ? WEIGHT[DEVICES[hands.idx].id] ?? 1 : 1) * (1 + 0.12 * perks.legs);
     const anyReady = live.some((d) => d.where === "socket" && d.ready);
     if (hands.idx >= 0 || anyReady) {
       wc.guide.x = STATION[0];
@@ -258,7 +282,7 @@ export default function GameDirector() {
         if (!room || d.where !== "home" || d.respawn > 0) continue;
         const walk = (Math.hypot(p.x - DEVICES[i].pos[0], p.z - DEVICES[i].pos[1]) + Math.hypot(DEVICES[i].pos[0] - STATION[0], DEVICES[i].pos[1] - STATION[1])) / 3.2;
         const fits = !lightOn || walk + DEVICES[i].chargeTime < wc.lightLeft;
-        const v = DEVICES[i].value / (walk + DEVICES[i].chargeTime) * (fits ? 1 : 0.15);
+        const v = DEVICES[i].value * (rush.idx === i ? RUSH_MULT : 1) / (walk + DEVICES[i].chargeTime) * (fits ? 1 : 0.15);
         if (v > bv) {
           bv = v;
           bi = i;
@@ -280,6 +304,9 @@ export default function GameDirector() {
         const i = live.findIndex((d) => d.where === "socket" && d.socket === s);
         sockets.push(i < 0 ? { idx: -1, pct: 0, ready: false } : { idx: i, pct: Math.round(live[i].progress * 100), ready: live[i].ready });
       }
+      // what a cut would take right now: everything plugged in and not yet full
+      let atRisk = 0;
+      for (let i = 0; i < DEVICES.length; i++) if (live[i].where === "socket" && !live[i].ready) atRisk += scaledValue(DEVICES[i].value, wc.windowIndex);
       store.setLive({
         score: Math.round(score.current),
         banked: banked.current,
@@ -290,6 +317,8 @@ export default function GameDirector() {
         lightOn,
         sockets,
         carrying: hands.idx,
+        atRisk,
+        rushIdx: rush.idx,
         finalLight,
         near: null,
         hotIdx: null,

@@ -115,7 +115,7 @@ const MODES: Mode[] = [
   {
     id: "charge", kicker: "Light is on, not for long", title: "Charge Rush", tone: "green", art: <ChargeArt />,
     goal: "Charge what you can and cash it in before the cut.",
-    steps: ["Carry a device to one of three sockets", "Hold to charge. Bigger devices pay more, charge slower", "When the lights flicker, let go. Unfinished charge is lost"],
+    steps: ["Walk into a device to pick it up, then carry it to the sockets", "It charges by itself while the light is on. Bigger devices pay more and take longer", "Collect what is full before NEPA cuts. Anything still charging is lost"],
     cta: "Start",
   },
   {

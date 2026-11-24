@@ -21,7 +21,7 @@ import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
 import { quality } from "./quality";
 import { setWorldAudioEnabled, armWorldAudio, setWorldAudioMuted } from "./audio";
-import { useGameStore, DEVICES, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult } from "./game";
+import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult } from "./game";
 import { useAppStore } from "./appStore";
 import { useRestoreStore, SCORE_MAX } from "./restore";
 import { recordHigh, type High } from "./highscore";
@@ -174,6 +174,11 @@ export default function World() {
   const gCarrying = useGameStore((s) => s.carrying);
   const lightLeft = useGameStore((s) => s.lightLeft);
   const lightOn = useGameStore((s) => s.lightOn);
+  const atRisk = useGameStore((s) => s.atRisk);
+  const perkOffer = useGameStore((s) => s.offer);
+  const perksOwned = useGameStore((s) => s.owned);
+  const rushIdx = useGameStore((s) => s.rushIdx);
+  const takePerk = useGameStore((s) => s.takePerk);
   const pop = useGameStore((s) => s.pop);
   const summary = useGameStore((s) => s.summary);
   const startGame = useGameStore((s) => s.startGame);
@@ -558,7 +563,9 @@ export default function World() {
       </Canvas>
 
       {/* ── HUD ───────────────────────────────────────────────────────── */}
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}>
+      {/* On the mode screen this layer sits ABOVE that screen (which is a full-screen
+          layer at 30): below it, the back and sound buttons could be seen but not pressed. */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: appMode === "menu" ? 40 : 10 }}>
         {/* Top bar (hidden during the intro cold-open) */}
         <div
           style={{
@@ -574,7 +581,7 @@ export default function World() {
         >
           {appMode === "menu" ? (
             <Link
-              href="/"
+              href="/dashboard"
               style={{
                 pointerEvents: "auto",
                 color: "#fff",
@@ -673,6 +680,25 @@ export default function World() {
           </div>
         )}
 
+        {/* Pick one upgrade. Offered for the length of the blackout, never
+            blocking: you can keep walking, and if you ignore it, it goes when the
+            light comes back. */}
+        {appMode === "charge" && mode === "playing" && perkOffer && perkOffer.length > 0 && (
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(196px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "0 12px", pointerEvents: "none" }}>
+            <div style={{ fontFamily: '"Fredoka", system-ui, sans-serif', fontWeight: 700, fontSize: 14, color: "#fff", textShadow: "0 1px 4px #000" }}>No light. Pick one upgrade</div>
+            <div style={{ display: "flex", gap: 8, width: "100%", maxWidth: 460, justifyContent: "center" }}>
+              {perkOffer.map((id) => (
+                <button key={id} onClick={() => takePerk(id)} onPointerDown={(e) => e.stopPropagation()}
+                  style={{ pointerEvents: "auto", flex: "1 1 0", minWidth: 0, minHeight: 92, padding: "10px 6px", borderRadius: 16, border: "2px solid #ffd56b", background: "rgba(26,10,60,0.94)", color: "#fff", cursor: "pointer", fontFamily: '"Fredoka", system-ui, sans-serif', display: "flex", flexDirection: "column", alignItems: "center", gap: 3, boxShadow: "0 4px 0 #0a0120" }}>
+                  <span style={{ fontSize: 24, lineHeight: 1 }}>{PERKS[id].icon}</span>
+                  <span style={{ fontWeight: 700, fontSize: 13.5, color: "#ffd56b" }}>{PERKS[id].name}</span>
+                  <span style={{ fontWeight: 500, fontSize: 11.5, lineHeight: 1.25, opacity: 0.92 }}>{PERKS[id].desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Controls hint (only while playing) */}
         {appMode === "charge" && mode === "playing" && windowIndex === 0 && (
           <div
@@ -680,7 +706,7 @@ export default function World() {
               position: "absolute",
               // under the chips + light bar, centred; only for the first window so
               // it teaches once and then gets out of the way
-              top: "calc(186px + env(safe-area-inset-top))",
+              top: "calc(238px + env(safe-area-inset-top))", // below the sockets, the at-risk line and the light bar
               left: 0,
               right: 0,
               textAlign: "center",
@@ -751,6 +777,24 @@ export default function World() {
                 );
               })}
             </div>
+
+            {/* What is on the line. It shows as soon as something is charging and
+                turns red and loud once NEPA is about to cut: this number is the bet. */}
+            {lightOn && atRisk > 0 && (
+              <div style={{ ...pill(lightLeft <= 4 ? "#ffffff" : "#ffd56b"), background: lightLeft <= 4 ? "#dc2626" : undefined, border: lightLeft <= 4 ? "1px solid #fecaca" : undefined, animation: lightLeft <= 4 ? "worldComboPulse 0.45s ease-in-out infinite" : undefined, fontWeight: 900 }}>
+                {lightLeft <= 4 ? "⚠️ " : "🔌 "}{naira(atRisk)} at risk
+              </div>
+            )}
+            {rushIdx >= 0 && (
+              <div style={{ ...pill("#3a1800"), background: "linear-gradient(180deg,#ffe08a,#f59e0b)", fontWeight: 900 }}>
+                🙋 Rush job: {DEVICES[rushIdx].icon} {DEVICES[rushIdx].label} pays ×2
+              </div>
+            )}
+            {perksOwned.length > 0 && (
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center", maxWidth: 320 }} aria-label="Your upgrades">
+                {perksOwned.map((id, i) => <span key={i} title={PERKS[id].name} style={{ ...pill("#ffffff"), padding: "3px 8px", fontSize: 13 }}>{PERKS[id].icon}</span>)}
+              </div>
+            )}
 
             {/* POWER SURGE finale banner — the last window pays double everywhere. */}
             {windowIndex >= TOTAL_WINDOWS - 1 && lightOn && (

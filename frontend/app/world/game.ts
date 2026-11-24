@@ -90,6 +90,30 @@ export function freeSocket(): number {
   for (let s = 0; s < SOCKET_COUNT; s++) if (!live.some((d) => d.where === "socket" && d.socket === s)) return s;
   return -1;
 }
+// ── Upgrades: pick one in every blackout ─────────────────────────────────────
+// When NEPA takes the light you are offered three of these and may take one. It
+// is what makes one run different from the last: a run with two fast chargers
+// plays nothing like a run with a generator and strong legs.
+export type PerkId = "charge" | "legs" | "gen" | "back" | "price";
+export const PERKS: Record<PerkId, { icon: string; name: string; desc: string; max: number }> = {
+  charge: { icon: "⚡", name: "Fast charger", desc: "Everything charges 25% faster", max: 2 },
+  legs: { icon: "👟", name: "Fast legs", desc: "You move 12% faster", max: 2 },
+  gen: { icon: "🛢️", name: "Small gen", desc: "Saves your best device from the next cut", max: 3 },
+  back: { icon: "💪", name: "Strong back", desc: "Heavy things no longer slow you", max: 1 },
+  price: { icon: "💰", name: "Better price", desc: "Everything pays 20% more", max: 2 },
+};
+export const perks: Record<PerkId, number> = { charge: 0, legs: 0, gen: 0, back: 0, price: 0 };
+/** A neighbour's rush job: this device pays double if it is banked before the light goes (-1 = none). */
+export const rush = { idx: -1 };
+export const RUSH_MULT = 2;
+export function resetPerks() { for (const k of Object.keys(perks) as PerkId[]) perks[k] = 0; rush.idx = -1; }
+/** Three different upgrades you can still take, picked at random. */
+export function drawPerks(rand: () => number = Math.random): PerkId[] {
+  const open = (Object.keys(PERKS) as PerkId[]).filter((k) => perks[k] < PERKS[k].max);
+  for (let i = open.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [open[i], open[j]] = [open[j], open[i]]; }
+  return open.slice(0, 3);
+}
+
 export interface SocketView {
   idx: number; // device index, -1 = empty
   pct: number; // 0..100
@@ -289,6 +313,11 @@ interface GameStore {
   sockets: SocketView[]; // what the HUD tray shows
   carrying: number; // device index in your hands, -1 = none
   finalLight: boolean; // the last light window (pays double)
+  atRisk: number; // naira sitting in the sockets that a cut would take
+  offer: PerkId[] | null; // the three upgrades on offer in this blackout
+  owned: PerkId[]; // every upgrade taken this run, in order
+  rushIdx: number; // the neighbour's rush device, -1 = none
+  takePerk: (id: PerkId) => void;
   windowIndex: number;
   lightLeft: number; // seconds of light before the next cut
   lightOn: boolean; // false during a blackout
@@ -315,6 +344,15 @@ export const useGameStore = create<GameStore>((set) => ({
   sockets: [],
   carrying: -1,
   finalLight: false,
+  atRisk: 0,
+  offer: null,
+  owned: [],
+  rushIdx: -1,
+  takePerk: (id) => set((s) => {
+    if (!s.offer || !s.offer.includes(id) || perks[id] >= PERKS[id].max) return {};
+    perks[id] += 1;
+    return { offer: null, owned: [...s.owned, id] };
+  }),
   windowIndex: 0,
   lightLeft: 0,
   lightOn: true,
@@ -325,7 +363,12 @@ export const useGameStore = create<GameStore>((set) => ({
     resetDeviceState();
     resetChargeMeta();
     resetLive();
+    resetPerks();
     set({
+      atRisk: 0,
+      offer: null,
+      owned: [],
+      rushIdx: -1,
       sockets: [],
       carrying: -1,
       finalLight: false,

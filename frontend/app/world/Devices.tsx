@@ -15,7 +15,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { worldControls } from "./controls";
-import { DEVICES, STATION, SOCKET_COUNT, live, hands, naira, type DeviceDef } from "./game";
+import { DEVICES, STATION, SOCKET_COUNT, live, hands, naira, rush, type DeviceDef } from "./game";
 import { GA } from "./theme";
 import { quality } from "./quality";
 
@@ -224,8 +224,12 @@ function DeviceMesh({ def, idx }: { def: DeviceDef; idx: number }) {
       label.current.quaternion.copy(g.quaternion).invert().multiply(camera.quaternion); // the device now turns, the tag must not
     }
     if (beam.current) {
-      beam.current.visible = d.where === "home" && hands.idx < 0;
-      beamMat.opacity = 0.2 + Math.sin(t * 2.4 + idx) * 0.08;
+      // a neighbour's rush job burns gold and brighter, and shows even while your hands are full
+      const rushed = rush.idx === idx;
+      beam.current.visible = d.where === "home" && (hands.idx < 0 || rushed);
+      beamMat.color.set(rushed ? GA.gold : def.color);
+      beamMat.opacity = rushed ? 0.5 + Math.sin(t * 7) * 0.2 : 0.2 + Math.sin(t * 2.4 + idx) * 0.08;
+      beam.current.scale.setScalar(rushed ? 1.5 : 1);
     }
     if (ring.current) {
       ring.current.visible = d.where === "home";
