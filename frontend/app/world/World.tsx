@@ -17,6 +17,7 @@ import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import Scene from "./Scene";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useGuestGate } from "@/hooks/useGuestGate";
 import Joystick from "./Joystick";
 import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
@@ -256,6 +257,7 @@ export default function World() {
   }, [rState, rSummary]);
 
   const beginRound = () => {
+    if (!gate.allow()) return;
     armWorldAudio();
     track("game_start", { game: "UP NEPA 3D", mode: "charge" });
     startGame();
@@ -263,6 +265,7 @@ export default function World() {
   // Ranked Restore rounds (signed-in players). The server ticket is opened
   // BEFORE the clock starts, because the server times the run from the ticket.
   const ranked = useRankedRun("nepa3d");
+  const gate = useGuestGate("nepa3d", "UP NEPA 3D");
   const rankedRef = useRef(ranked);
   rankedRef.current = ranked;
   const [rankedRound, setRankedRound] = useState(false);
@@ -277,6 +280,7 @@ export default function World() {
   const beginRestore = () => {
     armWorldAudio();
     if (opening.current) return;
+    if (!roomRun.current && !gate.allow()) return;
     track("game_start", { game: "UP NEPA 3D", mode: "restore" });
     setRankedRound(false);
     if (roomRun.current) { rStart(); return; }
@@ -1436,6 +1440,7 @@ export default function World() {
           100% { transform: translateY(-54px) scale(0.95); opacity: 0; }
         }
       `}</style>
+      {gate.prompt}
     </div>
   );
 }

@@ -283,3 +283,17 @@ test("a signed-in seat's checked round goes on the chain after the result; guest
   assert.equal(sent.length, 2);
   assert.equal(ok<Seat | { error: string }>(svc.create('toy', 'Q', 'not-a-wallet')) && sent.length, 2);
 });
+
+test('spectators: a stranger sees scores and progress but never the deal, and is counted while looking', () => {
+  const w = world(); const r = open(w);
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 3));
+  const seen = ok<RoomView>(w.svc.get(r.code, undefined, 'phone-a'));
+  assert.equal(seen.you, -1); assert.equal(seen.deal, undefined, 'a spectator must not be dealt the round');
+  assert.equal(seen.players[0]!.progress, 3); assert.equal(seen.goal, 5); assert.equal(seen.watching, 1);
+  ok<RoomView>(w.svc.get(r.code, undefined, 'phone-a')); // the same phone looking again is still one
+  assert.equal(ok<RoomView>(w.svc.get(r.code, undefined, 'phone-b')).watching, 2);
+  assert.equal(ok<RoomView>(w.svc.get(r.code, r.host.token, 'ignored')).watching, 2, 'a player is not a spectator');
+  w.clock.t += 9000; // nobody looked for a while
+  assert.equal(ok<RoomView>(w.svc.get(r.code, r.host.token)).watching, 0);
+});

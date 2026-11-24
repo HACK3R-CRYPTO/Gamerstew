@@ -19,7 +19,8 @@ function target(path: string[], search: string): string | null {
 async function forward(req: Request, path: string[], method: "GET" | "POST") {
   const url = new URL(req.url);
   const token = url.searchParams.get("token") || "";
-  const to = target(path, /^[0-9a-f]{32}$/.test(token) ? `?token=${token}` : "");
+  // no token and watch=1: a spectator, counted by the backend
+  const to = target(path, /^[0-9a-f]{32}$/.test(token) ? `?token=${token}` : url.searchParams.get("watch") === "1" ? "?watch=1" : "");
   if (!to) return NextResponse.json({ error: "bad_path" }, { status: 400 });
   const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
   try {

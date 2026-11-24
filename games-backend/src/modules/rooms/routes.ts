@@ -31,7 +31,7 @@ export function registerRoomRoutes(app: Application, deps: { requireSecret?: Req
 
   app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name, body(req).wallet) : { error: 'slow_down', status: 429 })));
   app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name, body(req).wallet)));
-  app.get('/api/rooms/:code', gate, route((req) => { paying(req.params.code); return service.get(req.params.code, req.query.token); }));
+  app.get('/api/rooms/:code', gate, route((req) => { paying(req.params.code); return service.get(req.params.code, req.query.token, req.query.watch ? who(req) : undefined); }));
   app.post('/api/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/progress', gate, route((req) => service.progress(req.params.code, body(req).token, body(req).progress)));
   app.post('/api/rooms/:code/finish', gate, route(async (req) => { const out = await service.finish(req.params.code, body(req).token, body(req).proof); paying(req.params.code); return out; }));

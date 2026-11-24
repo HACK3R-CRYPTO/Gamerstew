@@ -63,6 +63,8 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             <div className="fs-share">
               <a href={`https://wa.me/?text=${encodeURIComponent(invite)}`} target="_blank" rel="noreferrer">WhatsApp</a>
               <button onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
+              {/* a link for people who only want to look on */}
+              <button onClick={() => { const w = `${window.location.origin}/watch/${room.session?.code ?? ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
             </div>
             <ul className="fs-players">
               {(v?.players ?? []).map((p, i) => (

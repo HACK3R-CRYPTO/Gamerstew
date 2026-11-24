@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PUZZLES, VALID } from "./data";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useGuestGate } from "@/hooks/useGuestGate";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
 import TxStatus from "@/components/TxStatus";
@@ -105,6 +106,7 @@ function pointsFor(par: number, steps: number, seconds: number, hints: number) {
 export default function WordLadderPage() {
   const router = useRouter();
   const ranked = useRankedRun("ladder");
+  const gate = useGuestGate("ladder", "Word Ladder");
   const [isRanked, setIsRanked] = useState(false); // this round has a server ticket
   const [opening, setOpening] = useState(false);
   // Friend rooms: everyone in the room is dealt the same five ladders and plays
@@ -158,6 +160,7 @@ export default function WordLadderPage() {
   }, []);
   const begin = async (isDaily = false) => {
     if (opening) return;
+    if (!gate.allow()) return; // a guest out of free runs is asked to sign in
     track("game_start", { game: "Word Ladder" });
     setIsRoomRound(false);
     let list = isDaily ? dealDaily() : null; let rankedRound = false;
@@ -581,6 +584,7 @@ export default function WordLadderPage() {
         @media (min-width: 900px) { .wl main { max-width: 520px; } .wl-keys button { max-width: 46px; } }
         @media (prefers-reduced-motion: reduce) { .wl * { animation: none !important; transition: none !important; } }
       `}</style>
+      {gate.prompt}
     </div>
   );
 }

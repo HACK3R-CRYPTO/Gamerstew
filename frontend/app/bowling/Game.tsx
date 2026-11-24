@@ -28,6 +28,7 @@ import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { simulate, cleanThrow, STEP as SIM_STEP, type SimResult } from "./sim";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useGuestGate } from "@/hooks/useGuestGate";
 
 // What is on screen is a PLAYBACK of the lane simulation (./sim.ts), not live
 // physics. The simulation decides the roll in one go; these puppets are moved
@@ -1178,6 +1179,7 @@ export default function Game() {
   // Ranked solo games: the throws go to the server, which replays them through
   // the same simulation and records the score on-chain (hooks/useRankedRun.ts).
   const ranked = useRankedRun("strike");
+  const gate = useGuestGate("strike", "Street Strike");
   const rankedRef = useRef(ranked);
   rankedRef.current = ranked;
   const throwLog = useRef<{ tyre: string; x: number; angle: number; speed: number; spin: number }[]>([]);
@@ -1719,7 +1721,7 @@ export default function Game() {
 <div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(34,16,79,0.68)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
             {!online && (
-              <button onClick={() => { armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
+              <button onClick={() => { if (!gate.allow()) return; armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
             )}
             {online && !room && (
               <div style={{ marginTop: 10 }}>
@@ -1822,6 +1824,7 @@ export default function Game() {
         </div>
       )}
       <style>{`@keyframes ssSwipe { 0% { transform: translateY(0) scale(1); opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-34vh) scale(0.8); opacity: 0; } } @keyframes ssDash { to { background-position: 0 -20px; } } @keyframes ssPulse2 { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } } @keyframes ssPulse { 0%, 100% { transform: translate(-50%, -100%) scale(1); } 50% { transform: translate(-50%, -100%) scale(1.07); } } @keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
+      {gate.prompt}
     </div>
   );
 }

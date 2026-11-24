@@ -97,6 +97,10 @@ export interface RoomView {
   code: string; game: string; status: Room['status']; round: number; verified: boolean;
   /** the caller's seat, or -1 for a stranger */
   you: number;
+  /** people looking on without a seat, seen in the last few seconds */
+  watching: number;
+  /** the progress value that means "finished" in this game, for drawing a bar */
+  goal: number;
   /** seconds since the round began, by the server's clock */
   elapsed: number;
   players: { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** this round on the chain, for a signed-in seat in a server-checked game */ chain?: ChainNote }[];
@@ -148,10 +152,26 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
     if (t - room.startedAt > ROUND_MAX_MS) return 'over';
     return room.players.every((p, i) => p.done || gone(room, i, t)) ? 'over' : 'playing';
   }
+  // People watching a room without a seat. Kept beside the rooms, never saved:
+  // a restart simply starts the count again. A watcher is someone who looked
+  // in the last WATCH_MS; the key is whatever tells two of them apart.
+  const WATCH_MS = 8000; const MAX_WATCHERS = 200;
+  const watchers = new Map<string, Map<string, number>>();
+  function watchingNow(code: string, t: number): number {
+    const w = watchers.get(code); if (!w) return 0;
+    for (const [k, at] of w) if (t - at > WATCH_MS) w.delete(k);
+    if (!w.size) watchers.delete(code);
+    return w.size;
+  }
+  function noteWatcher(code: string, who: string, t: number) {
+    if (watchers.size > 5000) watchers.clear(); // never let the count itself become the leak
+    let w = watchers.get(code); if (!w) { w = new Map(); watchers.set(code, w); }
+    if (w.size < MAX_WATCHERS || w.has(who)) w.set(who, t);
+  }
   function view(room: Room, seat: number): RoomView {
     const t = now(); const host = hostSeat(room); const status = statusOf(room);
     const v: RoomView = {
-      code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, stakes: !!opts.stakes && games[room.game]!.verified,
+      code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, watching: watchingNow(room.code, t), goal: games[room.game]!.maxProgress, stakes: !!opts.stakes && games[room.game]!.verified,
       elapsed: status === 'waiting' ? 0 : Math.max(0, Math.round((t - room.startedAt) / 1000)),
       // tokens are the players' keys to the room: they never leave the server
       players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t), ...(p.chain ? { chain: { ...p.chain } } : {}) })),
@@ -226,11 +246,15 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       return { code: room.code, token: me.token, seat: room.players.length - 1, game: room.game };
     },
 
-    get(code: unknown, token: unknown): RoomView | Fail {
+    /** A look at a room. With a seat's token it is that player's view. Without
+     *  one it is a spectator's: the same scores and progress, never the deal.
+     *  `watcher` (anything that tells one onlooker from another) counts them. */
+    get(code: unknown, token: unknown, watcher?: unknown): RoomView | Fail {
       const room = find(code);
       if (!room) return fail('no_room', 404);
       const seat = seatOf(room, token);
       if (seat >= 0) touch(room, seat);
+      else if (typeof watcher === 'string' && watcher) noteWatcher(room.code, watcher.slice(0, 64), now());
       return view(room, seat);
     },
 
