@@ -32,6 +32,8 @@ export interface BoardDeps {
   ledgerBoard?(game: string, sinceSec: number): Promise<BoardRow[]>;
   /** shared short-lived cache with one piece of work per key (platform/resultCache) */
   results?: { get<T>(key: string, opts: { ttlMs: number; compute: () => Promise<T> }): Promise<T> };
+  /** the latest saved runs from our own records; `ok` false = could not read */
+  recentPlays?(limit: number, player: string | null): Promise<{ ok: boolean; rows: BoardRow[] }>;
   /** wallet (lowercase) → play streak, for the wallets given */
   streaks(wallets: string[]): Promise<Map<string, number>>;
   resolveUsername(wallet: string): Promise<string | null | undefined>;
@@ -122,12 +124,20 @@ export function createBoardService(deps: BoardDeps) {
   /** GET /api/activity[?player=0x…] · the last 10 plays, or one player's last 30 */
   async function activity(query: Record<string, unknown>): Promise<Reply> {
     const player = typeof query.player === 'string' ? query.player : null;
-    let entries: BoardRow[] = [];
-    try {
-      entries = await deps.subgraph.recentActivity(player ? 30 : 10, player);
-    } catch (e) {
-      logger.warn('subgraph activity failed:', why(e));
-    }
+    const limit = player ? 30 : 10;
+    // Our own record of saved runs is current; the subgraph is weeks behind. It
+    // is only asked when our record cannot be read. One read per 20 seconds
+    // however many phones ask.
+    const load = async (): Promise<BoardRow[]> => {
+      const own = deps.recentPlays ? await deps.recentPlays(limit, player).catch(() => ({ ok: false, rows: [] as BoardRow[] })) : { ok: false, rows: [] as BoardRow[] };
+      if (own.ok) {
+        const names = new Map<string, string | null>();
+        await Promise.all([...new Set(own.rows.map((r) => r.wallet_address))].map(async (w) => { names.set(w, (await deps.resolveUsername(w).catch(() => null)) || null); }));
+        return own.rows.map((r) => ({ ...r, username: names.get(r.wallet_address) ?? null }));
+      }
+      try { return await deps.subgraph.recentActivity(limit, player); } catch (e) { logger.warn('subgraph activity failed:', why(e)); return []; }
+    };
+    const entries = deps.results ? await deps.results.get(`activity:${player ? player.toLowerCase() : 'all'}`, { ttlMs: BOARD_TTL_MS, compute: load }) : await load();
     return ok({ activity: entries.map((e) => ({ player: e.wallet_address, game: e.game, score: e.score, tx_hash: e.tx_hash, timestamp: unix(e.created_at), username: e.username })) });
   }
 

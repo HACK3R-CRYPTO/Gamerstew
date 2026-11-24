@@ -2,6 +2,19 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface SupabaseLike { from(table: string): any }
 
+/** The latest saved runs, newest first: everyone's, or one player's. Named
+ *  columns and a hard row limit, because this feeds the home screen.
+ *  `ok` false = the read failed (the caller falls back to the subgraph). */
+export function supabaseRecentPlays(db: SupabaseLike) {
+  return async (limit: number, player: string | null): Promise<{ ok: boolean; rows: { wallet_address: string; game: string; score: number; tx_hash: string | null; created_at: string; username: null }[] }> => {
+    let q = db.from('activity').select('wallet_address, game, score, tx_hash, created_at');
+    if (player) q = q.eq('wallet_address', player.toLowerCase());
+    const { data, error } = await q.order('created_at', { ascending: false }).limit(Math.max(1, Math.min(50, limit)));
+    if (error || !Array.isArray(data)) return { ok: false, rows: [] };
+    return { ok: true, rows: (data as { wallet_address: string; game: string; score: number; tx_hash: string | null; created_at: string }[]).map((r) => ({ wallet_address: String(r.wallet_address).toLowerCase(), game: r.game, score: Number(r.score), tx_hash: r.tx_hash ?? null, created_at: r.created_at, username: null })) };
+  };
+}
+
 /** Play streaks for a page of wallets, in one read. */
 export function supabaseStreaks(db: SupabaseLike) {
   return async (wallets: string[]): Promise<Map<string, number>> => {

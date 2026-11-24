@@ -48,3 +48,16 @@ test('a board row carries the transaction that recorded it, and a failed lookup 
   assert.deepEqual(await withTransactions({ from: () => chain(null, { message: 'down' }) } as never, 'ladder', 1000, rows), rows);
   assert.deepEqual(await withTransactions({ from: () => { throw new Error('boom'); } } as never, 'ladder', 1000, rows), rows);
 });
+
+test('the activity feed comes from our own saved runs, with names, and only falls back to the subgraph when that read fails', async () => {
+  const base = { gameTypes: { stack: 2 }, currentSeason: () => 1, seasonBounds: () => ({ start: 0, end: 9 }), streaks: async () => new Map(), treasuryBalance: async () => 0 } as unknown as BoardDeps;
+  const asked: string[] = [];
+  const subgraph = { leaderboard: async () => [], recentActivity: async () => { asked.push('subgraph'); return [{ wallet_address: '0xold', game: 'stack', score: 1, username: null, created_at: '2026-10-01T00:00:00Z', tx_hash: '0xoldtx' }] as BoardRow[]; }, globalStats: async () => null, seasonPlayerIds: async () => [] };
+  const own = createBoardService({ ...base, subgraph, resolveUsername: async (w: string) => (w === '0xaa' ? 'ada' : null), recentPlays: async (limit: number, player: string | null) => { asked.push(`own ${limit} ${player}`); return { ok: true, rows: [{ wallet_address: '0xaa', game: 'ladder', score: 58, username: null, created_at: '2026-11-24T09:05:30Z', tx_hash: '0xtx' }] }; } } as unknown as BoardDeps);
+  const r = await own.activity({});
+  assert.deepEqual((r.body.activity as unknown[])[0], { player: '0xaa', game: 'ladder', score: 58, tx_hash: '0xtx', timestamp: Math.floor(Date.parse('2026-11-24T09:05:30Z') / 1000), username: 'ada' });
+  assert.deepEqual(asked, ['own 10 null']);
+  await own.activity({ player: '0xAA' }); assert.equal(asked[1], 'own 30 0xAA');
+  const down = createBoardService({ ...base, subgraph, resolveUsername: async () => null, recentPlays: async () => ({ ok: false, rows: [] }) } as unknown as BoardDeps);
+  assert.equal(((await down.activity({})).body.activity as { player: string }[])[0]!.player, '0xold');
+});

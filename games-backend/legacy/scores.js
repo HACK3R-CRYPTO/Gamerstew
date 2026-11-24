@@ -232,6 +232,7 @@ core.platform.registerBoardRoutes(core.app, {
   ledgerBoard: core.platform.supabaseLedgerBoard(core.supabase),
   results: core.results,
   streaks: core.platform.supabaseStreaks(core.supabase),
+  recentPlays: core.platform.supabaseRecentPlays(core.supabase),
   resolveUsername: (wallet) => core.resolveUsername(wallet),
   treasuryBalance: () => core.getTreasuryBalance(),
   cache: { get: (key) => core.cacheGet(key), set: (key, value, ttlMs) => core.cacheSet(key, value, ttlMs) },
