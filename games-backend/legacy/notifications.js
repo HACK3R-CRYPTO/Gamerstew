@@ -216,15 +216,21 @@ core.jobs.every('sendCupDeadlineWarnings', 15 * 60 * 1000, core.sendCupDeadlineW
 //       · "X pts from #N" to the lower-ranked player
 //     Once-per-day dedup per game per direction so the same pair doesn't
 //     ping repeatedly. Top-5 only — we don't ping deep-tail churn.
+const closeRankLedger = core.platform.supabaseLedgerBoard(core.supabase);
 async function sendCloseRankPings() {
   try {
     const seasonStart = core.SEASON_EPOCH + (core.currentSeasonNumber() - 1) * core.SEASON_DAYS * 86400;
     for (const game of core.VALID_GAMES) {
       const gameTypeInt = core.GAME_TYPE[game];
+      // Our own record of finished runs first: it is current and it has the
+      // newer games. The subgraph stopped indexing, so it is only the fallback.
       let board = [];
       try {
-        board = await core.subgraph.leaderboard(gameTypeInt, seasonStart, 5);
-      } catch (_) { continue; }
+        board = (await closeRankLedger(game, seasonStart)).slice(0, 5);
+      } catch (_) { board = []; }
+      if (!board.length) {
+        try { board = await core.subgraph.leaderboard(gameTypeInt, seasonStart, 5); } catch (_) { continue; }
+      }
       if (!board || board.length < 2) continue;
 
       for (let i = 0; i < board.length - 1; i++) {
@@ -233,9 +239,11 @@ async function sendCloseRankPings() {
         if (!higher?.wallet_address || !lower?.wallet_address) continue;
         const gap = higher.score - lower.score;
         if (gap <= 0) continue;
-        // Threshold: smaller of (10% of higher score) or 1000 pts. Means
-        // tight pairs always trigger; massive blowouts never do.
-        const threshold = Math.max(1000, Math.floor(higher.score * 0.10));
+        // "Close" is within 10% of the higher score, and never less than 3
+        // points. It used to allow any gap under 1,000, from when Rhythm Rush
+        // scored in the tens of thousands; every score is now under about
+        // 1,000, so that rule called every pair on every board close.
+        const threshold = Math.max(3, Math.floor(higher.score * 0.10));
         if (gap > threshold) continue;
 
         // Resolve usernames once for both sides
