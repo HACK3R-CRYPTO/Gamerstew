@@ -117,7 +117,7 @@ type ScoreRow = {
 // rankable with no subgraph redeploy. Per-player best fields for nepa
 // (bestNepaScore / all-time inclusion) are a later subgraph fast-follow.
 // 5 is Word Ladder and 6 is Street Strike: weekly board only, like nepa.
-export type GameTypeId = 0 | 1 | 2 | 4 | 5 | 6;
+export type GameTypeId = 0 | 1 | 2 | 4 | 5 | 6 | 7; // 7 is UP NEPA 3D
 
 export async function fetchLeaderboard(
   gameType: GameTypeId,
@@ -297,6 +297,7 @@ const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bes
   4: "bestNepaScore",
   5: "bestNepaScore", // placeholders: never queried (see the >= 4 guards below)
   6: "bestNepaScore",
+  7: "bestNepaScore",
 };
 
 export async function fetchPlayerAllTimeStats(

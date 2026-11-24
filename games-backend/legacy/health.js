@@ -97,7 +97,7 @@ async function indexOnChainScores() {
       // Reverse of GAME_TYPE · uint8 from on-chain back to the player-key
       // string we use in the activity table. Adding a new game means
       // appending one row here, not a wider ternary chain.
-      const game = ({ 0: 'rhythm', 1: 'simon', 2: 'stack', 4: 'nepa', 5: 'ladder', 6: 'strike' })[gameType];
+      const game = ({ 0: 'rhythm', 1: 'simon', 2: 'stack', 4: 'nepa', 5: 'ladder', 6: 'strike', 7: 'nepa3d' })[gameType];
       if (!game) {
         console.warn(`⛓️  Unknown gameType ${gameType} in ScoreRecorded event · skipping`);
         continue;

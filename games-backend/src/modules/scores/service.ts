@@ -26,6 +26,7 @@ import { checkSession, isClientScore, MAX_CLIENT_SCORE, NEPA_MAX_INPUTS, seasonP
 
 import * as ladder from '../ladder/rules';
 import * as strike from '../strike/game';
+import * as nepa3d from '../nepa3d/rules';
 export interface Reply { status: number; body: Record<string, unknown> }
 const reply = (status: number, body: Record<string, unknown>): Reply => ({ status, body });
 // what the old handlers logged: the error's message, whatever was thrown
@@ -119,6 +120,17 @@ export function createScoreService(deps: ScoreDeps) {
         logger.warn(`[strike] rejected ${playerAddress}: ${run.error}`);
         return reply(403, { error: 'Game check failed', reason: run.error });
       }
+      serverScore = run.total;
+    } else if (game === 'nepa3d') {
+      // Not replayable (see nepa3d/rules.ts): the server's clock sets the time,
+      // impossible runs are refused, skill is bounded, and the score is worked
+      // out here from those checked numbers.
+      const run = nepa3d.verifyRestore(body.nepa3dRun, elapsedMs);
+      if (!run.ok) {
+        logger.warn(`[nepa3d] rejected ${playerAddress}: ${run.error}`);
+        return reply(403, { error: 'Run check failed', reason: run.error });
+      }
+      logger.log(`[nepa3d] player=${who} clientScore=${typeof score === 'number' ? score : '?'} serverScore=${run.total} seconds=${run.seconds ?? '-'} elapsed=${elapsedMs}ms`);
       serverScore = run.total;
     } else {
       // The client's claim, inside a sanity bound. Deliberately not tightened: a

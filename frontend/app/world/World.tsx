@@ -14,6 +14,7 @@ import Link from "next/link";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import Scene from "./Scene";
+import { useRankedRun } from "@/hooks/useRankedRun";
 import Joystick from "./Joystick";
 import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
@@ -247,10 +248,39 @@ export default function World() {
     armWorldAudio();
     startGame();
   };
+  // Ranked Restore rounds (signed-in players). The server ticket is opened
+  // BEFORE the clock starts, because the server times the run from the ticket.
+  const ranked = useRankedRun("nepa3d");
+  const rankedRef = useRef(ranked);
+  rankedRef.current = ranked;
+  const [rankedRound, setRankedRound] = useState(false);
+  const opening = useRef(false);
   const beginRestore = () => {
     armWorldAudio();
-    rStart();
+    if (opening.current) return;
+    setRankedRound(false);
+    if (!rankedRef.current.canRank) { rStart(); return; }
+    opening.current = true;
+    // never hold the player up for long: if the server is slow, play unranked
+    const giveUp = new Promise<null>((r) => setTimeout(() => r(null), 2500));
+    void Promise.race([rankedRef.current.start().catch(() => null), giveUp]).then((o) => {
+      opening.current = false;
+      setRankedRound(!!o && o.success && rankedRef.current.hasTicket());
+      rStart();
+    });
   };
+  // when a ranked round ends, send it to be checked and saved
+  const rSent = useRef<unknown>(null);
+  useEffect(() => {
+    if (!rSummary || rSent.current === rSummary) return;
+    rSent.current = rSummary;
+    if (!rankedRef.current.hasTicket()) return;
+    void rankedRef.current.finish({
+      score: rSummary.score,
+      gameTime: (rSummary.timeTaken ?? 5) * 1000,
+      proof: { nepa3dRun: { won: rSummary.won, restored: rSummary.restored, timeTaken: rSummary.timeTaken, skill: rSummary.parts?.skill ?? 0 } },
+    });
+  }, [rSummary]);
   // The lobby's Start button goes straight into the round. The mode's scene has
   // to mount before its round can begin, so the start is held until the mode is
   // showing its ready state, then fired once (see the effect below).
@@ -1163,6 +1193,15 @@ export default function World() {
                   : `your best ${bestInfo.prevBest.toFixed(1)}s`}
               </div>
             )}
+            <div role="status" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(244,241,234,0.78)" }}>
+              {!rankedRound ? (ranked.canRank ? "This round was not ranked." : <>Sign in to rank your score. <a href="/home?signin=1" style={{ color: "#ffd56b" }}>Sign in</a></>)
+                : ranked.status === "checking" ? "Checking your run…"
+                : ranked.status === "wallet" ? "Confirm in your wallet to save…"
+                : ranked.status === "saving" ? "Saving to the leaderboard…"
+                : ranked.status === "saved" ? <>Saved on-chain{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                : ranked.status === "error" ? ranked.error : null}
+              {" "}<a href="/world/leaderboard" style={{ color: "#ffd56b" }}>Leaderboard</a>
+            </div>
             <button style={{ ...primaryBtn, marginTop: 18, fontSize: 18, padding: "14px 0" }} onClick={beginRestore}>▶ Play again</button>
             <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "#9b93b8", fontSize: 13, cursor: "pointer" }}>
               ← Modes

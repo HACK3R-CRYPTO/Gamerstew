@@ -2,13 +2,13 @@
 // Pure data and pure functions. Nothing here touches a database. These numbers
 // are the game's economy, so they live in one file and are covered by tests.
 
-export const GAME_TYPE: Record<string, number> = { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6 };
+export const GAME_TYPE: Record<string, number> = { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6, nepa3d: 7 };
 export const VALID_GAMES = Object.keys(GAME_TYPE);
 /** MARKOV matches are recorded on GamePass under this type (not a skill game) */
 export const CHALLENGE_AI_GAME_TYPE = 3;
-export const GAME_LABEL: Record<string, string> = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower', nepa: 'Up NEPA!', ladder: 'Word Ladder', strike: 'Street Strike' };
+export const GAME_LABEL: Record<string, string> = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower', nepa: 'Up NEPA!', ladder: 'Word Ladder', strike: 'Street Strike', nepa3d: 'UP NEPA 3D' };
 /** a run at or above this counts as a win */
-export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7, stack: 50, nepa: 50, ladder: 600, strike: 80 }; // ladder: three of the five solved at par
+export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7, stack: 50, nepa: 50, ladder: 600, strike: 80, nepa3d: 400 }; // nepa3d: the whole street lit // ladder: three of the five solved at par
 export const XP_PLAYED = 10;
 export const XP_WIN = 25;
 export const XP_NEW_PB = 25;

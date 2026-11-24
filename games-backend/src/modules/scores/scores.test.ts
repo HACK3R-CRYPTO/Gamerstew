@@ -18,7 +18,7 @@ function world(over: { session?: Partial<SessionRow> | null; elapsedMs?: number;
   const session: SessionRow | null = over.session === null ? null : { token: 'tok', wallet: P.toLowerCase(), game: 'rhythm', used: false, started_at: new Date(T0).toISOString(), ...over.session };
   let fails = over.submitFails ?? 0;
   const deps: ScoreDeps = {
-    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6 },
+    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6, nepa3d: 7 },
     now: () => T0 + (over.elapsedMs ?? 60_000),
     randomHex: (n) => 'ab'.repeat(n),
     logger: { log: (m) => calls.logs.push(m), warn: (m) => calls.logs.push(m), error: (m) => calls.logs.push(m) },
@@ -430,4 +430,17 @@ test('strike: no throws, an unfinished game, or a game quicker than its rolls is
 test('strike: season points use the bowling scale', () => {
   assert.strictEqual(seasonPoints('strike', 150, 60_000), 15);
   assert.strictEqual(seasonPoints('strike', 74, 60_000), 7);
+});
+
+// ── UP NEPA 3D: plausibility-checked, the server's clock sets the time ──
+test('nepa3d: the score is computed from checked numbers, and an impossible run is refused', async () => {
+  const w = world({ session: { game: 'nepa3d' }, elapsedMs: 62_000, gasless: true });
+  const r = await w.svc.signScore({ playerAddress: P, game: 'nepa3d', sessionToken: 'tok', score: 999_999, nepa3dRun: { won: true, restored: 10, timeTaken: 58, skill: 310 } });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.gameType, 7);
+  assert.strictEqual(r.body.score, 400 + Math.round((1 - (58 - 45) / 75) * 350) + 310);
+  const bad = world({ session: { game: 'nepa3d' }, elapsedMs: 12_000, gasless: true });
+  const x = await bad.svc.signScore({ playerAddress: P, game: 'nepa3d', sessionToken: 'tok', score: 1, nepa3dRun: { won: true, restored: 10, timeTaken: 10, skill: 0 } });
+  assert.strictEqual(x.status, 403);
+  assert.deepStrictEqual(bad.calls.order, []);
 });

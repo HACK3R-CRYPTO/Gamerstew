@@ -47,7 +47,7 @@ export function isClientScore(score: unknown): score is number {
 // with very different scales, so a strong run in any game lands in a comparable
 // band:  rhythm 30k–400k+ → /100 · stack 30–300+ blocks → /5 · simon and nepa → /20
 // ladder: a round tops out at 1,000, so /67 puts a perfect round just under the cap
-const SEASON_DIVISOR: Record<string, number> = { rhythm: 100, stack: 5, nepa: 20, ladder: 67, strike: 10 }; // strike: a perfect game is 150
+const SEASON_DIVISOR: Record<string, number> = { rhythm: 100, stack: 5, nepa: 20, ladder: 67, strike: 10, nepa3d: 70 }; // strike: a perfect game is 150
 const DEFAULT_DIVISOR = 20;
 
 /** Solo Ladder points for one run. A run with no real play scores about zero
