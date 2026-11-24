@@ -9,6 +9,7 @@ export function registerInboxRoutes(app: Application, deps: { inbox: Inbox; requ
   const send = (fn: (req: Request) => Promise<Reply>): RequestHandler => (req: Request, res: Response) => {
     fn(req).then((r) => res.status(r.status).json(r.body)).catch((e) => { console.error('inbox route failed:', e); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); });
   };
+  app.get('/api/inbox/:address/unread', deps.requireSecret, send((req) => deps.inbox.unread(req.params.address)));
   app.get('/api/inbox/:address', deps.requireSecret, send((req) => deps.inbox.list(req.params.address, req.query as Record<string, unknown>)));
   app.post('/api/inbox/:address/read', deps.requireSecret, send((req) => deps.inbox.read(req.params.address, body(req))));
   app.post('/api/inbox/:address/delete', deps.requireSecret, send((req) => deps.inbox.remove(req.params.address, body(req))));

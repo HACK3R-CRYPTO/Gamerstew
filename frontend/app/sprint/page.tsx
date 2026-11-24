@@ -162,7 +162,7 @@ export default function SprintPage() {
     const q = address ? `?wallet=${address}` : "";
     const load = () => fetch(`/api/sprint${q}`, { cache: "no-store" }).then((r) => r.json()).then(setData).catch(() => {});
     load();
-    const t = setInterval(load, 20000);
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 20000) /* a tab nobody is looking at does not need fresh data */;
     return () => clearInterval(t);
   }, [address]);
 

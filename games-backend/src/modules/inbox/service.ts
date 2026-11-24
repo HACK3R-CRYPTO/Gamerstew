@@ -87,6 +87,15 @@ export function createInbox(deps: { store: InboxStore; now?: () => number }) {
     return ok({ items, unread: unread.ok ? unread.count : items.filter((i) => !i.read).length, more: page.rows.length === limit });
   }
 
+  /** Just the number for the bell's dot. The dot is asked for far more often
+   *  than the inbox is opened, so it must not cost a page of notifications. */
+  async function unread(address: unknown): Promise<Reply> {
+    const w = wallet(address);
+    if (!w) return bad('Bad address');
+    const res = await deps.store.unread(w);
+    return res.ok ? ok({ unread: res.count }) : ok({ unread: 0, unavailable: true });
+  }
+
   /** Mark some, or all, as read. */
   async function read(address: unknown, body: Record<string, unknown>): Promise<Reply> {
     const w = wallet(address);
@@ -121,6 +130,6 @@ export function createInbox(deps: { store: InboxStore; now?: () => number }) {
     return ok({ ok: true, created: res.created, id: res.id ?? null, kind });
   }
 
-  return { list, read, remove, announce };
+  return { list, unread, read, remove, announce };
 }
 export type Inbox = ReturnType<typeof createInbox>;

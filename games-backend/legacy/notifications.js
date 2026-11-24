@@ -451,7 +451,7 @@ core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
 core.app.get('/internal/config', core.requireSecret, (_req, res) => res.json({ ...core.platform.checkEnv(), settings: core.platform.describeEnv() }));
-core.app.get('/internal/metrics', core.requireSecret, async (_req, res) => res.json({ outbox: core.outboxOn() ? await core.outbox.status().catch(() => ({ unreadable: true })) : { on: false }, uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot(), jobs: core.jobs.status() }));
+core.app.get('/internal/metrics', core.requireSecret, async (_req, res) => res.json({ outbox: core.outboxOn() ? await core.outbox.status().catch(() => ({ unreadable: true })) : { on: false }, uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot(), jobs: core.jobs.status(), egress: core.egress ? core.egress.snapshot() : null }));
 
 // Private Sprint · read-only live board for the hand-picked roster (games 0/1/2).
 require('../lib/sprint').registerSprintRoutes(core.app);

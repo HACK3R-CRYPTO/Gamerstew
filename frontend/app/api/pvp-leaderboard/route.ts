@@ -32,28 +32,31 @@ export async function GET() {
   }
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Pull every resolved match. Aggregation happens in JS so we don't
-  // need a custom Postgres function for this surface. With ~250 matches
-  // today and ~10x growth expected through the event window, this stays
-  // well under the 1000-row default and the response stays small.
-  const { data: rows, error } = await supabase
-    .from("agent_match_state")
-    .select("challenger, outcome")
-    .not("resolved_at", "is", null)
-    .limit(5000);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  // The database counts the matches per player and sends back only the top of
+  // the table (agent_match_counts). If that function is not there yet, fall
+  // back to reading the rows and counting here, which costs far more egress.
   const stats = new Map<string, { matches: number; wins: number; ties: number }>();
-  for (const r of (rows as Row[] | null) ?? []) {
-    const c = r.challenger?.toLowerCase();
-    if (!c) continue;
-    if (!stats.has(c)) stats.set(c, { matches: 0, wins: 0, ties: 0 });
-    const s = stats.get(c)!;
-    s.matches += 1;
-    if (r.outcome === "player_won") s.wins += 1;
-    else if (r.outcome === "tie") s.ties += 1;
+  const counted = await supabase.rpc("agent_match_counts", { p_from: null, p_to: null, p_limit: 50 });
+  if (!counted.error && Array.isArray(counted.data)) {
+    for (const r of counted.data as { challenger: string; matches: number; wins: number; ties: number }[]) stats.set(String(r.challenger).toLowerCase(), { matches: Number(r.matches), wins: Number(r.wins), ties: Number(r.ties) });
+  } else {
+    const { data: rows, error } = await supabase
+      .from("agent_match_state")
+      .select("challenger, outcome")
+      .not("resolved_at", "is", null)
+      .limit(5000);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    for (const r of (rows as Row[] | null) ?? []) {
+      const c = r.challenger?.toLowerCase();
+      if (!c) continue;
+      if (!stats.has(c)) stats.set(c, { matches: 0, wins: 0, ties: 0 });
+      const s = stats.get(c)!;
+      s.matches += 1;
+      if (r.outcome === "player_won") s.wins += 1;
+      else if (r.outcome === "tie") s.ties += 1;
+    }
   }
 
   const sorted = Array.from(stats.entries())
@@ -116,7 +119,7 @@ export async function GET() {
     leaderboard,
   }, {
     headers: {
-      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800",
     },
   });
 }

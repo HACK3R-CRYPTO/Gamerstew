@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
-import { inboxList, inboxMarkRead, inboxDelete, type InboxItem, type InboxKind } from "@/app/actions/game";
+import { inboxList, inboxUnread, inboxMarkRead, inboxDelete, type InboxItem, type InboxKind } from "@/app/actions/game";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const LOOK: Record<InboxKind, { icon: string; tint: string; label: string }> = {
@@ -243,7 +243,8 @@ export function useUnreadNotificationsCount(address?: string): number {
   useEffect(() => {
     if (!address) { setCount(0); return; }
     let live = true;
-    const refresh = async () => { const page = await inboxList(await token(), address).catch(() => null); if (live && page?.ok) setCount(page.unread); };
+    // the dot asks for the number only; the list is fetched when the bell is opened
+    const refresh = async () => { const n = await inboxUnread(await token(), address).catch(() => null); if (live && n != null) setCount(n); };
     void refresh();
     const onChanged = (e: Event) => setCount(Number((e as CustomEvent).detail) || 0);
     window.addEventListener("focus", refresh);

@@ -77,3 +77,11 @@ test('kinds and links', () => {
   assert.equal(kindOf('broadcast', 'whats_new'), 'whats_new'); // a stored kind wins
   assert.deepEqual(['/games/ladder', 'https://gamearenahq.xyz/x', '//evil.example', 'javascript:1', 'http://a.b', ''].map(safeUrl), ['/games/ladder', 'https://gamearenahq.xyz/x', null, null, null, null]);
 });
+
+test('the bell\'s dot is one number: no page of notifications is read for it', async () => {
+  const w = world();
+  assert.deepEqual((await w.inbox.unread(W)).body, { unread: 1 });
+  assert.equal(w.calls.length, 0, 'no page was fetched');
+  assert.deepEqual((await world({ unread: async () => ({ ok: false, count: 0 }) }).inbox.unread(W)).body, { unread: 0, unavailable: true });
+  assert.equal((await w.inbox.unread('nope')).status, 400);
+});

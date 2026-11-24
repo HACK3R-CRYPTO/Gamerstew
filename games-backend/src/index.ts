@@ -4,6 +4,7 @@
 export { loadConfig, type Config } from './platform/config';
 export { installLifecycle } from './platform/lifecycle';
 export { createMetrics } from './platform/metrics';
+export { createEgressMeter } from './platform/egress';
 export { registerStrikeRoutes } from './modules/strike/routes';
 export { registerRoomRoutes } from './modules/rooms/routes';
 export { createRoomService } from './modules/rooms/service';

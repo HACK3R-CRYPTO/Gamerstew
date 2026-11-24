@@ -396,7 +396,7 @@ export default function DashboardPage() {
         .catch(() => {});
     };
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(() => { if (!document.hidden) void load(); }, 60_000) /* a tab nobody is looking at does not need fresh data */;
     return () => { cancelled = true; clearInterval(id); };
   }, [connected, address]);
 

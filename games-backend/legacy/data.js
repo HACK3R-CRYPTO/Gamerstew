@@ -17,10 +17,13 @@ function* (core) {
 // ─── Supabase ────────────────────────────────────────────────────────────────
 // Every database call has a deadline. Without one, a database that stops
 // answering holds each request open until the proxy gives up.
+// Every reply from the database is measured, per table: see /internal/metrics → egress.
+const egress = core.platform.createEgressMeter();
+core.egress = egress;
 const supabase = core.createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY,
-  { global: { fetch: core.platform.fetchWithTimeout(core.config.dbTimeoutMs) } },
+  { global: { fetch: egress.wrap(core.platform.fetchWithTimeout(core.config.dbTimeoutMs)) } },
 );
 console.log('📦 Supabase connected');
 },

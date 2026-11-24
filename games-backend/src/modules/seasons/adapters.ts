@@ -9,7 +9,8 @@ import type { ActivityRow, SeasonRow } from './service';
  *  must never be confused by anything that remembers the answer. */
 export function supabaseTopActivity(db: SupabaseLike) {
   return async (game: string, fromIso: string, toIso: string | null): Promise<{ rows: ActivityRow[]; ok: boolean }> => {
-    let q = db.from('activity').select('*').eq('game', game).gte('created_at', fromIso);
+    // named columns, not the whole row: this is read for every game on every seasons call
+    let q = db.from('activity').select('wallet_address, score, game_time, wagered, created_at, tx_hash').eq('game', game).gte('created_at', fromIso);
     if (toIso) q = q.lt('created_at', toIso);
     const { data, error } = await q.order('score', { ascending: false }).limit(500);
     return { rows: (data || []) as ActivityRow[], ok: !error && Array.isArray(data) };

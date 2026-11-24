@@ -242,7 +242,7 @@ test('over HTTP, and the adapters', async () => {
   const seen: unknown[][] = [];
   const db = (data: unknown) => ({ from: (t: string) => { const q: Record<string, unknown> = {}; const step = (n: string) => (...a: unknown[]) => { seen.push([t, n, ...a]); return q; }; Object.assign(q, { select: step('select'), eq: step('eq'), gte: step('gte'), lt: step('lt'), order: (...a: unknown[]) => { seen.push([t, 'order', ...a]); return Object.assign(Promise.resolve({ data }), q); }, limit: async (n: number) => { seen.push([t, 'limit', n]); return { data }; } }); return q; } });
   assert.deepStrictEqual(await supabaseTopActivity(db([act(1, 5)]))('stack', 'A', 'B'), { rows: [act(1, 5)], ok: true });
-  assert.deepStrictEqual(seen, [['activity', 'select', '*'], ['activity', 'eq', 'game', 'stack'], ['activity', 'gte', 'created_at', 'A'], ['activity', 'lt', 'created_at', 'B'], ['activity', 'order', 'score', { ascending: false }], ['activity', 'limit', 500]]);
+  assert.deepStrictEqual(seen, [['activity', 'select', 'wallet_address, score, game_time, wagered, created_at, tx_hash'], ['activity', 'eq', 'game', 'stack'], ['activity', 'gte', 'created_at', 'A'], ['activity', 'lt', 'created_at', 'B'], ['activity', 'order', 'score', { ascending: false }], ['activity', 'limit', 500]]);
   seen.length = 0;
   assert.deepStrictEqual(await supabaseTopActivity(db(null))('stack', 'A', null), { rows: [], ok: false }); // no data is a failed read, not an empty game
   assert.deepStrictEqual(await supabaseTopActivity(db([]))('stack', 'A', null), { rows: [], ok: true }); // nobody played

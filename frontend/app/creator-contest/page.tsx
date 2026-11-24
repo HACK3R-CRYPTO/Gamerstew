@@ -34,7 +34,7 @@ export default function CreatorContest() {
       .then((d) => { if (alive && d) { setRows(d.leaderboard || []); setMeta({ updatedAt: d.updatedAt, rule: d.rule, window: d.window }); } })
       .catch(() => {});
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(() => { if (!document.hidden) void load(); }, 60_000) /* a tab nobody is looking at does not need fresh data */;
     return () => { alive = false; clearInterval(id); };
   }, []);
 

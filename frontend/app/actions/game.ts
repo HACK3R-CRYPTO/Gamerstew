@@ -521,6 +521,19 @@ export async function inboxList(accessToken: string | null, address: string, bef
   }
 }
 
+/** Only the number for the bell's dot: a few bytes, where the full list is a page of rows. */
+export async function inboxUnread(accessToken: string | null, address: string): Promise<number | null> {
+  if (!await allowed(accessToken, address)) return null;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/inbox/${address.toLowerCase()}/unread`, { headers: { 'x-internal-secret': INTERNAL_SECRET! }, cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.unavailable ? null : Number(d.unread ?? 0);
+  } catch {
+    return null;
+  }
+}
+
 async function inboxWrite(accessToken: string | null, address: string, what: 'read' | 'delete', target: { ids: string[] } | { all: true }): Promise<boolean> {
   if (!await allowed(accessToken, address)) return false;
   try {
