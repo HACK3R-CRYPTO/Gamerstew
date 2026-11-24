@@ -32,6 +32,7 @@ export const SETTINGS: Record<string, Setting> = {
   // ── data ──
   SUPABASE_URL: s('Data', 'url', 'Supabase project URL.', { required: true }),
   SUPABASE_ANON_KEY: s('Data', 'string', 'Supabase API key.', { secret: true, required: true }),
+  SUPABASE_SERVICE_ROLE_KEY: s('Data', 'string', 'Supabase service-role key. Needed for the tables locked by row level security: the admin dashboard, payouts, purchases, daily metrics, friend rooms. Server only; never give it to a browser.', { secret: true }),
   SUBGRAPH_URL: s('Data', 'url', 'Goldsky subgraph endpoint. Defaults to the public one.'),
 
   // ── chain ──

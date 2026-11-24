@@ -48,6 +48,7 @@ export function NotYet({ what, why }: { what: string; why: string }) {
 }
 export function Problem({ error }: { error?: string }) {
   const text = error === "migration_needed" ? "The database migration has not been run yet. Run games-backend/supabase-migrations/2026-11-25_admin_dashboard.sql in Supabase, then select admin_backfill();"
+    : error === "server_key_missing" ? "The game server has no key for the admin tables. Add SUPABASE_SERVICE_ROLE_KEY to the backend on Railway (Supabase → Project Settings → API → service_role), then reload."
     : error === "unreachable" ? "The game server cannot be reached." : error === "not_allowed" ? "Your role cannot see this page." : `This could not be loaded (${error ?? "unknown"}).`;
   return <div role="alert" style={{ background: "#fef2f2", border: "1px solid rgba(185,28,28,0.3)", borderRadius: 14, padding: "12px 14px", color: C.bad, fontSize: 14, marginBottom: 14 }}>{text}</div>;
 }

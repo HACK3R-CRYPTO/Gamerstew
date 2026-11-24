@@ -108,3 +108,11 @@ test('the purchase reader walks forward in ranges, stores each with its cursor, 
   cursor = 100; storeDown = true; const c = await idx.run(3);
   assert.equal(c.error, 'could_not_store'); assert.equal(cursor, 100, 'if the database refuses, the cursor stays put');
 });
+
+test('with no key for the locked tables, sign-in says so instead of "wrong password"', async () => {
+  const w = world(); w.add('boss@x.io', 'super_admin');
+  const store = { admin: async () => null, rpc: async () => ({ data: null, error: null }) } as unknown as AdminStore;
+  const svc = createAdmin({ store, canReadLocked: () => false });
+  assert.deepEqual(await svc.login({ email: 'boss@x.io', password: 'correct horse battery' }), { status: 503, body: { error: 'server_key_missing' } });
+  assert.equal((await svc.read('boss@x.io', 'overview', {})).body.error, 'server_key_missing');
+});

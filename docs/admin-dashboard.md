@@ -138,6 +138,7 @@ A first useful dashboard (overview, users, players, games, activity feed, with h
 
 ### 6.1 Turning it on
 
+0. Give the backend the service-role key: on Railway set `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API → `service_role`). The backend's ordinary key is the low-privilege `anon` key, and every table here is locked against it. Without the service key, sign-in answers `server_key_missing`. (Found the hard way on 25 November: the first sign-in failed as "wrong password" because the admin row could not be read.)
 1. Run the migration in the Supabase SQL editor.
 2. Run `select admin_backfill();` once. It rebuilds every past day from the runs already recorded.
 3. Insert the first Super Admin (the hash is made with `hashPassword` from the backend build; it is never committed).

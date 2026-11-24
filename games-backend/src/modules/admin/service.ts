@@ -34,7 +34,7 @@ export interface AdminStore {
   setPayoutStatus(id: number, status: string): Promise<string | null>;
   event(row: { kind: string; wallet?: string | null; game?: string | null; ref?: string | null; tx_hash?: string | null; data?: unknown }): Promise<void>;
 }
-export interface AdminDeps { store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void } }
+export interface AdminDeps { store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void }; /** false when the server has no key for the locked admin tables: every read would come back empty */ canReadLocked?: () => boolean }
 
 const RANK: Record<Role, number> = { analyst: 1, admin: 2, super_admin: 3 };
 const ok = (body: Record<string, unknown>): Reply => ({ status: 200, body });
@@ -92,6 +92,9 @@ export function createAdmin(deps: AdminDeps) {
     async login(body: Record<string, unknown>): Promise<Reply> {
       const email = str(body.email).toLowerCase(); const password = typeof body.password === 'string' ? body.password : '';
       if (!email || !password) return fail(400, 'missing');
+      // Without the service key the admin table reads as empty, which would look
+      // exactly like a wrong password. Say what is actually wrong.
+      if (deps.canReadLocked && !deps.canReadLocked()) return fail(503, 'server_key_missing');
       const t = tries.get(email);
       if (t && t.until > now()) return fail(429, 'locked');
       const a = await store.admin(email);
@@ -109,6 +112,7 @@ export function createAdmin(deps: AdminDeps) {
 
     /** Every read the dashboard makes. `what` picks it; the query narrows it. */
     async read(email: unknown, what: string, q: Record<string, unknown>): Promise<Reply> {
+      if (deps.canReadLocked && !deps.canReadLocked()) return fail(503, 'server_key_missing');
       const need: Role = what === 'admins' || what === 'actions' ? 'super_admin' : 'analyst';
       const me = await who(email, need); if (isReply(me)) return me;
       const r = range(q, now());

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const WORDS: Record<string, string> = { wrong: "That email and password do not match.", locked: "Too many wrong tries. Wait 15 minutes and try again.", unreachable: "The game server cannot be reached.", missing: "Enter your email and password." };
+const WORDS: Record<string, string> = { wrong: "That email and password do not match.", locked: "Too many wrong tries. Wait 15 minutes and try again.", unreachable: "The game server cannot be reached.", missing: "Enter your email and password.", server_key_missing: "The game server has no key for the admin tables yet. Add SUPABASE_SERVICE_ROLE_KEY to it, then try again.", server: "The game server refused the sign-in request. This is not about your password." };
 
 export default function AdminLogin() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);

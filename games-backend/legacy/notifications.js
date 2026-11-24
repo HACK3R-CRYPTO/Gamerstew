@@ -435,7 +435,7 @@ core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret
 // src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
 // until that has run, its reads answer "migration_needed" and the two jobs
 // below do nothing.
-const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.supabase), logger: console });
+const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin });
 core.admin = adminService;
 core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
 // yesterday's and today's numbers, every hour (and once, a minute after boot)
@@ -472,12 +472,12 @@ core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
       }),
     },
     store: {
-      cursor: async () => { const r = await core.supabase.rpc('admin_chain_cursor', { cursor_name: 'purchases' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
-      save: async (upto, batch) => !(await core.supabase.rpc('admin_save_purchases', { cursor_name: 'purchases', upto, batch })).error,
+      cursor: async () => { const r = await core.lockedDb.rpc('admin_chain_cursor', { cursor_name: 'purchases' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
+      save: async (upto, batch) => !(await core.lockedDb.rpc('admin_save_purchases', { cursor_name: 'purchases', upto, batch })).error,
     },
   });
   core.jobs.every('chainPurchases', 60 * 1000, async () => {
-    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider) return;
+    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider || !core.supabaseAdmin) return; // nowhere to store them without the service key
     const out = await purchaseIndexer.run(40);
     if (out.found > 0) console.log(`[chain] ${out.found} purchase(s) read · blocks ${out.from}..${out.to} · ${out.behind} behind`);
   });
@@ -486,7 +486,7 @@ core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
 core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.
-const roomKeeper = core.platform.supabaseRoomKeeper(core.supabase);
+const roomKeeper = core.platform.supabaseRoomKeeper(core.lockedDb); // friend_rooms is a locked table too
 // Playing for G$: OFF unless ROOM_STAKES=true. No contract of ours and no money
 // held: each loser's signed permit sends their entry straight to the winner.
 let roomStakes;
