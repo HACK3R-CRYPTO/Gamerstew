@@ -71,7 +71,7 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
           <div style={{ position: "relative", zIndex: 1, padding: "26px 18px 18px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={p.pet.src} alt={p.pet.name} style={{ width: 96, height: 96, objectFit: "contain", filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.5))" }} />
-            <div style={{ fontFamily: T.display, fontSize: 26, letterSpacing: "0.03em", marginTop: 8, textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>
+            <div style={{ fontFamily: T.display, fontSize: 26, letterSpacing: "0.03em", marginTop: 8 }}>
               {name}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap", justifyContent: "center" }}>
@@ -81,15 +81,15 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
                 </span>
               )}
               {p.minted && !p.verified && (
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: T.ink, background: "#ede9fe", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "4px 10px", letterSpacing: "0.06em" }}>
                   🎮 GAMEPASS
                 </span>
               )}
-              <span style={{ fontSize: 9.5, fontWeight: 800, color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
+              <span style={{ fontSize: 9.5, fontWeight: 800, color: T.ink, background: "#ede9fe", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "4px 10px", letterSpacing: "0.06em" }}>
                 LV {p.level}
               </span>
               {p.habitat && (
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: T.inkDim, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: T.ink, background: "#ede9fe", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "4px 10px", letterSpacing: "0.06em" }}>
                   🏠 {p.habitat.name.toUpperCase()}
                 </span>
               )}
@@ -106,10 +106,10 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
 
         {/* best scores */}
         <Section title="BEST SCORES">
-          <Row icon="🎵" label="Rhythm" value={p.bestRhythm.toLocaleString()} />
-          <Row icon="🧠" label="Simon" value={p.bestSimon.toLocaleString()} />
-          <Row icon="🧱" label="Stack" value={p.bestStack.toLocaleString()} />
-          <Row icon="🤖" label="Challenge AI" value={p.bestChallenge.toLocaleString()} />
+          {/* every game a player can rank in; one not played yet shows a dash, not a zero */}
+          {([["🧱", "Stack Tower", p.bestStack], ["🔤", "Word Ladder", p.bestLadder], ["🧠", "Simon Memory", p.bestSimon], ["🎵", "Rhythm Rush", p.bestRhythm], ["🛞", "Street Strike", p.bestStrike], ["💡", "UP NEPA 3D", p.bestNepa3d], ["🤖", "Challenge AI", p.bestChallenge]] as const).map(([icon, label, n]) => (
+            <Row key={label} icon={icon} label={label} value={n > 0 ? n.toLocaleString() : "–"} />
+          ))}
         </Section>
 
         {/* badges */}
@@ -175,7 +175,7 @@ function Row({ icon, label, value }: { icon: string; label: string; value: strin
 
 function Medal({ emoji, count }: { emoji: string; count: number }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(0,0,0,0.35)", border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "7px 13px", fontSize: 14 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#ede9fe", color: T.ink, border: `1px solid ${T.hairline}`, borderRadius: 999, padding: "7px 13px", fontSize: 14 }}>
       {emoji} <span style={{ fontFamily: T.display, fontSize: 15 }}>{count}</span>
     </span>
   );

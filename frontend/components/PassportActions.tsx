@@ -15,9 +15,10 @@ import { useAccount } from "wagmi";
 import { captureReferralFromUrl } from "@/lib/referral";
 
 const T = {
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
+  // this sits on the light passport page: dark text, not the old light-on-dark
+  inkDim: "#22104f",
+  inkSoft: "rgba(34,16,79,0.68)",
+  hairline: "rgba(76,29,149,0.16)",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -106,23 +107,23 @@ export default function PassportActions({ address, name, refCode }: { address: s
         <>
           <button
             onClick={share}
-            style={{ borderRadius: 16, border: "2px solid rgba(255,255,255,0.35)", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 55%, #6d28d9 100%)", color: "#12043a", padding: "15px", fontFamily: T.display, fontSize: 16, letterSpacing: "0.03em", cursor: "pointer", boxShadow: "0 12px 26px -8px rgba(167,139,250,0.6)" }}
+            style={{ borderRadius: 16, border: "none", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", color: "#fff", padding: "15px", fontFamily: T.display, fontSize: 18, cursor: "pointer", boxShadow: "0 5px 0 #4c1d95" }}
           >
-            {copied ? "✓ LINK COPIED" : "📣 SHARE MY PASSPORT"}
+            {copied ? "Link copied" : "Share my passport"}
           </button>
           <button
             onClick={saveCard}
-            style={{ borderRadius: 16, border: `1px solid ${T.hairline}`, background: "#fff", color: T.inkDim, padding: "12px", fontFamily: T.display, fontSize: 13.5, letterSpacing: "0.03em", cursor: savingCard ? "wait" : "pointer" }}
+            style={{ borderRadius: 16, border: `1px solid ${T.hairline}`, background: "#fff", color: T.inkDim, padding: "13px", fontFamily: T.display, fontSize: 16, cursor: savingCard ? "wait" : "pointer" }}
           >
-            {savingCard ? "RENDERING CARD…" : "💾 SAVE AS IMAGE"}
+            {savingCard ? "Making the image…" : "Save as image"}
           </button>
-          <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+          <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 13, lineHeight: 1.45, color: T.inkSoft, fontWeight: 600 }}>
             {refCount !== null && refCount > 0 ? (
               <span style={{ color: "#166534" }}>🎉 {refCount} joined through you{refVerified !== null ? <> · <strong>{refVerified} verified now</strong></> : null}{refCode ? <> · code: <strong>{refCode}</strong></> : null}</span>
             ) : refCode ? (
-              <>Your code is <strong style={{ color: "#6d28d9" }}>{refCode}</strong> — a referral counts once your friend verifies</>
+              <>Your code is <strong style={{ color: "#6d28d9" }}>{refCode}</strong> . A referral counts once your friend verifies.</>
             ) : (
-              <>A referral counts once your friend verifies</>
+              <>A referral counts once your friend verifies.</>
             )}
           </div>
         </>
@@ -130,12 +131,12 @@ export default function PassportActions({ address, name, refCode }: { address: s
         <>
           <a
             href={playUrl}
-            style={{ borderRadius: 16, border: "2px solid rgba(255,255,255,0.35)", background: "linear-gradient(160deg, #6ee76e 0%, #22c55e 55%, #15803d 100%)", color: "#fff", padding: "15px", fontFamily: T.display, fontSize: 16, letterSpacing: "0.03em", cursor: "pointer", boxShadow: "0 12px 26px -8px rgba(34,197,94,0.6), 0 0 0 transparent", textAlign: "center", textDecoration: "none", textShadow: "0 2px 4px rgba(0,0,0,0.4)" }}
+            style={{ borderRadius: 16, border: "none", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", color: "#fff", padding: "15px", fontFamily: T.display, fontSize: 17, cursor: "pointer", boxShadow: "0 5px 0 #4c1d95", textAlign: "center", textDecoration: "none", display: "block" }}
           >
-            ⚔️ THINK YOU CAN BEAT {name.replace(/^@/, "").toUpperCase()}?
+            Think you can beat {name.replace(/^@/, "")}?
           </a>
-          <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
-            Free · instant · on Celo — no download
+          <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 13, lineHeight: 1.45, color: T.inkSoft, fontWeight: 600 }}>
+            Free to play. Nothing to download.
           </div>
         </>
       )}
