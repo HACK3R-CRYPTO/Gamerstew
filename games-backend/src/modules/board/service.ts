@@ -6,6 +6,7 @@
 // A subgraph outage degrades these to empty lists and zeros, with a warning in
 // the log. It never turns a page into an error.
 
+import { mergeBoards } from './plays';
 export interface BoardRow { wallet_address: string; score: number; username: string | null; created_at: string; tx_hash: string | null; game?: string }
 export interface GlobalStat {
   totalPlayers?: unknown; totalScores?: unknown; totalRhythmPlays?: unknown; totalSimonPlays?: unknown;
@@ -24,6 +25,9 @@ export interface BoardDeps {
     /** wallets that have scored since `sinceSec` (capped by the subgraph page size) */
     seasonPlayerIds(sinceSec: number): Promise<string[]>;
   };
+  /** Each player's best run from this server's own session ledger. The subgraph
+   *  can stop indexing; with this, a board still shows what was really played. */
+  ledgerBoard?(game: string, sinceSec: number): Promise<BoardRow[]>;
   /** wallet (lowercase) → play streak, for the wallets given */
   streaks(wallets: string[]): Promise<Map<string, number>>;
   resolveUsername(wallet: string): Promise<string | null | undefined>;
@@ -62,18 +66,29 @@ export function createBoardService(deps: BoardDeps) {
   /** GET /api/leaderboard?game=&limit=&page=|offset= · this season's board for one game */
   async function leaderboard(query: Record<string, unknown>): Promise<Reply> {
     const game = query.game;
-    if (!knownGame(game)) return { status: 400, body: { error: 'game must be rhythm or simon' } };
+    if (!knownGame(game)) return { status: 400, body: { error: 'Unknown game' } };
     const { limit, offset, page, start } = paging(query);
 
-    const seasonStart = deps.seasonBounds(deps.currentSeason()).start;
+    // `since` (unix seconds) lets a page ask for its own window; default is this season
+    const since = int(query.since);
+    const seasonStart = since > 0 ? since : deps.seasonBounds(deps.currentSeason()).start;
     let all: BoardRow[] = [];
     try {
       all = await deps.subgraph.leaderboard(deps.gameTypes[game]!, seasonStart); // every player who scored this season
     } catch (e) {
       logger.warn('subgraph leaderboard failed:', why(e));
     }
+    if (deps.ledgerBoard) {
+      try {
+        all = mergeBoards(all, await deps.ledgerBoard(game, seasonStart));
+      } catch (e) {
+        logger.warn('ledger leaderboard failed:', why(e));
+      }
+    }
     const total = all.length;
     const slice = all.slice(start, start + limit);
+    // ledger rows carry no name: look up only the ones on this page
+    await Promise.all(slice.map(async (e, i) => { if (!e.username) slice[i] = { ...e, username: (await deps.resolveUsername(e.wallet_address).catch(() => null)) || null }; }));
 
     // one small read for the whole page, not one per row
     const wallets = slice.map((e) => e.wallet_address.toLowerCase());

@@ -8,7 +8,7 @@ export { registerStrikeRoutes } from './modules/strike/routes';
 export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/routes';
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';
 export { registerBoardRoutes } from './modules/board/routes';
-export { playCounts, ledgerCounts, mergeCounts } from './modules/board/plays';
+export { playCounts, ledgerCounts, mergeCounts, supabaseLedgerBoard, mergeBoards } from './modules/board/plays';
 export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';
 export { registerSeasonsRoutes } from './modules/seasons/routes';
 export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/adapters';

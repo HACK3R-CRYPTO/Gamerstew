@@ -82,7 +82,7 @@ test('leaderboard: this season, one page, streaks joined in one read', async () 
 });
 
 test('leaderboard: unknown game is refused; a subgraph outage is an empty board, not an error', async () => {
-  for (const game of [undefined, 'chess', 'toString', ['rhythm', 'simon'], ['rhythm'], { a: 'rhythm' }]) assert.deepStrictEqual(await world().svc.leaderboard({ game }), { status: 400, body: { error: 'game must be rhythm or simon' } });
+  for (const game of [undefined, 'chess', 'toString', ['rhythm', 'simon'], ['rhythm'], { a: 'rhythm' }]) assert.deepStrictEqual(await world().svc.leaderboard({ game }), { status: 400, body: { error: 'Unknown game' } });
   const w = world({ down: ['leaderboard'] });
   assert.deepStrictEqual(await w.svc.leaderboard({ game: 'rhythm' }), { status: 200, body: { leaderboard: [], total: 0, page: 1, limit: 20, pages: 0 } });
   assert.deepStrictEqual(w.logs, ['subgraph leaderboard failed: leaderboard down']);

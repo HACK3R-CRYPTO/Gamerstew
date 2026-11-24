@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ledgerCounts, mergeCounts, playCounts, type Counts, type LedgerDb } from './plays';
+import { ledgerCounts, mergeCounts, playCounts, supabaseLedgerBoard, mergeBoards, type Counts, type LedgerDb, type LedgerBoardDb } from './plays';
 
 // a fake table that records the query it was asked and serves rows in pages
 function db(rows: { wallet: string | null }[], fail = false) {
@@ -47,4 +47,26 @@ test('playCounts: a failing ledger still returns what the subgraph has', async (
   const r = await playCounts({ subgraph: async () => m({ '0xa': 4 }), db: db([], true).d }, 1, 2);
   assert.equal(r.counts.get('0xa')!.count, 4);
   assert.deepEqual(r.sources, { subgraph: true, ledger: false });
+});
+
+test('ledger board: each player\'s best run of that game since the start, best first', async () => {
+  const asked: unknown[] = [];
+  const rows = [{ wallet: '0xA', computed_score: 40, used_at: 't1' }, { wallet: '0xa', computed_score: 90, used_at: 't2' }, { wallet: '0xb', computed_score: 60, used_at: 't3' }, { wallet: '0xc', computed_score: null, used_at: 't4' }];
+  const d: LedgerBoardDb = { from: (t) => ({ select: (c) => ({ eq: (a, av) => ({ eq: (b, bv) => ({ gte: (g, gv) => ({ range: async () => { asked.push(t, c, a, av, b, bv, g, gv); return { data: rows, error: null }; } }) }) }) }) }) };
+  const board = await supabaseLedgerBoard(d)('stack', 1_700_000_000);
+  assert.deepEqual(board.map((r) => `${r.wallet_address}:${r.score}`), ['0xa:90', '0xb:60']);
+  assert.deepEqual(asked.slice(0, 7), ['game_sessions', 'wallet, computed_score, used_at', 'used', true, 'game', 'stack', 'used_at']);
+  assert.equal(asked[7], new Date(1_700_000_000 * 1000).toISOString());
+});
+
+test('ledger board: a failed read is an empty board, not an error', async () => {
+  const d: LedgerBoardDb = { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ gte: () => ({ range: async () => ({ data: null, error: { message: 'down' } }) }) }) }) }) }) };
+  assert.deepEqual(await supabaseLedgerBoard(d)('stack', 1), []);
+});
+
+test('mergeBoards: higher score per player wins, names are kept, best first', () => {
+  type Row = { wallet_address: string; score: number; username: string | null };
+  const sg: Row[] = [{ wallet_address: '0xA', score: 50, username: 'ada' }, { wallet_address: '0xb', score: 80, username: 'bo' }];
+  const ledger: Row[] = [{ wallet_address: '0xa', score: 70, username: null }, { wallet_address: '0xc', score: 10, username: null }];
+  assert.deepEqual(mergeBoards(sg, ledger).map((r) => [r.wallet_address.toLowerCase(), r.score, r.username]), [['0xb', 80, 'bo'], ['0xa', 70, 'ada'], ['0xc', 10, null]]);
 });

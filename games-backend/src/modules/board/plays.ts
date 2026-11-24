@@ -61,3 +61,47 @@ export async function playCounts(deps: { subgraph: (startUnix: number, endUnix: 
   ]);
   return { counts: mergeCounts(sg.c, ledger.counts), sources: { subgraph: sg.ok, ledger: ledger.ok } };
 }
+
+// ── Leaderboard rows from the session ledger ────────────────────────────────
+export interface LedgerBoardDb {
+  from(table: string): {
+    select(cols: string): {
+      eq(col: string, v: unknown): { eq(col: string, v: unknown): { gte(col: string, v: string): { range(a: number, b: number): PromiseLike<{ data: { wallet?: string | null; computed_score?: number | null; used_at?: string | null }[] | null; error: unknown }> } } };
+    };
+  };
+}
+export interface LedgerBoardRow { wallet_address: string; score: number; username: string | null; created_at: string; tx_hash: string | null }
+
+/** Each player's best scored run of a game since `sinceSec`, best first. Returns
+ *  an empty list if the read fails: the caller merges it with the subgraph. */
+export function supabaseLedgerBoard(db: LedgerBoardDb) {
+  return async (game: string, sinceSec: number): Promise<LedgerBoardRow[]> => {
+    const best = new Map<string, LedgerBoardRow>();
+    const sinceIso = new Date(sinceSec * 1000).toISOString();
+    for (let page = 0; page < 100; page++) {
+      const { data, error } = await db.from('game_sessions').select('wallet, computed_score, used_at').eq('used', true).eq('game', game).gte('used_at', sinceIso).range(page * PAGE, page * PAGE + PAGE - 1);
+      if (error) break;
+      const rows = data ?? [];
+      for (const r of rows) {
+        const w = String(r.wallet ?? '').toLowerCase(); const score = Number(r.computed_score);
+        if (!w || r.computed_score == null || !Number.isFinite(score)) continue; // a run with no recorded score is not on the board
+        const cur = best.get(w);
+        if (!cur || score > cur.score) best.set(w, { wallet_address: w, score, username: null, created_at: String(r.used_at ?? sinceIso), tx_hash: null });
+      }
+      if (rows.length < PAGE) break;
+    }
+    return [...best.values()].sort((a, b) => b.score - a.score);
+  };
+}
+
+/** Two boards into one: each player's higher score, best first. */
+export function mergeBoards<T extends { wallet_address: string; score: number; username: string | null }>(a: T[], b: T[]): T[] {
+  const out = new Map<string, T>();
+  for (const row of [...a, ...b]) {
+    const key = row.wallet_address.toLowerCase(); const cur = out.get(key);
+    if (!cur) out.set(key, row);
+    else if (row.score > cur.score) out.set(key, { ...row, username: row.username ?? cur.username });
+    else if (!cur.username && row.username) out.set(key, { ...cur, username: row.username });
+  }
+  return [...out.values()].sort((x, y) => y.score - x.score);
+}

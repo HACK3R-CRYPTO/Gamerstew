@@ -119,11 +119,39 @@ type ScoreRow = {
 // 5 is Word Ladder and 6 is Street Strike: weekly board only, like nepa.
 export type GameTypeId = 0 | 1 | 2 | 4 | 5 | 6 | 7; // 7 is UP NEPA 3D
 
+const GAME_NAME: Record<GameTypeId, string> = { 0: "rhythm", 1: "simon", 2: "stack", 4: "nepa", 5: "ladder", 6: "strike", 7: "nepa3d" };
+
+// The board comes from the game server first. It merges the subgraph with its
+// own record of every run it scored, so a board still fills when the subgraph
+// has stopped indexing (it sat three weeks behind in November 2026 and every
+// board showed "no scores yet"). The subgraph is asked directly only if the
+// server cannot be reached.
+async function boardFromServer(gameType: GameTypeId, sinceUnix: number, limit: number): Promise<LeaderboardEntry[] | null> {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!base) return null;
+  const out: LeaderboardEntry[] = [];
+  try {
+    for (let page = 1; page <= 20 && out.length < limit; page++) {
+      const res = await fetch(`${base}/api/leaderboard?game=${GAME_NAME[gameType]}&since=${Math.floor(sinceUnix)}&limit=50&page=${page}`);
+      if (!res.ok) return page === 1 ? null : out;
+      const data = (await res.json()) as { leaderboard?: { player: string; score: number; timestamp?: number; username?: string | null }[]; pages?: number };
+      const rows = data.leaderboard ?? [];
+      for (const r of rows) out.push({ player: String(r.player).toLowerCase(), username: r.username || undefined, score: Number(r.score), timestamp: Number(r.timestamp ?? 0) });
+      if (rows.length < 50 || page >= (data.pages ?? 1)) break;
+    }
+    return out.slice(0, Number.isFinite(limit) ? limit : undefined);
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchLeaderboard(
   gameType: GameTypeId,
   weekStartUnix: number,
   limit = Infinity, // default: EVERY player who scored this season, not a top-N
 ): Promise<LeaderboardEntry[]> {
+  const fromServer = await boardFromServer(gameType, weekStartUnix, limit);
+  if (fromServer) return fromServer;
   // Paginate all season score events by id cursor, then dedup to each player's
   // best. The old query pulled first:500 and sliced to 50, so every player past
   // the cut (a low score, a late arrival) was silently absent from the board.
