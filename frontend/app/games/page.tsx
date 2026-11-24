@@ -62,7 +62,7 @@ const GAMES_3D = [
 const GAMES = [
   {
     id: "rhythm",
-    cover: "/games/covers/rhythm.svg",
+    cover: "/games/covers/rhythm.jpg",
     focus: "50% 40%",
     title: "Rhythm Rush",
     subtitle: "Tap to the beat · combo to climb",
@@ -74,7 +74,7 @@ const GAMES = [
   },
   {
     id: "simon",
-    cover: "/games/covers/simon.svg",
+    cover: "/games/covers/simon.jpg",
     focus: "50% 45%",
     title: "Simon Memory",
     subtitle: "Sequence memory · go deeper",
@@ -118,7 +118,7 @@ const GAMES = [
     // identity. Schema also normalized from artGrad/path to bg/href so
     // the card actually paints (the render reads game.bg, game.href).
     id: "stack",
-    cover: "/games/covers/stack.svg",
+    cover: "/games/covers/stack.jpg",
     focus: "50% 60%",
     title: "Stack Tower",
     subtitle: "Stack & survive · don't drop",
@@ -150,7 +150,7 @@ const GAMES = [
   },
   {
     id: "challenge-ai",
-    cover: "/games/covers/challenge-ai.svg",
+    cover: "/games/covers/challenge-ai.jpg",
     focus: "50% 55%",
     title: "Challenge AI",
     subtitle: "Outsmart MARKOV · or send your own AI",
