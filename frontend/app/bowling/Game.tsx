@@ -1807,7 +1807,7 @@ export default function Game() {
                   : ranked.status === "checking" ? "Checking your throws…"
                   : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                   : ranked.status === "saving" ? "Saving to the leaderboard…"
-                  : ranked.status === "saved" ? <>Saved on-chain{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                  : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
                   : ranked.status === "error" ? ranked.error : null}
               </div>
             )}

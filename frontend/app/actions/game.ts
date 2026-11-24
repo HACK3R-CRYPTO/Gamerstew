@@ -89,6 +89,9 @@ export type ScoreData = {
   wagered?: string | null;
   wagerId?: string | null;
   txHash?:  string | null;
+  // The run's session ticket. With the chain outbox on, a score is saved before
+  // its transaction exists, and this ticket is the proof the server looks up.
+  sessionToken?: string | null;
   // Rhythm-only skill flags — unlock rhythm_fc / rhythm_ap achievements.
   // Backend trusts the frontend for these since the score itself is already
   // bound on-chain via the EIP-712 voucher (a lying client still needs a
@@ -103,7 +106,9 @@ type SignScoreResult =
       // client does NOTHING on-chain — no wallet prompt, no CELO.
       success:  true;
       gasless:  true;
-      txHash:   string;
+      // null when the score was QUEUED: checked and stored, transaction to follow
+      txHash:   string | null;
+      queued?:  boolean;
       gameType: number;
       score?:   number;
     }
@@ -278,7 +283,8 @@ export async function signScore(
       return {
         success:  true,
         gasless:  true,
-        txHash:   data.txHash,
+        txHash:   data.txHash ?? null,
+        queued:   !!data.queued,
         gameType: data.gameType,
         score:    typeof data.score === 'number' ? data.score : scoreData.score,
       };
@@ -343,7 +349,8 @@ export async function signScoreMiniPay(
       return {
         success:  true,
         gasless:  true,
-        txHash:   data.txHash,
+        txHash:   data.txHash ?? null,
+        queued:   !!data.queued,
         gameType: data.gameType,
         score:    typeof data.score === 'number' ? data.score : scoreData.score,
       };
@@ -481,7 +488,7 @@ export async function signRun(
     const { ok, data } = await internalFetch('/api/sign-score', { ...(run.proof ?? {}), playerAddress, game: run.game, score: run.score, sessionToken: run.sessionToken });
     if (!ok) return { success: false, error: data?.reason || data?.error || 'Sign failed' };
     const score = typeof data.score === 'number' ? data.score : run.score;
-    if (data.gasless) return { success: true, gasless: true, txHash: data.txHash, gameType: data.gameType, score };
+    if (data.gasless) return { success: true, gasless: true, txHash: data.txHash ?? null, queued: !!data.queued, gameType: data.gameType, score };
     return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType, score };
   } catch {
     return { success: false, error: 'Backend unavailable' };

@@ -298,3 +298,27 @@ test('adapter: best score this season', async () => {
   assert.strictEqual(await supabaseBestThisSeason(db(null))('0xabc', 'stack', 42), 0);
   assert.strictEqual(await supabaseBestThisSeason(db([{ score: null }]))('0xabc', 'stack', 42), 0);
 });
+
+// ── queued runs: the outbox row is the proof until the transaction exists ──
+test('a queued run saves without a transaction, and only when the ticket matches player, game and score', async () => {
+  const asked: unknown[] = [];
+  const mk = (match: boolean) => { const w = world(); w.deps.queuedRun = async (ticket, wallet, game, score) => { asked.push([ticket, wallet, game, score]); return match; }; return { ...w, submit: createSubmitService(w.deps) }; };
+  const b = body({ txHash: null, sessionToken: 'ticket-1' });
+  const ok = mk(true);
+  const r = await ok.submit(b, true);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual((ok.seen.saved as { tx_hash: unknown }).tx_hash, null);
+  const sd = b.scoreData as { game: string; score: number };
+  assert.deepStrictEqual(asked[0], ['ticket-1', b.playerAddress, sd.game, sd.score]);
+
+  const no = mk(false);
+  const x = await no.submit(b, true);
+  assert.strictEqual(x.status, 400);
+  assert.strictEqual(x.body.error, 'Missing on-chain proof');
+  assert.strictEqual(no.seen.saved, undefined);
+
+  // no ticket, no transaction: still refused, and the outbox is not even asked
+  const before = asked.length;
+  const bare = await mk(true).submit(body({ txHash: null }), true);
+  assert.strictEqual(bare.status, 400); assert.strictEqual(asked.length, before);
+});

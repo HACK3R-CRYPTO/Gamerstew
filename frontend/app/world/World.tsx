@@ -1201,7 +1201,7 @@ export default function World() {
                 : ranked.status === "checking" ? "Checking your run…"
                 : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                 : ranked.status === "saving" ? "Saving to the leaderboard…"
-                : ranked.status === "saved" ? <>Saved on-chain{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
                 : ranked.status === "error" ? ranked.error : null}
               {" "}<a href="/world/leaderboard" style={{ color: "#ffd56b" }}>Leaderboard</a>
             </div>

@@ -1193,7 +1193,7 @@ export default function RhythmGamePage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string | null; queued?: boolean; gameType: number; score?: number }
           | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
@@ -1330,7 +1330,7 @@ export default function RhythmGamePage() {
         // actually signed. Also surface it to the UI in case the local count
         // drifted (e.g. encore scoring on the server differs by a few points).
         let result;
-        const fullScoreData = { ...baseScoreData, score: officialScore, txHash };
+        const fullScoreData = { ...baseScoreData, score: officialScore, txHash, sessionToken: sessionTokenRef.current };
         if (isMiniPay) {
           // MiniPay path: no client signature (celopedia minipay-guide
           // §"No message signing"). submitScoreMiniPay accepts empty

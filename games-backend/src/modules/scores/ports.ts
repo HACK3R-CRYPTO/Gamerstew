@@ -69,6 +69,9 @@ export interface ScoreDeps {
   replay: Replay;
   /** game name → on-chain game type, e.g. { rhythm: 0, simon: 1 } */
   gameTypes: Record<string, number>;
+  /** The chain outbox. When it is on, a checked score is queued and the player
+   *  is answered at once; the transaction is sent from the queue. */
+  outbox?: { enabled(): boolean; enqueue(row: { sessionToken: string; wallet: string; game: string; gameType: number; score: number }): Promise<{ ok: boolean }> };
   /** Is the server's own score enforced for this game? Off when not given. */
   enforce?: (game: string) => boolean;
   now?: () => number;

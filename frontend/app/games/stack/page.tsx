@@ -732,7 +732,7 @@ export default function StackTowerPage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string | null; queued?: boolean; gameType: number; score?: number }
           | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
@@ -789,7 +789,7 @@ export default function StackTowerPage() {
             address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
             abi: GAME_PASS_ABI,
             functionName: "recordScoreWithBackendSig",
-            args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            args: [sig.gameType, BigInt(typeof sig.score === "number" ? sig.score : scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
             ...(isEmbeddedWallet ? { gas: 300000n } : {}),
             ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
           });
@@ -840,7 +840,9 @@ export default function StackTowerPage() {
 
         // ── STEP 3: save off-chain ──
         let result;
-        const fullScoreData = { ...baseScoreData, txHash };
+        // the score the server approved (it may be lower than the claim), and the
+        // run's ticket so a queued score can be saved before its transaction exists
+        const fullScoreData = { ...baseScoreData, score: typeof sig.score === "number" ? sig.score : baseScoreData.score, txHash, sessionToken: sessionTokenRef.current };
         if (isMiniPay) {
           result = await submitScoreMiniPay(address, "", "", fullScoreData);
         } else if (authToken) {

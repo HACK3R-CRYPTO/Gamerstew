@@ -30,6 +30,8 @@ export interface RankedResult {
   score: number;        // the score the server approved
   txHash: string | null;
   gasless: boolean;
+  /** true when the score is saved and its transaction is still to be sent */
+  queued?: boolean;
   rank?: number;
   xpEarned?: number;
   level?: number;
@@ -103,8 +105,8 @@ export function useRankedRun(game: GameId) {
       }
 
       setStatus("saving");
-      const saved = await saveRun(auth, address, { game, score, gameTime: Math.max(5000, run.gameTime), txHash });
-      const out: RankedResult = { score, txHash, gasless: !!sig.gasless, ...(saved.success ? { rank: saved.rank, xpEarned: saved.xpEarned, level: saved.level, leveledUp: saved.leveledUp, isNewPb: saved.isNewPb, streak: saved.streak } : {}) };
+      const saved = await saveRun(auth, address, { game, score, gameTime: Math.max(5000, run.gameTime), txHash, sessionToken });
+      const out: RankedResult = { score, txHash, gasless: !!sig.gasless, queued: !!sig.gasless && !txHash, ...(saved.success ? { rank: saved.rank, xpEarned: saved.xpEarned, level: saved.level, leveledUp: saved.leveledUp, isNewPb: saved.isNewPb, streak: saved.streak } : {}) };
       setResult(out); setStatus("saved");
       // the score is on-chain even if this last save failed, so say so plainly
       if (!saved.success) setError("Score is on-chain. The leaderboard will catch up shortly.");

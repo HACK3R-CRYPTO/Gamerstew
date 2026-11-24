@@ -518,3 +518,35 @@ test('simon: the real check, run through the service, signs an honest score unch
   assert.strictEqual(g.body.score, real.verifySimonRun({ sessionToken: 'tok', tapLog: taps, elapsedMs: 60_000 }).score);
   assert.ok((g.body.score as number) < 200);
 });
+
+// ── the outbox: a checked score is queued and the player is answered at once ──
+test('outbox on: sign-score queues the run and does not touch the chain; off or failing, it sends as before', async () => {
+  const queued: unknown[] = [];
+  const on = world({ session: { game: 'rhythm' }, gasless: true });
+  on.deps.outbox = { enabled: () => true, enqueue: async (row) => { queued.push(row); return { ok: true }; } };
+  const r = await createScoreService(on.deps).signScore(rhythmBody);
+  assert.deepStrictEqual({ gasless: r.body.gasless, queued: r.body.queued, txHash: r.body.txHash, score: r.body.score }, { gasless: true, queued: true, txHash: null, score: 1200 });
+  assert.deepStrictEqual(queued, [{ sessionToken: 'tok', wallet: P, game: 'rhythm', gameType: 0, score: 1200 }]);
+  assert.deepStrictEqual(on.calls.submitted, []);
+  assert.ok(on.calls.order.includes('markUsed'));
+
+  const off = world({ session: { game: 'rhythm' }, gasless: true });
+  off.deps.outbox = { enabled: () => false, enqueue: async () => { throw new Error('must not be called'); } };
+  const a = await createScoreService(off.deps).signScore(rhythmBody);
+  assert.strictEqual(a.body.queued, undefined); assert.strictEqual(off.calls.submitted.length, 1);
+
+  // the queue cannot take it (table missing, database down): the direct send still happens
+  for (const enqueue of [async () => ({ ok: false }), async () => { throw new Error('db down'); }]) {
+    const broken = world({ session: { game: 'rhythm' }, gasless: true });
+    broken.deps.outbox = { enabled: () => true, enqueue };
+    const b = await createScoreService(broken.deps).signScore(rhythmBody);
+    assert.strictEqual(b.status, 200); assert.strictEqual(b.body.queued, undefined);
+    assert.strictEqual(broken.calls.submitted.length, 1);
+  }
+
+  // over the gasless budget: not queued, falls to the voucher as before
+  const over = world({ session: { game: 'rhythm' }, gasless: true, budget: { ok: false, reason: 'daily cap' } });
+  over.deps.outbox = { enabled: () => true, enqueue: async () => { throw new Error('must not be called'); } };
+  const v = await createScoreService(over.deps).signScore(rhythmBody);
+  assert.strictEqual(v.body.signature, '0xsig');
+});

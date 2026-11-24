@@ -335,7 +335,7 @@ export default function WordLadderPage() {
               {ranked.status === "wallet" && "Confirm in your wallet to save…"}
               {ranked.status === "saving" && "Saving to the leaderboard…"}
               {ranked.status === "saved" && <>
-                <b>Saved on-chain{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}</b>
+                <b>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}</b>
                 {ranked.result?.txHash && <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer">View transaction</a>}
                 {ranked.error && <span>{ranked.error}</span>}
               </>}

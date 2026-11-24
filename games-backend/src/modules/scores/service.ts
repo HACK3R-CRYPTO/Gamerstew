@@ -237,6 +237,13 @@ export function createScoreService(deps: ScoreDeps) {
           // Over budget: spend no signer gas, but let a genuine player still save
           // the run by paying their own gas through the voucher below.
           logger.warn(`⛔ Gasless budget hit (${budget.reason}) · ${who}… — falling back to voucher`);
+        } else if (deps.outbox?.enabled() && (await deps.outbox.enqueue({ sessionToken, wallet: playerAddress, game, gameType, score: serverScore }).catch(() => ({ ok: false }))).ok) {
+          // QUEUED: the score is checked and stored; the transaction goes out from
+          // the outbox. The player is not kept waiting on the chain. If the queue
+          // cannot take it, the direct send below still runs, as before.
+          deps.gasless.consume(playerAddress);
+          logger.log(`📮 Queued ${game} · ${who}… score ${serverScore}`);
+          return reply(200, { success: true, gasless: true, queued: true, txHash: null, gameType, score: serverScore });
         } else {
           // A failure here is almost always a passing RPC or nonce hiccup, and
           // falling back strands a low-CELO wallet on a "gas needed" screen, so

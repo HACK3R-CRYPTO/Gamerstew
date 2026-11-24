@@ -56,10 +56,43 @@ core.app.post('/api/start-session', core.requireSecret, core.gameSubmitLimiter, 
 //   rules.ts    ticket validity, score bound, ladder points
 //   service.ts  start a run, decide the score, record it, submit or sign
 // This file only hands it the real database, chain and replay libraries.
+// ─── The chain outbox ────────────────────────────────────────────────────────
+// Rules: src/modules/outbox/service.ts. Two small jobs drain it; both do nothing
+// while it is switched off.
+const outboxOn = () => String(process.env.SCORE_OUTBOX ?? 'false').toLowerCase() === 'true';
+const outboxStore = core.platform.supabaseOutbox(core.supabase);
+const outbox = core.platform.createOutbox({
+  store: outboxStore,
+  chain: core.platform.ethersOutboxChain({ provider: () => core.provider, submitScore: (wallet, gameType, score) => core.enqueueScoreWrite(wallet, gameType, score) }),
+});
+core.outbox = outbox;
+core.outboxOn = outboxOn;
+core.jobs.every('outboxSend', 2000, async () => { if (outboxOn()) { await outbox.sendDue(); } });
+core.jobs.every('outboxConfirm', 5000, async () => { if (outboxOn()) await outbox.confirmSent(); });
+// Say so, loudly and in one place, when the queue is not draining. The subgraph
+// went quiet for three weeks with nothing in the logs; this must not.
+core.jobs.every('outboxWatch', 60_000, async () => {
+  if (!outboxOn()) return;
+  const st = await outbox.status();
+  if (st.outOfGas) console.error('🚨 [outbox] the sending wallet is OUT OF GAS: scores are queued, none are reaching the chain. Top it up.');
+  if (st.oldestPendingMs != null && st.oldestPendingMs > 10 * 60_000) console.error(`🚨 [outbox] a score has waited ${Math.round(st.oldestPendingMs / 60000)} minutes to be sent · pending=${st.pending}`);
+  if (st.failed > 0) console.warn(`⚠️  [outbox] ${st.failed} score(s) failed for good and will not reach the chain · look at chain_outbox where status = 'failed'`);
+  try {
+    const signer = core.validator?.address;
+    if (signer && core.provider) {
+      const celo = Number(core.ethers.formatEther(await core.provider.getBalance(signer)));
+      if (celo < 0.5) console.error(`🚨 [outbox] the sending wallet is low on gas: ${celo.toFixed(3)} CELO left`);
+    }
+  } catch { /* a balance read failing is not news */ }
+});
+
 core.platform.registerScoreRoutes(core.app, {
   requireSecret: core.requireSecret,
   limiter: core.gaslessLimiter,
   gameTypes: core.GAME_TYPE,
+  // The chain outbox, off unless SCORE_OUTBOX=true. Read on every request so it
+  // can be switched off without a deploy.
+  outbox: { enabled: () => outboxOn(), enqueue: (row) => outbox.enqueue(row) },
   // Games whose score the server cuts to what the run's log supports. A list in
   // SCORE_ENFORCE, read on every request, so it can be switched off without a
   // deploy: set SCORE_ENFORCE=none.
@@ -104,6 +137,7 @@ core.platform.registerSubmitRoute(core.app, {
   registerUser: (wallet) => core.registerUser(wallet),
   resolveWager: (wagerId, score) => core.resolveOnChain(wagerId, score),
   isGaslessTx: (hash) => core._isGaslessTx(hash),
+  queuedRun: async (ticket, wallet, game, score) => { const row = await outboxStore.find(ticket); return !!row && row.wallet === String(wallet).toLowerCase() && row.game === game && Number(row.score) === Number(score); },
   verifyScoreTx: (hash, player, gameType) => core.verifyScoreTx(hash, player, gameType),
   bestThisSeason: core.platform.supabaseBestThisSeason(core.supabase),
   saveScore: (row) => core.saveScore(row),

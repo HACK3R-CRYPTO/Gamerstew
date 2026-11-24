@@ -50,6 +50,7 @@ export const SETTINGS: Record<string, Setting> = {
   SIGNER_MIN_CELO: s('Chain', 'number', 'Warn when the signer holds less CELO than this.', { default: '5' }),
 
   // ── gasless ──
+  SCORE_OUTBOX: s('Chain', 'bool', 'Queue scores and send them on-chain from the outbox, instead of making the player wait. Needs the chain_outbox table.', { default: 'false' }),
   SCORE_ENFORCE: s('Anti-cheat', 'list', 'Games whose score is cut to what the run log supports. "none" switches it off.', { default: 'stack,simon' }),
   GASLESS_SKILL_GAMES: s('Gasless', 'bool', 'Backend pays gas for skill-game scores. On unless set to "false".', { default: 'true' }),
   GASLESS_MAX_PER_WALLET_DAY: s('Gasless', 'int', 'Gasless saves one wallet may make per day.', { default: '60' }),

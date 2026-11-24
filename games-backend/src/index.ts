@@ -8,6 +8,8 @@ export { registerStrikeRoutes } from './modules/strike/routes';
 export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/routes';
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';
 export { registerBoardRoutes } from './modules/board/routes';
+export { createOutbox } from './modules/outbox/service';
+export { supabaseOutbox, ethersOutboxChain } from './modules/outbox/adapters';
 export { playCounts, ledgerCounts, mergeCounts, supabaseLedgerBoard, mergeBoards } from './modules/board/plays';
 export { supabaseStreaks, subgraphSeasonPlayers } from './modules/board/adapters';
 export { registerSeasonsRoutes } from './modules/seasons/routes';

@@ -42,9 +42,12 @@ export interface SubmitDeps {
   /** resolves a wager on-chain; returns its tx hash, or null if it did not land */
   resolveWager(wagerId: unknown, score: number): Promise<string | null>;
   isGaslessTx(hash: string): boolean;
+  /** Is there a queued run for this ticket, by this player, of this game, with this score?
+   *  The server checked that run and stored it; its transaction follows from the outbox. */
+  queuedRun?(sessionToken: string, wallet: string, game: string, score: number): Promise<boolean>;
   verifyScoreTx(hash: string, player: string, gameType: number): Promise<{ ok: boolean; reason?: string }>;
   bestThisSeason(wallet: string, game: string, season: number): Promise<number>;
-  saveScore(row: { wallet_address: string; game: string; score: number; game_time: number; season_number: number; wagered: unknown; wager_id: unknown; tx_hash: string }): Promise<void>;
+  saveScore(row: { wallet_address: string; game: string; score: number; game_time: number; season_number: number; wagered: unknown; wager_id: unknown; /** null while a queued run waits for its transaction */ tx_hash: string | null }): Promise<void>;
   /** the leaderboard, activity and stats caches that this save makes stale */
   invalidateCaches(game: string): void;
   awardXp(wallet: string, amount: number, reason: string): Promise<{ xp?: number; level?: number; leveledUp?: boolean } | null | undefined>;
@@ -130,7 +133,11 @@ export function createSubmitService(deps: SubmitDeps) {
     const txHash = wagerTxHash || scoreTxHash;
 
     // ── no proof, no save ───────────────────────────────────────────────────
-    if (!txHash || !TX_HASH_RE.test(txHash)) {
+    // A run in the outbox needs no transaction yet: the server itself checked it
+    // and stored it. Anything else still needs one.
+    const ticket = typeof scoreData.sessionToken === 'string' ? scoreData.sessionToken : '';
+    const queued = !txHash && !!ticket && !!deps.queuedRun && (await deps.queuedRun(ticket, playerAddress, game, score).catch(() => false));
+    if (!queued && (!txHash || !TX_HASH_RE.test(txHash))) {
       return reply(400, { error: 'Missing on-chain proof', reason: 'txHash required — every score must reference a GamePass contract tx' });
     }
     // A hash of the right shape is not a proof. A tx the player sent must have
