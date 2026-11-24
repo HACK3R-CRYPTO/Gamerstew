@@ -52,6 +52,14 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
   { id: 'stack_30', cat: 'skill', label: 'Stack 30+ blocks in Stack Tower', target: 1, reward: 20, match: scoreAtLeast('stack', 30) },
   { id: 'stack_45', cat: 'skill', label: 'Stack 45+ blocks in Stack Tower', target: 1, reward: 28, match: scoreAtLeast('stack', 45) },
   { id: 'stack_60', cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: scoreAtLeast('stack', 60) },
+  // a Word Ladder round tops out at 1,000 (five ladders, 200 each)
+  { id: 'ladder_500', cat: 'skill', label: 'Score 500+ in Word Ladder', target: 1, reward: 20, match: scoreAtLeast('ladder', 500) },
+  { id: 'ladder_750', cat: 'skill', label: 'Score 750+ in Word Ladder', target: 1, reward: 28, match: scoreAtLeast('ladder', 750) },
+  { id: 'ladder_900', cat: 'skill', label: 'Score 900+ in Word Ladder', target: 1, reward: 35, match: scoreAtLeast('ladder', 900) },
+  // a Street Strike game tops out at 150
+  { id: 'strike_60', cat: 'skill', label: 'Score 60+ in Street Strike', target: 1, reward: 20, match: scoreAtLeast('strike', 60) },
+  { id: 'strike_90', cat: 'skill', label: 'Score 90+ in Street Strike', target: 1, reward: 28, match: scoreAtLeast('strike', 90) },
+  { id: 'strike_120', cat: 'skill', label: 'Score 120+ in Street Strike', target: 1, reward: 35, match: scoreAtLeast('strike', 120) },
   { id: 'beat_personal_best', cat: 'special', label: 'Beat a personal best', target: 1, reward: 35, match: (r) => (r.isNewPb ? 1 : 0) },
   { id: 'variety_2', cat: 'special', absolute: true, label: 'Play 2 different games today', target: 2, reward: 25, match: gamesSeen },
   { id: 'variety_3', cat: 'special', absolute: true, label: 'Play 3 different games today', target: 3, reward: 40, match: gamesSeen },
