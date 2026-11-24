@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@/lib/track";
 
 // ─── Street Strike — Lagos street bowling ────────────────────────────────────
 // Not a neon alley. You roll an old tyre (the childhood game) down a Lagos
@@ -1718,7 +1719,7 @@ export default function Game() {
 <div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(34,16,79,0.68)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
             {!online && (
-              <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
+              <button onClick={() => { armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
             )}
             {online && !room && (
               <div style={{ marginTop: 10 }}>

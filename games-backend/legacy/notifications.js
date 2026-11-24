@@ -430,6 +430,23 @@ require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supaba
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
 core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
 // The inbox: read, delete and announcements, remembered per player (src/modules/inbox).
+// ─── Admin dashboard ─────────────────────────────────────────────────────────
+// Sign-in, roles, the dashboard's reads, the payout ledger and visit tracking:
+// src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
+// until that has run, its reads answer "migration_needed" and the two jobs
+// below do nothing.
+const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.supabase), logger: console });
+core.admin = adminService;
+core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
+// yesterday's and today's numbers, every hour (and once, a minute after boot)
+core.jobs.every('adminRollup', 60 * 60 * 1000, async () => { await adminService.rollup(); });
+setTimeout(() => { adminService.rollup().catch(() => {}); }, 60 * 1000).unref?.();
+// who is GoodDollar-verified: 25 wallets every 5 minutes, the most out of date first
+core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
+  const out = await adminService.sweepVerification((w) => core.isVerifiedStrict(w), 25);
+  if (out.newly > 0) console.log(`[admin] ${out.newly} wallet(s) newly seen as verified · checked ${out.checked}`);
+});
+
 core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.

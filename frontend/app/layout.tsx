@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Track from "@/components/Track";
 import Providers from "@/components/providers";
 import AppAudio from "@/components/AppAudio";
 import VatarBridge from "@/components/VatarBridge";
@@ -176,6 +177,8 @@ export default function RootLayout({
           {/* Activates the Vatar (Lagos Life) SDK only when embedded in a Vatar
               world · no-ops on standalone gamearenahq.xyz. */}
           <VatarBridge />
+          {/* page views for every visitor, signed in or not (first party, see lib/track.ts) */}
+          <Track />
           {children}
         </Providers>
       </body>

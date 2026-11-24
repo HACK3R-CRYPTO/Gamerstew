@@ -263,6 +263,7 @@ export function createScoreService(deps: ScoreDeps) {
             }
           }
           logger.warn(`⚠️  Gasless ${game} exhausted retries, falling back to voucher · ${who}…:`, msg(last));
+          try { deps.onEvent?.('tx_failed', { wallet: playerAddress, game, ref: String(msg(last)).slice(0, 140) }); } catch { /* the feed is not worth failing a score for */ }
         }
       }
 

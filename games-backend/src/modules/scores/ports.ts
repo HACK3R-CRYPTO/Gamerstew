@@ -75,6 +75,8 @@ export interface ScoreDeps {
   /** The chain outbox. When it is on, a checked score is queued and the player
    *  is answered at once; the transaction is sent from the queue. */
   outbox?: { enabled(): boolean; enqueue(row: { sessionToken: string; wallet: string; game: string; gameType: number; score: number }): Promise<{ ok: boolean }> };
+  /** Something worth a line in the admin activity feed (a transaction that would not go through). Never awaited. */
+  onEvent?: (kind: string, f: { wallet?: string; game?: string; ref?: string }) => void;
   /** Is the server's own score enforced for this game? Off when not given. */
   enforce?: (game: string) => boolean;
   now?: () => number;

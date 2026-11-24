@@ -106,6 +106,8 @@ core.platform.registerScoreRoutes(core.app, {
   // The chain outbox, off unless SCORE_OUTBOX=true. Read on every request so it
   // can be switched off without a deploy.
   outbox: { enabled: () => outboxOn(), enqueue: (row) => outbox.enqueue(row) },
+  // a score that would not go through shows in the admin activity feed
+  onEvent: (kind, f) => { if (core.admin) void core.admin.note(kind, f); },
   // Games whose score the server cuts to what the run's log supports. A list in
   // SCORE_ENFORCE, read on every request, so it can be switched off without a
   // deploy: set SCORE_ENFORCE=none.
@@ -220,6 +222,7 @@ core.recordRoomRun = async ({ account, game, score, ref, ms }) => {
   for (let attempt = 1; attempt <= 3 && !tx; attempt++) {
     try { tx = await core.enqueueScoreWrite(account, gameType, score); } catch (e) { last = e; }
   }
+  if (!tx && core.admin) void core.admin.note('tx_failed', { wallet: account, game, ref: `room ${ref}` });
   if (!tx) { console.warn(`⚠️  room round did not reach the chain · ${game} ${score} · ${who}… ·`, last?.shortMessage || last?.message || last); return null; }
   core.gaslessBudgetConsume(account);
   core._rememberGaslessTx(tx.hash);

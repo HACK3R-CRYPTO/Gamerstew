@@ -2,7 +2,7 @@
 
 > One place to see GameArena's users, players, games, verification, rewards and on-chain activity, with history, built only on real data.
 >
-> Status: PLAN. Nothing is built. This is the audit of what the system records today and what has to be added. Author: GameArena · Updated 2026-11-24
+> Status: FIRST VERSION BUILT on branch `nepa-up-light` (25 November 2026). Sign-in, roles, ten pages, history rebuilt from launch, stored verification, a payout ledger, first-party visit tracking and CSV export are done and were run end to end on a local database with sample data. NOT yet run against the production database: the migration has to be applied first. Not built: our own index of chain events (section 3, step 4). Author: GameArena · Updated 2026-11-25
 
 ---
 
@@ -123,3 +123,45 @@ A first useful dashboard (overview, users, players, games, activity feed, with h
 - Backfilled history is only as complete as the tables it is rebuilt from. Runs lost before the save-once fix (24 November) are missing from `activity` but present in `game_sessions`.
 - Checking verification for every wallet costs chain reads. Batched and spread out, it is small, but it is not free.
 - The admin area exposes wallet-level history. Access has to be role-checked on the server for every request, not hidden behind a link.
+
+## 6. What was built
+
+| Piece | Where |
+|---|---|
+| Tables and every metric's SQL | `games-backend/supabase-migrations/2026-11-25_admin_dashboard.sql` |
+| Sign-in, roles, reads, payout ledger, visit intake, verification sweep | `games-backend/src/modules/admin/` (`service.ts`, `adapters.ts`, `routes.ts`, `admin.test.ts`) |
+| Wiring and the two jobs (hourly rollup; verification, 25 wallets every 5 minutes) | `games-backend/legacy/notifications.js` |
+| Session cookie, server-side API helper | `frontend/lib/server/adminSession.ts`, `frontend/lib/server/adminApi.ts` |
+| Pages | `frontend/app/admin/` (`login`, and under `(in)`: overview, users, one player, games, traffic, verification, rewards, onchain, activity, reports, admins) |
+| Visit tracking | `frontend/lib/track.ts`, `frontend/components/Track.tsx`, `frontend/app/api/t/route.ts` |
+
+### 6.1 Turning it on
+
+1. Run the migration in the Supabase SQL editor.
+2. Run `select admin_backfill();` once. It rebuilds every past day from the runs already recorded.
+3. Insert the first Super Admin (the hash is made with `hashPassword` from the backend build; it is never committed).
+4. Open `/admin` and sign in. More admins are added from the Admins page.
+
+### 6.2 How it stays safe
+
+- A signed, HTTP-only, same-site cookie holds the session for 12 hours. It is signed with a key derived from the server secret.
+- The browser never talks to the backend's admin routes. The site's server does, with the internal secret, and names the admin by email. The backend looks that admin up again on every request and takes the role from the database, never from the request.
+- Five wrong passwords lock an email for 15 minutes. Passwords are stored as salted scrypt hashes.
+- Every sign-in and every change an admin makes is written to `admin_actions`.
+- All admin tables have row level security on with no policies, so the public database key can read none of them.
+
+### 6.3 What each decision became
+
+- **Admins** sign in with email and password.
+- **Visits count,** signed in or not: a random id kept in the browser, no network address stored, no third-party script. Counting starts the day it ships; earlier visits were never recorded and cannot be rebuilt.
+- **Active** means played. Visitors are shown beside it, not mixed into it.
+- **Prizes are paid by hand,** so the Rewards page has a form to record each payout with its transaction. Past payouts appear once they are entered.
+
+### 6.4 Honest limits
+
+- "Verified on" dates before the dashboard existed are the day of the first check, not the day the player verified.
+- The verified total per day is recorded from go-live onward and cannot be rebuilt for earlier days.
+- The On-chain page counts what our backend sent or stored. It does not read contract events from the chain yet.
+- Verification success rate is not measurable from our side (section 2, row 5).
+- "Sum of days" columns in Reports count a person once per day they were active.
+

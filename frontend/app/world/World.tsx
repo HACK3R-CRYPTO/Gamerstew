@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@/lib/track";
 
 // ─── /world — walkable 3D UP NEPA neighbourhood (client-only) ────────────────
 // This module is the whole 3D app. It is lazy-loaded by ./page.tsx with
@@ -256,6 +257,7 @@ export default function World() {
 
   const beginRound = () => {
     armWorldAudio();
+    track("game_start", { game: "UP NEPA 3D", mode: "charge" });
     startGame();
   };
   // Ranked Restore rounds (signed-in players). The server ticket is opened
@@ -275,6 +277,7 @@ export default function World() {
   const beginRestore = () => {
     armWorldAudio();
     if (opening.current) return;
+    track("game_start", { game: "UP NEPA 3D", mode: "restore" });
     setRankedRound(false);
     if (roomRun.current) { rStart(); return; }
     if (!rankedRef.current.canRank) { rStart(); return; }
