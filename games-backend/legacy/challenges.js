@@ -381,7 +381,10 @@ core.app.get('/api/weekly-challenge', async (req, res) => {
   const cacheKey = `weekly-challenge:${winStart}`;
   let byWallet = core.cacheGet(cacheKey);
   if (!byWallet) {
-    const counts = await core.subgraph.playCountsInWindow(winStart, winEnd);
+    // Both records, the higher count per player (src/modules/board/plays.ts): the
+    // subgraph alone showed 0 for weeks when it stopped indexing.
+    const { counts, sources } = await core.platform.playCounts({ subgraph: (a, b) => core.subgraph.playCountsInWindow(a, b), db: core.supabase }, winStart, winEnd);
+    if (!sources.subgraph || !sources.ledger) console.warn(`[weekly-challenge] counted with subgraph=${sources.subgraph} ledger=${sources.ledger}`);
     byWallet = {};
     for (const [w, v] of counts) byWallet[w] = { username: v.username, count: v.count };
     core.cacheSet(cacheKey, byWallet, core.MEM_TTL.leaderboard);
@@ -611,7 +614,8 @@ core.app.get('/api/weekly-challenge/payout-list', core.requireSecret, async (_, 
     // matches (gameType 3). Matches /api/weekly-challenge so the payout list can
     // never diverge from what the pool card shows. The old Supabase `activity`
     // count dropped rows and under-paid real players.
-    const counts = await core.subgraph.playCountsInWindow(
+    const { counts } = await core.platform.playCounts(
+      { subgraph: (a, b) => core.subgraph.playCountsInWindow(a, b), db: core.supabase },
       Math.floor(monday.getTime() / 1000),
       Math.floor(sunday.getTime() / 1000),
     );
