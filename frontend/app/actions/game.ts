@@ -500,3 +500,35 @@ export async function saveRun(accessToken: string | null, playerAddress: string,
   if (accessToken) return submitScore(accessToken, playerAddress, scoreData);
   return submitScoreMiniPay(playerAddress, '', '', scoreData);
 }
+
+// ═══ Inbox (notifications) ═══════════════════════════════════════════════════
+// Reading and deleting are done FOR a player, so they go through here, where
+// the caller is checked, and on to the backend with the internal secret.
+export type InboxKind = 'announcement' | 'whats_new' | 'reward' | 'rank' | 'reminder' | 'activity';
+export interface InboxItem { id: string; kind: InboxKind; category: string; title: string; body: string | null; url: string | null; sentAt: number; fromGameArena: boolean; read: boolean }
+export interface InboxPage { ok: boolean; items: InboxItem[]; unread: number; more: boolean; unavailable?: boolean }
+
+export async function inboxList(accessToken: string | null, address: string, before?: number): Promise<InboxPage> {
+  const none: InboxPage = { ok: false, items: [], unread: 0, more: false, unavailable: true };
+  if (!await allowed(accessToken, address)) return none;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/inbox/${address.toLowerCase()}?limit=30${before ? `&before=${Math.floor(before)}` : ''}`, { headers: { 'x-internal-secret': INTERNAL_SECRET! }, cache: 'no-store' });
+    if (!res.ok) return none;
+    const d = await res.json();
+    return { ok: true, items: d.items ?? [], unread: Number(d.unread ?? 0), more: !!d.more, unavailable: !!d.unavailable };
+  } catch {
+    return none;
+  }
+}
+
+async function inboxWrite(accessToken: string | null, address: string, what: 'read' | 'delete', target: { ids: string[] } | { all: true }): Promise<boolean> {
+  if (!await allowed(accessToken, address)) return false;
+  try {
+    const { ok } = await internalFetch(`/api/inbox/${address.toLowerCase()}/${what}`, 'all' in target ? { all: true } : { ids: target.ids.map(Number) });
+    return ok;
+  } catch {
+    return false;
+  }
+}
+export async function inboxMarkRead(accessToken: string | null, address: string, target: { ids: string[] } | { all: true }): Promise<boolean> { return inboxWrite(accessToken, address, 'read', target); }
+export async function inboxDelete(accessToken: string | null, address: string, target: { ids: string[] } | { all: true }): Promise<boolean> { return inboxWrite(accessToken, address, 'delete', target); }
