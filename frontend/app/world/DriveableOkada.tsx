@@ -130,7 +130,7 @@ export default function DriveableOkada({
       {near && (
         <Html center position={[0, 2.5, 0]} distanceFactor={10} style={{ pointerEvents: "auto" }}>
           {/* Tap the prompt on the bike to ride — the natural, no-corner-button way. */}
-          <button
+          <button data-ride-prompt=""
             onClick={(e) => {
               e.stopPropagation();
               worldControls.enterExit = true;

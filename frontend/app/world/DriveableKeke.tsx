@@ -218,7 +218,7 @@ export default function DriveableKeke({
       <KekeModel seed={41} pax={0} speed={() => speed.current} driver={false} player={() => worldControls.driving} />
       {near && (
         <Html center position={[0, 2.5, 0]} distanceFactor={10} zIndexRange={[25, 0]} style={{ pointerEvents: "auto" }}>
-          <button
+          <button data-ride-prompt=""
             onClick={(e) => { e.stopPropagation(); worldControls.enterExit = true; }}
             style={{
               fontFamily: "system-ui, sans-serif",

@@ -151,7 +151,7 @@ export default function World() {
   const [muted, setMuted] = useState(false);
   // Free-roam is the default: you spawn in the city and roam. The mode picker
   // is an on-demand launcher, not a screen that blocks the view.
-  const [modesOpen, setModesOpen] = useState(true); // land on the lobby; Explore closes it
+  const [modesOpen, setModesOpen] = useState(true); // land on the lobby; only Free Roam closes it
   // Personal-best time for Restore (localStorage), computed when a run is won.
   const [bestInfo, setBestInfo] = useState<{ isBest: boolean; prevBest: number | null }>({ isBest: false, prevBest: null });
   const hud = useWorldStore((s) => s.hud);
@@ -251,6 +251,36 @@ export default function World() {
     armWorldAudio();
     rStart();
   };
+  // The lobby's Start button goes straight into the round. The mode's scene has
+  // to mount before its round can begin, so the start is held until the mode is
+  // showing its ready state, then fired once (see the effect below).
+  const [autoStart, setAutoStart] = useState<null | "restore" | "charge">(null);
+  const pickFromLobby = (m: "restore" | "charge" | "roam") => {
+    armWorldAudio();
+    if (m === "roam") { setModesOpen(false); return; }
+    if (m === "charge") backToIdle(); else rReset();
+    setAutoStart(m);
+    setAppMode(m);
+  };
+  useEffect(() => {
+    if (!autoStart || appMode !== autoStart) return;
+    const ready = autoStart === "restore" ? rState === "idle" : mode === "idle";
+    if (!ready) return;
+    const t = setTimeout(() => { if (autoStart === "restore") beginRestore(); else beginRound(); setAutoStart(null); }, 1300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, appMode, rState, mode]);
+
+  // While the lobby is open nothing is playable: movement input is dropped and
+  // the stick is hidden. Scene.tsx reads the same flag to turn the camera slowly.
+  const lobbyOpen = appMode === "menu" && modesOpen && !driving;
+  const lobbyRef = useRef(lobbyOpen);
+  useEffect(() => {
+    lobbyRef.current = lobbyOpen;
+    useAppStore.getState().setLobby(lobbyOpen);
+    if (lobbyOpen) { worldControls.input.x = 0; worldControls.input.z = 0; }
+  }, [lobbyOpen]);
+
   const toMenu = () => {
     setModesOpen(true); // back from a game → straight to the lobby
     backToIdle();
@@ -266,7 +296,14 @@ export default function World() {
   };
 
   // Reset to the menu on mount / tear down audio on unmount.
+  // This runs again whenever React hides and re-shows the world while part of
+  // a mode's scene is still loading. It must only reset the game the first
+  // time, or starting a mode throws the player back to the lobby.
+  const didInit = useRef(false);
   useEffect(() => {
+    setWorldAudioEnabled(true);
+    if (didInit.current) return () => setWorldAudioEnabled(false);
+    didInit.current = true;
     resetWorldControls();
     backToIdle();
     rReset();
@@ -304,6 +341,7 @@ export default function World() {
       if (k["s"] || k["arrowdown"]) z += 1;
       if (k["a"] || k["arrowleft"]) x -= 1;
       if (k["d"] || k["arrowright"]) x += 1;
+      if (lobbyRef.current) { x = 0; z = 0; } // the lobby is a gate
       worldControls.input.x = x;
       worldControls.input.z = z;
     };
@@ -991,7 +1029,7 @@ export default function World() {
 
       {/* ── Mode picker — an on-demand launcher, not a blocking screen ─────── */}
       {appMode === "menu" && !driving && modesOpen && (
-        <ModeSelect onClose={() => setModesOpen(false)} />
+        <ModeSelect touch={isMobile} onPick={pickFromLobby} />
       )}
       {/* "Play a mode" launcher: roam freely, open the picker when you want it. */}
       {appMode === "menu" && !driving && !modesOpen && (
@@ -1006,7 +1044,7 @@ export default function World() {
             letterSpacing: "0.03em", boxShadow: "0 8px 22px rgba(80,40,160,0.5)",
           }}
         >
-          🎮 Game modes
+          Choose a mode
         </button>
       )}
 
@@ -1030,7 +1068,7 @@ export default function World() {
       )}
 
       {/* ── Restore the Light START overlay ───────────────────────────────── */}
-      {appMode === "restore" && rState === "idle" && (
+      {appMode === "restore" && rState === "idle" && !autoStart && (
         <div style={overlay}>
           <div style={card}>
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>UP NEPA · THE WHOLE AREA DON BLACKOUT</div>
@@ -1134,7 +1172,7 @@ export default function World() {
       )}
 
       {/* ── Charge Rush START overlay ─────────────────────────────────── */}
-      {appMode === "charge" && mode === "idle" && (
+      {appMode === "charge" && mode === "idle" && !autoStart && (
         <div style={overlay}>
           <div style={card}>
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>UP NEPA · LIGHT DON COME</div>
@@ -1242,7 +1280,7 @@ export default function World() {
         />
       )}
 
-      <Joystick />
+      {!lobbyOpen && appMode !== "intro" && <Joystick />}
 
       <style>{`
         @keyframes worldFxFlash {

@@ -101,6 +101,7 @@ export default function Scene({
   const lowPerf = useWorldStore((s) => s.lowPerf);
   const setLowPerf = useWorldStore((s) => s.setLowPerf);
   const mode = useAppStore((s) => s.mode);
+  const lobby = useAppStore((s) => s.lobby);
 
   // Parked-vehicle colliders exist only in free-roam; both game modes hide the
   // parked cars (moving traffic instead), so their colliders must be off there too.
@@ -197,6 +198,11 @@ export default function Scene({
           preserved while the camera follows you. Drag = rotate, wheel/pinch = zoom. */}
       <OrbitControls
         makeDefault
+        // behind the lobby the street turns slowly on its own; the player cannot steer it
+        autoRotate={lobby && mode === "menu"}
+        autoRotateSpeed={0.45}
+        enableRotate={!lobby}
+        enableZoom={!lobby}
         enablePan={false}
         enableDamping
         dampingFactor={0.12}

@@ -15,11 +15,16 @@ export type AppMode = "intro" | "menu" | "restore" | "charge";
 interface AppStore {
   mode: AppMode;
   setMode: (m: AppMode) => void;
+  /** True while the mode lobby is open: the world is a backdrop, not playable. */
+  lobby: boolean;
+  setLobby: (v: boolean) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
   mode: "menu",
   setMode: (mode) => set({ mode }),
+  lobby: true,
+  setLobby: (lobby) => set({ lobby }),
 }));
 
 // Dev-only: lets the headless harness jump straight into a mode for QA.
