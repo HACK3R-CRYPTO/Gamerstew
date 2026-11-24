@@ -424,7 +424,11 @@ core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret
 // The inbox: read, delete and announcements, remembered per player (src/modules/inbox).
 core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
-core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret });
+// Rooms are also written to the database, and read back here, so a deploy does not end them.
+const roomKeeper = core.platform.supabaseRoomKeeper(core.supabase);
+const roomService = core.platform.createRoomService(core.platform.ROOM_GAMES, { keep: roomKeeper });
+roomKeeper.loadAll().then((saved) => { const n = roomService.restore(saved); if (n) console.log(`[rooms] ${n} open room(s) restored`); }).catch(() => {});
+core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService });
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.

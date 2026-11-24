@@ -59,7 +59,12 @@ export function cleanName(raw: unknown): string {
   return Array.from(s).slice(0, 16).join('') || 'Player';
 }
 
-export function createRoomService(games: Record<string, GameRules>, opts: { now?: () => number; randomHex?: (bytes: number) => string } = {}) {
+/** Somewhere rooms are written so a restart does not end them. Both calls are
+ *  best effort: a room that cannot be saved still works, it just will not
+ *  survive a restart. */
+export interface RoomKeeper { save(room: Room): void; remove(code: string): void }
+
+export function createRoomService(games: Record<string, GameRules>, opts: { now?: () => number; randomHex?: (bytes: number) => string; keep?: RoomKeeper } = {}) {
   const now = opts.now ?? Date.now;
   const hex = opts.randomHex ?? ((n: number) => randomBytes(n).toString('hex'));
   const rooms = new Map<string, Room>();
@@ -101,7 +106,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   }
   const blank = (name: string, t: number): Player => ({ name, token: hex(16), seen: t, left: false, score: null, done: false, progress: 0 });
 
-  return {
+  const api = {
     games: () => Object.keys(games),
 
     create(game: unknown, name: unknown): Seat | Fail {
@@ -216,6 +221,36 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
     },
 
     count: () => rooms.size,
+
+    /** Put back the rooms that were open before a restart. Rooms that have
+     *  gone stale, are for a game this server no longer has, or clash with a
+     *  room already open are skipped. Returns how many came back. */
+    restore(list: unknown): number {
+      if (!Array.isArray(list)) return 0;
+      const t = now(); let n = 0;
+      for (const r of list as Room[]) {
+        if (!r || typeof r.code !== 'string' || !Array.isArray(r.players) || rooms.has(r.code)) continue;
+        if (!Object.prototype.hasOwnProperty.call(games, r.game) || t - r.touched > ROOM_TTL_MS || rooms.size >= MAX_ROOMS) continue;
+        rooms.set(r.code, r); n++;
+      }
+      return n;
+    },
+  };
+
+  // Every change that matters is written down: who is in the room, the round,
+  // the scores. Progress and polling are not; they are remade within a second.
+  const keep = opts.keep;
+  if (!keep) return api;
+  const record = (code: unknown) => { const c = String(code ?? '').toUpperCase(); const r = rooms.get(c); try { if (r) keep.save(r); else keep.remove(c); } catch { /* best effort */ } };
+  const then = <T>(out: T | Promise<T>, code: (o: T) => unknown): void => { void Promise.resolve(out).then((o) => { if (!isFail(o)) record(code(o)); }).catch(() => {}); };
+  return {
+    ...api,
+    create(game: unknown, name: unknown) { const out = api.create(game, name); then(out, (o) => (o as Seat).code); return out; },
+    join(code: unknown, name: unknown) { const out = api.join(code, name); then(out, () => code); return out; },
+    start(code: unknown, token: unknown) { const out = api.start(code, token); then(out, () => code); return out; },
+    finish(code: unknown, token: unknown, proof: unknown) { const out = api.finish(code, token, proof); then(out, () => code); return out; },
+    rematch(code: unknown, token: unknown) { const out = api.rematch(code, token); then(out, () => code); return out; },
+    leave(code: unknown, token: unknown) { const out = api.leave(code, token); then(out, () => code); return out; },
   };
 }
 export type RoomService = ReturnType<typeof createRoomService>;

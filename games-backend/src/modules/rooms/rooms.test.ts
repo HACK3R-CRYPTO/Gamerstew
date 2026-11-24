@@ -200,3 +200,40 @@ test('Rhythm room: the seed picks the song, and different seeds reach different 
   assert.ok(picks.size >= 3);
   assert.equal(rhythmSongFor('zz'), rhythmSongFor('')); // a seed that is not hex still lands on a real song
 });
+
+test('a restart does not end a room: it is written on every change that matters and comes back whole', async () => {
+  const disk = new Map<string, string>(); const writes: string[] = [];
+  const keep = { save: (r: { code: string }) => { disk.set(r.code, JSON.stringify(r)); writes.push('save'); }, remove: (c: string) => { disk.delete(c); writes.push('remove'); } };
+  const clock = { t: 1_000_000 };
+  const before = createRoomService(ROOM_GAMES, { now: () => clock.t, keep });
+  const host = ok<Seat>(before.create('stack', 'Ada')); const guest = ok<Seat>(before.join(host.code, 'Bo'));
+  ok<RoomView>(before.start(host.code, host.token));
+  ok<RoomView>(await before.finish(host.code, host.token, { dropLog: [], score: 0 }));
+  await new Promise((r) => setTimeout(r, 5)); // saves are not awaited by the caller
+  const savedSoFar = writes.length;
+  before.progress(host.code, guest.token, 4); before.get(host.code, guest.token);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(writes.length, savedSoFar, 'progress and polling are not written');
+  assert.equal(savedSoFar, 4);
+
+  // the server restarts 30 seconds later: a new service, nothing in memory
+  clock.t += 30_000;
+  const after = createRoomService(ROOM_GAMES, { now: () => clock.t, keep });
+  assert.equal(after.count(), 0);
+  assert.equal(after.restore([...disk.values()].map((j) => JSON.parse(j))), 1);
+  const v = ok<RoomView>(after.get(host.code, guest.token));
+  assert.equal(v.status, 'playing'); assert.equal(v.round, 1); assert.equal(v.you, 1);
+  assert.equal(v.players[0]!.done, true); assert.equal(v.players[1]!.done, false);
+  const done = ok<RoomView>(await after.finish(host.code, guest.token, { dropLog: [], score: 0 }));
+  assert.equal(done.status, 'over');
+
+  // stale rooms, unknown games and duplicates are not brought back
+  const stale = { ...JSON.parse([...disk.values()][0]!), code: 'OLDER', touched: clock.t - 60 * 60 * 1000 };
+  const odd = { ...JSON.parse([...disk.values()][0]!), code: 'ODDGM', game: 'chess' };
+  assert.equal(after.restore([stale, odd, JSON.parse([...disk.values()][0]!), null, 'junk']), 0);
+
+  // the last player leaving removes the saved room too
+  after.leave(host.code, host.token); after.leave(host.code, guest.token);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(disk.size, 0);
+});
