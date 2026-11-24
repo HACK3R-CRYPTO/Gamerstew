@@ -21,7 +21,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 /** A finished round on its way to the chain: only for a signed-in seat, in a game the server scores itself. */
 export interface ChainNote { state: "sending" | "recorded" | "failed"; tx?: string }
-export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; chain?: ChainNote }
+export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** the signed-in player in this seat, when there is one */ wallet?: string; chain?: ChainNote }
 export type StakeState = "collecting" | "ready" | "playing" | "settling" | "settled" | "void";
 export type PayState = "paid" | "unpaid" | "expired";
 /** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */

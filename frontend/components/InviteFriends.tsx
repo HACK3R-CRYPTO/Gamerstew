@@ -5,16 +5,23 @@
 // code filled in. Shown only to a signed-in player; with no friends yet it
 // points to the Friends page.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { explainFriends, friendLabel, useFriends } from "@/hooks/useFriends";
 import { track } from "@/lib/track";
 
 export default function InviteFriends({ game, code }: { game: string; code: string }) {
   const f = useFriends(); const router = useRouter();
-  const [open, setOpen] = useState(false); const [sent, setSent] = useState<Record<string, "sending" | "sent" | string>>({});
-  if (!f.signedIn || f.state !== "ready") return null;
+  const [open, setOpen] = useState(true); const [sent, setSent] = useState<Record<string, "sending" | "sent" | string>>({});
   const invite = (wallet: string) => { setSent((s) => ({ ...s, [wallet]: "sending" })); track("friend_invited", { game }); f.invite(wallet, game, code).then(() => setSent((s) => ({ ...s, [wallet]: "sent" }))).catch((e: Error) => setSent((s) => ({ ...s, [wallet]: explainFriends(e.message) }))); };
+  // a friend tapped on the "online now" list before the room existed: invite them the moment it does
+  const did = useRef(false); const ready = f.state === "ready"; const inviteRef = useRef(invite); inviteRef.current = invite;
+  useEffect(() => {
+    if (!ready || did.current) return; did.current = true;
+    let w = ""; try { w = window.sessionStorage.getItem("ga_invite_next") || ""; window.sessionStorage.removeItem("ga_invite_next"); } catch { /* nothing waiting */ }
+    if (w) inviteRef.current(w);
+  }, [ready]);
+  if (!f.signedIn || f.state !== "ready") return null;
   return (
     <div className="if">
       <button className="if-top" onClick={() => (f.friends.length ? setOpen((o) => !o) : router.push("/friends"))} aria-expanded={open}>{f.friends.length ? `Invite a friend · ${f.friends.filter((p) => p.online).length} online` : "Add friends to invite them"}<span>{f.friends.length ? (open ? "▴" : "▾") : "›"}</span></button>

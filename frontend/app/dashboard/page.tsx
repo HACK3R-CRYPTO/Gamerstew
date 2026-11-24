@@ -14,6 +14,7 @@ import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import InstallPrompt from "@/components/InstallPrompt";
+import FriendsStrip from "@/components/home/FriendsStrip";
 import { useSignMessage } from "wagmi";
 import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
@@ -534,6 +535,9 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* who is online right now, and a way into friends */}
+        <FriendsStrip />
 
         {/* The home screen is the games. One Play button, one line for this
             week's challenge, then the gallery (components/home/HomeGames.tsx).

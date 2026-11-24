@@ -103,7 +103,7 @@ export interface RoomView {
   goal: number;
   /** seconds since the round began, by the server's clock */
   elapsed: number;
-  players: { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** this round on the chain, for a signed-in seat in a server-checked game */ chain?: ChainNote }[];
+  players: { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** the signed-in player in this seat (a public address), so the others can add them as a friend. Sent to players in the room only. */ wallet?: string; /** this round on the chain, for a signed-in seat in a server-checked game */ chain?: ChainNote }[];
   /** the round's deal. Only sent to players in the room, and only once it has started. */
   deal?: unknown;
   /** true when this room can be played for G$ (the server allows it and the game's scores are the server's own) */
@@ -174,7 +174,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, watching: watchingNow(room.code, t), goal: games[room.game]!.maxProgress, stakes: !!opts.stakes && games[room.game]!.verified,
       elapsed: status === 'waiting' ? 0 : Math.max(0, Math.round((t - room.startedAt) / 1000)),
       // tokens are the players' keys to the room: they never leave the server
-      players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t), ...(p.chain ? { chain: { ...p.chain } } : {}) })),
+      players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t), ...(seat >= 0 && p.account ? { wallet: p.account } : {}), ...(p.chain ? { chain: { ...p.chain } } : {}) })),
     };
     if (seat >= 0 && status !== 'waiting') v.deal = games[room.game]!.deal(room.seed);
     if (v.stakes && opts.stakes) v.stakeTerms = { spender: opts.stakes.spender, entries: opts.stakes.entries, feeBps: opts.stakes.feeBps };

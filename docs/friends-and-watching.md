@@ -15,6 +15,18 @@ A signed-in player keeps a list of friends.
 
 The Friends page opens from the profile ("👥 Friends").
 
+### Where friends show up
+
+| Place | What the player sees |
+|---|---|
+| Home | A row under the greeting: friends' faces with a green dot on the ones online, "2 online now", and a badge for waiting requests. With no friends it says "Add friends" |
+| "Play with friends" sheet | "2 friends are online", each with an Invite button. One tap opens the room and sends the invite |
+| Inside a room | The invite list, open from the start, online friends first |
+| Beside each player in a room, in the lobby and on the result card | "+ Add friend", "Accept friend", "Requested ✓" or "Friend ✓". This is how two people who met by a room code become friends |
+| Friends page | The full list. On a wide screen it uses the normal top bar and two columns |
+
+A room tells its own players which seats are signed in (a public address), so they can add each other. A spectator is never told.
+
 ### Who is online
 
 A friend with the app open shows a green dot and "Online". Otherwise the row says when they were last active ("Active 5m ago"). Online friends come first, on the Friends page and in a room's invite list.
@@ -70,7 +82,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 353 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 354 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

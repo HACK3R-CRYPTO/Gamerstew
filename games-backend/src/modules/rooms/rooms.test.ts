@@ -297,3 +297,11 @@ test('spectators: a stranger sees scores and progress but never the deal, and is
   w.clock.t += 9000; // nobody looked for a while
   assert.equal(ok<RoomView>(w.svc.get(r.code, r.host.token)).watching, 0);
 });
+
+test('a signed-in seat is named to the other players, so they can add each other, and never to a spectator', () => {
+  const w = world(); const A = '0x' + 'a'.repeat(40);
+  const host = ok<Seat>(w.svc.create('toy', 'Ada', A)); ok<Seat>(w.svc.join(host.code, 'Bo'));
+  const mine = ok<RoomView>(w.svc.get(host.code, host.token));
+  assert.equal(mine.players[0]!.wallet, A); assert.equal(mine.players[1]!.wallet, undefined, 'a guest has none');
+  assert.equal(ok<RoomView>(w.svc.get(host.code, undefined, 'onlooker')).players[0]!.wallet, undefined);
+});

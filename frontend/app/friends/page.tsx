@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppBottomNav from "@/components/AppBottomNav";
+import AppHeader from "@/components/AppHeader";
 import { explainFriends, friendLabel, seenLabel, useFriends, type Found, type Friend } from "@/hooks/useFriends";
 import { track } from "@/lib/track";
 
@@ -16,6 +17,9 @@ const tint = (w: string) => `hsl(${parseInt(w.slice(2, 8), 16) % 360} 62% 46%)`;
 
 export default function FriendsPage() {
   const router = useRouter(); const f = useFriends();
+  // on a wide screen the four main places sit in the top bar, as on every other page
+  const [wide, setWide] = useState(false);
+  useEffect(() => { const q = window.matchMedia("(min-width: 900px)"); const on = () => setWide(q.matches); on(); q.addEventListener("change", on); return () => q.removeEventListener("change", on); }, []);
   const [to, setTo] = useState(""); const [msg, setMsg] = useState<{ text: string; good: boolean } | null>(null); const [busy, setBusy] = useState(""); const [copied, setCopied] = useState(false); const [sure, setSure] = useState("");
   // ── Finding someone ───────────────────────────────────────────────────────
   // Names are suggested while the player types (after a short pause, so a fast
@@ -56,19 +60,22 @@ export default function FriendsPage() {
   const share = () => { void navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600); };
 
   const Row = ({ p, children }: { p: Friend; children: React.ReactNode }) => (
-    <li><span className="av" style={{ background: tint(p.wallet) }}>{face(p)}{p.online && <i className="dot" aria-hidden />}</span><button className="nm" onClick={() => router.push(`/pass/${p.name ?? p.wallet}`)}><b>{friendLabel(p)}</b>{seenLabel(p) && <small className={p.online ? "on" : ""}>{seenLabel(p)}</small>}</button><span className="acts">{children}</span></li>
+    <li><span className="av" style={{ background: tint(p.wallet) }}>{face(p)}{p.online && <i className="dot" aria-hidden />}</span><button className="nm" onClick={() => router.push(`/pass/${p.name ?? p.wallet}`)}><b>{friendLabel(p)}</b><small className={p.online ? "on" : ""}>{seenLabel(p) || (p.since && f.friends.includes(p) ? "Offline" : "")}</small></button><span className="acts">{children}</span></li>
   );
 
   return (
+    <div className="frp">
+    <AppHeader tone="light" />
     <main className="fr">
-      <header><button onClick={() => router.back()} aria-label="Back">←</button><h1>Friends</h1><span /></header>
+      <header><button onClick={() => router.back()} aria-label="Back">←</button><h1>Friends{f.state === "ready" && f.friends.some((p) => p.online) ? <em><i /> {f.friends.filter((p) => p.online).length} online</em> : null}</h1><span /></header>
 
       {f.state === "guest" && <div className="empty"><b>Sign in to add friends</b><span>Your friends list is saved to your account, so it follows you to every device.</span><button className="go" onClick={() => router.push("/home?signin=1")}>Sign in</button></div>}
       {f.state === "loading" && <p className="note">Loading your friends…</p>}
       {f.state === "error" && <div className="empty"><b>Could not load your friends</b><span>Check your connection and try again.</span><button className="go" onClick={() => void f.refresh()}>Try again</button></div>}
 
       {f.state === "ready" && (
-        <>
+        <div className="cols">
+          <div className="col">
           {linked && stateOf(linked) !== "friends" && (
             <section className="card hi">
               <label>{stateOf(linked) === "incoming" ? "They asked to be your friend" : "Add this player?"}</label>
@@ -89,17 +96,30 @@ export default function FriendsPage() {
 
           {f.incoming.length > 0 && <section><h2>Requests · {f.incoming.length}</h2><ul>{f.incoming.map((p) => <Row key={p.wallet} p={p}><button className="yes" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.accept(p.wallet), "You are now friends.")}>Accept</button><button className="no" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request declined.")}>Decline</button></Row>)}</ul></section>}
 
+          {f.outgoing.length > 0 && <section><h2>Waiting for an answer · {f.outgoing.length}</h2><ul>{f.outgoing.map((p) => <Row key={p.wallet} p={p}><button className="plain" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request cancelled.")}>Cancel</button></Row>)}</ul></section>}
+          </div>
+          <div className="col">
           <section><h2>Your friends · {f.friends.length}{f.friends.some((p) => p.online) ? <em> · {f.friends.filter((p) => p.online).length} online</em> : null}</h2>
             {f.friends.length === 0 ? <p className="note left">No friends yet. Find a player above, or send your link on WhatsApp.</p> : <ul>{f.friends.map((p) => <Row key={p.wallet} p={p}>{sure === p.wallet ? <><button className="no" onClick={() => { setSure(""); void run(p.wallet, () => f.remove(p.wallet), "Removed."); }}>Remove</button><button className="plain" onClick={() => setSure("")}>Keep</button></> : <button className="plain" onClick={() => setSure(p.wallet)} aria-label={`Remove ${friendLabel(p)}`}>✕</button>}</Row>)}</ul>}
             {f.friends.length > 0 && <p className="note left">To play together, open a room in any game and tap “Invite a friend”.</p>}
           </section>
-
-          {f.outgoing.length > 0 && <section><h2>Waiting for an answer · {f.outgoing.length}</h2><ul>{f.outgoing.map((p) => <Row key={p.wallet} p={p}><button className="plain" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request cancelled.")}>Cancel</button></Row>)}</ul></section>}
-        </>
+          </div>
+        </div>
       )}
-      <AppBottomNav tone="light" />
+      </main>
+      <AppBottomNav wide={wide} tone="light" />
       <style>{`
-        .fr { min-height: 100dvh; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #efe6ff 55%, #e6dbff 100%); color: #22104f; padding: calc(10px + env(safe-area-inset-top)) 16px calc(120px + env(safe-area-inset-bottom)); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; gap: 16px; max-width: 560px; margin: 0 auto; }
+        .frp { min-height: 100dvh; width: 100%; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #efe6ff 55%, #e6dbff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+        .fr { padding: 14px 16px calc(120px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; max-width: 560px; margin: 0 auto; }
+        .cols, .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .fr h1 em { font: 800 14px ui-sans-serif, system-ui, sans-serif; color: #15803d; margin-left: 12px; vertical-align: middle; display: inline-flex; align-items: center; gap: 6px; } .fr h1 em i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.2); }
+        @media (min-width: 900px) {
+          .fr { max-width: 1180px; padding: 26px 32px 80px; }
+          .fr header { grid-template-columns: 1fr !important; } .fr header button, .fr header > span { display: none; } .fr h1 { text-align: left !important; font-size: 34px !important; }
+          .cols { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 28px; align-items: start; }
+          .col:first-child { position: sticky; top: 96px; }
+          .col:last-child ul { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+        }
         .fr header { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; } .fr header button { width: 44px; height: 44px; border-radius: 14px; border: none; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.14); font-size: 19px; color: #22104f; cursor: pointer; }
         .fr h1 { font-family: "Melon Pop", sans-serif; font-weight: 400; font-size: 30px; margin: 0; text-align: center; } .fr h2 { font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(34,16,79,0.72); margin: 0 2px 8px; }
         .card { background: #fff; border-radius: 20px; padding: 16px; box-shadow: 0 0 0 1px rgba(76,29,149,0.12), 0 18px 30px -26px rgba(76,29,149,0.8); display: grid; gap: 10px; } .card label { font-weight: 800; font-size: 15px; }
@@ -125,6 +145,6 @@ export default function FriendsPage() {
         .note { margin: 0; font-size: 14.5px; color: rgba(34,16,79,0.72); text-align: center; } .note.left { text-align: left; margin: 8px 2px 0; }
         .empty { margin-top: 10vh; display: grid; gap: 10px; text-align: center; justify-items: center; } .empty b { font-size: 21px; } .empty span { color: rgba(34,16,79,0.72); font-size: 15px; line-height: 1.45; max-width: 320px; } .empty .go { margin-top: 6px; }
       `}</style>
-    </main>
+    </div>
   );
 }
