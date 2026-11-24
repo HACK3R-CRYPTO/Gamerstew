@@ -61,3 +61,16 @@ test('the activity feed comes from our own saved runs, with names, and only fall
   const down = createBoardService({ ...base, subgraph, resolveUsername: async () => null, recentPlays: async () => ({ ok: false, rows: [] }) } as unknown as BoardDeps);
   assert.equal(((await down.activity({})).body.activity as { player: string }[])[0]!.player, '0xold');
 });
+
+test('all-time totals keep moving after the subgraph stops: runs saved since are added, and totals never go back', async () => {
+  const base = { gameTypes: { stack: 2 }, currentSeason: () => 1, seasonBounds: () => ({ start: 0, end: 9 }), streaks: async () => new Map(), treasuryBalance: async () => '0', resolveUsername: async () => null, cache: { get: () => undefined, set: () => {} } } as unknown as BoardDeps;
+  const subgraph = { leaderboard: async () => [], recentActivity: async () => [], globalStats: async () => ({ totalPlayers: 974, totalScores: 63948 }), seasonPlayerIds: async () => [] };
+  const asked: string[] = [];
+  const own = (players: number | null, since: number | null, head = 1_793_400_000) => ({ players: async () => players, runsSince: async (iso: string) => { asked.push(iso); return since; }, subgraphHeadSec: async () => head });
+  const run = async (o?: ReturnType<typeof own>) => (await createBoardService({ ...base, subgraph, ...(o ? { own: o } : {}) } as unknown as BoardDeps).stats()).body as { totalUsers: number; totalGames: number };
+  assert.deepEqual(await run().then((b) => [b.totalUsers, b.totalGames]), [974, 63948]);            // nothing of our own: as before
+  assert.deepEqual(await run(own(981, 12)).then((b) => [b.totalUsers, b.totalGames]), [981, 63960]); // more players, 12 runs since
+  assert.equal(asked[0], new Date(1_793_400_000 * 1000).toISOString());
+  assert.deepEqual(await run(own(600, null)).then((b) => [b.totalUsers, b.totalGames]), [974, 63948]); // a smaller or failed count never lowers a total
+  assert.deepEqual(await run(own(981, 99, 0)).then((b) => [b.totalUsers, b.totalGames]), [981, 63948]); // head unknown: no guess at what is new
+});

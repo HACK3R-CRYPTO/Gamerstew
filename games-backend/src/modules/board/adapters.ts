@@ -15,6 +15,21 @@ export function supabaseRecentPlays(db: SupabaseLike) {
   };
 }
 
+/** Two counts from our own tables, asked as counts (no rows are sent back):
+ *  how many players there are, and how many runs were saved after a moment. */
+export function supabaseOwnTotals(db: SupabaseLike) {
+  return {
+    async players(): Promise<number | null> {
+      const { count, error } = await db.from('users').select('wallet_address', { count: 'exact', head: true });
+      return error || typeof count !== 'number' ? null : count;
+    },
+    async runsSince(sinceIso: string): Promise<number | null> {
+      const { count, error } = await db.from('activity').select('id', { count: 'exact', head: true }).gt('created_at', sinceIso);
+      return error || typeof count !== 'number' ? null : count;
+    },
+  };
+}
+
 /** Play streaks for a page of wallets, in one read. */
 export function supabaseStreaks(db: SupabaseLike) {
   return async (wallets: string[]): Promise<Map<string, number>> => {

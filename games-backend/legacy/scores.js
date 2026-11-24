@@ -233,6 +233,7 @@ core.platform.registerBoardRoutes(core.app, {
   results: core.results,
   streaks: core.platform.supabaseStreaks(core.supabase),
   recentPlays: core.platform.supabaseRecentPlays(core.supabase),
+  own: { ...core.platform.supabaseOwnTotals(core.supabase), subgraphHeadSec: async () => { try { const d = await core.subgraph.gql('{ _meta { block { timestamp } } }'); return Number(d && d._meta && d._meta.block && d._meta.block.timestamp) || 0; } catch { return 0; } } },
   resolveUsername: (wallet) => core.resolveUsername(wallet),
   treasuryBalance: () => core.getTreasuryBalance(),
   cache: { get: (key) => core.cacheGet(key), set: (key, value, ttlMs) => core.cacheSet(key, value, ttlMs) },

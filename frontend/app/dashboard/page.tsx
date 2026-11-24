@@ -262,6 +262,15 @@ type DashData = {
 const SUBGRAPH_URL = "https://api.goldsky.com/api/public/project_cmoksri59dxju01rs5d317ax0/subgraphs/gamearena/1.0.0/gn";
 
 async function fetchGlobalStat() {
+  // The backend's totals include the runs saved since the subgraph stopped
+  // indexing. The subgraph itself is only asked if the backend cannot answer.
+  try {
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (base) {
+      const r = await fetch(`${base}/api/stats`, { cache: "no-store" });
+      if (r.ok) { const d = await r.json(); if (Number(d.totalGames) > 0) return { totalPlayers: Number(d.totalUsers) || 0, totalScores: Number(d.totalGames) || 0 }; }
+    }
+  } catch { /* fall through to the subgraph */ }
   try {
     const res = await fetch(SUBGRAPH_URL, {
       method: "POST",
@@ -740,7 +749,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
     out.push({
       icon: "🌍", color: "#6d28d9",
       title: `${dash.totalPlayers} players · ${dash.totalMatches.toLocaleString()} matches`,
-      sub: "Live community total · all-time",
+      sub: "Everyone who has played, all-time",
     });
   }
 

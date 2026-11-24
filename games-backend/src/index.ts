@@ -22,7 +22,7 @@ export { createOutbox } from './modules/outbox/service';
 export { supabaseOutbox, ethersOutboxChain } from './modules/outbox/adapters';
 export { createBatchSender } from './modules/outbox/sender';
 export { playCounts, ledgerCounts, mergeCounts, supabaseLedgerBoard, mergeBoards } from './modules/board/plays';
-export { supabaseStreaks, subgraphSeasonPlayers, supabaseRecentPlays } from './modules/board/adapters';
+export { supabaseStreaks, subgraphSeasonPlayers, supabaseRecentPlays, supabaseOwnTotals } from './modules/board/adapters';
 export { registerSeasonsRoutes } from './modules/seasons/routes';
 export { supabaseTopActivity, supabaseSealedSeasons } from './modules/seasons/adapters';
 export { catchAsync, hardenApp, installErrorHandlers, fetchWithTimeout } from './platform/http';

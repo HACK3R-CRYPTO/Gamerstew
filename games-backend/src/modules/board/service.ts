@@ -32,6 +32,9 @@ export interface BoardDeps {
   ledgerBoard?(game: string, sinceSec: number): Promise<BoardRow[]>;
   /** shared short-lived cache with one piece of work per key (platform/resultCache) */
   results?: { get<T>(key: string, opts: { ttlMs: number; compute: () => Promise<T> }): Promise<T> };
+  /** Counts from our own tables, and when the subgraph last indexed (unix seconds, 0 = unknown).
+   *  Together they keep the all-time totals moving after the subgraph has stopped. */
+  own?: { players(): Promise<number | null>; runsSince(sinceIso: string): Promise<number | null>; subgraphHeadSec(): Promise<number> };
   /** the latest saved runs from our own records; `ok` false = could not read */
   recentPlays?(limit: number, player: string | null): Promise<{ ok: boolean; rows: BoardRow[] }>;
   /** wallet (lowercase) → play streak, for the wallets given */
@@ -172,10 +175,26 @@ export function createBoardService(deps: BoardDeps) {
       /* stays 0.00 */
     }
 
+    // The subgraph's totals stop at the moment it stopped indexing. Runs saved
+    // since then are in our own table, so they are added on; and our own count
+    // of players is used when it is the larger. Totals never go backwards.
+    let totalUsers = g ? Number(g.totalPlayers) || 0 : 0;
+    let totalGames = (g ? Number(g.totalScores) : 0) || 0;
+    if (deps.own) {
+      try {
+        const head = await deps.own.subgraphHeadSec();
+        const [players, since] = await Promise.all([deps.own.players(), head > 0 ? deps.own.runsSince(new Date(head * 1000).toISOString()) : Promise.resolve(null)]);
+        if (players != null) totalUsers = Math.max(totalUsers, players);
+        if (since != null) totalGames += since;
+      } catch (e) {
+        logger.warn('own totals failed:', why(e));
+      }
+    }
+
     const payload = {
-      totalUsers: g ? Number(g.totalPlayers) : 0,
+      totalUsers,
       seasonUsers,
-      totalGames: (g ? Number(g.totalScores) : 0) || 0,
+      totalGames,
       rhythmPlayers: (g ? Number(g.totalRhythmPlays) : 0) || 0,
       simonPlayers: (g ? Number(g.totalSimonPlays) : 0) || 0,
       topRhythm: topR[0]?.score ?? 0,
