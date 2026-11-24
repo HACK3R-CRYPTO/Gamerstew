@@ -3,78 +3,67 @@
 import { usePathname, useRouter } from "next/navigation";
 import { playClick } from "@/hooks/useAppAudio";
 
-const T = {
-  accent: "#a78bfa",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-};
-
-// 5-tab nav: Home / Play / Shop / Events / Pet. Shop sits in the center
-// (Brawl Stars + Clash Royale pattern) so it gets eye-tracking priority
-// and is always one tap from anywhere in the app — no buried-in-profile
-// monetization surface. The shop icon also carries a subtle gold tint
-// so the commerce affordance reads even when the tab isn't active.
+// Four places, not five. "Play" is gone: the home screen is the games now, so
+// a second page listing the same games was one more place to get lost. "Pet"
+// is "Me" because that page is the player's profile.
+//
+// One component, two shapes:
+//   phone / tablet  a floating dock at the bottom, the active item in a pill
+//                   that slides between places
+//   desktop (wide)  the same four places as a pill in the top bar, where a
+//                   mouse expects navigation, with labels always showing
+//
+// `tone` picks the colours: "light" for the lilac screens, "dark" for the
+// screens that are still deep purple.
 const ITEMS = [
-  { id: "home",   label: "Home",   href: "/dashboard",   icon: "M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z", accent: undefined as string | undefined },
-  { id: "play",   label: "Play",   href: "/games",       icon: "M8 5v14l11-7z", accent: undefined },
-  { id: "shop",   label: "Shop",   href: "/shop",        icon: "M5 4h14l1 4H4zm0 5h14v11H5zm4 2v3a3 3 0 0 0 6 0v-3h-2v3a1 1 0 0 1-2 0v-3z", accent: "#fbbf24" },
-  { id: "events", label: "Events", href: "/leaderboard", icon: "M7 4h10v2h3v3a4 4 0 0 1-4 4 5 5 0 0 1-4 3v2h3v2H9v-2h3v-2a5 5 0 0 1-4-3 4 4 0 0 1-4-4V6h3zm0 4H5v1a2 2 0 0 0 2 2zm10 0v3a2 2 0 0 0 2-2V8z", accent: undefined },
-  { id: "pet",    label: "Pet",    href: "/profile",     icon: "M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10m0 2c-4 0-9 2-9 6v2h18v-2c0-4-5-6-9-6", accent: undefined },
-];
+  { id: "home", label: "Home", href: "/dashboard", icon: "M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" },
+  { id: "ranks", label: "Ranks", href: "/leaderboard", icon: "M7 4h10v3a5 5 0 0 1-10 0zM5 5H3v2a3 3 0 0 0 3 3M19 5h2v2a3 3 0 0 1-3 3M10 14h4v3h3v3H7v-3h3z" },
+  { id: "shop", label: "Shop", href: "/shop", icon: "M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2" },
+  { id: "me", label: "Me", href: "/profile", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9a7 7 0 0 1 14 0z" },
+] as const;
 
-function activeId(pathname: string): string {
-  if (pathname.startsWith("/dashboard")) return "home";
-  if (pathname.startsWith("/games")) return "play";
-  if (pathname.startsWith("/shop")) return "shop";
-  if (pathname.startsWith("/leaderboard") || pathname.startsWith("/events") || pathname.startsWith("/duel")) return "events";
-  if (pathname.startsWith("/profile")) return "pet";
-  return "";
+function activeIndex(pathname: string): number {
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/games")) return 0;
+  if (pathname.startsWith("/leaderboard") || pathname.startsWith("/events") || pathname.startsWith("/duel")) return 1;
+  if (pathname.startsWith("/shop")) return 2;
+  if (pathname.startsWith("/profile") || pathname.startsWith("/settings")) return 3;
+  return -1;
 }
 
-export default function AppBottomNav({ wide = false }: { wide?: boolean }) {
+const TONES = {
+  light: { bg: "rgba(255,255,255,0.92)", line: "rgba(76,29,149,0.14)", idle: "rgba(34,16,79,0.55)", pill: "#6d28d9", on: "#ffffff", shadow: "0 16px 36px -14px rgba(76,29,149,0.55)" },
+  dark: { bg: "rgba(31,15,71,0.9)", line: "rgba(196,181,253,0.2)", idle: "rgba(233,224,255,0.6)", pill: "#c4b5fd", on: "#1c0b45", shadow: "0 16px 36px -14px rgba(0,0,0,0.85)" },
+};
+
+export default function AppBottomNav({ wide = false, tone = "dark" }: { wide?: boolean; tone?: "light" | "dark" }) {
   const pathname = usePathname() || "";
   const router = useRouter();
-  const active = activeId(pathname);
-
-  const wideStyle: React.CSSProperties = {
-    position: "fixed", left: "50%", bottom: 18, transform: "translateX(-50%)", zIndex: 60,
-    display: "grid", gridTemplateColumns: "repeat(5, 72px)", gap: 4, padding: 6,
-    background: "rgba(8,2,32,0.92)", backdropFilter: "blur(16px)",
-    border: `1px solid ${T.hairlineHi}`, borderRadius: 999,
-    boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
-  };
-  const mobileStyle: React.CSSProperties = {
-    position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60,
-    padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)",
-    background: "rgba(8,2,32,0.88)", backdropFilter: "blur(12px)",
-    borderTop: `1px solid ${T.hairline}`,
-    display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 2,
-  };
-
+  const ix = activeIndex(pathname);
+  const c = TONES[tone];
   return (
-    <nav style={wide ? wideStyle : mobileStyle}>
-      {ITEMS.map(it => {
-        const isActive = active === it.id;
-        // Shop tab uses a gold accent (the commerce signal) instead of
-        // the default violet, so the monetization surface reads as
-        // distinct even when it isn't the active tab.
-        const idleColor = it.accent ? it.accent + "cc" : T.inkSoft;
-        const activeColor = it.accent ?? T.accent;
-        return (
-          <button key={it.id} onClick={() => { playClick(); router.push(it.href); }} aria-current={isActive ? "page" : undefined} style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-            padding: "8px 2px", borderRadius: wide ? 999 : 12, cursor: "pointer",
-            background: isActive ? `${activeColor}1a` : "transparent", border: "none",
-            color: isActive ? activeColor : idleColor,
-            transition: "all 0.15s",
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d={it.icon} /></svg>
-            <span style={{ fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.08em" }}>{it.label.toUpperCase()}</span>
-          </button>
-        );
-      })}
+    <nav className={`ga-nav ${wide ? "wide" : "dock"}`} aria-label="Main" style={{ ["--ix" as string]: Math.max(ix, 0), ["--n" as string]: ITEMS.length, background: c.bg, borderColor: c.line, boxShadow: c.shadow }}>
+      {ix >= 0 && <span className="ga-nav-pill" style={{ background: c.pill }} aria-hidden />}
+      {ITEMS.map((it, i) => (
+        <button key={it.id} className={i === ix ? "on" : ""} aria-current={i === ix ? "page" : undefined} aria-label={it.label}
+          onClick={() => { playClick(); router.push(it.href); }} onMouseEnter={() => router.prefetch(it.href)}
+          style={{ color: i === ix ? c.on : c.idle }}>
+          <svg viewBox="0 0 24 24" width="21" height="21"><path d={it.icon} fill={i === ix ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" /></svg>
+          <span>{it.label}</span>
+        </button>
+      ))}
+      <style>{`
+        .ga-nav { position: fixed; z-index: 60; display: grid; grid-template-columns: repeat(var(--n), 1fr); align-items: center; padding: 6px; border: 1px solid; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+        .ga-nav button { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px; height: 46px; background: none; border: none; cursor: pointer; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 12.5px; font-weight: 800; -webkit-tap-highlight-color: transparent; transition: color .2s ease, transform .2s cubic-bezier(.2,.9,.3,1.4); }
+        .ga-nav button:active { transform: scale(0.9); }
+        .ga-nav-pill { position: absolute; z-index: 0; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / var(--n)); border-radius: 999px; transform: translateX(calc(var(--ix) * 100%)); transition: transform .38s cubic-bezier(.3,1.3,.4,1); }
+        .ga-nav.dock { left: 14px; right: 14px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); max-width: 460px; margin: 0 auto; border-radius: 999px; }
+        .ga-nav.dock button span { display: none; }
+        .ga-nav.dock button.on span { display: inline; }
+        .ga-nav.wide { top: 11px; left: 50%; transform: translateX(-50%); width: 440px; border-radius: 999px; box-shadow: none !important; }
+        .ga-nav.wide button { height: 34px; }
+        .ga-nav.wide button svg { width: 17px; height: 17px; }
+        @media (prefers-reduced-motion: reduce) { .ga-nav-pill, .ga-nav button { transition: none; } }
+      `}</style>
     </nav>
   );
 }

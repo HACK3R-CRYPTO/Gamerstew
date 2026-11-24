@@ -15,7 +15,7 @@ import { playClick } from "@/hooks/useAppAudio";
 import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/NotificationsSheet";
 import { useGasStatus } from "@/hooks/useGasStatus";
 
-const T = {
+const DARK = {
   ink: "#ffffff",
   inkDim: "rgba(220,210,255,0.7)",
   inkSoft: "rgba(220,210,255,0.45)",
@@ -23,6 +23,24 @@ const T = {
   accent: "#a78bfa",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+  band: "rgba(6,1,24,0.78)",
+  chip: "rgba(255,255,255,0.05)",
+  gold: "#fde68a",
+  streak: "#bae6fd",
+  shadow: "0 8px 20px -16px rgba(0,0,0,0.6)",
+};
+const LIGHT: typeof DARK = {
+  ...DARK,
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
+  band: "rgba(243,238,255,0.86)",
+  chip: "rgba(109,40,217,0.07)",
+  gold: "#92400e",
+  streak: "#0369a1",
+  shadow: "0 8px 20px -16px rgba(76,29,149,0.5)",
 };
 
 const BoltIcon = ({ size = 13 }: { size?: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg>;
@@ -51,7 +69,8 @@ function fmtG(rawWei?: bigint) {
   return String(whole);
 }
 
-export default function AppHeader() {
+export default function AppHeader({ tone = "dark" }: { tone?: "light" | "dark" } = {}) {
+  const T = tone === "light" ? LIGHT : DARK;
   const router = useRouter();
   const { authenticated, logout } = usePrivy();
   const { address } = useAccount();
@@ -179,13 +198,13 @@ export default function AppHeader() {
       // modern game lobby uses (Discord, Riot launcher, Apple Arcade).
       position: "sticky", top: 0, zIndex: 50,
       width: "100%",
-      background: "rgba(6,1,24,0.78)",
+      background: T.band,
       backdropFilter: "blur(16px) saturate(160%)",
       WebkitBackdropFilter: "blur(16px) saturate(160%)",
       borderBottom: `1px solid ${T.hairline}`,
       // Soft shadow that only registers once you scroll under it — gives
       // the band depth without weight at rest.
-      boxShadow: "0 8px 20px -16px rgba(0,0,0,0.6)",
+      boxShadow: T.shadow,
     }}>
       <div style={{
         maxWidth: innerMax, margin: "0 auto",
@@ -245,7 +264,7 @@ export default function AppHeader() {
               <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, letterSpacing: "0.06em", fontWeight: 700 }}>LV {meta?.level ?? 1}</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
                 <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
-                <span style={{ fontFamily: T.body, fontSize: 10, color: "#bae6fd", fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
+                <span style={{ fontFamily: T.body, fontSize: 10, color: T.streak, fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
             </div>
           ) : identityResolving ? (
@@ -276,7 +295,7 @@ export default function AppHeader() {
         {/* Mute · always visible */}
         <button onClick={toggleMute} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
           position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-          background: muted ? "rgba(244,63,94,0.12)" : "rgba(255,255,255,0.05)",
+          background: muted ? "rgba(244,63,94,0.12)" : T.chip,
           border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
           color: muted ? "#fda4af" : T.inkDim,
@@ -297,7 +316,7 @@ export default function AppHeader() {
             push the button. */}
         <button onClick={() => { playClick(); setNotifOpen(true); }} aria-label="Notifications" title="Notifications" style={{
           position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-          background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+          background: T.chip, border: `1px solid ${T.hairline}`,
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", color: T.inkDim,
         }}>
@@ -329,7 +348,7 @@ export default function AppHeader() {
           <button onClick={() => { playClick(); setAccountSheetOpen(true); }} aria-label="Open account" title="Account · wallet, profile, settings" style={{
             display: "flex", alignItems: "stretch",
             padding: 0, borderRadius: 12, cursor: "pointer", flexShrink: 0,
-            background: "rgba(255,255,255,0.04)",
+            background: T.chip,
             border: `1px solid ${T.hairline}`,
             height: 38,
           }}>
@@ -362,7 +381,7 @@ export default function AppHeader() {
             <span style={{ width: 1, background: T.hairline }} />
             <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 11px 0 9px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))" }} title="G$ · game token">
               <img src="/tokens/g-dollar.svg" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
-              <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#fde68a", lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
+              <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.gold, lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
             </span>
           </button>
         ) : identityResolving ? (
@@ -388,7 +407,7 @@ export default function AppHeader() {
               title="Switch account" aria-label="Switch account"
               style={{
                 width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-                background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+                background: T.chip, border: `1px solid ${T.hairline}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: T.inkDim,
               }}>

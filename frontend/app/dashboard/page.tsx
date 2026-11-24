@@ -26,7 +26,7 @@ const T = {
   ink: "#ffffff",
   inkDim: "rgba(220,210,255,0.7)",
   inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
+  surface: "#2a1466", // solid: these cards sit on the light lilac page
   hairline: "rgba(255,255,255,0.08)",
   hairlineHi: "rgba(255,255,255,0.16)",
   accent: "#a78bfa",
@@ -36,7 +36,17 @@ const T = {
 };
 
 // One calm colour for the greeting stat pills — informative, not a rainbow.
-const PILL_MUTED = "#a5b4cf";
+const PILL_MUTED = "#6d28d9";
+
+// The page itself is light lilac; T above stays the palette for the deep-purple
+// cards that sit on it (daily claim, missions, vote, rank, activity).
+const P = {
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  dim: "rgba(34,16,79,0.62)",
+  line: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
+};
 
 // ─── primitives ─────────────────────────────────────────────────────────
 function Pill({ children, color, soft = true }: { children: React.ReactNode; color: string; soft?: boolean }) {
@@ -56,7 +66,7 @@ function Pill({ children, color, soft = true }: { children: React.ReactNode; col
 function SectionLabel({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "2px 2px 4px" }}>
-      <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: T.inkDim, textTransform: "uppercase" }}>{children}</span>
+      <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: P.dim, textTransform: "uppercase" }}>{children}</span>
       {action}
     </div>
   );
@@ -498,22 +508,22 @@ export default function DashboardPage() {
   return (
     <div style={{
       minHeight: "100vh", width: "100%",
-      background: T.bg,
-      color: T.ink,
+      background: P.bg,
+      color: P.ink,
       fontFamily: T.body,
     }}>
       {/* Persistent header — full-viewport sticky band; content centers itself
           inside. The band carries the dark glass, the content sits on the
           page's column. */}
-      <AppHeader />
+      <AppHeader tone="light" />
 
 
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: isDesktop ? "8px 32px 130px" : "4px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: isDesktop ? "22px 32px 70px" : "14px 16px 110px", display: "flex", flexDirection: "column", gap: T.gap + 8 }}>
 
         {/* Greeting — one quiet line so the hero (and the event) leads. Pills
             share a single muted style: informative, not a rainbow. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ fontFamily: T.display, fontSize: isDesktop ? 18 : 16, color: T.inkDim, lineHeight: 1 }}>
+          <div style={{ fontFamily: T.display, fontSize: isDesktop ? 22 : 18, color: P.ink, lineHeight: 1 }}>
             {connected ? `Welcome back, ${username || "Player"}` : "Welcome"} <span style={{ fontSize: isDesktop ? 17 : 15 }}>👋</span>
           </div>
           {connected && (
@@ -544,8 +554,8 @@ export default function DashboardPage() {
           {([["claim", "🎁 Daily G$"], ["missions", "🎯 Missions"], ["vote", "🗳️ Vote"], ["cup", "🏆 Your rank"]] as const).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={today === id} onClick={() => setToday(today === id ? null : id)} style={{
               cursor: "pointer", padding: "9px 14px", borderRadius: 999, fontFamily: T.body, fontSize: 13, fontWeight: 800,
-              color: today === id ? "#1a0b33" : T.ink, background: today === id ? "#fff" : "rgba(255,255,255,0.07)",
-              border: `1px solid ${today === id ? "#fff" : T.hairlineHi}`, transition: "background .18s ease, color .18s ease",
+              color: today === id ? "#fff" : P.ink, background: today === id ? P.accent : "#fff",
+              border: `1px solid ${today === id ? P.accent : P.line}`, boxShadow: "0 8px 18px -14px rgba(76,29,149,0.6)", transition: "background .18s ease, color .18s ease",
             }}>{label}</button>
           ))}
         </div>
@@ -569,7 +579,7 @@ export default function DashboardPage() {
 
       {/* Bottom nav — Home / Play / Events / Pet per CLAUDE.md IA. Renders
           as a floating pill on desktop and a full-width bar on mobile. */}
-      <AppBottomNav wide={isDesktop} />
+      <AppBottomNav wide={isDesktop} tone="light" />
 
       {/* Per-game loading overlay · branded transition while the lobby's
           top-3 leaderboard cache warms up. Each game shows its own
@@ -641,30 +651,28 @@ function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSe
   // group to "sign in" reads as "your sign-in didn't work".
   return (
     <div style={{
-      margin: "0 16px",
-      padding: "9px 12px", borderRadius: 13,
-      background: needsSetup
-        ? "linear-gradient(90deg, rgba(251,191,36,0.14), rgba(255,255,255,0.02))"
-        : `linear-gradient(90deg, ${T.accent}1f, rgba(255,255,255,0.02))`,
-      border: needsSetup ? "1px solid rgba(251,191,36,0.4)" : `1px solid ${T.accent}44`,
+      padding: "12px 14px", borderRadius: 20,
+      background: "#fff",
+      border: needsSetup ? "1px solid rgba(217,119,6,0.45)" : `1px solid ${P.line}`,
+      boxShadow: "0 16px 34px -26px rgba(76,29,149,0.7)",
       display: "flex", alignItems: "center", gap: 10,
     }}>
       <span style={{ fontSize: 15, flexShrink: 0 }}>{needsSetup ? "🐣" : "🎁"}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontFamily: T.body, fontSize: 11, color: T.ink, fontWeight: 700, lineHeight: 1.3 }}>
+        <span style={{ fontFamily: T.body, fontSize: 13, color: P.ink, fontWeight: 800, lineHeight: 1.3 }}>
           {needsSetup ? "You're signed in." : "You're playing free."}
         </span>
-        <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, lineHeight: 1.3 }}>
+        <span style={{ fontFamily: T.body, fontSize: 13, color: P.dim, lineHeight: 1.3 }}>
           {needsSetup
             ? " Name your slime to save scores & win G$."
             : " Sign in to win G$, save your pet & climb the board."}
         </span>
       </div>
       <button onClick={onConnect} style={{
-        flexShrink: 0, padding: "6px 12px", borderRadius: 999, cursor: "pointer",
-        background: needsSetup ? "#fbbf24" : T.accent, border: "none",
-        color: needsSetup ? "#231005" : "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
-        boxShadow: needsSetup ? "0 4px 12px -3px rgba(251,191,36,0.7)" : `0 4px 12px -3px ${T.accent}aa`,
+        flexShrink: 0, padding: "9px 16px", borderRadius: 999, cursor: "pointer",
+        background: needsSetup ? "#fbbf24" : P.accent, border: "none",
+        color: needsSetup ? "#231005" : "#fff", fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
+        boxShadow: needsSetup ? "0 4px 12px -3px rgba(251,191,36,0.7)" : "0 8px 16px -8px rgba(109,40,217,0.9)",
       }}>{needsSetup ? "FINISH SETUP" : "SIGN IN"}</button>
     </div>
   );
@@ -749,7 +757,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 }
 
 function ViewAll({ onClick }: { onClick: () => void }) {
-  return <button onClick={onClick} style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.08em", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>VIEW ALL ›</button>;
+  return <button onClick={onClick} style={{ fontFamily: T.body, fontSize: 10, color: P.accent, fontWeight: 800, letterSpacing: "0.08em", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>VIEW ALL ›</button>;
 }
 
 // G$ claim card — mirrors the main-branch profile pattern exactly:
