@@ -32,14 +32,14 @@ import {
 export type GasHelpIntent = "gas-help" | "prize-claim" | "general";
 
 const T = {
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
-  amber: "#fbbf24",
-  warn: "#fdba74",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.7)",
+  inkSoft: "rgba(34,16,79,0.6)",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
+  amber: "#b45309",
+  warn: "#c2410c",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -150,7 +150,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
       title: "Send your wallet in the community",
       body: "Drop your wallet in the chat and the team will route your G$ once payouts open. Pre-filled message has everything we need.",
       cta: "Open Telegram",
-      accent: "#86efac",
+      accent: "#16a34a",
       eyebrowColor: "#86efac",
     };
     return {
@@ -172,7 +172,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(2,0,12,0.92)",
+          background: "rgba(34,16,79,0.45)",
           backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
           display: "flex", flexDirection: "column",
           justifyContent: isDesktop ? "center" : "flex-end",
@@ -185,12 +185,12 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
           onClick={e => e.stopPropagation()}
           style={{
             width: "100%", maxWidth: 460,
-            background: "linear-gradient(180deg, rgba(20,8,52,0.98) 0%, rgba(8,2,28,0.99) 100%)",
+            background: "#fbf8ff",
             borderRadius: isDesktop ? 22 : "26px 26px 0 0",
             border: `1px solid ${T.hairlineHi}`,
             borderBottom: isDesktop ? `1px solid ${T.hairlineHi}` : "none",
             boxShadow: isDesktop
-              ? `0 24px 60px -10px ${copy.accent}55, 0 0 0 1px rgba(255,255,255,0.04)`
+              ? `0 24px 60px -10px ${copy.accent}55, 0 0 0 1px rgba(76,29,149,0.14)`
               : `0 -24px 60px -10px ${copy.accent}33`,
             padding: isDesktop
               ? "18px 20px 22px"
@@ -214,7 +214,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button onClick={onClose} aria-label="Close" style={{
                 width: 32, height: 32, borderRadius: 999, cursor: "pointer",
-                background: "rgba(255,255,255,0.05)",
+                background: "#fff",
                 border: `1px solid ${T.hairline}`, color: T.inkDim,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
               }}>
@@ -225,7 +225,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "center", padding: "2px 0 4px" }}>
-              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.22)" }} />
             </div>
           )}
 
@@ -245,7 +245,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
 
           {/* ─── Message preview · what gets pasted ──────────────────────── */}
           <div style={{
-            background: "rgba(255,255,255,0.03)",
+            background: "#fff",
             border: `1px solid ${T.hairline}`,
             borderRadius: 12, padding: "10px 12px",
             fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
@@ -265,7 +265,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
                 width: "100%", padding: "14px 16px", borderRadius: 14, cursor: opening ? "wait" : "pointer",
                 background: `linear-gradient(160deg, ${copy.accent} 0%, ${copy.accent}cc 100%)`,
                 border: `1.5px solid ${copy.accent}66`,
-                color: "#0a0228",
+                color: "#fff",
                 fontFamily: T.display, fontSize: 15, fontWeight: 900, letterSpacing: "0.08em",
                 boxShadow: `0 8px 22px -6px ${copy.accent}88`,
                 display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -311,7 +311,7 @@ export function GasHelpSheet({ open, onClose, intent, game, score, week }: Props
           position: "fixed", left: "50%", bottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)",
           transform: "translateX(-50%)", zIndex: 10000,
           padding: "10px 14px", borderRadius: 999,
-          background: "rgba(20,8,52,0.96)",
+          background: "#fff",
           border: `1px solid ${T.hairlineHi}`,
           color: T.ink, fontFamily: T.body, fontSize: 12, fontWeight: 700,
           boxShadow: `0 16px 36px -10px ${copy.accent}66`,

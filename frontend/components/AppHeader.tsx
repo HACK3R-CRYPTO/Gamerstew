@@ -84,6 +84,8 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // Replaces the previous "tap chip → /profile" routing, which made the
   // chip a dead-end for the daily action (send G$) that actually matters.
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  // dev only: /dashboard?__sheet opens the account sheet, so its look can be checked without signing in
+  useEffect(() => { if (process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).has("__sheet")) setAccountSheetOpen(true); }, []);
   const unreadCount = useUnreadNotificationsCount(address);
   // Gas-low signal on the dual-token chip. Same source of truth as the
   // lobby gate + AccountSheet status pill · pulses on the CELO icon so a

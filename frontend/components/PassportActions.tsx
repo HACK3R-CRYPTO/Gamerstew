@@ -112,15 +112,15 @@ export default function PassportActions({ address, name, refCode }: { address: s
           </button>
           <button
             onClick={saveCard}
-            style={{ borderRadius: 16, border: `1px solid ${T.hairline}`, background: "rgba(0,0,0,0.35)", color: T.inkDim, padding: "12px", fontFamily: T.display, fontSize: 13.5, letterSpacing: "0.03em", cursor: savingCard ? "wait" : "pointer" }}
+            style={{ borderRadius: 16, border: `1px solid ${T.hairline}`, background: "#fff", color: T.inkDim, padding: "12px", fontFamily: T.display, fontSize: 13.5, letterSpacing: "0.03em", cursor: savingCard ? "wait" : "pointer" }}
           >
             {savingCard ? "RENDERING CARD…" : "💾 SAVE AS IMAGE"}
           </button>
           <div style={{ textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
             {refCount !== null && refCount > 0 ? (
-              <span style={{ color: "#86efac" }}>🎉 {refCount} joined through you{refVerified !== null ? <> · <strong>{refVerified} verified now</strong></> : null}{refCode ? <> · code: <strong>{refCode}</strong></> : null}</span>
+              <span style={{ color: "#166534" }}>🎉 {refCount} joined through you{refVerified !== null ? <> · <strong>{refVerified} verified now</strong></> : null}{refCode ? <> · code: <strong>{refCode}</strong></> : null}</span>
             ) : refCode ? (
-              <>Your code is <strong style={{ color: "#c4b5fd" }}>{refCode}</strong> — a referral counts once your friend verifies</>
+              <>Your code is <strong style={{ color: "#6d28d9" }}>{refCode}</strong> — a referral counts once your friend verifies</>
             ) : (
               <>A referral counts once your friend verifies</>
             )}

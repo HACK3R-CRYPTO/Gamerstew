@@ -107,23 +107,23 @@ export function UnblockNotificationsModal({ onClose }: { onClose: () => void }) 
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 250,
-      background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
+      background: "rgba(34,16,79,0.45)", backdropFilter: "blur(8px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         width: "100%", maxWidth: "420px",
         borderRadius: "20px",
-        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-        border: "1.5px solid rgba(167,139,250,0.4)",
+        background: "#fbf8ff",
+        border: "1px solid rgba(76,29,149,0.16)",
         boxShadow: "0 0 40px rgba(167,139,250,0.4), 0 24px 48px rgba(0,0,0,0.7)",
         padding: "24px 22px",
       }}>
         <div style={{ textAlign: "center", marginBottom: "16px" }}>
           <div style={{ fontSize: "40px" }}>🔕</div>
-          <div style={{ color: "white", fontSize: "16px", fontWeight: 900, marginTop: "6px" }}>
+          <div style={{ color: "#22104f", fontSize: "16px", fontWeight: 900, marginTop: "6px" }}>
             Notifications are blocked
           </div>
-          <div style={{ color: "rgba(220,210,255,0.7)", fontSize: "11px", marginTop: "8px", lineHeight: 1.5 }}>
+          <div style={{ color: "rgba(34,16,79,0.72)", fontSize: "11px", marginTop: "8px", lineHeight: 1.5 }}>
             Your browser blocked notifications for this site. Browsers don&apos;t let us re-ask — you&apos;ll need to unblock from settings.
           </div>
         </div>
@@ -131,25 +131,25 @@ export function UnblockNotificationsModal({ onClose }: { onClose: () => void }) 
         <div style={{
           padding: "14px 16px",
           borderRadius: "14px",
-          background: "rgba(0,0,0,0.35)",
-          border: "1px solid rgba(167,139,250,0.25)",
+          background: "#fff",
+          border: "1px solid rgba(76,29,149,0.14)",
         }}>
           <div style={{
-            color: "rgba(200,180,255,0.85)", fontSize: "10px", fontWeight: 900,
+            color: "#6d28d9", fontSize: "10px", fontWeight: 900,
             letterSpacing: "0.14em", marginBottom: "10px",
           }}>{title.toUpperCase()}</div>
           <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
             {steps.map((step, i) => (
               <li key={i} style={{
                 display: "flex", gap: "10px", marginBottom: i === steps.length - 1 ? 0 : "8px",
-                color: "rgba(230,220,255,0.92)", fontSize: "12px", lineHeight: 1.45,
+                color: "#22104f", fontSize: "12px", lineHeight: 1.45,
               }}>
                 <span style={{
                   flexShrink: 0,
                   width: "20px", height: "20px", borderRadius: "999px",
-                  background: "rgba(167,139,250,0.22)",
-                  border: "1px solid rgba(167,139,250,0.5)",
-                  color: "rgba(220,210,255,0.95)",
+                  background: "#ede9fe",
+                  border: "1px solid rgba(109,40,217,0.4)",
+                  color: "#4c1d95",
                   fontSize: "10px", fontWeight: 900,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>{i + 1}</span>
