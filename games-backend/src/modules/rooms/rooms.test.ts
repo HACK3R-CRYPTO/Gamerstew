@@ -130,3 +130,36 @@ test('Word Ladder room: same five ladders for everyone, and the server works out
   const cheat = await svc.finish(host.code, guest.token, { ladderRuns: runs.map((r, i) => (i === 0 ? { ...r, words: ['zzzz'] } : r)) });
   assert.ok(isFail(cheat) && cheat.error === 'bad_run');
 });
+
+test('Simon room: one pattern for everyone; taps and time decide the score, never a claim above them', async () => {
+  const simon = require('../../../lib/simonScoring');
+  const clock = { t: 9_000_000 }; let n = 0;
+  const svc = createRoomService(ROOM_GAMES, { now: () => clock.t, randomHex: (b) => (++n).toString(16).padStart(b * 2, '0') });
+  const host = ok<Seat>(svc.create('simon', 'Ada')); const guest = ok<Seat>(svc.join(host.code, 'Bo'));
+  const v = ok<RoomView>(svc.start(host.code, host.token));
+  const seed = (v.deal as { seed: string }).seed;
+  assert.equal((ok<RoomView>(svc.get(host.code, guest.token)).deal as { seed: string }).seed, seed);
+  const pattern: string[] = simon.derivePattern(seed, 8); const taps: string[] = [];
+  for (let r = 1; r <= 6; r++) for (let j = 0; j < r; j++) taps.push(pattern[j]!);
+  taps.push(pattern[0] === 'red' ? 'cyan' : 'red');
+  clock.t += 50_000;
+  const honest = ok<RoomView>(await svc.finish(host.code, host.token, { simonTapLog: taps, score: 6 * 12 + 15 }));
+  assert.equal(honest.players[0]!.score, 87);
+  const greedy = ok<RoomView>(await svc.finish(host.code, guest.token, { simonTapLog: taps, score: 50_000 }));
+  assert.equal(greedy.players[1]!.score, simon.verifySimonRun({ sessionToken: seed, tapLog: taps, elapsedMs: 50_000 }).score);
+  assert.ok(greedy.players[1]!.score! < 200);
+});
+
+test('Stack room: the score is the drop log added up, never more than claimed, and it is marked unverified', async () => {
+  const svc = createRoomService(ROOM_GAMES);
+  const host = ok<Seat>(svc.create('stack', 'Ada')); const guest = ok<Seat>(svc.join(host.code, 'Bo'));
+  const v = ok<RoomView>(svc.start(host.code, host.token));
+  assert.equal(v.verified, false);
+  const drops = [{ landed: true, perfect: false, offset: 20 }, { landed: true, perfect: false, offset: 30 }, { landed: true, perfect: true, offset: 2 }, { landed: false }];
+  const sum = require('../../../lib/stackScoring').computeStackScore(drops).score;
+  assert.ok(sum > 0);
+  assert.equal(ok<RoomView>(await svc.finish(host.code, host.token, { dropLog: drops, score: 9_999 })).players[0]!.score, sum);
+  assert.equal(ok<RoomView>(await svc.finish(host.code, guest.token, { dropLog: drops, score: 1 })).players[1]!.score, 1);
+  const none = createRoomService(ROOM_GAMES); const h = ok<Seat>(none.create('stack', 'A')); ok<Seat>(none.join(h.code, 'B')); none.start(h.code, h.token);
+  assert.ok(isFail(await none.finish(h.code, h.token, { score: 500 })));
+});

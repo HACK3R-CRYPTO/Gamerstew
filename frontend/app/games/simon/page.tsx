@@ -1,5 +1,7 @@
 "use client";
 
+import { useFriendRoom, type FriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import { toast, startProblem } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
@@ -72,7 +74,9 @@ const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
 // RANKED is the game as it has always been and the only mode that is signed
 // and submitted. The others change the rules for fun and never leave the
 // device: no gas check, no session ticket, no score signing.
-type ModeId = "ranked" | "practice" | "lightning" | "reverse";
+// "room" is a friend-room round: the pattern comes from the room, nothing is
+// signed or sent to the chain, and the result goes to the room instead.
+type ModeId = "ranked" | "practice" | "lightning" | "reverse" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
   { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
@@ -493,7 +497,7 @@ export default function SimonGamePage() {
     // re-armed when play starts (not on PLAY AGAIN, when the counters have just been zeroed)
     if (phase === "showing" || phase === "playing" || phase === "countdown") {
       runCountedRef.current = false;
-      if (phase === "countdown") { setBestResult(null); const h = runModeRef.current === "lightning" ? 20 : readHeadStart(); headStartRef.current = h; setHeadStart(h); }
+      if (phase === "countdown") { setBestResult(null); const h = runModeRef.current === "lightning" ? 20 : runModeRef.current === "room" ? 0 /* a room starts everyone at the same pace */ : readHeadStart(); headStartRef.current = h; setHeadStart(h); }
       return;
     }
     if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
@@ -569,6 +573,14 @@ export default function SimonGamePage() {
   }, [showSequence]);
 
   // ─── Game over — dispatches the 3-step on-chain-gated score submission ─────
+  // ─── Friend rooms ──────────────────────────────────────────────────────────
+  // Everyone in the room watches the same sequence (the room's seed makes it)
+  // and plays at once. The server checks the taps and the time.
+  const room = useFriendRoom("simon");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+
   const handleGameOver = useCallback(async (finalScore: number, gameTime: number) => {
     playWrong();
     firePetEvent("wrong");  // pet wilts — the run ended badly
@@ -580,6 +592,7 @@ export default function SimonGamePage() {
 
     // A retried run submits normally — using a retry counts on the weekly board.
 
+    if (runModeRef.current === "room") { void roomRef.current.finish({ simonTapLog: tapLogRef.current.slice(), score: Math.max(0, Math.round(finalScore)) }); return; }
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -829,6 +842,7 @@ export default function SimonGamePage() {
       const speedBonus = Math.max(0, Math.floor((60000 - elapsed) / 1000));
       const roundBonus = newSeqs * 2;
       const newScore   = newSeqs * BASE_SCORE + speedBonus + roundBonus;
+      if (runModeRef.current === "room") roomRef.current.progress(newSeqs); // friends see how far you are
       scoreRef.current = newScore;
       setScore(newScore);
 
@@ -880,7 +894,9 @@ export default function SimonGamePage() {
   }, [handleGameOver]);
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
-  const startGame = useCallback(async () => {
+  const startGame = useCallback(async (roomSeed?: unknown) => {
+    // a room round passes its seed; a tap on the start button passes a click event
+    const inRoom = typeof roomSeed === "string" && roomSeed.length > 0;
     // Re-entry guard: bail if a session ticket request is already
     // in flight. Without this, a double-click or duplicated synthetic
     // event during the ~500ms round trip dispatches two /api/start-game
@@ -891,7 +907,7 @@ export default function SimonGamePage() {
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Once a guest has used their free runs, block a new one and offer the
     // sign-in that unlocks unlimited play. Signed-in players skip this.
-    if (isGuest && guestPlaysLeft("simon") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("simon") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -906,7 +922,7 @@ export default function SimonGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    runModeRef.current = modeRef.current; // pinned for the whole run
+    runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -934,7 +950,7 @@ export default function SimonGamePage() {
     submittedRef.current = false;
     usedPerkRef.current = false;
     pendingEndRef.current = null;
-    sessionTokenRef.current = null;
+    sessionTokenRef.current = inRoom ? (roomSeed as string) : null; // the seed that makes the pattern
     juice.reset();
     setScore(0);
     setSequences(0);
@@ -1007,6 +1023,24 @@ export default function SimonGamePage() {
     startGame();
   }, [authPending, startGame]);
 
+  // the host pressed start: play the room's round
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current) return;
+    const seed = (v.deal as { seed?: string } | undefined)?.seed;
+    if (!seed || v.players[v.you]?.done) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (runModeRef.current !== "room") return;
+    if (!room.inRoom || room.view?.status === "waiting") { clearTimeouts(); setPhase("idle"); runModeRef.current = modeRef.current === "room" ? "ranked" : modeRef.current; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
+
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
   // pauses for sequence-flashes don't desync the countdown. At 0, ends the
@@ -1073,9 +1107,12 @@ export default function SimonGamePage() {
         pointerEvents: "none", zIndex: 1,
       }} />
 
+      <FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart={phase === "idle"} progressWord="round" part="overlays" />
+
       {/* IDLE */}
       {phase === "idle" && (
         <IdleView
+          room={room}
           mode={mode}
           onPickMode={setMode}
           challenge={challenge}
@@ -1223,7 +1260,8 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ room, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  room: FriendRoom;
   mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
   onExit: () => void;
@@ -1333,8 +1371,8 @@ function IdleView({ mode, onPickMode, challenge, onStart, onExit, onLeaderboard,
         </div>
         <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
       </div>
-      {/* Play a friend for a stake, in this game. */}
-      <DuelEntry game="simon" />
+      {/* Play the same round as your friends, at the same time. */}
+      <FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart part="button" dark />
 
       {/* START button */}
       <div role="button" tabIndex={0} onClick={onStart}

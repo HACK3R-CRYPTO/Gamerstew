@@ -4,6 +4,8 @@
 // The same sheet for every game; the game supplies its name.
 
 import { useEffect, useState } from "react";
+import { useAccount, useReadContract } from "wagmi";
+import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import type { FriendRoom } from "@/hooks/useFriendRoom";
 
 const NAME_KEY = "gamearena:roomName";
@@ -15,7 +17,14 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
   const [copied, setCopied] = useState(false);
   useEffect(() => { try { setName(localStorage.getItem(NAME_KEY) || ""); } catch { /* private window */ } }, []);
   const keep = (v: string) => { setName(v); try { localStorage.setItem(NAME_KEY, v); } catch { /* ignore */ } };
-  const who = name.trim() || "Player";
+  // A signed-in player already has a GameArena username: use it, and do not ask.
+  const { address } = useAccount();
+  const { data: chainName } = useReadContract({
+    address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`, abi: GAME_PASS_ABI, functionName: "getUsername",
+    args: address ? [address] : undefined, query: { enabled: !!address },
+  });
+  const username = typeof chainName === "string" && chainName.trim() ? chainName.trim() : "";
+  const who = username || name.trim() || "Player";
   const v = room.view;
   const link = typeof window !== "undefined" && room.session ? `${window.location.origin}${sharePath}?room=${room.session.code}` : "";
   const invite = `Join my ${gameName} room on GameArena. Code ${room.session?.code ?? ""}\n${link}`;
@@ -32,9 +41,13 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         {!room.inRoom ? (
           <>
             <p className="fs-sub">Everyone plays the same round at the same time. Highest score wins.</p>
-            <label className="fs-label">Your name
-              <input value={name} onChange={(e) => keep(e.target.value.slice(0, 16))} placeholder="Player" maxLength={16} autoComplete="nickname" />
-            </label>
+            {username ? (
+              <div className="fs-as">Playing as <b>@{username}</b></div>
+            ) : (
+              <label className="fs-label">Your name
+                <input value={name} onChange={(e) => keep(e.target.value.slice(0, 16))} placeholder="Player" maxLength={16} autoComplete="nickname" />
+              </label>
+            )}
             <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy} onClick={() => room.create(who)}>Open a room</button>
             <div className="fs-or">or join one</div>
             <div className="fs-join">
@@ -72,6 +85,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-kicker { font-size: 10.5px; font-weight: 900; letter-spacing: 0.2em; color: #6d28d9; }
         .fs h2 { margin: -6px 0 0; font-size: 28px; font-weight: 400; }
         .fs-sub { margin: -4px 0 2px; font-size: 14px; line-height: 1.45; color: rgba(34,16,79,0.66); }
+        .fs-as { padding: 12px 14px; border-radius: 14px; background: #f1e9ff; font-size: 14.5px; font-weight: 600; color: rgba(34,16,79,0.7); } .fs-as b { color: #4c1d95; }
         .fs-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 800; color: rgba(34,16,79,0.6); }
         .fs input { padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(76,29,149,0.2); background: #faf7ff; color: #22104f; font-size: 16px; font-weight: 700; outline: none; }
         .fs input:focus { border-color: #6d28d9; }

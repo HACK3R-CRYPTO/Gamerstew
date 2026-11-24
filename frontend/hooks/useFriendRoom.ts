@@ -48,6 +48,16 @@ export function useFriendRoom(game: string) {
   const [view, setView] = useState<RoomView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether the lobby sheet is open lives here, not in the button that opens it:
+  // a start screen can be redrawn (sign-in finishing, a banner arriving) and
+  // would otherwise shut the sheet in the player's face.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  // a friend's link (?room=CODE) opens the sheet with the code filled in
+  useEffect(() => {
+    const c = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+    if (c.length === 5) { setInviteCode(c); setSheetOpen(true); window.history.replaceState(null, "", window.location.pathname); }
+  }, []);
   const sess = useRef<Session | null>(null);
   sess.current = session;
 
@@ -80,6 +90,7 @@ export function useFriendRoom(game: string) {
 
   return {
     session, view, error, busy,
+    sheetOpen, inviteCode, openSheet: () => setSheetOpen(true), closeSheet: () => setSheetOpen(false),
     inRoom: !!session,
     isHost: !!view && view.you >= 0 && !!view.players[view.you]?.host,
     create: (name: string) => guard(async () => { const s = await call<Session>("rooms", { game, name }); setSession(s); return s; }),

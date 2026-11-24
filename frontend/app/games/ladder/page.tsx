@@ -104,15 +104,10 @@ export default function WordLadderPage() {
   // Friend rooms: everyone in the room is dealt the same five ladders and plays
   // at once. The server scores each player from their words.
   const room = useFriendRoom("ladder");
-  const [friendsOpen, setFriendsOpen] = useState(false);
-  const [inviteCode, setInviteCode] = useState("");
+  const friendsOpen = room.sheetOpen, inviteCode = room.inviteCode;
+  const setFriendsOpen = (on: boolean) => (on ? room.openSheet() : room.closeSheet());
   const [isRoomRound, setIsRoomRound] = useState(false);
   const roomRound = useRef(0);
-  // arriving from a friend's link (?room=CODE) opens the sheet with the code filled in
-  useEffect(() => {
-    const c = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-    if (c.length === 5) { setInviteCode(c); setFriendsOpen(true); window.history.replaceState(null, "", window.location.pathname); }
-  }, []);
   const [phase, setPhase] = useState<"start" | "play" | "done">("start");
   const [set, setSet] = useState<[string, string, number][]>([]);
   const [daily, setDaily] = useState(false);
