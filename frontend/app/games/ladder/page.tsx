@@ -463,7 +463,7 @@ export default function WordLadderPage() {
         .wl-standings li span { font-size: 15px; font-weight: 900; color: var(--dim); } .wl-standings li b { font-size: 15px; } .wl-standings li i { font-style: normal; font-weight: 900; font-size: 15px; color: var(--brand); }
         .wl { min-height: 100dvh; display: flex; flex-direction: column; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; --brand: #6d28d9; --line: rgba(76,29,149,0.16); --dim: rgba(34,16,79,0.6); --go: #16a34a; }
         .wl button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 10px 14px 4px; text-align: center; }
+        .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; text-align: center; }
         .wl-top b { font-size: 20px; font-weight: 400; }
         .wl-back { width: 40px; height: 40px; border-radius: 14px; border: 1px solid var(--line); background: #fff; font-size: 18px; }
         .wl-meta { justify-self: end; min-width: 40px; font-family: 'Melon Pop', 'Fredoka', sans-serif; font-size: 20px; color: var(--brand); font-variant-numeric: tabular-nums; }

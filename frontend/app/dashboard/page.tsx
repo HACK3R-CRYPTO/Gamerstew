@@ -13,6 +13,7 @@ import { fetchPreview } from "@/lib/leaderboardPreview";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
+import InstallPrompt from "@/components/InstallPrompt";
 import { useSignMessage } from "wagmi";
 import { claimMission, claimMissionMiniPay } from "@/app/actions/missions";
 import AppHeader from "@/components/AppHeader";
@@ -578,6 +579,8 @@ export default function DashboardPage() {
       {/* Bottom nav — Home / Play / Events / Pet per CLAUDE.md IA. Renders
           as a floating pill on desktop and a full-width bar on mobile. */}
       <AppBottomNav wide={isDesktop} tone="light" />
+      {/* offers to put GameArena on the home screen as an app */}
+      <InstallPrompt />
 
       {/* Per-game loading overlay · branded transition while the lobby's
           top-3 leaderboard cache warms up. Each game shows its own

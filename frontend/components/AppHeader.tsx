@@ -225,6 +225,9 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
       // modern game lobby uses (Discord, Riot launcher, Apple Arcade).
       position: "sticky", top: 0, zIndex: 50,
       width: "100%",
+      // Installed on a phone, the app draws under the clock and the notch. This
+      // keeps the buttons below them, where a finger can reach. It is zero in a browser tab.
+      paddingTop: "env(safe-area-inset-top)",
       background: T.band,
       backdropFilter: "blur(16px) saturate(160%)",
       WebkitBackdropFilter: "blur(16px) saturate(160%)",
