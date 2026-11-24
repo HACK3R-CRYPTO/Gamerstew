@@ -69,7 +69,7 @@ function fmtG(rawWei?: bigint) {
   return String(whole);
 }
 
-export default function AppHeader({ tone = "dark" }: { tone?: "light" | "dark" } = {}) {
+export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" } = {}) {
   const T = tone === "light" ? LIGHT : DARK;
   const router = useRouter();
   const { authenticated, logout } = usePrivy();

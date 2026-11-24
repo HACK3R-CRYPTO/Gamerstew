@@ -14,10 +14,10 @@ import { useDuel } from "@/hooks/useDuel";
 import { gameLabel, gameKey, duelPhase, type DuelRoom, type DuelParticipant } from "@/lib/duel";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff", inkDim: "rgba(220,210,255,0.7)", inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.5)", hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a", green: "#34d399", cyan: "#22d3ee", accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.55)",
+  surface: "#ffffff", hairline: "rgba(76,29,149,0.08)",
+  gold: "#b45309", green: "#047857", cyan: "#0e7490", accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -186,7 +186,7 @@ export default function RoomPage() {
             <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Invite link</div>
             <div style={{ fontSize: 11.5, color: T.inkDim, wordBreak: "break-all", marginBottom: 10 }}>{shareUrl}</div>
             <button onClick={() => { navigator.clipboard?.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-              style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${T.hairline}`, background: "rgba(255,255,255,0.05)", color: T.ink, fontFamily: T.body, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+              style={{ padding: "10px 16px", borderRadius: 12, border: `1px solid ${T.hairline}`, background: "rgba(76,29,149,0.05)", color: T.ink, fontFamily: T.body, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
               {copied ? "Copied ✓" : "Copy invite link"}
             </button>
           </Card>
@@ -198,14 +198,14 @@ export default function RoomPage() {
             <div style={{ fontSize: 11, color: T.cyan, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Admin · approve wallets</div>
             <div style={{ fontSize: 11.5, color: T.inkSoft, marginBottom: 8, lineHeight: 1.5 }}>Paste the wallets that may join (your voted + verified list), one per line or comma-separated.</div>
             <textarea value={allowText} onChange={(e) => setAllowText(e.target.value)} rows={4} placeholder="0xabc…\n0xdef…"
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${T.hairline}`, background: "rgba(255,255,255,0.05)", color: T.ink, fontFamily: "ui-monospace, monospace", fontSize: 12, outline: "none", resize: "vertical" }} />
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${T.hairline}`, background: "rgba(76,29,149,0.05)", color: T.ink, fontFamily: "ui-monospace, monospace", fontSize: 12, outline: "none", resize: "vertical" }} />
             <button onClick={onAllow} disabled={busy} style={{ marginTop: 8, padding: "11px 16px", borderRadius: 12, border: "none", background: T.cyan, color: "#04121a", fontFamily: T.body, fontSize: 13, fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>
               {busy ? "Confirming…" : "Add to allowlist"}
             </button>
           </Card>
         )}
 
-        {err && <div style={{ color: "#fca5a5", fontSize: 12.5, fontWeight: 700, textAlign: "center" }}>{err}</div>}
+        {err && <div style={{ color: "#b91c1c", fontSize: 12.5, fontWeight: 700, textAlign: "center" }}>{err}</div>}
       </div>
       <AppBottomNav wide={isDesktop} />
     </div>

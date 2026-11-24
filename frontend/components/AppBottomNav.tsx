@@ -35,7 +35,7 @@ const TONES = {
   dark: { bg: "rgba(31,15,71,0.9)", line: "rgba(196,181,253,0.2)", idle: "rgba(233,224,255,0.6)", pill: "#c4b5fd", on: "#1c0b45", shadow: "0 16px 36px -14px rgba(0,0,0,0.85)" },
 };
 
-export default function AppBottomNav({ wide = false, tone = "dark" }: { wide?: boolean; tone?: "light" | "dark" }) {
+export default function AppBottomNav({ wide = false, tone = "light" }: { wide?: boolean; tone?: "light" | "dark" }) {
   const pathname = usePathname() || "";
   const router = useRouter();
   const ix = activeIndex(pathname);

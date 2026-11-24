@@ -34,13 +34,13 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 const PAGE_SIZE = 16;
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -198,7 +198,7 @@ function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => v
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       style={{
         borderRadius: 14,
-        background: "rgba(20,10,50,0.6)",
+        background: "rgba(255,255,255,0.96)",
         border: ev.myMedal ? `1.5px solid ${ev.myMedal.color}88` : "1px solid rgba(167,139,250,0.28)",
         boxShadow: ev.myMedal
           ? `0 0 12px ${ev.myMedal.color}33, 0 6px 14px rgba(0,0,0,0.5)`
@@ -320,9 +320,9 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(244,63,94,0.16)", border: "1px solid rgba(244,63,94,0.5)" }}>
               <span style={{ width: 6, height: 6, borderRadius: 999, background: "#f43f5e", boxShadow: "0 0 8px #f43f5e" }} />
-              <span style={{ fontFamily: T.body, fontSize: 9, color: "#fda4af", fontWeight: 800, letterSpacing: "0.1em" }}>LIVE</span>
+              <span style={{ fontFamily: T.body, fontSize: 9, color: "#be123c", fontWeight: 800, letterSpacing: "0.1em" }}>LIVE</span>
             </span>
-            <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, fontFamily: T.body, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em", background: "#fbbf241f", color: "#fbbf24", border: "1px solid #fbbf2455" }}>
+            <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, fontFamily: T.body, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em", background: "#fbbf241f", color: "#b45309", border: "1px solid #fbbf2455" }}>
               3-WEEK CUP{isFinal ? " · FINAL WEEK" : ` · WEEK ${comp.currentWeek}`}
             </span>
           </div>
@@ -346,8 +346,8 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
         {[
-          { r: "1st", p: `$${comp.prizes.first}`, c: "#fbbf24" },
-          { r: "2nd", p: `$${comp.prizes.second}`, c: "#cbd5e1" },
+          { r: "1st", p: `$${comp.prizes.first}`, c: "#b45309" },
+          { r: "2nd", p: `$${comp.prizes.second}`, c: "#475569" },
           { r: "3rd", p: `$${comp.prizes.third}`,  c: "#cd7f32" },
         ].map(x => (
           <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "8px 6px", borderRadius: 12, background: "rgba(0,0,0,0.25)", border: `1px solid ${x.c}44` }}>
@@ -362,16 +362,16 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
 
 // ─── confetti + StagePodium + PlayerRow for ALL-TIME tab ────────────────
 const CONFETTI = [
-  { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
-  { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "22%", top: "20%", color: "#22d3ee", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
-  { left: "38%", top: "15%", color: "#e879f9", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
-  { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
-  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
-  { left: "78%", top: "28%", color: "#34d399", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
+  { left: "8%",  top: "25%", color: "#be185d", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
+  { left: "15%", top: "60%", color: "#b45309", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "22%", top: "20%", color: "#0e7490", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#c2410c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#a21caf", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#b45309", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
+  { left: "58%", top: "18%", color: "#1d4ed8", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
+  { left: "68%", top: "50%", color: "#be185d", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#047857", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#7e22ce", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
 ];
 function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
   const base = { position: "absolute" as const, left: p.left, top: p.top, width: p.size, height: p.size, animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`, pointerEvents: "none" as const, filter: `drop-shadow(0 0 6px ${p.color})` };
@@ -383,8 +383,8 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 }
 function StagePodium({ podium, agentSet }: { podium: (AllTimeEntry | undefined)[]; agentSet: Set<string> }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#b45309", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#475569", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
     { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
   return (
@@ -403,7 +403,7 @@ function StagePodium({ podium, agentSet }: { podium: (AllTimeEntry | undefined)[
           <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
             <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
               {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
-              {pl.entry && agentSet.has(pl.entry.player.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#67e8f9", marginLeft: 4, textShadow: "0 0 8px #22d3ee" }}>🤖</span>}
+              {pl.entry && agentSet.has(pl.entry.player.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#0e7490", marginLeft: 4, textShadow: "0 0 8px #0e7490" }}>🤖</span>}
             </div>
             <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>{pl.entry ? pl.entry.score.toLocaleString() : 0}</div>
           </div>
@@ -416,7 +416,7 @@ function PlayerRow({ entry, rank, isMe, isAgent }: { entry: AllTimeEntry; rank: 
   const color = T.accent;
   return (
     <div style={{ borderRadius: 999, padding: 2.5, background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`, boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)` }}>
-      <div style={{ borderRadius: 999, background: isMe ? `linear-gradient(90deg, ${color}26 0%, rgba(20,10,50,0.9) 100%)` : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)", padding: "8px 14px 8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ borderRadius: 999, background: isMe ? `linear-gradient(90deg, ${color}26 0%, rgba(255,255,255,0.96) 100%)` : "linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 100%)", padding: "8px 14px 8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${color}1f`, border: `1px solid ${color}66`, fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em" }}>#{rank}</span>
         <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? `You · ${fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}</span>
@@ -563,9 +563,9 @@ export default function EventsPage() {
       const teamWinner = s.standings.teams[0];
       const soloWinner = s.standings.soloTop10[0];
       const closing = s.prize_winners?.closing_surprise;
-      const teamColor = teamWinner?.team === "alpha" ? "#fb923c" : teamWinner?.team === "nova" ? "#67e8f9" : teamWinner?.team === "pulse" ? "#a78bfa" : "#fbbf24";
+      const teamColor = teamWinner?.team === "alpha" ? "#c2410c" : teamWinner?.team === "nova" ? "#0e7490" : teamWinner?.team === "pulse" ? "#6d28d9" : "#b45309";
       const myFinish = address ? s.standings.soloTop10.findIndex(p => p.wallet?.toLowerCase() === address.toLowerCase()) + 1 : 0;
-      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
       const start = safeDate(s.starts_at);
       const end = safeDate(s.ends_at);
       out.push({
@@ -575,17 +575,17 @@ export default function EventsPage() {
         title: `SEASON ${s.season_id} · TEAM WARS`,
         dateRange: fmtDateRange(start, end),
         primary: teamWinner ? { label: "TEAM WINNER", name: teamWinner.team.toUpperCase(), value: String(teamWinner.counted ?? 0), tint: teamColor, icon: "🏆" } : null,
-        secondary: soloWinner ? { label: "SOLO #1", name: soloWinner.username || (soloWinner.wallet ? fmtName(soloWinner.wallet) : "anon"), value: String(soloWinner.points), tint: "#fbbf24", icon: "🥇" } : undefined,
-        tertiary: closing ? { label: "CLOSING SURPRISE", name: closing.username || fmtName(closing.wallet), value: `$${closing.amount_usdc ?? 10}`, tint: "#22c55e", icon: "🎁" } : undefined,
+        secondary: soloWinner ? { label: "SOLO #1", name: soloWinner.username || (soloWinner.wallet ? fmtName(soloWinner.wallet) : "anon"), value: String(soloWinner.points), tint: "#b45309", icon: "🥇" } : undefined,
+        tertiary: closing ? { label: "CLOSING SURPRISE", name: closing.username || fmtName(closing.wallet), value: `$${closing.amount_usdc ?? 10}`, tint: "#15803d", icon: "🎁" } : undefined,
         myMedal,
-        accent: "#c4b5fd",
+        accent: "#6d28d9",
         raw: { type: "season", data: s },
       });
     });
     (pastCups ?? []).forEach(c => {
       const winner = c.winners?.[0];
       const myFinish = address ? (c.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
       const start = safeDate(c.starts_at);
       const end = safeDate(c.ends_at);
       out.push({
@@ -594,16 +594,16 @@ export default function EventsPage() {
         sortTs: end ? end.getTime() : 0,
         title: c.name?.toUpperCase() || "3-WEEK CUP",
         dateRange: fmtDateRange(start, end),
-        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.total} pts`, tint: "#fbbf24" } : null,
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.total} pts`, tint: "#b45309" } : null,
         myMedal,
-        accent: "#fde68a",
+        accent: "#b45309",
         raw: { type: "cup", data: c },
       });
     });
     (pastChallenges ?? []).forEach(ch => {
       const winner = ch.winners?.[0];
       const myFinish = address ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-      const myMedal = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
       const start = safeDate(ch.starts_at);
       const end = safeDate(ch.ends_at);
       out.push({
@@ -612,9 +612,9 @@ export default function EventsPage() {
         sortTs: end ? end.getTime() : 0,
         title: ch.name?.toUpperCase() || "WEEKLY CHALLENGE",
         dateRange: fmtDateRange(start, end),
-        primary: winner ? { label: "TOP GRINDER", name: fmtName(winner.wallet, winner.username), value: `${winner.plays} plays`, tint: "#22c55e" } : null,
+        primary: winner ? { label: "TOP GRINDER", name: fmtName(winner.wallet, winner.username), value: `${winner.plays} plays`, tint: "#15803d" } : null,
         myMedal,
-        accent: "#86efac",
+        accent: "#15803d",
         raw: { type: "challenge", data: ch },
       });
     });
@@ -633,18 +633,18 @@ export default function EventsPage() {
       const endsAt = safeDate(climb.event.endsAt);
       const startsAt = safeDate(climb.event.startsAt);
       const myFinish = address ? (lb.findIndex(e => e.wallet.toLowerCase() === address.toLowerCase()) + 1) : 0;
-      const myMedalClimb = myFinish === 1 ? { color: "#fbbf24", medal: "🥇" } : myFinish === 2 ? { color: "#e2e8f0", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedalClimb = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
       out.push({
         key: `climb-${climb.event.id ?? "1"}`,
         kind: "climb",
         sortTs: endsAt ? endsAt.getTime() : 0,
         title: `${(climb.event.name || "MARKOV CLIMB").toUpperCase()} · SEALED`,
         dateRange: fmtDateRange(startsAt, endsAt),
-        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.matches} matches`, tint: "#fbbf24", icon: "🥇" } : null,
-        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.matches} matches`, tint: "#e2e8f0", icon: "🥈" } : undefined,
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.matches} matches`, tint: "#b45309", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.matches} matches`, tint: "#475569", icon: "🥈" } : undefined,
         tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.matches} matches`, tint: "#f97316", icon: "🥉" } : undefined,
         myMedal: myMedalClimb,
-        accent: "#a78bfa",
+        accent: "#6d28d9",
         raw: { type: "climb", data: climb },
       });
     }
@@ -659,18 +659,18 @@ export default function EventsPage() {
       const endsAt = safeDate(cup.endsAt);
       const startsAt = safeDate(cup.startsAt);
       const myPr = address ? (cup.human.find(h => h.wallet.toLowerCase() === address.toLowerCase())?.prizeRank ?? 0) : 0;
-      const myMedalCup = myPr === 1 ? { color: "#fbbf24", medal: "🥇" } : myPr === 2 ? { color: "#e2e8f0", medal: "🥈" } : myPr === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedalCup = myPr === 1 ? { color: "#b45309", medal: "🥇" } : myPr === 2 ? { color: "#475569", medal: "🥈" } : myPr === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
       out.push({
         key: "arena-cup-sealed",
         kind: "cup",
         sortTs: endsAt ? endsAt.getTime() : 0,
         title: "ARENA CUP · SEALED",
         dateRange: fmtDateRange(startsAt, endsAt),
-        primary: champ ? { label: "CHAMPION", name: fmtName(champ.wallet, champ.username), value: `${champ.cupPoints} pts`, tint: "#fbbf24", icon: "🥇" } : null,
-        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.cupPoints} pts`, tint: "#e2e8f0", icon: "🥈" } : undefined,
+        primary: champ ? { label: "CHAMPION", name: fmtName(champ.wallet, champ.username), value: `${champ.cupPoints} pts`, tint: "#b45309", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.cupPoints} pts`, tint: "#475569", icon: "🥈" } : undefined,
         tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.cupPoints} pts`, tint: "#f97316", icon: "🥉" } : undefined,
         myMedal: myMedalCup,
-        accent: "#fde68a",
+        accent: "#b45309",
         href: "/leaderboard/cup",
       });
     }
@@ -692,10 +692,10 @@ export default function EventsPage() {
         sortTs: endsAt ? endsAt.getTime() : 0,
         title: "TUG OF WAR · SEALED",
         dateRange: fmtDateRange(startsAt, endsAt),
-        primary: { label: "WINNING SIDE", name: tie ? "Tie" : winnerBlue ? "Blue team" : "Red team", value: `${winScore.toLocaleString()} pts`, tint: winnerBlue ? "#60a5fa" : "#f87171", icon: "🏆" },
-        secondary: r1 ? { label: "TOP RECRUITER", name: `@${r1.name}`, value: `${r1.recruits} recruits`, tint: "#fbbf24", icon: "🥇" } : undefined,
-        tertiary: r2 ? { label: "2ND RECRUITER", name: `@${r2.name}`, value: `${r2.recruits} recruits`, tint: "#e2e8f0", icon: "🥈" } : undefined,
-        accent: "#f0abfc",
+        primary: { label: "WINNING SIDE", name: tie ? "Tie" : winnerBlue ? "Blue team" : "Red team", value: `${winScore.toLocaleString()} pts`, tint: winnerBlue ? "#1d4ed8" : "#b91c1c", icon: "🏆" },
+        secondary: r1 ? { label: "TOP RECRUITER", name: `@${r1.name}`, value: `${r1.recruits} recruits`, tint: "#b45309", icon: "🥇" } : undefined,
+        tertiary: r2 ? { label: "2ND RECRUITER", name: `@${r2.name}`, value: `${r2.recruits} recruits`, tint: "#475569", icon: "🥈" } : undefined,
+        accent: "#a21caf",
         href: "/tug",
       });
     }
@@ -731,19 +731,19 @@ export default function EventsPage() {
         {sprintAllowed && (
           <Link href="/sprint" style={{ textDecoration: "none", color: "inherit" }}>
             <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-              background: "linear-gradient(115deg, rgba(16,109,87,0.55) 0%, rgba(30,14,74,0.7) 60%, rgba(20,8,52,0.9) 100%)", border: "1px solid rgba(52,211,153,0.4)" }}>
+              background: "linear-gradient(115deg, rgba(16,109,87,0.55) 0%, rgba(255,255,255,0.96) 60%, rgba(20,8,52,0.9) 100%)", border: "1px solid rgba(52,211,153,0.4)" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em", color: "#34d399", textTransform: "uppercase" }}>Private Sprint · Invite only</div>
+                <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em", color: "#047857", textTransform: "uppercase" }}>Private Sprint · Invite only</div>
                 <div style={{ fontFamily: T.display, fontSize: isDesktop ? 22 : 19, color: T.ink, marginTop: 4 }}>You're in — open the room</div>
                 <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 3 }}>$50 in G$ · top 10 · 5 days. See the live board and your rank.</div>
               </div>
-              <span style={{ flexShrink: 0, fontFamily: T.display, fontSize: 24, color: "#34d399" }}>→</span>
+              <span style={{ flexShrink: 0, fontFamily: T.display, fontSize: 24, color: "#047857" }}>→</span>
             </div>
           </Link>
         )}
 
         {/* LIVE / PAST / ALL-TIME tab switcher */}
-        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
           {([
             { id: "live" as Tab, label: "LIVE" },
             { id: "past" as Tab, label: "PAST" },
@@ -794,7 +794,7 @@ export default function EventsPage() {
             {community && community.target > 0 && !community.hit && (
               <LiveEventCard
                 icon="🌍"
-                color="#22c55e"
+                color="#15803d"
                 tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
                 sub={`Earn ${(community.perGameG ?? 0).toLocaleString()} G$ every game, up to ${(community.capPerPlayer * (community.perGameG ?? 0)).toLocaleString()} G$${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You've earned ${community.myProjectedG.toLocaleString()} G$` : ` · Play to earn`}`}
@@ -805,7 +805,7 @@ export default function EventsPage() {
             {community && community.hit && (
               <LiveEventCard
                 icon="🎉"
-                color="#22c55e"
+                color="#15803d"
                 tag="COMMUNITY · MILESTONE HIT"
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
                 sub={`Pool unlocked · ${(community.perGameG ?? 0).toLocaleString()} G$ per game${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You earned ${community.myProjectedG.toLocaleString()} G$` : ` · ${community.playersIn} players in`}`}
@@ -817,7 +817,7 @@ export default function EventsPage() {
             {climb && climb.event && climb.event.phase === "live" && (
               <LiveEventCard
                 icon="🤖"
-                color="#22c55e"
+                color="#15803d"
                 tag="MARKOV CLIMB"
                 title={`${fmtCountdown(new Date(climb.event.endsAt).getTime() / 1000)} · ${climb.event.minMatchesToQualify ?? 30}+ matches qualifies`}
                 sub={climb.event.prizes?.first ? `Top 3 take $${climb.event.prizes.first.usdc ?? 0} USDC + ${(climb.event.prizes.first.g_dollar ?? 0).toLocaleString()} G$` : "Top 3 take the climb pool"}
@@ -869,7 +869,7 @@ export default function EventsPage() {
               </div>
             )}
             {address && allEntries && !myAllRank && (
-              <a href="/games" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${T.accent}55`, textDecoration: "none" }}>
+              <a href="/games" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px dashed ${T.accent}55`, textDecoration: "none" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked yet</div>
                   <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Play a game to claim a spot on the board</div>
@@ -894,9 +894,9 @@ export default function EventsPage() {
 
             {totalPages > 1 && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 4 }}>
-                <button onClick={() => setAllPage(p => Math.max(0, p - 1))} disabled={allPage === 0} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === 0 ? "rgba(255,255,255,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === 0 ? "rgba(255,255,255,0.12)" : T.accent + "80"}`, color: allPage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === 0 ? "not-allowed" : "pointer", fontFamily: T.body }}>‹ PREV</button>
+                <button onClick={() => setAllPage(p => Math.max(0, p - 1))} disabled={allPage === 0} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === 0 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === 0 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === 0 ? "not-allowed" : "pointer", fontFamily: T.body }}>‹ PREV</button>
                 <span style={{ color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>PAGE {allPage + 1} / {totalPages}</span>
-                <button onClick={() => setAllPage(p => Math.min(totalPages - 1, p + 1))} disabled={allPage === totalPages - 1} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === totalPages - 1 ? "rgba(255,255,255,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === totalPages - 1 ? "rgba(255,255,255,0.12)" : T.accent + "80"}`, color: allPage === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body }}>NEXT ›</button>
+                <button onClick={() => setAllPage(p => Math.min(totalPages - 1, p + 1))} disabled={allPage === totalPages - 1} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === totalPages - 1 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === totalPages - 1 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body }}>NEXT ›</button>
               </div>
             )}
           </>
@@ -931,35 +931,35 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
   // framing; PAST variants show the sealed end date.
   let name = "";
   let subline = "";
-  let accent = "#fbbf24";
+  let accent = "#b45309";
   if (sel.type === "season") {
     name = `SEASON ${sel.data.season_id} · TEAM WARS`;
     subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-    accent = "#a78bfa";
+    accent = "#6d28d9";
   } else if (sel.type === "cup" || sel.type === "challenge") {
     name = sel.data.name?.toUpperCase() || (sel.type === "cup" ? "3-WEEK CUP" : "WEEKLY CHALLENGE");
     subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-    accent = sel.type === "cup" ? "#fbbf24" : "#86efac";
+    accent = sel.type === "cup" ? "#b45309" : "#15803d";
   } else if (sel.type === "climb") {
     // Closed MARKOV Climb · same body component as the live variant, just
     // dressed as a past event in the header (SEALED label + end date).
     const ev = sel.data.event;
     name = `${(ev?.name || "MARKOV CLIMB").toUpperCase()} · SEALED`;
     subline = ev?.endsAt ? `ENDED ${new Date(ev.endsAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : "ENDED";
-    accent = "#a78bfa";
+    accent = "#6d28d9";
   } else if (sel.type === "live-cup") {
     name = `3-WEEK CUP · WEEK ${sel.data.currentWeek}${sel.data.weeksLeft === 1 ? " · FINAL" : ""}`;
     subline = `LIVE · ${fmtCountdown(sel.data.compEnd)}`;
-    accent = "#fbbf24";
+    accent = "#b45309";
   } else if (sel.type === "live-community") {
     name = "COMMUNITY CHALLENGE";
     subline = sel.data.hit ? "LIVE · MILESTONE HIT" : `LIVE · ${sel.data.daysLeft}d LEFT`;
-    accent = "#22c55e";
+    accent = "#15803d";
   } else if (sel.type === "live-climb") {
     const ev = sel.data.event;
     name = "MARKOV CLIMB · LIVE";
     subline = ev ? `LIVE · ${fmtCountdown(Math.floor(new Date(ev.endsAt).getTime() / 1000))}` : "LIVE";
-    accent = "#22c55e";
+    accent = "#15803d";
   }
 
   // Light haptic-feeling spring on enter via cubic-bezier(0.16, 1, 0.3, 1) —
@@ -987,7 +987,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
             maxWidth: 520,
             maxHeight: "88vh",
             borderRadius: "24px 24px 0 0",
-            background: "linear-gradient(180deg, rgba(30,12,80,0.98) 0%, rgba(12,4,40,0.99) 60%, rgba(7,2,26,1) 100%)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0.96) 100%)",
             border: `1px solid ${accent}33`,
             borderBottom: "none",
             boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
@@ -1014,7 +1014,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
             </div>
             <button onClick={onClose} aria-label="Close" style={{
               width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(76,29,149,0.06)", border: "1px solid rgba(76,29,149,0.12)",
               color: "rgba(255,255,255,0.7)", fontSize: 15, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>✕</button>
@@ -1041,7 +1041,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
 function ChallengeOrCupBody({ sel, address }: { sel: Extract<SelectedEvent, { type: "cup" | "challenge" }>; address?: string }) {
   const isChallenge = sel.type === "challenge";
   const winners = sel.data.winners ?? [];
-  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
 
   return (
@@ -1066,8 +1066,8 @@ function ChallengeOrCupBody({ sel, address }: { sel: Extract<SelectedEvent, { ty
               <div key={w.wallet + w.rank} style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 12px", borderRadius: 12,
-                background: isMe ? `${rc}18` : w.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
-                border: isMe ? `1.5px solid ${rc}77` : `1px solid ${w.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
+                background: isMe ? `${rc}18` : w.rank <= 3 ? `${rc}0d` : "rgba(76,29,149,0.03)",
+                border: isMe ? `1.5px solid ${rc}77` : `1px solid ${w.rank <= 3 ? rc + "33" : "rgba(76,29,149,0.07)"}`,
               }}>
                 <span style={{ fontSize: 18, flexShrink: 0 }}>{rm}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1091,8 +1091,8 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
   const teams = data.standings.teams ?? [];
   const solo = data.standings.soloTop10 ?? [];
   const closing = data.prize_winners?.closing_surprise;
-  const teamColor = (team: string) => team === "alpha" ? "#fb923c" : team === "nova" ? "#67e8f9" : team === "pulse" ? "#a78bfa" : "#fbbf24";
-  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const teamColor = (team: string) => team === "alpha" ? "#c2410c" : team === "nova" ? "#0e7490" : team === "pulse" ? "#6d28d9" : "#b45309";
+  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
 
   return (
@@ -1129,8 +1129,8 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
                 <div key={p.wallet} style={{
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "8px 12px", borderRadius: 10,
-                  background: isMe ? `${rc}18` : p.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)",
-                  border: isMe ? `1.5px solid ${rc}77` : `1px solid ${p.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}`,
+                  background: isMe ? `${rc}18` : p.rank <= 3 ? `${rc}0d` : "rgba(76,29,149,0.03)",
+                  border: isMe ? `1.5px solid ${rc}77` : `1px solid ${p.rank <= 3 ? rc + "33" : "rgba(76,29,149,0.07)"}`,
                 }}>
                   <span style={{ fontSize: 16, flexShrink: 0 }}>{rm}</span>
                   <span style={{ flex: 1, color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1149,10 +1149,10 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
         <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 18 }}>🎁</span>
           <div style={{ flex: 1 }}>
-            <div style={{ color: "#86efac", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>CLOSING SURPRISE</div>
+            <div style={{ color: "#15803d", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>CLOSING SURPRISE</div>
             <div style={{ color: "#fff", fontSize: 12, fontWeight: 800, marginTop: 2, fontFamily: T.body }}>{closing.username || fmtName(closing.wallet)}</div>
           </div>
-          <div style={{ color: "#22c55e", fontSize: 13, fontWeight: 900, fontFamily: T.display }}>${closing.amount_usdc ?? 10}</div>
+          <div style={{ color: "#15803d", fontSize: 13, fontWeight: 900, fontFamily: T.display }}>${closing.amount_usdc ?? 10}</div>
         </div>
       )}
     </div>
@@ -1165,15 +1165,15 @@ function LiveCupBody({ data, address }: { data: CompetitionData; address?: strin
   const top = data.rankings.slice(0, 25);
   const myIdx = address ? data.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase()) : -1;
   const myRank = myIdx >= 0 ? myIdx + 1 : 0;
-  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#a78bfa";
+  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Prize ladder reminder */}
       <div style={{ display: "flex", gap: 8 }}>
         {[
-          { r: "1st", p: `$${data.prizes.first}`, c: "#fbbf24" },
-          { r: "2nd", p: `$${data.prizes.second}`, c: "#cbd5e1" },
+          { r: "1st", p: `$${data.prizes.first}`, c: "#b45309" },
+          { r: "2nd", p: `$${data.prizes.second}`, c: "#475569" },
           { r: "3rd", p: `$${data.prizes.third}`,  c: "#cd7f32" },
         ].map(x => (
           <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "6px 4px", borderRadius: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${x.c}33` }}>
@@ -1195,7 +1195,7 @@ function LiveCupBody({ data, address }: { data: CompetitionData; address?: strin
             const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
             const rc = rankColor(i + 1);
             return (
-              <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+              <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(76,29,149,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(76,29,149,0.07)"}` }}>
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{rankMedal(i + 1)}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : (r.username || fmtName(r.wallet))}</div>
@@ -1221,11 +1221,11 @@ function LiveCommunityBody({ data, address }: { data: WeeklyChallengeData; addre
       {/* Headline progress */}
       <div style={{ padding: "12px 14px", borderRadius: 14, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <span style={{ color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>COMMUNITY GOAL</span>
-          <span style={{ color: data.hit ? "#86efac" : "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{data.hit ? "MILESTONE HIT 🎉" : `${data.daysLeft}D LEFT`}</span>
+          <span style={{ color: "#15803d", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>COMMUNITY GOAL</span>
+          <span style={{ color: data.hit ? "#15803d" : "rgba(21,128,61,0.95)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{data.hit ? "MILESTONE HIT 🎉" : `${data.daysLeft}D LEFT`}</span>
         </div>
         <div style={{ fontFamily: T.display, fontSize: 22, color: "#fff", marginTop: 4 }}>
-          {data.progress.toLocaleString()} <span style={{ color: "rgba(134,239,172,0.6)", fontSize: 14 }}>/ {data.target.toLocaleString()}</span>
+          {data.progress.toLocaleString()} <span style={{ color: "rgba(21,128,61,0.85)", fontSize: 14 }}>/ {data.target.toLocaleString()}</span>
         </div>
         <div style={{ height: 6, borderRadius: 999, background: "rgba(0,0,0,0.4)", overflow: "hidden", marginTop: 8 }}>
           <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #16a34a, #86efac)", boxShadow: "0 0 8px #22c55e" }} />
@@ -1251,10 +1251,10 @@ function LiveCommunityBody({ data, address }: { data: WeeklyChallengeData; addre
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {contributors.slice(0, 25).map((c, i) => {
               const isMe = !!address && c.wallet.toLowerCase() === address.toLowerCase();
-              const rc = i === 0 ? "#fbbf24" : i === 1 ? "#e2e8f0" : i === 2 ? "#f97316" : "#86efac";
+              const rc = i === 0 ? "#b45309" : i === 1 ? "#475569" : i === 2 ? "#f97316" : "#15803d";
               const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🌍";
               return (
-                <div key={c.wallet + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+                <div key={c.wallet + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(76,29,149,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(76,29,149,0.07)"}` }}>
                   <span style={{ fontSize: 14, flexShrink: 0 }}>{medal}</span>
                   <span style={{ flex: 1, color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : (c.username || fmtName(c.wallet))}</span>
                   <span style={{ color: rc, fontSize: 12, fontWeight: 900, fontFamily: T.display }}>{c.games} games</span>
@@ -1273,15 +1273,15 @@ function LiveClimbBody({ data, address }: { data: MarkovClimbData; address?: str
   const ev = data.event;
   const board = data.leaderboard ?? [];
   const minQ = ev?.minMatchesToQualify ?? 30;
-  const rankColor = (r: number) => r === 1 ? "#fbbf24" : r === 2 ? "#e2e8f0" : r === 3 ? "#f97316" : "#22c55e";
+  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#15803d";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🤖";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {ev?.prizes?.first && (
         <div style={{ padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(22,101,52,0.4) 100%)", border: "1px solid rgba(34,197,94,0.4)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <span style={{ color: "#86efac", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>1ST PRIZE</span>
-            <span style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, fontFamily: T.body }}>{minQ}+ matches qualifies</span>
+            <span style={{ color: "#15803d", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>1ST PRIZE</span>
+            <span style={{ color: "rgba(21,128,61,0.95)", fontSize: 10, fontWeight: 700, fontFamily: T.body }}>{minQ}+ matches qualifies</span>
           </div>
           <div style={{ fontFamily: T.display, fontSize: 18, color: "#fff", marginTop: 4 }}>
             ${ev.prizes.first.usdc ?? 0} USDC + {(ev.prizes.first.g_dollar ?? 0).toLocaleString()} G$
@@ -1299,11 +1299,11 @@ function LiveClimbBody({ data, address }: { data: MarkovClimbData; address?: str
               const rc = rankColor(r.rank);
               const remaining = Math.max(0, minQ - r.matches);
               return (
-                <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : r.rank <= 3 ? `${rc}0d` : "rgba(255,255,255,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${r.rank <= 3 ? rc + "33" : "rgba(255,255,255,0.07)"}` }}>
+                <div key={r.wallet} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : r.rank <= 3 ? `${rc}0d` : "rgba(76,29,149,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${r.rank <= 3 ? rc + "33" : "rgba(76,29,149,0.07)"}` }}>
                   <span style={{ fontSize: 14, flexShrink: 0 }}>{rankMedal(r.rank)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : r.username}</div>
-                    <div style={{ color: remaining === 0 ? "#86efac" : "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>{remaining === 0 ? "QUALIFIED" : `${remaining} more to qualify`}</div>
+                    <div style={{ color: remaining === 0 ? "#15803d" : "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>{remaining === 0 ? "QUALIFIED" : `${remaining} more to qualify`}</div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                     <span style={{ color: rc, fontSize: 14, fontWeight: 900, fontFamily: T.display }}>{r.matches}</span>

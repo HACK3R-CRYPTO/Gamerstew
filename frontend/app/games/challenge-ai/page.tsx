@@ -482,7 +482,7 @@ export default function ChallengeAiPage() {
     >
 
       {/* App shell on browse screens · fullscreen immersion during the fight */}
-      {!inMatch && <AppHeader />}
+      {!inMatch && <AppHeader tone="dark" />}
 
       {/* match-phase header: quit + format badge */}
       {inMatch && (
@@ -578,7 +578,7 @@ export default function ChallengeAiPage() {
         )}
       </div>
 
-      {!inMatch && <AppBottomNav wide={isDesktop} />}
+      {!inMatch && <AppBottomNav wide={isDesktop} tone="dark" />}
     </div>
   );
 }

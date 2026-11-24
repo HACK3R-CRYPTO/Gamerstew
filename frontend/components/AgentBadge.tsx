@@ -15,7 +15,7 @@ export function AgentBadge({ size = "sm" }: { size?: "sm" | "xs" }) {
         borderRadius: 999,
         background: "rgba(34,211,238,0.14)",
         border: "1px solid rgba(34,211,238,0.4)",
-        color: "#67e8f9",
+        color: "#0e7490",
         fontSize: fs,
         fontWeight: 900,
         letterSpacing: "0.08em",

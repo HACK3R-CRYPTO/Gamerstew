@@ -11,15 +11,15 @@ import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 // Tokens shared with /shop, /settings, /profile so the verify screen
 // feels like a continuation of the rest of the redesigned app.
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
-  good: "#22c55e",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
+  good: "#15803d",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -133,11 +133,11 @@ function VerifyInner() {
       }}>
         <div style={{
           width: 40, height: 40, borderRadius: "50%",
-          border: "3px solid rgba(134,239,172,0.25)", borderTopColor: "#22c55e",
+          border: "3px solid rgba(134,239,172,0.25)", borderTopColor: "#15803d",
           animation: "verify-spin 0.8s linear infinite",
         }} />
         <style>{`@keyframes verify-spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
-        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: "rgba(220,210,255,0.6)" }}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: "rgba(34,16,79,0.7)" }}>
           {isVerified ? "VERIFIED ✓ · TAKING YOU BACK" : "LOADING YOUR DETAILS…"}
         </div>
       </div>
@@ -181,7 +181,7 @@ function VerifyInner() {
         {/* Compact welcome — celebration folded in here, no separate
             "You're in → Continue" step. Lands directly on the choice. */}
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#b45309" : "#15803d", fontWeight: 800, letterSpacing: "0.18em" }}>
             {hasLapsed ? "QUICK RE-CHECK" : "YOU'RE IN 🎉"}
           </div>
           <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>
@@ -223,7 +223,7 @@ function VerifyInner() {
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.16em" }}>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: hasLapsed ? "#b45309" : "#15803d", fontWeight: 800, letterSpacing: "0.16em" }}>
             {hasLapsed ? "YOUR CHECK EXPIRED" : "FREE DAILY REWARD"}
           </div>
           <h2 style={{ fontFamily: T.display, fontSize: 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em" }}>
@@ -241,7 +241,7 @@ function VerifyInner() {
             }}>
               <span style={{ fontSize: 17, flexShrink: 0 }}>{r.icon}</span>
               <span style={{ flex: 1, fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 600 }}>{r.txt}</span>
-              <span style={{ color: "#22c55e", display: "inline-flex" }}><CheckIcon /></span>
+              <span style={{ color: "#15803d", display: "inline-flex" }}><CheckIcon /></span>
             </div>
           ))}
         </div>
@@ -261,7 +261,7 @@ function VerifyInner() {
             fontFamily: T.display, fontSize: 18, color: "#fff",
             padding: "16px", borderRadius: 16,
             background: "linear-gradient(180deg, #22c55e, #15803d)",
-            border: "1.5px solid #22c55e",
+            border: "1.5px solid #15803d",
             boxShadow: "0 14px 30px -8px rgba(34,197,94,0.6), inset 0 1px 0 rgba(255,255,255,0.4)",
             cursor: isVerifying ? "default" : "pointer",
             opacity: isVerifying ? 0.85 : 1,
@@ -290,7 +290,7 @@ function VerifyInner() {
             background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.45)",
             padding: 14, display: "flex", flexDirection: "column", gap: 10,
           }}>
-            <div style={{ fontFamily: T.display, fontSize: 14, color: "#fde68a" }}>
+            <div style={{ fontFamily: T.display, fontSize: 14, color: "#b45309" }}>
               Your browser blocked the verification window
             </div>
             {fvLink && (
@@ -326,7 +326,7 @@ function VerifyInner() {
             width: "100%", maxWidth: 340,
             fontFamily: T.display, fontSize: 16, color: T.ink,
             padding: "14px", borderRadius: 16,
-            background: "rgba(255,255,255,0.05)",
+            background: "rgba(76,29,149,0.05)",
             border: `1.5px solid ${T.hairlineHi}`,
             cursor: "pointer", letterSpacing: "0.01em",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,

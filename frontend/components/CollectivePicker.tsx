@@ -13,13 +13,13 @@ import { getCollectiveChoice, chooseCollective } from "@/app/actions/collective"
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
+  inkDim: "rgba(34,16,79,0.8)",
+  inkSoft: "rgba(34,16,79,0.55)",
   surface: "rgba(40,18,100,0.55)",
   hairline: "rgba(255,255,255,0.08)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const GOOD = "#22c55e";
+const GOOD = "#15803d";
 
 export default function CollectivePicker() {
   const { address } = useAccount();
@@ -55,7 +55,7 @@ export default function CollectivePicker() {
         <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,197,94,0.14)", border: "1px solid rgba(134,239,172,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>💚</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
-            Your UBI collective {savedFlash && <span style={{ color: "#86efac", fontSize: 11 }}>· ✓ saved</span>}
+            Your UBI collective {savedFlash && <span style={{ color: "#15803d", fontSize: 11 }}>· ✓ saved</span>}
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2, lineHeight: 1.35 }}>
             20% of every G$ you spend funds UBI — choose where yours goes

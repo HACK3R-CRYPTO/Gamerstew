@@ -18,13 +18,13 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 // Token system mirrors /profile so the two surfaces share one design.
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -153,12 +153,12 @@ export default function ShopPage() {
 
         {/* HEADER · back + title + balance */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button onClick={() => router.back()} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px 8px 9px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+          <button onClick={() => router.back()} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px 8px 9px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
             <Icon name="back" size={15} color="currentColor" /> Back
           </button>
           <div style={{ display: "inline-flex", alignItems: "baseline", gap: 5, padding: "8px 14px", borderRadius: 999, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
-            <span style={{ fontFamily: T.display, fontSize: 14, color: "#fde68a", lineHeight: 1, textShadow: "0 0 8px rgba(251,191,36,0.5)" }}>{(Number(gBalance) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            <span style={{ fontFamily: T.body, fontSize: 10, color: "#fde68a", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
+            <span style={{ fontFamily: T.display, fontSize: 14, color: "#b45309", lineHeight: 1, textShadow: "0 0 8px rgba(180,83,9,0.75)" }}>{(Number(gBalance) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            <span style={{ fontFamily: T.body, fontSize: 10, color: "#b45309", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
           </div>
         </div>
 
@@ -176,7 +176,7 @@ export default function ShopPage() {
         </div>
 
         {/* SEGMENTED CONTROL · Perks | Habitats */}
-        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, width: "100%", maxWidth: 380 }}>
+        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, width: "100%", maxWidth: 380 }}>
           {([["perks", "Perks"], ["habitats", "Habitats"]] as const).map(([key, label]) => {
             const active = tab === key;
             return (
@@ -216,7 +216,7 @@ export default function ShopPage() {
               border: `1px solid ${nextPaid.bg.accent}66`,
               boxShadow: `0 0 30px ${nextPaid.bg.accent}33`,
               cursor: "pointer",
-              background: "rgba(8,2,28,0.6)",
+              background: "rgba(255,255,255,0.68)",
               transition: "transform 0.15s",
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-3px)"; }}
@@ -227,7 +227,7 @@ export default function ShopPage() {
             </div>
             <div style={{
               position: "absolute", inset: 0,
-              background: "linear-gradient(90deg, rgba(4,2,18,0.82) 0%, rgba(4,2,18,0.5) 55%, rgba(4,2,18,0.2) 100%)",
+              background: "linear-gradient(90deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.58) 55%, rgba(255,255,255,0.28) 100%)",
               pointerEvents: "none", zIndex: 1,
             }} />
             <div style={{
@@ -249,15 +249,15 @@ export default function ShopPage() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: isDesktop ? "flex-end" : "flex-start", gap: 8, flexShrink: 0 }}>
                 <div style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
-                  <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", textShadow: "0 0 16px rgba(251,191,36,0.55)", lineHeight: 1 }}>{fmtCost(nextPaid.costG$)}</span>
-                  <span style={{ fontFamily: T.body, fontSize: 12, color: "#fde68a", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
+                  <span style={{ fontFamily: T.display, fontSize: 30, color: "#b45309", textShadow: "0 0 16px rgba(180,83,9,0.8)", lineHeight: 1 }}>{fmtCost(nextPaid.costG$)}</span>
+                  <span style={{ fontFamily: T.body, fontSize: 12, color: "#b45309", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
                 </div>
                 <div style={{
                   padding: "9px 18px", borderRadius: 999,
                   background: canAffordNext
                     ? `linear-gradient(180deg, ${nextPaid.bg.accent}, ${nextPaid.bg.accent}cc)`
-                    : "rgba(255,255,255,0.08)",
-                  border: `1px solid ${canAffordNext ? nextPaid.bg.accent : "rgba(255,255,255,0.18)"}`,
+                    : "rgba(76,29,149,0.08)",
+                  border: `1px solid ${canAffordNext ? nextPaid.bg.accent : "rgba(76,29,149,0.18)"}`,
                   boxShadow: canAffordNext ? `0 8px 20px -4px ${nextPaid.bg.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)` : "none",
                   fontFamily: T.body, fontSize: 11.5, fontWeight: 900, letterSpacing: "0.16em",
                   color: canAffordNext ? "#fff" : T.inkDim,
@@ -305,11 +305,11 @@ export default function ShopPage() {
                 style={{
                   position: "relative", overflow: "hidden",
                   borderRadius: 14,
-                  border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? h.bg.accent + "55" : "rgba(255,255,255,0.08)"}`,
+                  border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? h.bg.accent + "55" : "rgba(76,29,149,0.08)"}`,
                   boxShadow: isEquipped ? `0 0 16px ${h.bg.accent}55` : isBuyable ? `0 0 12px ${h.bg.accent}22` : "none",
                   minHeight: 140,
                   display: "flex", flexDirection: "column",
-                  background: "rgba(8,2,28,0.6)",
+                  background: "rgba(255,255,255,0.68)",
                   cursor: handleClick ? "pointer" : "default",
                   transition: "transform 0.15s",
                 }}
@@ -327,7 +327,7 @@ export default function ShopPage() {
                   position: "relative", zIndex: 2,
                   marginTop: "auto",
                   padding: "9px 10px 9px",
-                  background: "linear-gradient(180deg, transparent 0%, rgba(4,2,18,0.88) 60%)",
+                  background: "linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.96) 60%)",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "-0.005em", lineHeight: 1.1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</span>
@@ -339,14 +339,14 @@ export default function ShopPage() {
                 </div>
 
                 {h.type === "paid" ? (
-                  <div style={{ position: "absolute", top: 8, left: 8, zIndex: 2, display: "inline-flex", alignItems: "baseline", gap: 3, padding: "4px 9px", borderRadius: 999, background: "rgba(0,0,0,0.6)", border: `1px solid ${h.bg.accent}66`, boxShadow: `0 0 8px ${h.bg.accent}33` }}>
-                    <span style={{ fontFamily: T.display, fontSize: 13, color: "#fde68a", textShadow: "0 0 6px rgba(251,191,36,0.5)", lineHeight: 1 }}>{fmtCost(h.costG$)}</span>
-                    <span style={{ fontFamily: T.body, fontSize: 8.5, color: "#fde68a", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
+                  <div style={{ position: "absolute", top: 8, left: 8, zIndex: 2, display: "inline-flex", alignItems: "baseline", gap: 3, padding: "4px 9px", borderRadius: 999, background: "rgba(255,255,255,0.68)", border: `1px solid ${h.bg.accent}66`, boxShadow: `0 0 8px ${h.bg.accent}33` }}>
+                    <span style={{ fontFamily: T.display, fontSize: 13, color: "#b45309", textShadow: "0 0 6px rgba(180,83,9,0.75)", lineHeight: 1 }}>{fmtCost(h.costG$)}</span>
+                    <span style={{ fontFamily: T.body, fontSize: 8.5, color: "#b45309", fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
                   </div>
                 ) : null}
 
                 {!unlocked && h.type === "free" && (
-                  <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2, padding: "4px 6px", borderRadius: 8, background: "rgba(0,0,0,0.55)", border: `1px solid ${T.hairline}`, color: T.inkDim, display: "flex", alignItems: "center" }}>
+                  <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2, padding: "4px 6px", borderRadius: 8, background: "rgba(255,255,255,0.63)", border: `1px solid ${T.hairline}`, color: T.inkDim, display: "flex", alignItems: "center" }}>
                     <Icon name="lock" size={11} color="currentColor" />
                   </div>
                 )}
@@ -387,7 +387,7 @@ export default function ShopPage() {
           <div onClick={(e) => e.stopPropagation()} style={{
             width: "100%", maxWidth: 520,
             borderRadius: "26px 26px 0 0",
-            background: "linear-gradient(180deg, rgba(20,8,52,0.98) 0%, rgba(8,2,28,0.99) 100%)",
+            background: "#ffffff",
             border: `1px solid ${unlockTarget.bg.accent}55`,
             borderBottom: "none",
             boxShadow: `0 -24px 60px -10px ${unlockTarget.bg.accent}33`,
@@ -395,7 +395,7 @@ export default function ShopPage() {
             animation: "shop-sheet-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both",
           }}>
             <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
-              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.18)" }} />
             </div>
             <div style={{ padding: "6px 22px 18px" }}>
               <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", height: 160 }}>
@@ -405,12 +405,12 @@ export default function ShopPage() {
               <div style={{ fontFamily: T.display, color: T.ink, fontSize: 24, marginTop: 4, letterSpacing: "-0.005em" }}>{unlockTarget.name}</div>
               <div style={{ fontFamily: T.body, color: T.inkDim, fontSize: 12.5, marginTop: 5, lineHeight: 1.5 }}>{unlockTarget.blurb}</div>
 
-              <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div style={{ fontFamily: T.body, color: T.inkSoft, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase" }}>Cost</div>
                   <div style={{ display: "inline-flex", alignItems: "baseline", gap: 4, marginTop: 3 }}>
-                    <span style={{ fontFamily: T.display, color: "#fde68a", fontSize: 22, lineHeight: 1, textShadow: "0 0 14px rgba(251,191,36,0.5)" }}>{unlockTarget.costG$ ? (Number(unlockTarget.costG$) / 1e18).toLocaleString() : "—"}</span>
-                    <span style={{ fontFamily: T.body, color: "#fde68a", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
+                    <span style={{ fontFamily: T.display, color: "#b45309", fontSize: 22, lineHeight: 1, textShadow: "0 0 14px rgba(180,83,9,0.75)" }}>{unlockTarget.costG$ ? (Number(unlockTarget.costG$) / 1e18).toLocaleString() : "—"}</span>
+                    <span style={{ fontFamily: T.body, color: "#b45309", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>G$</span>
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -425,7 +425,7 @@ export default function ShopPage() {
                 </div>
               )}
               {unlockStep === "success" && (
-                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.35)", color: "#86efac", fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.02em", textAlign: "center" }}>
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.35)", color: "#15803d", fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.02em", textAlign: "center" }}>
                   ✓ Unlocked — {unlockTarget.name} is now your habitat.
                 </div>
               )}
@@ -443,7 +443,7 @@ export default function ShopPage() {
                   <>
                     <button onClick={closeUnlockModal} disabled={unlockStep === "approving"} style={{
                       flex: 1, padding: "13px 10px", borderRadius: 14, cursor: unlockStep === "approving" ? "not-allowed" : "pointer",
-                      background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`,
+                      background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`,
                       color: T.inkDim, fontFamily: T.body, fontSize: 12.5, fontWeight: 800, letterSpacing: "0.14em",
                       opacity: unlockStep === "approving" ? 0.5 : 1,
                     }}>CANCEL</button>
@@ -455,7 +455,7 @@ export default function ShopPage() {
                         cursor: (unlockStep === "approving" || gBalance < (unlockTarget.costG$ ?? 0n)) ? "not-allowed" : "pointer",
                         background: gBalance >= (unlockTarget.costG$ ?? 0n)
                           ? `linear-gradient(180deg, ${unlockTarget.bg.accent}, ${unlockTarget.bg.accent}cc)`
-                          : "rgba(255,255,255,0.06)",
+                          : "rgba(76,29,149,0.06)",
                         border: `1px solid ${gBalance >= (unlockTarget.costG$ ?? 0n) ? unlockTarget.bg.accent : T.hairline}`,
                         boxShadow: gBalance >= (unlockTarget.costG$ ?? 0n)
                           ? `0 10px 22px -6px ${unlockTarget.bg.accent}88, inset 0 1px 0 rgba(255,255,255,0.35)`

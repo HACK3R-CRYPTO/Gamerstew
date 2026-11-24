@@ -23,8 +23,8 @@ const PAGE_SIZE = 16;
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
+  inkDim: "rgba(34,16,79,0.8)",
+  inkSoft: "rgba(34,16,79,0.55)",
   hairline: "rgba(255,255,255,0.08)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -53,10 +53,10 @@ const GAME_LABEL: Record<GameKind, string> = {
 // Per-game accent for the detail sheet · matches each lobby's signature
 // color so the sheet visually belongs to the game the player came from.
 const GAME_ACCENT: Record<GameKind, string> = {
-  rhythm: "#e879f9",
+  rhythm: "#a21caf",
   simon: "#06b6d4",
-  stack: "#fb923c",
-  nepa: "#fbbf24",
+  stack: "#c2410c",
+  nepa: "#b45309",
 };
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the
@@ -95,16 +95,16 @@ function dateRange(startTs: number, endTs: number): string {
 
 // ─── confetti + podium · matches the previous leaderboard style 1:1 ──────
 const CONFETTI = [
-  { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
-  { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "22%", top: "20%", color: "#22d3ee", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
-  { left: "38%", top: "15%", color: "#e879f9", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
-  { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
-  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
-  { left: "78%", top: "28%", color: "#34d399", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
+  { left: "8%",  top: "25%", color: "#be185d", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
+  { left: "15%", top: "60%", color: "#b45309", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "22%", top: "20%", color: "#0e7490", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#c2410c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#a21caf", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#b45309", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
+  { left: "58%", top: "18%", color: "#1d4ed8", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
+  { left: "68%", top: "50%", color: "#be185d", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#047857", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#7e22ce", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
 ];
 
 function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
@@ -127,8 +127,8 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 
 function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#b45309", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#475569", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
     { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
   return (
@@ -183,8 +183,8 @@ function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; 
       <div style={{
         borderRadius: 999,
         background: isMe
-          ? `linear-gradient(90deg, ${accent}26 0%, rgba(20,10,50,0.9) 100%)`
-          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
+          ? `linear-gradient(90deg, ${accent}26 0%, rgba(255,255,255,0.96) 100%)`
+          : "linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 100%)",
         padding: "8px 14px 8px 10px",
         display: "flex", alignItems: "center", gap: 10,
       }}>
@@ -212,7 +212,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
   const winner = entries[0];
   const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
   const placedTop3 = myFinish > 0 && myFinish <= 3;
-  const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
+  const myMedalColor = myFinish === 1 ? "#b45309" : myFinish === 2 ? "#475569" : myFinish === 3 ? "#f97316" : null;
   const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
   return (
     <button
@@ -224,7 +224,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
         cursor: "pointer",
         fontFamily: "inherit",
         borderRadius: 14,
-        background: "rgba(20,10,50,0.6)",
+        background: "rgba(255,255,255,0.96)",
         border: placedTop3 ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(167,139,250,0.18)",
         boxShadow: placedTop3
           ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
@@ -254,7 +254,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
               {fmtName(winner.player, winner.username)}
             </div>
           </div>
-          <div style={{ color: "#fbbf24", fontSize: 13, fontWeight: 900 }}>{winner.score.toLocaleString()}</div>
+          <div style={{ color: "#b45309", fontSize: 13, fontWeight: 900 }}>{winner.score.toLocaleString()}</div>
         </div>
       ) : (
         <div style={{ color: "rgba(200,180,255,0.4)", fontSize: 10, textAlign: "center", padding: "12px 0" }}>
@@ -263,7 +263,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: 9, fontWeight: 700 }}>
         <span>👥 {season.totalPlayers || entries.length} player{(season.totalPlayers || entries.length) !== 1 ? "s" : ""}</span>
-        <span style={{ color: "rgba(167,139,250,0.7)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em" }}>
+        <span style={{ color: "rgba(109,40,217,0.95)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em" }}>
           {dateRange(season.startTs, season.endTs)}
         </span>
       </div>
@@ -273,7 +273,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
       <div style={{
         marginTop: 8, paddingTop: 8,
         borderTop: "1px dashed rgba(167,139,250,0.18)",
-        color: "rgba(167,139,250,0.85)",
+        color: "rgba(109,40,217,1)",
         fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em",
         display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
       }}>
@@ -329,7 +329,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
   // and clipping the list hides the player's finish without telling
   // them their score was tracked.
   const medalFor = (rank: number) => rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
-  const medalColor = (rank: number) => rank === 1 ? "#fbbf24" : rank === 2 ? "#e2e8f0" : rank === 3 ? "#f97316" : null;
+  const medalColor = (rank: number) => rank === 1 ? "#b45309" : rank === 2 ? "#475569" : rank === 3 ? "#f97316" : null;
 
   return createPortal(
     <>
@@ -355,7 +355,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
           style={{
             width: "100%", maxWidth: 540, maxHeight: "88vh",
             borderRadius: "24px 24px 0 0",
-            background: "linear-gradient(180deg, rgba(30,12,80,0.98) 0%, rgba(12,4,40,0.99) 60%, rgba(7,2,26,1) 100%)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0.96) 100%)",
             border: `1px solid ${accent}33`, borderBottom: "none",
             boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
             display: "flex", flexDirection: "column", overflow: "hidden",

@@ -14,7 +14,7 @@ import { agentHue } from "@/components/AgentArena";
 const AgentsWidget = dynamic(() => import("@/components/AgentsWidget"), {
   ssr: false,
   loading: () => (
-    <div style={{ textAlign: "center", padding: 40, fontFamily: 'ui-sans-serif, system-ui, sans-serif', color: "rgba(220,210,255,0.7)", fontSize: 13 }}>
+    <div style={{ textAlign: "center", padding: 40, fontFamily: 'ui-sans-serif, system-ui, sans-serif', color: "rgba(34,16,79,0.8)", fontSize: 13 }}>
       Loading agent studio…
     </div>
   ),
@@ -28,9 +28,9 @@ const AgentsWidget = dynamic(() => import("@/components/AgentsWidget"), {
 // goodagentids.xyz, and the fvCallbackUrl brings the GoodDollar verification
 // flow back to this page.
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -81,21 +81,21 @@ export default function AgentsPage() {
             Checking for your agent…
           </div>
         ) : hasAgent && !needsVerify ? (
-          <div style={{ maxWidth: 480, margin: "0 auto", borderRadius: 20, background: "rgba(40,18,100,0.55)", border: "1px solid rgba(255,255,255,0.08)", padding: "22px 18px", textAlign: "center" }}>
+          <div style={{ maxWidth: 480, margin: "0 auto", borderRadius: 20, background: "rgba(255,255,255,0.92)", border: "1px solid rgba(76,29,149,0.08)", padding: "22px 18px", textAlign: "center" }}>
             {/* the agent, in its colors */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/games/challenge-ai-v2/ai-bot-easy.png" alt={agent.displayName} style={{ width: 110, height: "auto", objectFit: "contain", transform: "scaleX(-1)", animation: "idleBob 3s ease-in-out infinite", filter: `hue-rotate(${agentHue(agent.agentAddress)}deg) drop-shadow(0 0 20px rgba(34,211,238,0.4))` }} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 }}>
               <span style={{ fontFamily: T.display, fontSize: 22, color: T.ink }}>{agent.displayName || "Your agent"}</span>
               {agent.verified !== false && (
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#67e8f9", background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.35)", borderRadius: 999, padding: "3px 8px", letterSpacing: "0.08em", fontFamily: T.body }}>VERIFIED</span>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#0e7490", background: "rgba(34,211,238,0.14)", border: "1px solid rgba(34,211,238,0.35)", borderRadius: 999, padding: "3px 8px", letterSpacing: "0.08em", fontFamily: T.body }}>VERIFIED</span>
               )}
             </div>
-            <div style={{ fontFamily: T.body, fontSize: 11.5, color: "rgba(220,210,255,0.45)", fontWeight: 700, marginTop: 4 }}>
+            <div style={{ fontFamily: T.body, fontSize: 11.5, color: "rgba(34,16,79,0.55)", fontWeight: 700, marginTop: 4 }}>
               {agent.gamePassUsername ? `@${agent.gamePassUsername} · ` : ""}{agent.agentAddress.slice(0, 6)}…{agent.agentAddress.slice(-4)}
             </div>
             {typeof agent.matchesToday === "number" && typeof agent.dailyMatchCap === "number" && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: capped ? "#fbbf24" : T.inkDim, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 999, padding: "5px 12px" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontFamily: T.body, fontSize: 10.5, fontWeight: 800, color: capped ? "#b45309" : T.inkDim, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(76,29,149,0.08)", borderRadius: 999, padding: "5px 12px" }}>
                 🎟 {agent.matchesToday}/{agent.dailyMatchCap} matches today{capped ? " · cap reached, resets daily" : ""}
               </div>
             )}
@@ -111,7 +111,7 @@ export default function AgentsPage() {
                 <span style={{ position: "relative", zIndex: 1, fontFamily: T.body, fontSize: 10, color: "#083344", fontWeight: 800, letterSpacing: "0.06em", marginTop: 2, opacity: 0.85 }}>IT FIGHTS MARKOV · YOU WATCH LIVE</span>
               </div>
             </div>
-            <div style={{ marginTop: 10, fontFamily: T.body, fontSize: 11, color: "rgba(220,210,255,0.45)", fontWeight: 700 }}>
+            <div style={{ marginTop: 10, fontFamily: T.body, fontSize: 11, color: "rgba(34,16,79,0.55)", fontWeight: 700 }}>
               Game plan &amp; settings live in the arena lobby · one agent per wallet
             </div>
           </div>

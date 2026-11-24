@@ -17,15 +17,15 @@ import { AgentBadge } from "@/components/AgentBadge";
 import { useAgentOperators } from "@/hooks/useAgentAddresses";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  hairline: "rgba(76,29,149,0.14)",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const ACCENT = "#4ade80"; // arena-green board identity
+const ACCENT = "#15803d"; // arena-green board identity
 
 function fmtName(e: LadderEntry): string {
   if (e.username && e.username.trim()) return `@${e.username.replace(/^@/, "")}`;
@@ -46,16 +46,16 @@ function untilTs(endSec?: number): string {
 
 // ─── confetti + podium · same system as the other leaderboards ──────────────
 const CONFETTI = [
-  { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
-  { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "22%", top: "20%", color: "#22d3ee", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
-  { left: "38%", top: "15%", color: "#e879f9", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
-  { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
-  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
-  { left: "78%", top: "28%", color: "#34d399", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
+  { left: "8%",  top: "25%", color: "#be185d", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
+  { left: "15%", top: "60%", color: "#b45309", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "22%", top: "20%", color: "#0e7490", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#c2410c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#a21caf", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#b45309", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
+  { left: "58%", top: "18%", color: "#1d4ed8", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
+  { left: "68%", top: "50%", color: "#be185d", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#047857", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#7e22ce", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
 ];
 
 function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
@@ -78,8 +78,8 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 
 function StagePodium({ podium, agentSet, ownerLabel }: { podium: (LadderEntry | undefined)[]; agentSet: Set<string>; ownerLabel?: (w: string) => string | null }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#b45309", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#475569", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
     { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
   return (
@@ -98,10 +98,10 @@ function StagePodium({ podium, agentSet, ownerLabel }: { podium: (LadderEntry | 
           <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
             <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
               {pl.entry ? fmtName(pl.entry) : "—"}
-              {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#67e8f9", marginLeft: 4, textShadow: "0 0 8px #22d3ee" }}>🤖</span>}
+              {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#0e7490", marginLeft: 4, textShadow: "0 0 8px #0e7490" }}>🤖</span>}
             </div>
             {pl.entry && agentSet.has(pl.entry.wallet.toLowerCase()) && ownerLabel?.(pl.entry.wallet) && (
-              <div style={{ color: "#67e8f9", fontSize: 9, fontWeight: 800, textShadow: "0 2px 4px rgba(0,0,0,0.8)", marginTop: 1 }}>
+              <div style={{ color: "#0e7490", fontSize: 9, fontWeight: 800, textShadow: "0 2px 4px rgba(0,0,0,0.8)", marginTop: 1 }}>
                 by {ownerLabel(pl.entry.wallet)}
               </div>
             )}
@@ -126,8 +126,8 @@ function LadderRow({ entry, isMe, isAgent, owner }: { entry: LadderEntry; isMe: 
       <div style={{
         borderRadius: 999,
         background: isMe
-          ? `linear-gradient(90deg, ${ACCENT}26 0%, rgba(20,10,50,0.9) 100%)`
-          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
+          ? `linear-gradient(90deg, ${ACCENT}26 0%, rgba(255,255,255,0.96) 100%)`
+          : "linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 100%)",
         padding: "8px 14px 8px 10px",
         display: "flex", alignItems: "center", gap: 10,
       }}>
@@ -145,7 +145,7 @@ function LadderRow({ entry, isMe, isAgent, owner }: { entry: LadderEntry; isMe: 
             {isAgent && <AgentBadge />}
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.04em", marginTop: 1 }}>
-            {owner && <span style={{ color: "#67e8f9" }}>by {owner} · </span>}
+            {owner && <span style={{ color: "#0e7490" }}>by {owner} · </span>}
             {entry.wins}W · {entry.matches} matches
           </div>
         </div>
@@ -246,13 +246,13 @@ export default function ArenaLadderPage() {
 
         <button
           onClick={() => router.push("/games/challenge-ai")}
-          style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}
+          style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700 }}
         >
           ‹ Back to arena
         </button>
 
         {/* THIS WEEK / PAST switcher · same segmented control as /leaderboard */}
-        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
           {([
             { id: "week" as const, label: "THIS WEEK" },
             { id: "past" as const, label: "PAST" },
@@ -261,7 +261,7 @@ export default function ArenaLadderPage() {
             return (
               <button key={opt.id} onClick={() => pickTab(opt.id)} style={{
                 padding: "8px 18px", borderRadius: 10, cursor: "pointer",
-                background: active ? "#22c55e" : "transparent", border: "none",
+                background: active ? "#15803d" : "transparent", border: "none",
                 color: active ? "#fff" : T.inkSoft,
                 fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
                 boxShadow: active ? "0 6px 14px -4px #22c55eaa, inset 0 1px 0 rgba(255,255,255,0.3)" : "none",
@@ -273,13 +273,13 @@ export default function ArenaLadderPage() {
         {/* Players / Agents lens · only shown once agents are actually on the
             board, so a purely human ladder stays a single clean list. */}
         {hasAgents && (
-          <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+          <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
             {([
               { id: "players" as const, label: "🎮 PLAYERS" },
               { id: "agents" as const, label: "🤖 AGENTS" },
             ]).map((opt) => {
               const active = view === opt.id;
-              const on = opt.id === "agents" ? "#22d3ee" : "#22c55e";
+              const on = opt.id === "agents" ? "#0e7490" : "#15803d";
               return (
                 <button key={opt.id} onClick={() => setView(opt.id)} style={{
                   padding: "8px 16px", borderRadius: 10, cursor: "pointer",
@@ -296,22 +296,22 @@ export default function ArenaLadderPage() {
         {/* Header strip · arena identity + week status */}
         <div style={{
           padding: "14px 18px", borderRadius: 16,
-          background: "linear-gradient(180deg, rgba(34,197,94,0.16) 0%, rgba(20,10,50,0.7) 100%)",
+          background: "linear-gradient(180deg, rgba(34,197,94,0.16) 0%, rgba(255,255,255,0.96) 100%)",
           border: "1px solid rgba(74,222,128,0.4)",
           boxShadow: "0 0 22px rgba(34,197,94,0.2)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <span style={{ fontSize: 22 }}>🏆</span>
             <div style={{ flex: 1 }}>
-              <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.display }}>MARKOV LADDER</div>
-              <div style={{ color: "rgba(134,239,172,0.7)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
+              <div style={{ color: T.ink, fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.display }}>MARKOV LADDER</div>
+              <div style={{ color: "rgba(21,128,61,0.95)", fontSize: 10, fontWeight: 700, marginTop: 2 }}>
                 {isCurrentWeek
                   ? <>Live · resets in {resetIn}{showPool && <> · {ladder!.poolGs} G$ pool pays at reset</>}</>
                   : <>Final standings · {ladder?.week?.startsWith("S") ? `season ${ladder.week.slice(1)}` : `week ${ladder?.week?.split("-W")[1]}`}</>}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "rgba(134,239,172,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>CLIMBERS</div>
+              <div style={{ color: "rgba(21,128,61,0.85)", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em" }}>CLIMBERS</div>
               <div style={{ color: ACCENT, fontSize: 16, fontWeight: 900 }}>{ladder?.players ?? "—"}</div>
             </div>
           </div>
@@ -327,9 +327,9 @@ export default function ArenaLadderPage() {
                     onClick={() => setSelWeek(w)}
                     style={{
                       flexShrink: 0, padding: "5px 12px", borderRadius: 999, cursor: "pointer",
-                      background: active ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.04)",
+                      background: active ? "rgba(74,222,128,0.2)" : "rgba(76,29,149,0.04)",
                       border: `1px solid ${active ? "rgba(74,222,128,0.6)" : T.hairline}`,
-                      color: active ? "#bbf7d0" : T.inkDim,
+                      color: active ? "#15803d" : T.inkDim,
                       fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em",
                     }}
                   >
@@ -367,7 +367,7 @@ export default function ArenaLadderPage() {
 
         {/* PAST tab before any week has finished */}
         {!loading && tab === "past" && pastWeeks.length === 0 && (
-          <div style={{ textAlign: "center", padding: "32px 24px", borderRadius: 20, background: "rgba(255,255,255,0.03)", border: `1px dashed ${ACCENT}44` }}>
+          <div style={{ textAlign: "center", padding: "32px 24px", borderRadius: 20, background: "rgba(76,29,149,0.03)", border: `1px dashed ${ACCENT}44` }}>
             <div style={{ fontSize: 38, marginBottom: 8 }}>📖</div>
             <div style={{ color: "#fff", fontSize: 15, fontWeight: 900 }}>No finished weeks yet</div>
             <div style={{ color: T.inkDim, fontSize: 12, marginTop: 6 }}>
@@ -380,7 +380,7 @@ export default function ArenaLadderPage() {
           <div style={{
             width: "100%", maxWidth: 440, margin: "20px auto",
             padding: "32px 24px", borderRadius: 20,
-            background: "linear-gradient(180deg, rgba(34,197,94,0.12) 0%, rgba(20,10,50,0.8) 100%)",
+            background: "linear-gradient(180deg, rgba(34,197,94,0.12) 0%, rgba(255,255,255,0.96) 100%)",
             border: "1.5px solid rgba(74,222,128,0.4)",
             boxShadow: "0 0 30px rgba(34,197,94,0.15)",
             textAlign: "center",

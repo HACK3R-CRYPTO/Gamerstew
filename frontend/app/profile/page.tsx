@@ -18,14 +18,14 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 // ─── tokens (in sync with /home + /dashboard + /games) ───────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   gap: 12,
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -73,11 +73,11 @@ function Icon({ name, size = 16, color = "currentColor" }: { name: string; size?
 // pill colour next to the name.
 type PetStage = { src: string; label: string; nextAt: number; tierLabel: string; tierColor: string };
 function petStageFor(level: number): PetStage {
-  if (level >= 50) return { src: "/pets/stage-5-king.png",    label: "KING SLIME",    nextAt: 999, tierLabel: "MASTER",   tierColor: "#fbbf24" };
+  if (level >= 50) return { src: "/pets/stage-5-king.png",    label: "KING SLIME",    nextAt: 999, tierLabel: "MASTER",   tierColor: "#b45309" };
   if (level >= 30) return { src: "/pets/stage-4-crystal.png", label: "CRYSTAL SLIME", nextAt: 50,  tierLabel: "DIAMOND",  tierColor: "#06b6d4" };
-  if (level >= 15) return { src: "/pets/stage-3-teen.png",    label: "TEEN SLIME",    nextAt: 30,  tierLabel: "PLATINUM", tierColor: "#a78bfa" };
-  if (level >= 5)  return { src: "/pets/stage-2-baby.png",    label: "BABY SLIME",    nextAt: 15,  tierLabel: "GOLD",     tierColor: "#22c55e" };
-  return                  { src: "/pets/stage-1-egg.png",    label: "MYSTERY EGG",   nextAt: 5,   tierLabel: "NEW",      tierColor: "#e2e8f0" };
+  if (level >= 15) return { src: "/pets/stage-3-teen.png",    label: "TEEN SLIME",    nextAt: 30,  tierLabel: "PLATINUM", tierColor: "#6d28d9" };
+  if (level >= 5)  return { src: "/pets/stage-2-baby.png",    label: "BABY SLIME",    nextAt: 15,  tierLabel: "GOLD",     tierColor: "#15803d" };
+  return                  { src: "/pets/stage-1-egg.png",    label: "MYSTERY EGG",   nextAt: 5,   tierLabel: "NEW",      tierColor: "#475569" };
 }
 
 // Level + XP come from games-backend (`/api/user/{address}`) — it owns the
@@ -98,7 +98,7 @@ function GuestProfileGate({ onConnect, isDesktop }: { onConnect: () => void; isD
       <div style={{ position: "relative", width: 168, height: 168, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: `radial-gradient(circle, ${T.accent}33, transparent 70%)`, filter: "blur(10px)" }} />
         <img src="/pets/stage-1-egg.png" alt="" style={{ width: 150, height: 150, objectFit: "contain", filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.5))", animation: "profile-float-gentle 3s ease-in-out infinite", position: "relative", zIndex: 1 }} />
-        <div style={{ position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)", padding: "4px 12px", borderRadius: 999, background: "rgba(0,0,0,0.6)", border: `1px solid ${T.hairlineHi}`, fontFamily: T.body, fontSize: 10, color: T.inkDim, fontWeight: 800, letterSpacing: "0.12em", whiteSpace: "nowrap" }}>
+        <div style={{ position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)", padding: "4px 12px", borderRadius: 999, background: "rgba(255,255,255,0.68)", border: `1px solid ${T.hairlineHi}`, fontFamily: T.body, fontSize: 10, color: T.inkDim, fontWeight: 800, letterSpacing: "0.12em", whiteSpace: "nowrap" }}>
           NOT ADOPTED YET
         </div>
       </div>
@@ -108,7 +108,7 @@ function GuestProfileGate({ onConnect, isDesktop }: { onConnect: () => void; isD
           Sign in to name your pet, save your level &amp; streak, and watch it evolve from egg to King Slime as you play.
         </p>
       </div>
-      <div style={{ display: "flex", gap: 22, padding: "12px 20px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}` }}>
+      <div style={{ display: "flex", gap: 22, padding: "12px 20px", borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}` }}>
         {[
           { label: "Evolutions", value: "5" },
           { label: "Habitats", value: "6" },
@@ -157,13 +157,13 @@ type Stats = {
 // rule with a player-facing description so the cards don't render with
 // cryptic short codes like "FC" or "MM 5".
 const ACHIEVEMENTS: Array<{ id: string; icon: string; name: string; color: string; unlock: (s: Stats) => boolean }> = [
-  { id: "first_win",  icon: "🥇", name: "First Win",         color: "#fbbf24", unlock: s => s.gamesPlayed >= 1 },
+  { id: "first_win",  icon: "🥇", name: "First Win",         color: "#b45309", unlock: s => s.gamesPlayed >= 1 },
   { id: "streak_3",   icon: "🔥", name: "3-Day Streak",      color: "#f97316", unlock: s => s.streak >= 3 },
   { id: "streak_7",   icon: "🔥", name: "Week Warrior",      color: "#f97316", unlock: s => s.streak >= 7 },
   { id: "streak_30",  icon: "🔥", name: "Month Master",      color: "#f97316", unlock: s => s.streak >= 30 },
-  { id: "games_5",    icon: "🎮", name: "Getting Started",   color: "#a78bfa", unlock: s => s.gamesPlayed >= 5 },
-  { id: "games_25",   icon: "🎮", name: "Regular",           color: "#a78bfa", unlock: s => s.gamesPlayed >= 25 },
-  { id: "games_100",  icon: "💎", name: "Veteran",           color: "#22d3ee", unlock: s => s.gamesPlayed >= 100 },
+  { id: "games_5",    icon: "🎮", name: "Getting Started",   color: "#6d28d9", unlock: s => s.gamesPlayed >= 5 },
+  { id: "games_25",   icon: "🎮", name: "Regular",           color: "#6d28d9", unlock: s => s.gamesPlayed >= 25 },
+  { id: "games_100",  icon: "💎", name: "Veteran",           color: "#0e7490", unlock: s => s.gamesPlayed >= 100 },
   // Rhythm Rush scoring goes deep — top players post 400k+. The old
   // 300/500/700 unlocked everything on every casual attempt. New scale:
   // Apprentice 60k → Master 200k → Legend 400k. Geometric 2× steps so
@@ -171,11 +171,11 @@ const ACHIEVEMENTS: Array<{ id: string; icon: string; name: string; color: strin
   // BELOW this curve (30k / 80k) so they're achievable each session.
   { id: "rhythm_300", icon: "🥁", name: "Drum Apprentice",   color: "#c026d3", unlock: s => s.bestRhythm >= 60_000 },
   { id: "rhythm_500", icon: "🥁", name: "Rhythm Master",     color: "#c026d3", unlock: s => s.bestRhythm >= 200_000 },
-  { id: "rhythm_700", icon: "👑", name: "Rhythm Legend",     color: "#fbbf24", unlock: s => s.bestRhythm >= 400_000 },
+  { id: "rhythm_700", icon: "👑", name: "Rhythm Legend",     color: "#b45309", unlock: s => s.bestRhythm >= 400_000 },
   { id: "simon_5",    icon: "🧠", name: "Memory Apprentice", color: "#06b6d4", unlock: s => s.bestSimon >= 5 },
   { id: "simon_10",   icon: "🧠", name: "Memory Master",     color: "#06b6d4", unlock: s => s.bestSimon >= 10 },
-  { id: "rhythm_fc",  icon: "✨", name: "Full Combo",        color: "#fbbf24", unlock: () => false },
-  { id: "champion",   icon: "🏆", name: "Champion",          color: "#fbbf24", unlock: s => s.rank !== null && s.rank <= 10 },
+  { id: "rhythm_fc",  icon: "✨", name: "Full Combo",        color: "#b45309", unlock: () => false },
+  { id: "champion",   icon: "🏆", name: "Champion",          color: "#b45309", unlock: s => s.rank !== null && s.rank <= 10 },
 ];
 
 // Player-facing description for each achievement. Lives next to the rules
@@ -443,7 +443,7 @@ export default function ProfilePage() {
         {/* Heading row · YOUR PET + Settings */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>YOUR PET</div>
-          <button onClick={() => router.push("/settings")} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px 8px 11px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+          <button onClick={() => router.push("/settings")} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px 8px 11px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
             <Icon name="settings" size={15} color="currentColor" /> Settings
           </button>
         </div>
@@ -511,7 +511,7 @@ export default function ProfilePage() {
                   <span>LV {s.level} · {s.xp}/{s.xpNext} XP</span>
                   <span>{s.xpPct}%</span>
                 </div>
-                <div style={{ height: 7, borderRadius: 999, background: "rgba(0,0,0,0.4)", overflow: "hidden", marginTop: 5 }}>
+                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.48)", overflow: "hidden", marginTop: 5 }}>
                   <div style={{ width: `${s.xpPct}%`, height: "100%", background: `linear-gradient(90deg, ${T.accent}, ${T.accent}99)`, boxShadow: `0 0 8px ${T.accent}` }} />
                 </div>
               </div>
@@ -526,17 +526,17 @@ export default function ProfilePage() {
         {connected && address && (
           <button
             onClick={() => router.push(`/pass/${(chainUsername as string | undefined) || address}`)}
-            style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 14px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(90deg, rgba(167,139,250,0.2) 0%, rgba(40,18,100,0.55) 100%)", border: "1px solid rgba(167,139,250,0.4)" }}
+            style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "13px 14px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(90deg, rgba(167,139,250,0.2) 0%, rgba(255,255,255,0.92) 100%)", border: "1px solid rgba(167,139,250,0.4)" }}
           >
             <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(167,139,250,0.18)", border: "1px solid rgba(167,139,250,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🪪</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
                 My passport & referrals
-                {refCount !== null && refCount > 0 && <span style={{ color: "#86efac" }}> · {refCount} joined{refVerified !== null ? ` · ${refVerified} verified` : ""}</span>}
+                {refCount !== null && refCount > 0 && <span style={{ color: "#15803d" }}> · {refCount} joined{refVerified !== null ? ` · ${refVerified} verified` : ""}</span>}
               </span>
               <span style={{ display: "block", fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2 }}>
                 {chainUsername
-                  ? <>Your code: <strong style={{ color: "#c4b5fd" }}>{String(chainUsername)}</strong> · counts when a friend verifies</>
+                  ? <>Your code: <strong style={{ color: "#6d28d9" }}>{String(chainUsername)}</strong> · counts when a friend verifies</>
                   : <>Share it or save the card · counts when a friend verifies</>}
               </span>
             </span>
@@ -569,7 +569,7 @@ export default function ProfilePage() {
               background: "rgba(34,197,94,0.22)",
               border: "1px solid rgba(134,239,172,0.55)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#86efac",
+              color: "#15803d",
             }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12l5 5L20 7" />
@@ -599,7 +599,7 @@ export default function ProfilePage() {
             gap: 10,
           }}>
             {[
-              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#fb923c" : "#38bdf8", icon: "🔥" },
+              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#c2410c" : "#0369a1", icon: "🔥" },
               { label: "Games played", value: s.gamesPlayed, sub: `+${s.gamesThisWeek} this week`, color: T.accent, icon: "🎮" },
               { label: "Best score", value: s.bestScore, sub: s.bestRhythm >= s.bestSimon ? "Rhythm Rush" : "Simon Memory", color: "#c026d3", icon: "🥁" },
               // All-time combined rank. Sub-label turns the raw number
@@ -612,7 +612,7 @@ export default function ProfilePage() {
                 if (!s.totalPlayers || s.totalPlayers < 2) return "Of everyone";
                 const pct = Math.max(1, Math.min(99, Math.round((s.rank / s.totalPlayers) * 100)));
                 return `Top ${pct}%`;
-              })(), color: "#fbbf24", icon: "🏆" },
+              })(), color: "#b45309", icon: "🏆" },
             ].map(t => (
               <div key={t.label} style={{
                 padding: "14px 14px", borderRadius: 16,
@@ -688,10 +688,10 @@ export default function ProfilePage() {
                       style={{
                         position: "relative", overflow: "hidden",
                         borderRadius: 14, minHeight: 116,
-                        border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? h.bg.accent + "55" : "rgba(255,255,255,0.08)"}`,
+                        border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? h.bg.accent + "55" : "rgba(76,29,149,0.08)"}`,
                         boxShadow: isEquipped ? `0 0 16px ${h.bg.accent}55` : isBuyable ? `0 0 12px ${h.bg.accent}22` : "none",
                         display: "flex", flexDirection: "column",
-                        background: "rgba(8,2,28,0.6)",
+                        background: "rgba(255,255,255,0.68)",
                         cursor: "pointer",
                         transition: "transform 0.15s",
                       }}
@@ -708,17 +708,17 @@ export default function ProfilePage() {
                         position: "relative", zIndex: 2,
                         marginTop: "auto",
                         padding: "8px 10px",
-                        background: "linear-gradient(180deg, transparent 0%, rgba(4,2,18,0.88) 60%)",
+                        background: "linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.96) 60%)",
                       }}>
                         <div style={{ fontFamily: T.display, fontSize: 12.5, color: T.ink, letterSpacing: "-0.005em", lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</div>
                       </div>
                       <div style={{
                         position: "absolute", top: 8, left: 8, zIndex: 2,
                         padding: "3px 8px", borderRadius: 999,
-                        background: "rgba(0,0,0,0.6)",
-                        border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? "rgba(251,191,36,0.55)" : "rgba(255,255,255,0.12)"}`,
+                        background: "rgba(255,255,255,0.68)",
+                        border: `1px solid ${isEquipped ? h.bg.accent + "88" : isBuyable ? "rgba(251,191,36,0.55)" : "rgba(76,29,149,0.12)"}`,
                         fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em",
-                        color: isEquipped ? h.bg.accent : isBuyable ? "#fde68a" : T.inkDim,
+                        color: isEquipped ? h.bg.accent : isBuyable ? "#b45309" : T.inkDim,
                         textShadow: isBuyable ? "0 0 6px rgba(251,191,36,0.5)" : "none",
                       }}>{badge}</div>
                     </div>
@@ -741,13 +741,13 @@ export default function ProfilePage() {
                   {badgeData.summary.totalGold > 0 && (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 9px", borderRadius: 999, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.55)" }}>
                       <span style={{ fontSize: 11 }}>🥇</span>
-                      <span style={{ fontFamily: T.body, color: "#fbbf24", fontSize: 10, fontWeight: 900 }}>{badgeData.summary.totalGold}</span>
+                      <span style={{ fontFamily: T.body, color: "#b45309", fontSize: 10, fontWeight: 900 }}>{badgeData.summary.totalGold}</span>
                     </span>
                   )}
                   {badgeData.summary.totalSilver > 0 && (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 9px", borderRadius: 999, background: "rgba(226,232,240,0.1)", border: "1px solid rgba(226,232,240,0.4)" }}>
                       <span style={{ fontSize: 11 }}>🥈</span>
-                      <span style={{ fontFamily: T.body, color: "#e2e8f0", fontSize: 10, fontWeight: 900 }}>{badgeData.summary.totalSilver}</span>
+                      <span style={{ fontFamily: T.body, color: "#475569", fontSize: 10, fontWeight: 900 }}>{badgeData.summary.totalSilver}</span>
                     </span>
                   )}
                   {badgeData.summary.totalBronze > 0 && (
@@ -762,13 +762,13 @@ export default function ProfilePage() {
             {badgeData && badgeData.badges.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "repeat(2, 1fr)", gap: 10 }}>
                 {badgeData.badges.slice(0, 8).map((b, i) => {
-                  const color = b.type === "gold" ? "#fbbf24" : b.type === "silver" ? "#e2e8f0" : "#f97316";
+                  const color = b.type === "gold" ? "#b45309" : b.type === "silver" ? "#475569" : "#f97316";
                   const medal = b.type === "gold" ? "🥇" : b.type === "silver" ? "🥈" : "🥉";
                   const gameName = b.game === "rhythm" ? "Rhythm Rush" : b.game === "simon" ? "Simon Memory" : b.game.toUpperCase();
                   return (
                     <div key={i} style={{
                       borderRadius: 16, padding: "12px 12px",
-                      background: `linear-gradient(180deg, ${color}1a 0%, rgba(20,10,50,0.6) 100%)`,
+                      background: `linear-gradient(180deg, ${color}1a 0%, rgba(255,255,255,0.96) 100%)`,
                       border: `1px solid ${color}55`,
                       boxShadow: `0 0 14px ${color}22`,
                       display: "flex", gap: 11, alignItems: "center",
@@ -800,7 +800,7 @@ export default function ProfilePage() {
               <div style={{
                 padding: "18px 14px", textAlign: "center",
                 borderRadius: 16,
-                background: "rgba(20,10,50,0.4)",
+                background: "rgba(255,255,255,0.96)",
                 border: `1px dashed ${T.hairline}`,
               }}>
                 <div style={{ fontSize: 26 }}>🏆</div>
@@ -823,7 +823,7 @@ export default function ProfilePage() {
               ? backendAchievements.map(a => ({ id: a.id, icon: a.icon, name: a.name, desc: a.desc, unlocked: a.unlocked }))
               : ACHIEVEMENTS.map(a => ({ id: a.id, icon: a.icon, name: a.name, desc: descFor(a.id), unlocked: a.unlock(s) }));
           const unlocked = list.filter(a => a.unlocked).length;
-          const ACH_COLOR = "#fbbf24";
+          const ACH_COLOR = "#b45309";
           return (
             <div>
               <SectionLabel action={
@@ -834,8 +834,8 @@ export default function ProfilePage() {
                   <div key={a.id} style={{
                     borderRadius: 16, padding: "12px 12px",
                     background: a.unlocked
-                      ? `linear-gradient(180deg, ${ACH_COLOR}1a 0%, rgba(20,10,50,0.6) 100%)`
-                      : "rgba(20,10,50,0.4)",
+                      ? `linear-gradient(180deg, ${ACH_COLOR}1a 0%, rgba(255,255,255,0.96) 100%)`
+                      : "rgba(255,255,255,0.96)",
                     border: `1px solid ${a.unlocked ? ACH_COLOR + "55" : T.hairline}`,
                     boxShadow: a.unlocked ? `0 0 14px ${ACH_COLOR}22` : "none",
                     display: "flex", gap: 11, alignItems: "center",
@@ -853,7 +853,7 @@ export default function ProfilePage() {
                       width: 40, height: 40, borderRadius: 12, flexShrink: 0,
                       background: a.unlocked
                         ? `radial-gradient(circle at 35% 30%, ${ACH_COLOR}cc, ${ACH_COLOR}55)`
-                        : "rgba(255,255,255,0.04)",
+                        : "rgba(76,29,149,0.04)",
                       border: `1px solid ${a.unlocked ? ACH_COLOR + "aa" : T.hairline}`,
                       boxShadow: a.unlocked ? `0 0 10px ${ACH_COLOR}55` : "none",
                       display: "flex", alignItems: "center", justifyContent: "center",

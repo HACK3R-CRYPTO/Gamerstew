@@ -19,18 +19,18 @@ import { fetchGlobalStat, type GFlow } from "@/lib/homePreload";
 
 // ─── tokens (mirror the app) ──────────────────────────────────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
-  green: "#34d399",
-  amber: "#fbbf24",
-  gold: "#fde68a",
-  cyan: "#22d3ee",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
+  green: "#047857",
+  amber: "#b45309",
+  gold: "#b45309",
+  cyan: "#0e7490",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -42,7 +42,7 @@ const KEYFRAMES = `
 @keyframes impact-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .impact-reveal { animation: impact-rise 0.6s cubic-bezier(0.22,1,0.36,1) both; }
 .impact-card { transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease; }
-.impact-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.18); box-shadow: 0 18px 40px -24px rgba(0,0,0,0.9); }
+.impact-card:hover { transform: translateY(-3px); border-color: rgba(76,29,149,0.18); box-shadow: 0 18px 40px -24px rgba(0,0,0,0.9); }
 .impact-barfill { transform-origin: left center; animation: impact-bar 1.1s cubic-bezier(0.22,1,0.36,1) both; }
 @media (prefers-reduced-motion: reduce) {
   .impact-reveal, .impact-barfill, .impact-glowpulse, .impact-floaty { animation: none !important; }
@@ -169,7 +169,7 @@ function MomentumRow({ label, cols, delta, tint, basePct }: { label: string; col
     <div style={{ display: "grid", gridTemplateColumns: MOMENTUM_GRID, alignItems: "center", gap: 5, padding: "13px 0", borderBottom: `1px solid ${T.hairline}` }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         <span style={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700 }}>{label}</span>
-        <div className="impact-barfill" style={{ display: "flex", height: 6, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+        <div className="impact-barfill" style={{ display: "flex", height: 6, borderRadius: 999, background: "rgba(76,29,149,0.05)", overflow: "hidden" }}>
           <div style={{ width: `${clamped}%`, background: tint, opacity: 0.35 }} />
           <div style={{ flex: 1, background: tint, boxShadow: `0 0 12px ${tint}99` }} />
         </div>
@@ -418,7 +418,7 @@ export default function ImpactPage() {
                   <span style={{ fontFamily: T.body, fontSize: 10, color: T.accent, fontWeight: 800, letterSpacing: "0.12em" }}>GOODDOLLAR UBI POOL</span>
                   <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>~{ubiShare}%</span>
                 </div>
-                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(76,29,149,0.05)", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${ubiShare}%`, background: T.accent, borderRadius: 999, boxShadow: `0 0 12px ${T.accent}` }} />
                 </div>
                 <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{fmtG(flowUbiG)} G$ routed to date</span>
@@ -428,7 +428,7 @@ export default function ImpactPage() {
                   <span style={{ fontFamily: T.body, fontSize: 10, color: T.green, fontWeight: 800, letterSpacing: "0.12em" }}>TREASURY</span>
                   <span style={{ fontFamily: T.display, fontSize: 20, color: T.ink }}>~{treasuryShare}%</span>
                 </div>
-                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
+                <div className="impact-barfill" style={{ height: 7, borderRadius: 999, background: "rgba(76,29,149,0.05)", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${treasuryShare}%`, background: T.green, borderRadius: 999, boxShadow: `0 0 12px ${T.green}` }} />
                 </div>
                 <span style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim }}>{flowTreasuryG > 0 ? `${fmtG(flowTreasuryG)} G$ to date · funds prizes & operations` : "Funds prizes & operations"}</span>

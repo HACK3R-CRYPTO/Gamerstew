@@ -14,16 +14,16 @@ import PassTopBar from "@/components/PassTopBar";
 export const revalidate = 60;
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
-  surface: "rgba(40,18,100,0.55)",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  hairline: "rgba(76,29,149,0.14)",
+  surface: "#ffffff",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const GOLD = "#fbbf24";
+const GOLD = "#b45309";
 
 function displayName(p: { username: string | null; address: string }): string {
   return p.username ? `@${p.username.replace(/^@/, "")}` : `${p.address.slice(0, 6)}…${p.address.slice(-4)}`;
@@ -67,7 +67,7 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
             // eslint-disable-next-line @next/next/no-img-element
             <img src={p.habitat.bgImage} alt={p.habitat.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.85 }} />
           )}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(10,2,38,0.15) 0%, rgba(10,2,38,0.78) 100%)" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.92) 100%)" }} />
           <div style={{ position: "relative", zIndex: 1, padding: "26px 18px 18px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={p.pet.src} alt={p.pet.name} style={{ width: 96, height: 96, objectFit: "contain", filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.5))" }} />
@@ -76,7 +76,7 @@ export default async function PassportPage({ params }: { params: Promise<{ addre
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap", justifyContent: "center" }}>
               {p.verified && (
-                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#86efac", background: "rgba(34,197,94,0.18)", border: "1px solid rgba(134,239,172,0.45)", borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#15803d", background: "rgba(34,197,94,0.18)", border: "1px solid rgba(21,128,61,0.7)", borderRadius: 999, padding: "3px 9px", letterSpacing: "0.08em" }}>
                   ✓ VERIFIED HUMAN
                 </span>
               )}

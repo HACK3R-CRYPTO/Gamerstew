@@ -22,14 +22,14 @@ import { cupIsStaleNow } from "@/lib/cup";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "#2a1466", // solid: these cards sit on the light lilac page
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   gap: 12,
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -118,7 +118,7 @@ const AI_HERO: Game = {
   desc: "Deploy your own AI agent and watch it climb the ladder against MARKOV.",
   art: "/ai-vs-markov.png",
   bg: "linear-gradient(150deg, #0b3b52 0%, #241466 58%, #170a3e 100%)",
-  glow: "#22d3ee",
+  glow: "#0e7490",
   active: true,
   href: "/games/challenge-ai",
 };
@@ -161,7 +161,7 @@ function weeklyHero(w: WeeklyInfo): Game {
     desc: `Every game you finish earns ${w.perGameG} G$ once we reach ${w.target.toLocaleString()} games together.`,
     art: "/event-prize.png",
     bg: "linear-gradient(115deg, #78350f 0%, #2a1266 55%, #14532d 100%)",
-    glow: "#fbbf24",
+    glow: "#b45309",
     active: true,
     href: "/leaderboard",
     kind: "weekly",
@@ -217,7 +217,7 @@ const GAMES_3D: Game[] = [
   {
     id: "upnepa3d", title: "UP NEPA 3D", subtitle: "Lagos street · 2 modes",
     desc: "NEPA don take light. Run the street, flip the breakers and bring the whole area back.",
-    art: "/games/covers/upnepa3d.jpg", bg: "#0b0c12", glow: "#fbbf24", active: true, href: "/world", isNew: true,
+    art: "/games/covers/upnepa3d.jpg", bg: "#0b0c12", glow: "#b45309", active: true, href: "/world", isNew: true,
   },
   {
     id: "streetstrike", title: "Street Strike", subtitle: "3D bowling · tyre and bottles",
@@ -670,7 +670,7 @@ function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSe
       </div>
       <button onClick={onConnect} style={{
         flexShrink: 0, padding: "9px 16px", borderRadius: 999, cursor: "pointer",
-        background: needsSetup ? "#fbbf24" : P.accent, border: "none",
+        background: needsSetup ? "#b45309" : P.accent, border: "none",
         color: needsSetup ? "#231005" : "#fff", fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
         boxShadow: needsSetup ? "0 4px 12px -3px rgba(251,191,36,0.7)" : "0 8px 16px -8px rgba(109,40,217,0.9)",
       }}>{needsSetup ? "FINISH SETUP" : "SIGN IN"}</button>
@@ -716,13 +716,13 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
     const msLeft = new Date(dash.climb.endsAt).getTime() - Date.now();
     const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
     out.push({
-      icon: "🏆", color: "#a5b4cf",
+      icon: "🏆", color: "#6d28d9",
       title: connected && dash.climb.rank > 0
         ? `You're #${dash.climb.rank} in MARKOV Climb`
         : "MARKOV Climb is live",
       sub: `${daysLeft === 1 ? "Final day" : `${daysLeft} days left`} · $5 USDC + 1,000 G$ pool`,
       tag: connected && dash.climb.rank > 0 ? "YOU" : "OPEN",
-      tagColor: connected && dash.climb.rank > 0 ? "#fbbf24" : "#22c55e",
+      tagColor: connected && dash.climb.rank > 0 ? "#b45309" : "#15803d",
     });
   }
 
@@ -730,7 +730,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
   if (topScorer) {
     const name = topScorer.username || `${topScorer.player.slice(0, 6)}…${topScorer.player.slice(-4)}`;
     out.push({
-      icon: "🥁", color: "#a5b4cf",
+      icon: "🥁", color: "#6d28d9",
       title: `@${name.replace(/^@/, "")} leads the boards`,
       sub: `${topScorer.score} pts combined · beat them`,
     });
@@ -738,7 +738,7 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (dash.totalMatches > 0) {
     out.push({
-      icon: "🌍", color: "#a5b4cf",
+      icon: "🌍", color: "#6d28d9",
       title: `${dash.totalPlayers} players · ${dash.totalMatches.toLocaleString()} matches`,
       sub: "Live community total · all-time",
     });
@@ -746,10 +746,10 @@ function buildFeed(dash: DashData | null, me: { rank: number } | null, connected
 
   if (me && me.rank > 0) {
     out.push({
-      icon: "💎", color: "#a5b4cf",
+      icon: "💎", color: "#6d28d9",
       title: `You're #${me.rank} all-time`,
       sub: "Keep playing to climb",
-      tag: "YOU", tagColor: "#22d3ee",
+      tag: "YOU", tagColor: "#0e7490",
     });
   }
 
@@ -792,7 +792,7 @@ function VerificationExpiryBanner({ router }: { router: ReturnType<typeof useRou
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 18 }}>🪪</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.body, fontSize: 10, color: "#fde68a", fontWeight: 800, letterSpacing: "0.12em" }}>
+          <div style={{ fontFamily: T.body, fontSize: 10, color: "#b45309", fontWeight: 800, letterSpacing: "0.12em" }}>
             {identityExpiry.daysLeft <= 0 ? "EXPIRES TODAY" : "EXPIRES TOMORROW"}
           </div>
           <div style={{ fontFamily: T.display, fontSize: 15, color: T.ink, marginTop: 1 }}>Keep your verification</div>
@@ -812,7 +812,7 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
 
   if (!connected) {
     return (
-      <button onClick={onConnect} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}2e, rgba(15,8,40,0.6))`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
+      <button onClick={onConnect} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}1f, #ffffff)`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 20 }}>🎁</span>
           <div style={{ flex: 1 }}>
@@ -847,7 +847,7 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ width: 30, height: 30, borderRadius: 999, background: "radial-gradient(circle at 35% 35%, #fde68a, #b45309)", boxShadow: "0 0 12px rgba(251,191,36,0.6)" }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: T.body, fontSize: 10, color: hasLapsed ? "#fde68a" : "#86efac", fontWeight: 800, letterSpacing: "0.12em" }}>
+            <div style={{ fontFamily: T.body, fontSize: 10, color: hasLapsed ? "#b45309" : "#15803d", fontWeight: 800, letterSpacing: "0.12em" }}>
               {hasLapsed ? "CHECK EXPIRED" : "FREE DAILY G$"}
             </div>
             <div style={{ fontFamily: T.display, fontSize: 18, color: T.ink, marginTop: 1 }}>
@@ -864,7 +864,7 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
     return (
       <div style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: "rgba(20,10,50,0.4)", border: `1px solid ${T.hairline}`, opacity: 0.7 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ width: 30, height: 30, borderRadius: 999, background: "radial-gradient(circle at 35% 35%, #4b3a05, #1a1305)", display: "flex", alignItems: "center", justifyContent: "center", color: "#86efac", fontSize: 16 }}>✓</span>
+          <span style={{ width: 30, height: 30, borderRadius: 999, background: "radial-gradient(circle at 35% 35%, #4b3a05, #1a1305)", display: "flex", alignItems: "center", justifyContent: "center", color: "#15803d", fontSize: 16 }}>✓</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 800, letterSpacing: "0.12em" }}>FREE DAILY G$</div>
             <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, marginTop: 1 }}>Claimed today</div>
@@ -887,7 +887,7 @@ function ClaimCard({ connected, onConnect, router }: { connected: boolean; onCon
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ width: 30, height: 30, borderRadius: 999, background: "radial-gradient(circle at 35% 35%, #fde68a, #b45309)", boxShadow: "0 0 12px rgba(251,191,36,0.6)" }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.body, fontSize: 10, color: "#86efac", fontWeight: 800, letterSpacing: "0.12em" }}>FREE DAILY G$</div>
+          <div style={{ fontFamily: T.body, fontSize: 10, color: "#15803d", fontWeight: 800, letterSpacing: "0.12em" }}>FREE DAILY G$</div>
           <div style={{ fontFamily: T.display, fontSize: 18, color: T.ink, marginTop: 1 }}>{claiming ? "Claiming…" : `Claim ${amount} G$`}</div>
         </div>
         {!claiming && <Icon name="chev" size={16} color={T.inkSoft} />}
@@ -912,7 +912,7 @@ function VoteCard({ connected, onConnect, router }: { connected: boolean; onConn
     : state === "unverified" ? () => router.push(`/verify?next=${encodeURIComponent("/vote")}`)
     : () => router.push("/vote");
   return (
-    <button onClick={onClick} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}2e, rgba(15,8,40,0.6))`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
+    <button onClick={onClick} style={{ width: "100%", textAlign: "left", padding: 14, borderRadius: 16, background: `linear-gradient(135deg, ${T.accent}1f, #ffffff)`, border: `1px solid ${T.accent}55`, cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ width: 30, height: 30, borderRadius: 999, background: `radial-gradient(circle at 35% 35%, ${T.accent}, #4c1d95)`, boxShadow: `0 0 12px ${T.accent}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🗳️</span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -998,19 +998,19 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       <button onClick={() => onPlayGame(game.id)} style={{
         position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(34,211,238,0.35)", cursor: "pointer",
         borderRadius: 20, textAlign: "left", background: game.bg,
-        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(76,29,149,0.12)`,
         minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(34,211,238,0.28), transparent 70%)", pointerEvents: "none" }} />
         {/* Agent-vs-MARKOV art — `screen` blend drops its black background */}
         <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -22, bottom: -22, width: 184, height: 184, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
-          <Pill color="#22d3ee" soft={false}>✨ NEW MODE</Pill>
+          <Pill color="#0e7490" soft={false}>✨ NEW MODE</Pill>
         </div>
         <div style={{ padding: "8px 14px 14px", maxWidth: "70%", position: "relative", zIndex: 1 }}>
           <div style={{ fontFamily: T.display, fontSize: 21, lineHeight: 1.06, textShadow: "0 0 18px rgba(34,211,238,0.4)" }}>
             <span style={{ color: "#fff" }}>Build your AI.</span><br />
-            <span style={{ color: "#67e8f9" }}>Fight MARKOV.</span>
+            <span style={{ color: "#0e7490" }}>Fight MARKOV.</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: "rgba(207,250,254,0.82)", marginTop: 6, lineHeight: 1.4 }}>Deploy your agent · watch it climb</div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8 }}>
@@ -1035,13 +1035,13 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       <div style={{
         position: "relative", overflow: "hidden", width: "100%", borderRadius: 20, textAlign: "left",
         border: "1px solid rgba(251,191,36,0.5)", background: game.bg,
-        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.14)`,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(76,29,149,0.14)`,
         minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(120% 90% at 92% 8%, rgba(251,191,36,0.28) 0%, transparent 55%)" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           {/* the countdown rides in the pill: the slide dots sit in the top-right corner */}
-          <Pill color="#fde68a">🏆 THIS WEEK · {game.subtitle.toUpperCase()}</Pill>
+          <Pill color="#b45309">🏆 THIS WEEK · {game.subtitle.toUpperCase()}</Pill>
         </div>
         <div style={{ padding: "8px 14px 0", position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
@@ -1053,7 +1053,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
           </div>
         </div>
         <div style={{ padding: "10px 14px 14px", position: "relative", zIndex: 1 }}>
-          <div role="progressbar" aria-valuemin={0} aria-valuemax={w.target} aria-valuenow={w.progress} style={{ height: 9, borderRadius: 6, background: "rgba(0,0,0,0.42)", overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)" }}>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={w.target} aria-valuenow={w.progress} style={{ height: 9, borderRadius: 6, background: "rgba(0,0,0,0.42)", overflow: "hidden", border: "1px solid rgba(76,29,149,0.14)" }}>
             <div style={{ width: `${Math.max(pct, w.progress > 0 ? 3 : 0)}%`, height: "100%", borderRadius: 6, background: "linear-gradient(90deg, #fbbf24, #4ade80)", transition: "width .6s ease" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 5, fontFamily: T.body, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>
@@ -1061,10 +1061,10 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
             <span>{mine > 0 ? `You: ${mine} game${mine === 1 ? "" : "s"}${w.myProjectedG ? ` · ${w.myProjectedG.toLocaleString()} G$` : ""}` : `${w.playersIn} playing`}</span>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button onClick={() => onPlayGame(game.id)} style={{ flex: 1, cursor: "pointer", border: "none", borderRadius: 12, padding: "11px 0", fontFamily: T.display, fontSize: 15, color: "#1a0b33", background: "#fbbf24", boxShadow: "0 3px 0 #b45309" }}>
+            <button onClick={() => onPlayGame(game.id)} style={{ flex: 1, cursor: "pointer", border: "none", borderRadius: 12, padding: "11px 0", fontFamily: T.display, fontSize: 15, color: "#1a0b33", background: "#b45309", boxShadow: "0 3px 0 #b45309" }}>
               {mine >= w.capPerPlayer ? "You hit the cap. Keep playing" : mine > 0 ? "Play another" : "Play to earn"}
             </button>
-            <Link href="/leaderboard" style={{ textDecoration: "none", borderRadius: 12, padding: "11px 14px", fontFamily: T.body, fontSize: 13, fontWeight: 800, color: "#fff", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.22)" }}>Board</Link>
+            <Link href="/leaderboard" style={{ textDecoration: "none", borderRadius: 12, padding: "11px 14px", fontFamily: T.body, fontSize: 13, fontWeight: 800, color: "#fff", background: "rgba(76,29,149,0.12)", border: "1px solid rgba(255,255,255,0.22)" }}>Board</Link>
           </div>
         </div>
       </div>
@@ -1077,7 +1077,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         position: "relative", overflow: "hidden", width: "100%", padding: 0, cursor: "pointer",
         border: "1px solid rgba(220,38,38,0.45)", borderRadius: 20, textAlign: "left",
         background: game.bg,
-        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(76,29,149,0.12)`,
         minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         {/* Generated key art, dimmed and pushed right so the copy stays legible
@@ -1103,7 +1103,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
             reads as the contested line it is meant to be, and the medallion is
             dropped at this size because a 24px disc on a 6px band is noise. */}
         <div aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 6 }}>
-          <div style={{ position: "absolute", inset: 0, background: "#67e8f9", opacity: 0.85 }} />
+          <div style={{ position: "absolute", inset: 0, background: "#0e7490", opacity: 0.85 }} />
           <div style={{
             position: "absolute", left: 0, top: 0, bottom: 0, width: "54%",
             background: "repeating-linear-gradient(45deg, #dc2626 0 6px, #7f1d1d 6px 12px)",
@@ -1115,7 +1115,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
           }} />
         </div>
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
-          <Pill color="#fca5a5">🪢 TUG OF WAR</Pill>
+          <Pill color="#b91c1c">🪢 TUG OF WAR</Pill>
         </div>
         <div style={{ padding: "8px 14px 18px", position: "relative", zIndex: 1, maxWidth: "80%" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -1132,7 +1132,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8,
             padding: "4px 10px", borderRadius: 999,
-            background: "rgba(255,255,255,0.14)", border: "1px solid rgba(255,255,255,0.3)",
+            background: "rgba(76,29,149,0.14)", border: "1px solid rgba(255,255,255,0.3)",
           }}>
             <span style={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(255,255,255,0.85)" }}>
               {game.subtitle.toUpperCase()}
@@ -1150,32 +1150,32 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       <button onClick={() => onPlayGame(game.id)} style={{
         position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "1px solid rgba(251,191,36,0.4)", cursor: "pointer",
         borderRadius: 20, textAlign: "left", background: game.bg,
-        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        boxShadow: `0 16px 36px -12px ${game.glow}99, inset 0 1px 0 rgba(76,29,149,0.12)`,
         minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <div style={{ position: "absolute", top: -40, right: -30, width: 190, height: 190, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)", pointerEvents: "none" }} />
         {/* Trophy art — `screen` blend drops its dark background into the card */}
         <img src={typeof game.art === "string" ? game.art : ""} alt="" style={{ position: "absolute", right: -14, bottom: -14, width: 172, height: 172, objectFit: "contain", mixBlendMode: "screen", pointerEvents: "none" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1 }}>
-          <Pill color="#fde68a">⚡ ARENA CUP</Pill>
+          <Pill color="#b45309">⚡ ARENA CUP</Pill>
         </div>
         <div style={{ padding: "8px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: T.display, fontSize: 30, color: "#fde68a", lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.5)" }}>$150</span>
-            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.8)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>in G$</span>
+            <span style={{ fontFamily: T.display, fontSize: 30, color: "#b45309", lineHeight: 1, textShadow: "0 0 20px rgba(180,83,9,0.75)" }}>$150</span>
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(180,83,9,1)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>in G$</span>
           </div>
           {/* Live countdown */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, padding: "4px 10px", borderRadius: 999, background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.4)" }}>
             <CupCountdown
-              labelStyle={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(253,230,138,0.8)", textTransform: "uppercase" }}
-              timeStyle={{ fontFamily: T.display, fontSize: 13, color: "#fde68a" }}
+              labelStyle={{ fontFamily: T.body, fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(180,83,9,1)", textTransform: "uppercase" }}
+              timeStyle={{ fontFamily: T.display, fontSize: 13, color: "#b45309" }}
               gap={5}
             />
           </div>
           {/* GoodAgents supports the pool · credited, not the headline. */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8 }}>
             <img src="/goodagents-logo.png" alt="" width={14} height={14} style={{ display: "block" }} />
-            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(253,230,138,0.7)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
+            <span style={{ fontFamily: T.body, fontSize: 9, color: "rgba(180,83,9,0.95)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
           </div>
         </div>
       </button>
@@ -1188,14 +1188,14 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
       <button onClick={() => onPlayGame(game.id)} aria-label={`Play ${game.title}`} style={{
         position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
         borderRadius: 20, textAlign: "left", background: "#0b0c12", color: "#fff",
-        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(76,29,149,0.12)`,
         minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={cover.src} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: cover.focus }} />
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(90deg, rgba(5,6,10,0.88) 0%, rgba(5,6,10,0.55) 46%, rgba(5,6,10,0) 78%), linear-gradient(rgba(5,6,10,0.35) 0%, rgba(5,6,10,0) 34%, rgba(5,6,10,0.5) 100%)" }} />
         <div style={{ padding: "14px 14px 0", position: "relative", zIndex: 1, display: "flex", gap: 6 }}>
-          <Pill color="#fde68a">✨ NEW · 3D</Pill>
+          <Pill color="#b45309">✨ NEW · 3D</Pill>
         </div>
         <div style={{ padding: "10px 14px 14px", maxWidth: "72%", position: "relative", zIndex: 1 }}>
           <div style={{ fontFamily: T.display, fontSize: 25, lineHeight: 1, textShadow: "0 2px 14px rgba(0,0,0,0.7)" }}>{game.title}</div>
@@ -1212,7 +1212,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
     <button onClick={() => onPlayGame(game.id)} style={{
       position: "relative", overflow: "hidden", width: "100%", padding: 0, border: "none", cursor: "pointer",
       borderRadius: 20, textAlign: "left", background: game.bg,
-      boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(255,255,255,0.12)`,
+      boxShadow: `0 16px 36px -12px ${game.glow}88, inset 0 1px 0 rgba(76,29,149,0.12)`,
       minHeight: 178, display: "flex", flexDirection: "column", justifyContent: "space-between",
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.22), transparent 60%)", pointerEvents: "none" }} />
@@ -1222,7 +1222,7 @@ function HeroCard({ game, onPlayGame }: { game: typeof GAMES[number]; onPlayGame
         <div style={{ position: "absolute", right: -8, bottom: -4, width: 150, height: 150, pointerEvents: "none" }}>{game.art}</div>
       )}
       <div style={{ padding: "14px 14px 0" }}>
-        <Pill color="#fde68a">{game.id === "arena" ? "⚡ BIG UPDATE" : game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
+        <Pill color="#b45309">{game.id === "arena" ? "⚡ BIG UPDATE" : game.isNew ? "✨ NEW GAME" : "▶ JUMP BACK IN"}</Pill>
       </div>
       <div style={{ padding: "12px 14px 14px", maxWidth: "64%", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: T.display, fontSize: 23, color: "#fff", lineHeight: 1, textShadow: "0 2px 6px rgba(0,0,0,0.45)" }}>{game.title}</div>
@@ -1246,7 +1246,7 @@ function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
           <button key={g.id} onClick={() => onPlayGame(g.id)} aria-label={`Play ${g.title}`} style={{
             position: "relative", overflow: "hidden", borderRadius: 14, border: "none", padding: 0, textAlign: "left",
             background: "#0b0c12", cursor: "pointer", display: "flex", flexDirection: "column",
-            boxShadow: `0 8px 18px -8px ${g.glow}88, inset 0 0 0 1px rgba(255,255,255,0.1)`,
+            boxShadow: `0 8px 18px -8px ${g.glow}88, inset 0 0 0 1px rgba(76,29,149,0.1)`,
           }}>
             <div style={{ height: 78, position: "relative", width: "100%" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1343,7 +1343,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
   if (!connected) {
     return (
       <button onClick={onConnect} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 15, background: T.surface, border: `1px solid ${T.hairline}`, cursor: "pointer", textAlign: "left" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: "rgba(167,139,250,0.16)", border: "1px solid rgba(167,139,250,0.4)", display: "flex", alignItems: "center", justifyContent: "center", color: "#a78bfa" }}>
+        <div style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, background: "rgba(109,40,217,0.41)", border: "1px solid rgba(109,40,217,0.65)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6d28d9" }}>
           <Icon name="target" size={16} color="currentColor" />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1363,13 +1363,13 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
       {/* Header · reset countdown lives on the right */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: `1px solid ${T.hairline}` }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 8, background: "rgba(167,139,250,0.16)", border: "1px solid rgba(167,139,250,0.4)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#a78bfa" }}>
+          <span style={{ width: 24, height: 24, borderRadius: 8, background: "rgba(109,40,217,0.41)", border: "1px solid rgba(109,40,217,0.65)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#6d28d9" }}>
             <Icon name="target" size={13} color="currentColor" />
           </span>
           <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", color: T.inkDim, textTransform: "uppercase" }}>Daily missions</span>
         </div>
         {resetSec > 0 && (
-          <span style={{ fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 10, fontWeight: 800, color: "#fde68a", textShadow: "0 0 6px rgba(251,191,36,0.5)" }}>
+          <span style={{ fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 10, fontWeight: 800, color: "#b45309", textShadow: "0 0 6px rgba(180,83,9,0.75)" }}>
             {fmtMissionCountdown(resetSec)}
           </span>
         )}
@@ -1386,12 +1386,12 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
             const pct = m.target > 0 ? Math.min(100, Math.round((m.progress / m.target) * 100)) : 0;
             const ready = m.completed && !m.claimed;
             const done = m.claimed;
-            const barColor = done ? "#22c55e" : ready ? "#c4b5fd" : T.accent;
+            const barColor = done ? "#15803d" : ready ? "#6d28d9" : T.accent;
             const tileBg = done
               ? "linear-gradient(180deg, rgba(34,197,94,0.08) 0%, rgba(0,0,0,0.18) 100%)"
               : ready
                 ? "linear-gradient(180deg, rgba(167,139,250,0.16) 0%, rgba(0,0,0,0.18) 100%)"
-                : "rgba(255,255,255,0.03)";
+                : "rgba(76,29,149,0.03)";
             const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(167,139,250,0.55)" : T.hairline}`;
             return (
               <div key={m.id} style={{
@@ -1408,7 +1408,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
                   {done ? (
-                    <span style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#22c55e", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>✓ Claimed</span>
+                    <span style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#15803d", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>✓ Claimed</span>
                   ) : ready ? (
                     <button
                       onClick={() => claim(m.id)}
@@ -1423,7 +1423,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
                       }}
                     >{claimingId === m.id ? "Claiming…" : `Claim +${m.rewardXp} XP`}</button>
                   ) : (
-                    <div style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#c4b5fd", whiteSpace: "nowrap" }}>+{m.rewardXp} XP</div>
+                    <div style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#6d28d9", whiteSpace: "nowrap" }}>+{m.rewardXp} XP</div>
                   )}
                 </div>
                 <div>
@@ -1445,7 +1445,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
           })
         )}
         {allClaimed && (
-          <div style={{ padding: "8px 6px 2px", textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: "#86efac", fontWeight: 700 }}>
+          <div style={{ padding: "8px 6px 2px", textAlign: "center", fontFamily: T.body, fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
             ✦ All missions claimed · new set in {fmtMissionCountdown(resetSec)}
           </div>
         )}
@@ -1476,11 +1476,11 @@ function ClimbCard({ router }: {
     <button onClick={() => router.push("/leaderboard/cup")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 15, background: "linear-gradient(135deg, rgba(251,191,36,0.12), rgba(180,83,9,0.28))", border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", textAlign: "left" }}>
       <span style={{ fontSize: 20, flexShrink: 0 }}>🏆</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: T.body, fontSize: 9, color: "#fde68a", fontWeight: 800, letterSpacing: "0.12em" }}>ARENA CUP · $150 IN G$</div>
+        <div style={{ fontFamily: T.body, fontSize: 9, color: "#b45309", fontWeight: 800, letterSpacing: "0.12em" }}>ARENA CUP · $150 IN G$</div>
         <div style={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700, marginTop: 2 }}>
           <CupCountdown
             labelStyle={{ fontFamily: T.body, fontSize: 12, color: T.ink, fontWeight: 700 }}
-            timeStyle={{ fontFamily: T.body, fontSize: 12, color: "#fde68a", fontWeight: 800 }}
+            timeStyle={{ fontFamily: T.body, fontSize: 12, color: "#b45309", fontWeight: 800 }}
           />
         </div>
       </div>

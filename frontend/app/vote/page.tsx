@@ -17,15 +17,15 @@ import AppBottomNav from "@/components/AppBottomNav";
 // secure export modal (the key loads in an isolated iframe our app can't
 // read). MiniPay users already hold a standalone wallet, so they skip export.
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
   danger: "#f43f5e",
-  good: "#22c55e",
+  good: "#15803d",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -100,7 +100,7 @@ export default function VotePage() {
             Green-accented and placed FIRST so voters who did the one-time
             setup (imported wallet, or MiniPay) just vote again in seconds
             without scrolling past onboarding steps. */}
-        <div style={{ background: "linear-gradient(180deg, rgba(34,197,94,0.1), rgba(40,18,100,0.4))", border: "1px solid rgba(52,211,153,0.35)", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ background: "linear-gradient(180deg, rgba(34,197,94,0.1), rgba(255,255,255,0.92))", border: "1px solid rgba(52,211,153,0.35)", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: 999, background: T.good, boxShadow: `0 0 8px ${T.good}` }} />
             <SectionLabel>Voted before? · 10 seconds</SectionLabel>
@@ -130,7 +130,7 @@ export default function VotePage() {
               width: "100%", cursor: "pointer",
               borderRadius: 12, padding: "11px", fontFamily: T.body, fontSize: 13, fontWeight: 700,
               color: copied ? T.good : T.inkDim,
-              background: "rgba(255,255,255,0.05)",
+              background: "rgba(76,29,149,0.05)",
               border: `1px solid ${copied ? "rgba(34,197,94,0.4)" : T.hairline}`,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
             }}
@@ -151,8 +151,8 @@ export default function VotePage() {
             {/* Warning · same danger-tint idiom as the Settings gas-block row */}
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", borderRadius: 12, padding: "11px 12px" }}>
               <span style={{ fontSize: 16, lineHeight: 1.2 }}>🔒</span>
-              <div style={{ fontFamily: T.body, fontSize: 12, color: "#fda4af", lineHeight: 1.5 }}>
-                Your key controls your money. Never share it. GameArena will <strong style={{ color: "#fecdd3" }}>never</strong> DM you for it.
+              <div style={{ fontFamily: T.body, fontSize: 12, color: "#be123c", lineHeight: 1.5 }}>
+                Your key controls your money. Never share it. GameArena will <strong style={{ color: "#be123c" }}>never</strong> DM you for it.
               </div>
             </div>
 

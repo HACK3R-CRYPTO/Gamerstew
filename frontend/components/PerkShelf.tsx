@@ -13,22 +13,22 @@ import { useEquipped } from "@/lib/cosmetics";
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.72)",
-  inkSoft: "rgba(220,210,255,0.42)",
+  inkDim: "rgba(34,16,79,0.82)",
+  inkSoft: "rgba(34,16,79,0.52)",
   surface: "rgba(22,9,60,0.6)",
   hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a",
-  good: "#34d399",
+  gold: "#b45309",
+  good: "#047857",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
 // Per-game accent — the card's glow + game label color.
 const GAME_ACCENT: Record<Perk["game"], string> = {
-  rhythm: "#f472b6",
-  stack: "#38bdf8",
-  simon: "#a78bfa",
-  "challenge-ai": "#fbbf24",
+  rhythm: "#be185d",
+  stack: "#0369a1",
+  simon: "#6d28d9",
+  "challenge-ai": "#b45309",
 };
 
 const fmtG = (v: bigint) => (Number(v) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -53,7 +53,7 @@ function EquipToggle({ perkId }: { perkId: number }) {
     >
       <span style={{
         width: 8, height: 8, borderRadius: 999,
-        background: equipped ? "#03130b" : "rgba(220,210,255,0.4)",
+        background: equipped ? "#03130b" : "rgba(34,16,79,0.5)",
       }} />
       {equipped ? "Equipped" : "Equip"}
     </button>
@@ -100,7 +100,7 @@ const PerkCard = memo(function PerkCard({ perk, owned, canAfford, isBusy, bought
         </div>
         {perk.kind === "cosmetic" && (
           <div style={{ position: "absolute", top: 7, right: 7 }}>
-            <span style={{ fontFamily: T.body, fontSize: 7.5, fontWeight: 900, letterSpacing: "0.1em", color: T.gold, padding: "2px 6px", borderRadius: 999, background: "rgba(251,191,36,0.2)" }}>FOREVER</span>
+            <span style={{ fontFamily: T.body, fontSize: 7.5, fontWeight: 900, letterSpacing: "0.1em", color: T.gold, padding: "2px 6px", borderRadius: 999, background: "rgba(180,83,9,0.45)" }}>FOREVER</span>
           </div>
         )}
         {stockCount > 0 && (
@@ -141,7 +141,7 @@ const PerkCard = memo(function PerkCard({ perk, owned, canAfford, isBusy, bought
           )}
         </div>
 
-        {errMsg && <div style={{ fontFamily: T.body, fontSize: 10, color: "#fb7185", lineHeight: 1.4 }}>{errMsg}</div>}
+        {errMsg && <div style={{ fontFamily: T.body, fontSize: 10, color: "#be123c", lineHeight: 1.4 }}>{errMsg}</div>}
       </div>
     </div>
   );

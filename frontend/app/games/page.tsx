@@ -15,12 +15,12 @@ import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 
 // ─── tokens (in sync with /dashboard + /home) ────────────────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
   gap: 12,
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -40,7 +40,7 @@ const GAMES_3D = [
     blurb: "NEPA don take light. Run the street, flip the breakers, dodge the danfo and bring the whole area back.",
     cover: "/games/covers/upnepa3d.jpg",
     focus: "58% 40%",
-    accent: "#fbbf24",
+    accent: "#b45309",
     badge: "FEATURED",
     href: "/world",
   },
@@ -95,10 +95,10 @@ const GAMES = [
   //   path: "/games/survivor",
   //   active: true,
   //   artGrad: "linear-gradient(160deg, #14532d 0%, #166534 55%, #052e16 100%)",
-  //   glow: "#22c55e",
-  //   accent: "#86efac",
+  //   glow: "#15803d",
+  //   accent: "#15803d",
   //   showWager: false,
-  //   borderColor: "#22c55e",
+  //   borderColor: "#15803d",
   //   startWall: "#14532d",
   //   startGrad: "linear-gradient(160deg, #86efac 0%, #22c55e 50%, #15803d 100%)",
   //   startGlow: "rgba(34,197,94,0.75)",
@@ -143,7 +143,7 @@ const GAMES = [
       </svg>
     ),
     bg: "linear-gradient(155deg, #f97316 0%, #c2410c 55%, #7c2d12 100%)",
-    glow: "#fb923c",
+    glow: "#c2410c",
     active: true,
     href: "/games/stack",
   },
@@ -155,7 +155,7 @@ const GAMES = [
     subtitle: "Outsmart MARKOV · or send your own AI",
     art: "/games/challenge-ais.png",
     bg: "linear-gradient(155deg, #14532d 0%, #064e3b 55%, #022c22 100%)",
-    glow: "#22c55e",
+    glow: "#15803d",
     active: true,
     href: "/games/challenge-ai",
   },
@@ -173,29 +173,29 @@ const GAMES = [
         {/* glow halo */}
         <circle cx="50" cy="34" r="26" fill="rgba(251,191,36,0.22)" />
         {/* bulb */}
-        <circle cx="50" cy="34" r="15" fill="url(#nepaBulb)" stroke="#fde68a" strokeWidth="1.5" />
+        <circle cx="50" cy="34" r="15" fill="url(#nepaBulb)" stroke="#b45309" strokeWidth="1.5" />
         <rect x="44" y="47" width="12" height="7" rx="1.5" fill="#a16207" />
         <rect x="45" y="54" width="10" height="4" rx="1.5" fill="#713f12" />
         {/* socket strip */}
         <rect x="18" y="70" width="64" height="20" rx="5" fill="#2a1d55" stroke="#a855f7" strokeWidth="1.5" />
         {[28, 50, 72].map((cx, i) => (
           <g key={i}>
-            <circle cx={cx} cy="80" r="6" fill="#140a2e" stroke="#c084fc" strokeWidth="1" />
-            <rect x={cx - 2.6} y="77.5" width="1.6" height="3" rx="0.6" fill="#e9d5ff" />
-            <rect x={cx + 1} y="77.5" width="1.6" height="3" rx="0.6" fill="#e9d5ff" />
+            <circle cx={cx} cy="80" r="6" fill="#140a2e" stroke="#7e22ce" strokeWidth="1" />
+            <rect x={cx - 2.6} y="77.5" width="1.6" height="3" rx="0.6" fill="#7e22ce" />
+            <rect x={cx + 1} y="77.5" width="1.6" height="3" rx="0.6" fill="#7e22ce" />
           </g>
         ))}
         <defs>
           <radialGradient id="nepaBulb" cx="50%" cy="40%" r="60%">
             <stop offset="0%" stopColor="#fffbeb" />
-            <stop offset="55%" stopColor="#fbbf24" />
+            <stop offset="55%" stopColor="#b45309" />
             <stop offset="100%" stopColor="#d97706" />
           </radialGradient>
         </defs>
       </svg>
     ),
     bg: "linear-gradient(155deg, #7c3aed 0%, #5b21b6 55%, #2e1065 100%)",
-    glow: "#fbbf24",
+    glow: "#b45309",
     active: true,
     isNew: true,
     href: "/games/nepa",
@@ -222,8 +222,8 @@ function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSe
       margin: "0 16px",
       padding: "9px 12px", borderRadius: 13,
       background: needsSetup
-        ? "linear-gradient(90deg, rgba(251,191,36,0.14), rgba(255,255,255,0.02))"
-        : `linear-gradient(90deg, ${T.accent}1f, rgba(255,255,255,0.02))`,
+        ? "linear-gradient(90deg, rgba(251,191,36,0.14), rgba(76,29,149,0.02))"
+        : `linear-gradient(90deg, ${T.accent}1f, rgba(76,29,149,0.02))`,
       border: needsSetup ? "1px solid rgba(251,191,36,0.4)" : `1px solid ${T.accent}44`,
       display: "flex", alignItems: "center", gap: 10,
     }}>
@@ -240,7 +240,7 @@ function GuestBanner({ onConnect, needsSetup }: { onConnect: () => void; needsSe
       </div>
       <button onClick={onConnect} style={{
         flexShrink: 0, padding: "6px 12px", borderRadius: 999, cursor: "pointer",
-        background: needsSetup ? "#fbbf24" : T.accent, border: "none",
+        background: needsSetup ? "#b45309" : T.accent, border: "none",
         color: needsSetup ? "#231005" : "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
         boxShadow: needsSetup ? "0 4px 12px -3px rgba(251,191,36,0.7)" : `0 4px 12px -3px ${T.accent}aa`,
       }}>{needsSetup ? "FINISH SETUP" : "SIGN IN"}</button>
@@ -267,8 +267,8 @@ function Card3D({ game, hero, wide, onClick }: { game: typeof GAMES_3D[number]; 
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={game.cover} alt="" loading={hero ? "eager" : "lazy"} decoding="async" style={{ position: "absolute", left: 0, top: 0, width: "100%", height: wide ? "100%" : "64%", objectFit: "cover", objectPosition: game.focus, zIndex: 0 }} />
       <span style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: wide ? "linear-gradient(rgba(5,6,10,0.4) 0%, rgba(5,6,10,0) 22%, rgba(5,6,10,0) 40%, rgba(5,6,10,0.85) 70%, rgba(5,6,10,0.97) 100%)" : "linear-gradient(rgba(5,6,10,0.35) 0%, rgba(5,6,10,0) 16%, rgba(5,6,10,0) 40%, rgba(11,12,18,0.9) 60%, #0b0c12 66%)" }} />
-      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 24, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px rgba(255,255,255,0.14)" }} />
-      <span style={{ position: "absolute", top: 14, left: 14, zIndex: 3, display: "inline-flex", alignItems: "center", gap: 7, height: 26, padding: "0 11px", borderRadius: 999, fontFamily: T.body, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", color: game.badge === "NEW" ? "#ffd56b" : "rgba(255,255,255,0.92)", background: "rgba(10,11,16,0.5)", border: `1px solid ${game.badge === "NEW" ? "rgba(255,213,107,0.45)" : "rgba(255,255,255,0.16)"}`, backdropFilter: "blur(14px) saturate(1.4)", WebkitBackdropFilter: "blur(14px) saturate(1.4)" }}>
+      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 24, boxShadow: "inset 0 0 0 1px rgba(76,29,149,0.1), inset 0 1px rgba(76,29,149,0.14)" }} />
+      <span style={{ position: "absolute", top: 14, left: 14, zIndex: 3, display: "inline-flex", alignItems: "center", gap: 7, height: 26, padding: "0 11px", borderRadius: 999, fontFamily: T.body, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", color: game.badge === "NEW" ? "#ffd56b" : "rgba(255,255,255,0.92)", background: "rgba(10,11,16,0.5)", border: `1px solid ${game.badge === "NEW" ? "rgba(255,213,107,0.45)" : "rgba(76,29,149,0.16)"}`, backdropFilter: "blur(14px) saturate(1.4)", WebkitBackdropFilter: "blur(14px) saturate(1.4)" }}>
         <i style={{ width: 6, height: 6, borderRadius: "50%", background: game.accent, boxShadow: `0 0 10px ${game.accent}` }} />
         {game.badge}
       </span>
@@ -277,7 +277,7 @@ function Card3D({ game, hero, wide, onClick }: { game: typeof GAMES_3D[number]; 
         <b style={{ fontFamily: T.display, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", fontSize: hero ? "clamp(32px, 9vw, 46px)" : "clamp(26px, 7vw, 34px)", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}>{game.title}</b>
         <small style={{ fontFamily: T.body, fontSize: 13.5, fontWeight: 500, lineHeight: 1.42, color: "rgba(255,255,255,0.74)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", maxWidth: 480 }}>{game.blurb}</small>
       </span>
-      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "14px 10px 10px", padding: "7px 7px 7px 14px", borderRadius: 17, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(20px) saturate(1.5)", WebkitBackdropFilter: "blur(20px) saturate(1.5)" }}>
+      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "14px 10px 10px", padding: "7px 7px 7px 14px", borderRadius: 17, background: "rgba(76,29,149,0.08)", border: "1px solid rgba(76,29,149,0.12)", backdropFilter: "blur(20px) saturate(1.5)", WebkitBackdropFilter: "blur(20px) saturate(1.5)" }}>
         <span style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 600, color: "rgba(255,255,255,0.82)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free to play · no download</span>
         <span style={{ flex: "none", display: "flex", alignItems: "center", gap: 3, height: 40, padding: "0 16px 0 20px", borderRadius: 12, background: "#fff", color: "#0a0b10", fontFamily: T.display, fontSize: 15, boxShadow: "0 8px 20px -8px rgba(0,0,0,0.6)" }}>
           Play
@@ -318,7 +318,7 @@ function Card2D({ game, onClick }: { game: typeof GAMES[number]; onClick: () => 
         <img src={g.cover} alt="" loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: g.focus }} />
         <span style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(rgba(5,6,10,0.3) 0%, rgba(5,6,10,0) 26%, rgba(5,6,10,0) 62%, #0b0c12 100%)" }} />
       </span>
-      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 20, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1), inset 0 1px rgba(255,255,255,0.14)" }} />
+      <span style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none", borderRadius: 20, boxShadow: "inset 0 0 0 1px rgba(76,29,149,0.1), inset 0 1px rgba(76,29,149,0.14)" }} />
       {g.isNew && (
         <span style={{ position: "absolute", top: 10, left: 10, zIndex: 3, display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 9px", borderRadius: 999, fontFamily: T.body, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", color: "#ffd56b", background: "rgba(10,11,16,0.55)", border: "1px solid rgba(255,213,107,0.45)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
           <i style={{ width: 5, height: 5, borderRadius: "50%", background: g.glow, boxShadow: `0 0 8px ${g.glow}` }} />
@@ -329,7 +329,7 @@ function Card2D({ game, onClick }: { game: typeof GAMES[number]; onClick: () => 
         <b style={{ fontFamily: T.display, fontWeight: 700, fontSize: 17, lineHeight: 1.1, letterSpacing: "-0.01em" }}>{g.title}</b>
         <small style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 500, lineHeight: 1.35, color: "rgba(255,255,255,0.68)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 31 }}>{g.subtitle}</small>
       </span>
-      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "10px 8px 8px", padding: "5px 5px 5px 11px", borderRadius: 13, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}>
+      <span style={{ position: "relative", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "10px 8px 8px", padding: "5px 5px 5px 11px", borderRadius: 13, background: "rgba(76,29,149,0.08)", border: "1px solid rgba(76,29,149,0.12)" }}>
         <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free</span>
         <span style={{ flex: "none", display: "flex", alignItems: "center", gap: 2, height: 30, padding: "0 10px 0 13px", borderRadius: 9, background: "#fff", color: "#0a0b10", fontFamily: T.display, fontSize: 13 }}>
           Play
@@ -357,7 +357,7 @@ function GameCard({ game, onClick }: { game: typeof GAMES[number]; onClick: () =
       display: "flex", flexDirection: "column",
     }}>
       {!game.active && (
-        <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", zIndex: 2 }}>SOON</span>
+        <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(76,29,149,0.2)", color: "#fff", fontFamily: T.body, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", zIndex: 2 }}>SOON</span>
       )}
       {game.active && (game as { isNew?: boolean }).isNew && (
         <span style={{ position: "absolute", top: 8, right: 8, padding: "2px 8px", borderRadius: 999, background: "linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)", border: "1px solid rgba(255,255,255,0.35)", color: "#231005", fontFamily: T.body, fontSize: 9, fontWeight: 900, letterSpacing: "0.1em", zIndex: 2, boxShadow: "0 2px 8px rgba(251,191,36,0.6)" }}>NEW</span>

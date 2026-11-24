@@ -28,14 +28,14 @@ function shortAddr(a: string): string {
 
 // ─── tokens ──────────────────────────────────────────────────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.5)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -96,9 +96,9 @@ function TelegramLink() {
 // card on desktop. Closes on backdrop tap, ESC, or the X.
 const ABOUT_GAMES: { name: string; trains: string; color: string }[] = [
   { name: "Simon Memory", trains: "recall",             color: "#06b6d4" },
-  { name: "Stack Tower",  trains: "precision",          color: "#fb923c" },
-  { name: "Rhythm Rush",  trains: "focus & timing",     color: "#e879f9" },
-  { name: "Challenge AI", trains: "outsmarting MARKOV",  color: "#34d399" },
+  { name: "Stack Tower",  trains: "precision",          color: "#c2410c" },
+  { name: "Rhythm Rush",  trains: "focus & timing",     color: "#a21caf" },
+  { name: "Challenge AI", trains: "outsmarting MARKOV",  color: "#047857" },
 ];
 function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; onPlayFree: () => void; isDesktop: boolean }) {
   useEffect(() => {
@@ -127,7 +127,7 @@ function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; o
         style={{
           width: "100%", maxWidth: 460,
           maxHeight: isDesktop ? "86vh" : "88dvh", overflowY: "auto",
-          background: "linear-gradient(180deg, rgba(42,18,100,0.98) 0%, rgba(20,6,60,0.99) 55%, rgba(10,2,38,1) 100%)",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 55%, rgba(255,255,255,0.92) 100%)",
           border: `1px solid ${T.hairlineHi}`,
           borderRadius: isDesktop ? 22 : "24px 24px 0 0",
           boxShadow: `0 0 60px ${T.accent}26, 0 -12px 44px rgba(0,0,0,0.6)`,
@@ -143,7 +143,7 @@ function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; o
           </div>
           <button onClick={onClose} aria-label="Close" style={{
             width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-            background: "rgba(255,255,255,0.06)", border: `1px solid ${T.hairlineHi}`,
+            background: "rgba(76,29,149,0.06)", border: `1px solid ${T.hairlineHi}`,
             color: T.inkDim, fontSize: 15, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>✕</button>
@@ -159,7 +159,7 @@ function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; o
             <div key={g.name} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "10px 12px", borderRadius: 12,
-              background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`,
+              background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`,
             }}>
               <span style={{ width: 7, height: 7, borderRadius: 999, background: g.color, boxShadow: `0 0 8px ${g.color}`, flexShrink: 0 }} />
               <span style={{ fontFamily: T.body, fontSize: 13, fontWeight: 800, color: T.ink }}>{g.name}</span>
@@ -187,7 +187,7 @@ function AboutSheet({ onClose, onPlayFree, isDesktop }: { onClose: () => void; o
           <a href="https://t.me/gamearenaHQ" target="_blank" rel="noopener noreferrer" style={{
             flex: 1, fontFamily: T.body, fontSize: 13, fontWeight: 800, color: T.ink,
             minHeight: 50, borderRadius: 14, textDecoration: "none",
-            background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairlineHi}`,
+            background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairlineHi}`,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="#2ca5e0" aria-hidden="true"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
@@ -220,10 +220,10 @@ function SoundToggle({ muted, onToggle, size = 38 }: { muted: boolean; onToggle:
   return (
     <button onClick={onToggle} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
       position: "relative", width: size, height: size, borderRadius: 12, flexShrink: 0,
-      background: muted ? "rgba(244,63,94,0.12)" : "rgba(255,255,255,0.05)",
+      background: muted ? "rgba(244,63,94,0.12)" : "rgba(76,29,149,0.05)",
       border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
       display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-      color: muted ? "#fda4af" : T.inkDim, transition: "all 0.15s",
+      color: muted ? "#be123c" : T.inkDim, transition: "all 0.15s",
     }}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M4 9v6h3.5L13 19.5V4.5L7.5 9H4z" fill="currentColor" />
@@ -274,7 +274,7 @@ function HomeScreenMobile({
     }}>
       <img src="/splash_screen_icons/dice.png" alt="" style={{ position: "absolute", top: "8%", left: -24, width: 96, opacity: 0.16, transform: "rotate(-18deg)", filter: "drop-shadow(0 0 20px #c026d3)" }} />
       <img src="/splash_screen_icons/joystick.png" alt="" style={{ position: "absolute", bottom: "26%", right: -18, width: 84, opacity: 0.16, transform: "rotate(14deg)", filter: "drop-shadow(0 0 20px #06b6d4)" }} />
-      <img src="/splash_screen_icons/gamepad.png" alt="" style={{ position: "absolute", top: "30%", right: -10, width: 64, opacity: 0.1, transform: "rotate(8deg)", filter: "drop-shadow(0 0 16px #a78bfa)" }} />
+      <img src="/splash_screen_icons/gamepad.png" alt="" style={{ position: "absolute", top: "30%", right: -10, width: 64, opacity: 0.1, transform: "rotate(8deg)", filter: "drop-shadow(0 0 16px #6d28d9)" }} />
 
       {/* Top row — mute (left) + About (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", zIndex: 2 }}>
@@ -324,7 +324,7 @@ function HomeScreenMobile({
         <button onClick={onConnect} style={{
           fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 800,
           minHeight: 60, padding: "0 16px", borderRadius: 14,
-          background: "rgba(255,255,255,0.05)",
+          background: "rgba(76,29,149,0.05)",
           border: `1px solid ${T.hairlineHi}`,
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}>
@@ -355,7 +355,7 @@ function HomeScreenDesktop({
       {/* left — copy */}
       <div style={{ flex: 1, maxWidth: 540, display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Pill color="#a78bfa">{climbPillLabel(live?.climb ?? null)}</Pill>
+          <Pill color="#6d28d9">{climbPillLabel(live?.climb ?? null)}</Pill>
           <SoundToggle muted={muted} onToggle={onMute} size={34} />
           <TelegramLink />
         </div>
@@ -383,7 +383,7 @@ function HomeScreenDesktop({
             <button onClick={onConnect} style={{
               fontFamily: T.body, fontSize: 14, fontWeight: 800, color: T.ink,
               padding: "15px 24px", borderRadius: 16,
-              background: "rgba(255,255,255,0.05)",
+              background: "rgba(76,29,149,0.05)",
               border: `1px solid ${T.hairlineHi}`,
               cursor: "pointer",
               display: "inline-flex", alignItems: "center", gap: 8,
@@ -392,7 +392,7 @@ function HomeScreenDesktop({
             </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: T.body, fontSize: 12, color: T.inkSoft }}>
-            <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "#15803d", boxShadow: "0 0 6px #15803d" }} />
             Free to start. Sign in later to win G$ &amp; save your progress.
             <button onClick={onAbout} style={{ background: "none", border: "none", color: T.accent, fontFamily: T.body, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, marginLeft: 2 }}>How it works ›</button>
           </div>
@@ -405,7 +405,7 @@ function HomeScreenDesktop({
             textDecoration: "none", color: "inherit",
             display: "flex", gap: 32, marginTop: 18,
             padding: "16px 22px", borderRadius: 18,
-            background: "rgba(255,255,255,0.04)",
+            background: "rgba(76,29,149,0.04)",
             border: `1px solid ${T.hairline}`,
             alignSelf: "flex-start", cursor: "pointer", textAlign: "left",
             transition: "border-color 0.15s, background 0.15s",
@@ -425,13 +425,13 @@ function HomeScreenDesktop({
         <div style={{
           position: "relative", padding: "28px 24px 24px",
           borderRadius: 28,
-          background: `radial-gradient(ellipse at 30% 20%, ${T.accent}33 0%, transparent 60%), linear-gradient(160deg, rgba(60,28,140,0.55), rgba(15,5,50,0.85))`,
+          background: `radial-gradient(ellipse at 30% 20%, ${T.accent}33 0%, transparent 60%), linear-gradient(160deg, rgba(255,255,255,0.96), rgba(255,255,255,0.96))`,
           border: `1px solid ${T.hairline}`,
           overflow: "hidden",
         }}>
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.08), transparent 60%)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 100% 0%, rgba(76,29,149,0.08), transparent 60%)", pointerEvents: "none" }} />
           <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-            <Pill color="#fde68a">YOUR PET · WAITING</Pill>
+            <Pill color="#b45309">YOUR PET · WAITING</Pill>
             <div style={{ position: "relative", width: 180, height: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <img src="/pets/stage-1-egg.png" alt="" style={{ width: 160, height: 160, objectFit: "contain", filter: "drop-shadow(0 12px 28px rgba(0,0,0,0.5))", animation: "home-float-gentle 3s ease-in-out infinite" }} />
             </div>
@@ -439,7 +439,7 @@ function HomeScreenDesktop({
             <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, textAlign: "center", lineHeight: 1.45, maxWidth: 280 }}>
               Connect to claim your pet. It evolves from <strong style={{ color: T.accent }}>egg → King Slime</strong> as you play.
             </div>
-            <div style={{ display: "flex", gap: 18, marginTop: 4, padding: "8px 14px", borderRadius: 10, background: "rgba(0,0,0,0.25)", border: `1px solid ${T.hairline}` }}>
+            <div style={{ display: "flex", gap: 18, marginTop: 4, padding: "8px 14px", borderRadius: 10, background: "rgba(109,40,217,0.07)", border: `1px solid ${T.hairline}` }}>
               <Stat label="Stages" value="5" size="sm" />
               <span style={{ width: 1, background: T.hairline }} />
               <Stat label="Habitats" value="6" size="sm" />
@@ -451,7 +451,7 @@ function HomeScreenDesktop({
         <div style={{ padding: 16, borderRadius: 18, background: T.surface, border: `1px solid ${T.hairline}` }}>
           <SectionLabel>Top players · all time</SectionLabel>
           {(live?.top3 ?? []).map((r, i) => {
-            const color = i === 0 ? "#fbbf24" : i === 1 ? "#a78bfa" : "#f472b6";
+            const color = i === 0 ? "#b45309" : i === 1 ? "#6d28d9" : "#be185d";
             const name = r.username || shortAddr(r.player);
             return (
               <div key={r.player} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px" }}>
@@ -657,9 +657,10 @@ export default function HomePage() {
   // run. It used to open the dashboard, where a new visitor still had to pick a
   // game, wait for it, read its start screen and press START. The dashboard is
   // one tap away after the run.
-  const onPlayFree = () => { playWhooshIn(); router.push("/games/stack?play=1"); };
-  // have the game's code ready before the button is pressed
-  useEffect(() => { const t = setTimeout(() => router.prefetch("/games/stack"), 800); return () => clearTimeout(t); }, [router]);
+  // Play free opens the dashboard, where the player picks a game. It used to
+  // start a Stack run on its own; a guest should choose first.
+  const onPlayFree = () => { playWhooshIn(); router.push("/dashboard"); };
+  useEffect(() => { const t = setTimeout(() => router.prefetch("/dashboard"), 800); return () => clearTimeout(t); }, [router]);
   // Three states:
   //   1. Privy authed AND wallet connected  → /verify (whitelist gate)
   //   2. Privy authed but wallet DISCONNECTED (Rabby logged out, etc.)
@@ -724,13 +725,13 @@ export default function HomePage() {
       <button onClick={() => { playClick(); connectWallet(); }} style={{
         flexShrink: 0, padding: "7px 13px", borderRadius: 999,
         background: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.55)",
-        color: "#86efac", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
+        color: "#15803d", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
         letterSpacing: "0.06em", cursor: "pointer",
       }}>RECONNECT</button>
       <button onClick={async () => { playClick(); try { await disconnectAsync(); } catch {} try { await logout(); } catch {} }} style={{
         flexShrink: 0, padding: "7px 13px", borderRadius: 999,
         background: "rgba(244,63,94,0.15)", border: "1px solid rgba(244,63,94,0.5)",
-        color: "#fda4af", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
+        color: "#be123c", fontFamily: T.body, fontSize: 10.5, fontWeight: 800,
         letterSpacing: "0.06em", cursor: "pointer",
       }}>LOG OUT</button>
     </div>

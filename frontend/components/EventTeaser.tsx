@@ -15,7 +15,7 @@ import { cupPhase, type CupPhase } from "@/lib/cup";
 const T = {
   ink: "#ffffff",
   inkDim: "rgba(224,215,255,0.78)",
-  gold: "#fde68a",
+  gold: "#b45309",
   goldDeep: "#f59e0b",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
@@ -44,7 +44,7 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
       display: "block", textDecoration: "none", color: "inherit",
       position: "relative", overflow: "hidden", borderRadius: 18,
       padding: isDesktop ? "18px 22px" : "15px 16px",
-      background: "linear-gradient(115deg, rgba(120,53,15,0.55) 0%, rgba(30,14,74,0.75) 55%, rgba(20,8,52,0.9) 100%)",
+      background: "linear-gradient(115deg, rgba(120,53,15,0.55) 0%, rgba(255,255,255,0.96) 55%, rgba(20,8,52,0.9) 100%)",
       border: "1px solid rgba(251,191,36,0.4)",
       boxShadow: "0 14px 40px -18px rgba(245,158,11,0.55)",
     }}>
@@ -59,9 +59,9 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
-            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(251,191,36,0.5)" }}>$150</span>
+            <span style={{ fontFamily: T.display, fontSize: isDesktop ? 40 : 32, color: T.gold, lineHeight: 1, textShadow: "0 0 22px rgba(180,83,9,0.75)" }}>$150</span>
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.75)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
+          <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(180,83,9,1)", fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 4 }}>
             Prize pool · paid in G$
           </div>
 
@@ -69,7 +69,7 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 11, padding: "6px 13px", borderRadius: 999, background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.45)" }}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: T.gold, boxShadow: `0 0 8px ${T.gold}`, animation: "pulse-soft 1.6s ease-in-out infinite" }} />
             <CupCountdown
-              labelStyle={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", color: "rgba(253,230,138,0.8)", textTransform: "uppercase" }}
+              labelStyle={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em", color: "rgba(180,83,9,1)", textTransform: "uppercase" }}
               timeStyle={{ fontFamily: T.display, fontSize: isDesktop ? 16 : 14, color: T.gold, letterSpacing: "0.02em" }}
             />
           </div>
@@ -81,7 +81,7 @@ export default function EventTeaser({ isDesktop = false }: { isDesktop?: boolean
           {/* GoodAgents supports the pool · credited, not the headline. */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10 }}>
             <img src="/goodagents-logo.png" alt="" width={16} height={16} style={{ display: "block" }} />
-            <span style={{ fontFamily: T.body, fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
+            <span style={{ fontFamily: T.body, fontSize: 10, color: "rgba(180,83,9,0.95)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supported by GoodAgents</span>
           </div>
         </div>
 

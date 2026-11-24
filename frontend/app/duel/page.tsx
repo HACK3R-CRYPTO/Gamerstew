@@ -15,10 +15,10 @@ import AppBottomNav from "@/components/AppBottomNav";
 import { gameLabel, duelPhase, type DuelRoom } from "@/lib/duel";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff", inkDim: "rgba(220,210,255,0.7)", inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.5)", hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a", green: "#34d399", cyan: "#22d3ee", accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.55)",
+  surface: "#ffffff", hairline: "rgba(76,29,149,0.08)",
+  gold: "#b45309", green: "#047857", cyan: "#0e7490", accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
