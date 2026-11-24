@@ -457,7 +457,9 @@ export default function DashboardPage() {
   // TUG_HERO is gone from the rail: Tug of War ended on 30 September and the
   // card still said "Starts Wednesday".
   const [weekly, setWeekly] = useState<WeeklyInfo | null>(null);
-  const [today, setToday] = useState<null | "claim" | "missions" | "vote" | "cup">(null);
+  // Opens on the daily claim: it is the one thing here worth doing every day, so
+  // it should be seen without a tap. A second tap on a tab still closes it.
+  const [today, setToday] = useState<null | "claim" | "missions" | "vote" | "cup">("claim");
   const { address: heroAddress } = useAccount();
   useEffect(() => {
     let live = true;
