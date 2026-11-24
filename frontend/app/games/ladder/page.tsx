@@ -25,6 +25,8 @@ import { PUZZLES, VALID } from "./data";
 import { useRankedRun } from "@/hooks/useRankedRun";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
+import { playLadderKey, playLadderStep, playLadderWrong, playLadderUndo, playLadderHint, playLadderSolved, playWhooshIn, playWhooshOut, sfxLevel } from "@/hooks/useAppAudio";
+import { useAudioSettings } from "@/hooks/useAudioSettings";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const ROUND = 5;
@@ -140,6 +142,12 @@ export default function WordLadderPage() {
   const start = puzzle?.[0] ?? ""; const target = puzzle?.[1] ?? ""; const par = puzzle?.[2] ?? 0;
   const current = rungs.length ? rungs[rungs.length - 1] : start;
 
+  // ── game feel: a buzz in the hand, and a recording for the end of a round ──
+  const { hapticsOn } = useAudioSettings();
+  const buzz = useCallback((pattern: number | number[]) => { if (hapticsOn) try { navigator.vibrate?.(pattern); } catch { /* no haptics */ } }, [hapticsOn]);
+  const crowd = (file: "crowd-cheer" | "crowd-clap") => { const v = sfxLevel(); if (v <= 0) return; try { const a = new Audio(`/bowling/audio/${file}.mp3`); a.volume = Math.min(1, v * 1.6); void a.play().catch(() => {}); } catch { /* no audio */ } };
+  const [flash, setFlash] = useState(0); // a wrong word flashes the row red
+
   const openPuzzle = useCallback((list: [string, string, number][], i: number) => {
     const [s, t] = list[i];
     setIx(i); setRungs([]); setHints(0); setHintWord(null); setSolved(false); setMsg(null);
@@ -191,14 +199,16 @@ export default function WordLadderPage() {
     const ms = Date.now() - t0.current; const seconds = Math.floor(ms / 1000);
     const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints), words: skipped ? rungs : [...rungs.slice(0, steps - 1), target].slice(0, steps), ms };
     const all = [...results, r]; setResults(all); setSolved(true);
+    if (skipped) playWhooshOut(); else { const perfect = steps <= par; playLadderSolved(perfect); buzz(perfect ? [18, 40, 18, 40, 30] : [18, 40, 24]); }
     if (isRoomRound) room.progress(all.length); // let the others see how far you have got
     setTimeout(() => {
-      if (ix + 1 < ROUND) openPuzzle(set, ix + 1);
+      if (ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
       else {
         const total = all.reduce((a, x) => a + x.points, 0);
         if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
         if (daily && dailyDone === null) { setDailyDone(total); try { localStorage.setItem(DAILY_KEY, JSON.stringify({ day: todayKey(), score: total })); } catch { /* ignore */ } }
         setPhase("done");
+        if (total >= 80) crowd("crowd-cheer"); else if (total >= 40) crowd("crowd-clap");
         // dev only: hands the finished round to an automated test, which checks it
         // against the server's rules
         if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
@@ -212,20 +222,21 @@ export default function WordLadderPage() {
     if (phase !== "play" || solved || !puzzle) return;
     if (current[sel] === letter) return;
     const next = current.slice(0, sel) + letter + current.slice(sel + 1);
-    if (!WORDS.has(next)) { setShake((n) => n + 1); say(`${next.toUpperCase()} is not a word`); try { navigator.vibrate?.(40); } catch { /* no haptics */ } return; }
-    if (next === start || rungs.includes(next)) { setShake((n) => n + 1); say("You already used that word"); return; }
-    const list = [...rungs, next]; setRungs(list); setHintWord(null); setMsg(null);
+    if (!WORDS.has(next)) { setShake((n) => n + 1); setFlash((n) => n + 1); playLadderWrong(); buzz(45); say(`${next.toUpperCase()} is not a word`); return; }
+    if (next === start || rungs.includes(next)) { setShake((n) => n + 1); setFlash((n) => n + 1); playLadderWrong(); buzz(45); say("You already used that word"); return; }
+    const list = [...rungs, next]; setRungs(list); setHintWord(null); setMsg(null); setFlash(0);
     if (next === target) { finishPuzzle(list.length, false); return; }
+    playLadderStep([0, 1, 2, 3].filter((k) => next[k] === target[k]).length); buzz(10);
     const nxt = [0, 1, 2, 3].findIndex((k) => next[k] !== target[k]);
     if (next[sel] === target[sel] && nxt >= 0) setSel(nxt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, solved, puzzle, current, sel, rungs, start, target]);
-  const undo = () => { if (!solved && rungs.length) { setRungs(rungs.slice(0, -1)); setHintWord(null); setMsg(null); } };
+  const undo = () => { if (!solved && rungs.length) { playLadderUndo(); setRungs(rungs.slice(0, -1)); setHintWord(null); setMsg(null); } };
   const hint = () => {
     if (solved) return;
     const w = nextStep(current, target);
     if (!w) { say("No route from here. Undo a step"); return; }
-    setHints((h) => h + 1); setHintWord(w); setSel([0, 1, 2, 3].findIndex((k) => w[k] !== current[k]));
+    playLadderHint(); setHints((h) => h + 1); setHintWord(w); setSel([0, 1, 2, 3].findIndex((k) => w[k] !== current[k]));
   };
 
   useEffect(() => {
@@ -252,7 +263,7 @@ export default function WordLadderPage() {
   const Tiles = ({ word, kind, from, onTap }: { word: string; kind: "start" | "target" | "rung" | "live" | "ghost"; from?: string; onTap?: (i: number) => void }) => (
     <div className={`wl-row ${kind}`}>
       {word.split("").map((ch, i) => (
-        <button key={i} disabled={!onTap} onClick={() => onTap?.(i)} style={{ animationDelay: `${i * 70}ms` }}
+        <button key={i} disabled={!onTap} onClick={() => { playLadderKey(); onTap?.(i); }} style={{ animationDelay: `${i * 70}ms` }}
           className={`wl-tile${kind !== "target" && kind !== "ghost" && ch === target[i] ? " hit" : ""}${from && from[i] !== ch ? " moved" : ""}${kind === "live" && i === sel && !solved ? " sel" : ""}${hintWord && kind === "live" && hintWord[i] !== ch ? " nudge" : ""}`}
           aria-label={kind === "live" ? `Letter ${i + 1}: ${ch}${i === sel ? ", selected" : ""}` : undefined}>
           {kind === "ghost" ? "" : ch}
@@ -262,6 +273,10 @@ export default function WordLadderPage() {
   );
   const ghosts = solved ? 0 : Math.max(0, Math.min(3, par - rungs.length - 1));
   const matched = [0, 1, 2, 3].filter((k) => current[k] === target[k]).length;
+  // the five speed points drain one every 20 seconds: show them, so the clock means something
+  const speedLeft = Math.max(0, 5 - Math.floor(secs / 20));
+  // perfect routes in a row this round
+  let streak = 0; for (let k = results.length - 1; k >= 0 && !results[k].skipped && results[k].steps <= results[k].par; k--) streak++;
 
   return (
     <div className="wl">
@@ -312,7 +327,7 @@ export default function WordLadderPage() {
       )}
 
       {phase === "play" && puzzle && (
-        <main className="wl-play">
+        <main className="wl-play" data-no-click-sound="true">{/* this screen has its own sounds: no app click on top */}
           {isRoomRound && room.view && (
             <div className="wl-room" aria-label="Players in this room">
               {room.view.players.map((pl, i) => (
@@ -324,15 +339,21 @@ export default function WordLadderPage() {
             </div>
           )}
           <div className="wl-stats">
-            <span><b>{rungs.length}</b>steps</span>
+            <span className={rungs.length > par ? "over" : ""}><b>{rungs.length}</b>steps</span>
             <span><b>{par}</b>par</span>
             <span><b>{secs}s</b>time</span>
+          </div>
+          <div className="wl-speed" aria-label={`Speed bonus: ${speedLeft} of 5 points left`}>
+            <em>Speed bonus</em>
+            <i>{[0, 1, 2, 3, 4].map((k) => <u key={k} className={k < speedLeft ? "on" : ""} />)}</i>
+            <b>+{speedLeft}</b>
+            {streak >= 2 && <strong key={streak}>🔥 {streak} perfect in a row</strong>}
           </div>
 
           {/* the ladder: start at the top, the target waiting at the bottom, your
               words filling the gap. Empty rungs show roughly how far is left. */}
           <div className="wl-ladder">
-            <div className="wl-rails" key={ix}>
+            <div className={`wl-rails${flash ? ` wl-flash-${flash % 2}` : ""}`} key={ix}>
               <Tiles word={start} kind={rungs.length ? "start" : "live"} onTap={rungs.length || solved ? undefined : setSel} />
               {rungs.map((w, i) => {
                 const live = i === rungs.length - 1;
@@ -345,6 +366,7 @@ export default function WordLadderPage() {
                 <span>{solved ? (results[results.length - 1]?.skipped ? "SKIPPED" : rungs.length <= par ? "PERFECT ROUTE" : "SOLVED") : `TARGET · ${matched} of 4 letters in place`}</span>
                 <Tiles word={target} kind={solved && !results[results.length - 1]?.skipped ? "rung" : "target"} from={solved && rungs.length > 1 ? rungs[rungs.length - 2] : solved ? start : undefined} />
                 {solved && !results[results.length - 1]?.skipped && <em style={{ fontFamily: DISPLAY }}>+{results[results.length - 1]?.points}</em>}
+                {solved && !results[results.length - 1]?.skipped && <div className="wl-conf" aria-hidden>{Array.from({ length: 16 }, (_, k) => <i key={k} style={{ ["--a" as string]: `${(k * 360) / 16}deg`, ["--d" as string]: `${46 + (k % 4) * 14}px`, background: ["#22c55e", "#6d28d9", "#f59e0b", "#ec4899"][k % 4], animationDelay: `${(k % 3) * 40}ms` }} />)}</div>}
               </div>
               <div ref={ladderEnd} />
             </div>
@@ -356,7 +378,7 @@ export default function WordLadderPage() {
             {KEYS.map((row, r) => (
               <div key={row}>
                 {r === 2 && <button className="wide" onClick={undo} disabled={!rungs.length || solved} aria-label="Undo">↶</button>}
-                {row.split("").map((k) => <button key={k} onClick={() => type(k)} className={hintWord && hintWord[sel] === k ? "glow" : ""}>{k}</button>)}
+                {row.split("").map((k) => <button key={k} onClick={() => { playLadderKey(); type(k); }} className={hintWord && hintWord[sel] === k ? "glow" : ""}>{k}</button>)}
                 {r === 2 && <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 3 points">?</button>}
               </div>
             ))}
@@ -368,7 +390,7 @@ export default function WordLadderPage() {
       {phase === "done" && (
         <main className="wl-done">
           <div className="wl-kicker">{isRoomRound ? "YOUR SCORE" : daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
-          <h1 style={{ fontFamily: DISPLAY }}>{total} <small>points</small></h1>
+          <h1 style={{ fontFamily: DISPLAY }}><CountUp to={total} /> <small>points</small></h1>
           {total >= best && total > 0 && <div className="wl-new">New best</div>}
           {isRoomRound && room.view && (
             <div className="wl-standings">
@@ -517,7 +539,21 @@ export default function WordLadderPage() {
         .wl-keys { display: flex; flex-direction: column; gap: 6px; }
         .wl-keys > div { display: flex; justify-content: center; gap: 5px; }
         .wl-keys button { flex: 1 1 0; max-width: 40px; height: 50px; border-radius: 11px; border: none; background: #fff; box-shadow: 0 3px 0 rgba(76,29,149,0.22); font-size: 17px; font-weight: 800; text-transform: uppercase; padding: 0; transition: transform .08s ease, background .15s ease; }
-        .wl-keys button:active { transform: translateY(3px); box-shadow: none; background: #e9defe; }
+        .wl-keys button:active { transform: translateY(3px) scale(0.96); box-shadow: none; background: #e9defe; }
+        .wl-stats span.over b { color: #b45309; }
+        .wl-speed { display: flex; align-items: center; gap: 8px; margin-top: -2px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: var(--dim); }
+        .wl-speed em { font-style: normal; text-transform: uppercase; } .wl-speed b { color: #22104f; font-variant-numeric: tabular-nums; min-width: 20px; }
+        .wl-speed i { flex: 1; display: flex; gap: 4px; } .wl-speed u { flex: 1; height: 7px; border-radius: 999px; background: rgba(76,29,149,0.14); transition: background .4s, transform .4s; }
+        .wl-speed u.on { background: linear-gradient(90deg, #a78bfa, #6d28d9); }
+        .wl-speed strong { padding: 3px 9px; border-radius: 999px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; font-size: 11px; letter-spacing: 0; white-space: nowrap; animation: wlWin .5s cubic-bezier(.2,.9,.3,1.5) both; }
+        .wl-flash-0 .wl-row.live .wl-tile, .wl-flash-1 .wl-row.live .wl-tile { animation: wlRed .45s ease both; }
+        .wl-flash-1 .wl-row.live .wl-tile { animation-name: wlRed2; }
+        @keyframes wlRed { 0%, 100% { box-shadow: 0 4px 0 rgba(76,29,149,0.2); } 30% { box-shadow: 0 4px 0 #be123c, 0 0 0 3px #fb7185 inset; } }
+        @keyframes wlRed2 { 0%, 100% { box-shadow: 0 4px 0 rgba(76,29,149,0.2); } 30% { box-shadow: 0 4px 0 #be123c, 0 0 0 3px #fb7185 inset; } }
+        .wl-conf { position: absolute; left: 50%; top: 55%; width: 0; height: 0; pointer-events: none; }
+        .wl-conf i { position: absolute; width: 8px; height: 8px; border-radius: 2px; opacity: 0; animation: wlBurst .9s cubic-bezier(.15,.8,.3,1) both; }
+        @keyframes wlBurst { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(0.4); } 70% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1.6)) scale(1) rotate(120deg); } }
+        @media (prefers-reduced-motion: reduce) { .wl-conf { display: none; } .wl-flash-0 .wl-row.live .wl-tile, .wl-flash-1 .wl-row.live .wl-tile { animation: none; } }
         .wl-keys button.wide { max-width: 54px; flex-grow: 1.5; background: #ede4ff; color: var(--brand); font-size: 20px; }
         .wl-keys button:disabled { opacity: 0.4; cursor: default; }
         .wl-keys button.glow { background: var(--brand); color: #fff; animation: wlNudge .7s ease-in-out infinite; }
@@ -544,4 +580,17 @@ export default function WordLadderPage() {
       `}</style>
     </div>
   );
+}
+
+// The round's total counts up, so a good score feels earned.
+function CountUp({ to }: { to: number }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (to <= 0 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setN(to); return; }
+    const t0 = performance.now(); const ms = 700; let raf = 0;
+    const tick = (t: number) => { const k = Math.min(1, (t - t0) / ms); setN(Math.round(to * (1 - (1 - k) ** 3))); if (k < 1) raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [to]);
+  return <>{n}</>;
 }

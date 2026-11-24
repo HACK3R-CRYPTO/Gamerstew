@@ -209,6 +209,50 @@ export function playCoin() {
   scheduleBell(ctx, _sfxMaster, 3135.96, now + 0.12, 0.5,  0.14);
 }
 
+// ─── Word Ladder ─────────────────────────────────────────────────────────────
+// Small, dry sounds for a word game: a key tick, a note that climbs as more
+// letters fall into place, a low buzz for a word that does not exist. These are
+// feedback, not music; the celebration at the end of a round is a recording.
+const LADDER_NOTES = [392.0, 523.25, 659.25, 783.99, 1046.5]; // 0..4 letters in place: G4 C5 E5 G5 C6
+
+export function playLadderKey() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  scheduleSine(ctx, _sfxMaster, 640, ctx.currentTime, 0.04, 0.06, 470);
+}
+/** A real word. The more letters now match the target, the higher the note. */
+export function playLadderStep(inPlace: number) {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  const now = ctx.currentTime; const f = LADDER_NOTES[Math.max(0, Math.min(4, inPlace))];
+  scheduleSine(ctx, _sfxMaster, f * 0.5, now, 0.06, 0.1, f);
+  scheduleBell(ctx, _sfxMaster, f, now + 0.02, 0.32, 0.2);
+}
+export function playLadderWrong() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  const now = ctx.currentTime;
+  scheduleSine(ctx, _sfxMaster, 196, now, 0.13, 0.13, 150);
+  scheduleSine(ctx, _sfxMaster, 147, now + 0.09, 0.16, 0.12, 105);
+}
+export function playLadderUndo() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  scheduleSine(ctx, _sfxMaster, 520, ctx.currentTime, 0.09, 0.07, 330);
+}
+export function playLadderHint() {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 880, now, 0.25, 0.11);
+  scheduleBell(ctx, _sfxMaster, 1174.66, now + 0.07, 0.3, 0.09);
+}
+/** The target is reached. A perfect route (par or better) gets two more notes on top. */
+export function playLadderSolved(perfect: boolean) {
+  const ctx = _ctx; if (!ctx || !_sfxMaster) return;
+  const now = ctx.currentTime;
+  scheduleBell(ctx, _sfxMaster, 783.99, now, 0.4, 0.2);
+  scheduleBell(ctx, _sfxMaster, 1046.5, now + 0.09, 0.5, 0.2);
+  if (perfect) { scheduleBell(ctx, _sfxMaster, 1318.51, now + 0.18, 0.5, 0.17); scheduleBell(ctx, _sfxMaster, 1568, now + 0.27, 0.7, 0.15); }
+}
+/** How loud effects are right now, 0 when muted: for sounds played from a recording. */
+export function sfxLevel(): number { return _sfxGain; }
+
 export function playTabSwitch() {
   const ctx = _ctx; if (!ctx || !_sfxMaster) return;
   scheduleSine(ctx, _sfxMaster, 900, ctx.currentTime, 0.05, 0.06, 1100);
