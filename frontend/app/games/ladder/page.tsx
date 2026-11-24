@@ -47,6 +47,21 @@ function deal(): [string, string, number][] {
   return out;
 }
 
+// The daily round: the same five ladders for every player on a given day, so
+// people can compare scores and share them. One scored attempt a day.
+const DAILY_KEY = "gamearena:ladder:daily";
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function dealDaily(): [string, string, number][] {
+  const d = new Date(); let a = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) * 2654435761 >>> 0;
+  const r = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const used = new Set<string>();
+  return PARS.map((par) => {
+    const pool = PUZZLES.filter((p) => p[2] === par && !used.has(p[0]) && !used.has(p[1]));
+    const p = pool[Math.floor(r() * pool.length)]; used.add(p[0]); used.add(p[1]);
+    return p;
+  });
+}
+
 // one good next word from `from` toward `to` (shortest route through accepted words)
 function nextStep(from: string, to: string): string | null {
   if (from === to) return null;
@@ -73,6 +88,8 @@ export default function WordLadderPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<"start" | "play" | "done">("start");
   const [set, setSet] = useState<[string, string, number][]>([]);
+  const [daily, setDaily] = useState(false);
+  const [dailyDone, setDailyDone] = useState<number | null>(null); // today's score, once played
   const [ix, setIx] = useState(0);
   const [rungs, setRungs] = useState<string[]>([]);
   const [sel, setSel] = useState(0);
@@ -87,7 +104,13 @@ export default function WordLadderPage() {
   const t0 = useRef(0);
   const ladderEnd = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { try { setBest(Number(localStorage.getItem(BEST_KEY) || 0)); } catch { /* private window */ } }, []);
+  useEffect(() => {
+    try {
+      setBest(Number(localStorage.getItem(BEST_KEY) || 0));
+      const d = JSON.parse(localStorage.getItem(DAILY_KEY) || "null");
+      if (d && d.day === todayKey()) setDailyDone(Number(d.score));
+    } catch { /* private window */ }
+  }, []);
 
   const puzzle = set[ix];
   const start = puzzle?.[0] ?? ""; const target = puzzle?.[1] ?? ""; const par = puzzle?.[2] ?? 0;
@@ -99,9 +122,9 @@ export default function WordLadderPage() {
     setSel(Math.max(0, [0, 1, 2, 3].findIndex((k) => s[k] !== t[k])));
     t0.current = Date.now(); setSecs(0);
   }, []);
-  const begin = () => {
-    const list = deal();
-    setSet(list); setResults([]); setPhase("play"); openPuzzle(list, 0);
+  const begin = (isDaily = false) => {
+    const list = isDaily ? dealDaily() : deal();
+    setDaily(isDaily); setSet(list); setResults([]); setPhase("play"); openPuzzle(list, 0);
   };
 
   useEffect(() => {
@@ -121,6 +144,7 @@ export default function WordLadderPage() {
       else {
         const total = all.reduce((a, x) => a + x.points, 0);
         if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
+        if (daily && dailyDone === null) { setDailyDone(total); try { localStorage.setItem(DAILY_KEY, JSON.stringify({ day: todayKey(), score: total })); } catch { /* ignore */ } }
         setPhase("done");
       }
     }, skipped ? 500 : 1300);
@@ -161,7 +185,7 @@ export default function WordLadderPage() {
   const total = useMemo(() => results.reduce((a, x) => a + x.points, 0), [results]);
   const share = async () => {
     const lines = results.map((r) => (r.skipped ? "⬜" : r.steps <= r.par ? "🟩" : "🟨")).join("");
-    const text = `Word Ladder on GameArena\n${lines}  ${total} pts\nhttps://gamearenahq.xyz/games/ladder`;
+    const text = `Word Ladder${daily ? " daily" : ""} on GameArena\n${lines}  ${total} pts\nhttps://gamearenahq.xyz/games/ladder`;
     try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); say("Copied"); } } catch { /* cancelled */ }
   };
 
@@ -210,7 +234,14 @@ export default function WordLadderPage() {
           </div>
           <h1 style={{ fontFamily: DISPLAY }}>Turn one word<br />into another</h1>
           <p>Change <b>one letter</b> at a time. Every step has to be a real word.</p>
-          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={begin}>Play</button>
+          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play</button>
+          {dailyDone === null ? (
+            <button className="wl-daily" onClick={() => begin(true)}>
+              <b>Daily ladder</b><span>Same five for everyone today. One try.</span>
+            </button>
+          ) : (
+            <div className="wl-daily done"><b>Daily ladder: {dailyDone} points</b><span>A new one comes tomorrow.</span></div>
+          )}
           <div className="wl-facts">
             <span><b>5</b>ladders a round</span>
             <span><b>200</b>points each</span>
@@ -265,7 +296,7 @@ export default function WordLadderPage() {
 
       {phase === "done" && (
         <main className="wl-done">
-          <div className="wl-kicker">ROUND COMPLETE</div>
+          <div className="wl-kicker">{daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
           <h1 style={{ fontFamily: DISPLAY }}>{total} <small>points</small></h1>
           {total >= best && total > 0 && <div className="wl-new">New best</div>}
           <ul>
@@ -277,7 +308,7 @@ export default function WordLadderPage() {
               </li>
             ))}
           </ul>
-          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={begin}>Play again</button>
+          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play again</button>
           <div className="wl-pair"><button className="wl-ghost" onClick={share}>Share</button><button className="wl-ghost" onClick={() => router.push("/dashboard")}>Home</button></div>
           {msg && <div className="wl-msg" key={msg.key}>{msg.text}</div>}
         </main>
@@ -326,6 +357,9 @@ export default function WordLadderPage() {
         .wl-primary { width: 100%; padding: 17px 0; border: none; border-radius: 20px; font-size: 22px; color: #fff !important; background: linear-gradient(180deg, #7c3aed, #6d28d9); box-shadow: 0 6px 0 #4c1d95, 0 22px 34px -16px rgba(109,40,217,0.95); transition: transform .12s ease, box-shadow .12s ease; }
         .wl-primary:active { transform: translateY(4px); box-shadow: 0 2px 0 #4c1d95; }
         .wl-ghost { width: 100%; padding: 13px 0; border-radius: 16px; border: 1px solid var(--line); background: #fff; font-size: 15px; font-weight: 800; }
+        .wl-daily { width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-radius: 18px; border: 1.5px dashed rgba(109,40,217,0.45); background: rgba(255,255,255,0.7); text-align: left; }
+        .wl-daily b { font-size: 15px; color: var(--brand); } .wl-daily span { font-size: 12.5px; font-weight: 600; color: var(--dim); }
+        .wl-daily.done { border-style: solid; border-color: rgba(22,163,74,0.5); } .wl-daily.done b { color: #15803d; }
         .wl-facts, .wl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .wl-facts span, .wl-stats span { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 4px; border-radius: 16px; background: rgba(255,255,255,0.7); border: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--dim); }
         .wl-facts b, .wl-stats b { font-size: 19px; color: #22104f; font-variant-numeric: tabular-nums; letter-spacing: 0; }
