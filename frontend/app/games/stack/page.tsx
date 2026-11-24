@@ -30,6 +30,7 @@ import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import GameLobby from "@/components/GameLobby";
+import GameResult, { FreePlayNote } from "@/components/GameResult";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
@@ -1247,162 +1248,50 @@ export default function StackTowerPage() {
         />
       )}
 
-      {phase === "finished" && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(34,16,79,0.45)", backdropFilter: "blur(10px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 18, overflowY: "auto",
-        }}>
-          <div style={{
-            width: "100%", maxWidth: 420,
-            borderRadius: 26, background: "#ddd0ff", paddingBottom: 7,
-            boxShadow: "0 0 0 1px rgba(76,29,149,0.16), 0 30px 50px -30px rgba(76,29,149,0.7)",
-          }}>
-            <div style={{
-              borderRadius: "24px 24px 20px 20px",
-              background: "#fbf8ff",
-              border: "2px solid rgba(255,255,255,0.12)",
-              padding: "26px 22px", textAlign: "center",
-            }}>
-              <div style={{ fontSize: 38, marginBottom: 4 }}>🧱</div>
-              <div style={{ color: "#0e7490", fontSize: 15, fontWeight: 900, letterSpacing: "0.16em" }}>
-                TOWER DOWN
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
-                <div style={{ color: "#92400e", fontSize: 44, fontWeight: 900, lineHeight: 1 }}>{score}</div>
-                {score >= localBest && score > 0 && (
-                  <div style={{ color: "#0e7490", fontSize: 11, fontWeight: 900, marginTop: 4, letterSpacing: "0.1em" }}>★ NEW PERSONAL BEST</div>
-                )}
-              </div>
-
-              <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{
-                  padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(76,29,149,0.05)",
-                  border: "1px solid rgba(103,232,249,0.33)",
-                }}>
-                  <div style={{ color: "#0e7490", fontSize: 19, fontWeight: 900 }}>{Math.max(0, levelRef.current - 1)}</div>
-                  <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>BLOCKS STACKED</div>
-                </div>
-                <div style={{
-                  padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(76,29,149,0.05)",
-                  border: "1px solid rgba(232,121,249,0.33)",
-                }}>
-                  <div style={{ color: "#a21caf", fontSize: 19, fontWeight: 900 }}>{combo}</div>
-                  <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>LAST COMBO</div>
-                </div>
-              </div>
-
-              {/* How this run did against a friend's tower */}
-              {challenge && levelRef.current - 1 > 0 && (() => { const built = Math.max(0, levelRef.current - 1); const d = built - challenge.blocks; return (
-                <div style={{ marginTop: 12, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 13, fontWeight: 900, color: d > 0 ? "#166534" : "#9a3412" }}>
-                  {d > 0 ? `🔥 You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}
-                </div>
-              ); })()}
-
-              {/* What this run added, and what is waiting tomorrow. */}
-              <NextUp accent="#67e8f9" />
-
-              {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
-              {mode !== "ranked" ? (
-                <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
-                  <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#0e7490" }}>{modeById(mode).name.toUpperCase()} · FREE PLAY</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(34,16,79,0.68)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
-                </div>
-              ) : !authed ? (
-                <div style={{ marginTop: 14 }}>
-                  <GuestScorePrompt nextPath="/games/stack" />
-                </div>
-              ) : needsMint ? (
-                <div style={{ marginTop: 14 }}>
-                  <MintScorePrompt score={score} />
-                </div>
-              ) : (
-                <StackRewardPanel
-                  submitting={submitting}
-                  signingOnChain={signingOnChain}
-                  result={submitResult}
-                  error={submitError}
-                  txError={txError}
-                  score={score}
-                  onTopUp={() => setGasHelpOpen(true)}
-                />
+      {/* in a friend room the room's standings are the result screen */}
+      {phase === "finished" && runModeRef.current !== "room" && (() => {
+        const built = Math.max(0, levelRef.current - 1);
+        const saving = submitting || signingOnChain;
+        const d = challenge ? built - challenge.blocks : 0;
+        return (
+          <GameResult
+            eyebrow="Tower down" tone="#0e7490" badge="🧱" score={score}
+            notes={<>
+              {score >= localBest && score > 0 && <span className="gold">New personal best</span>}
+              {challenge && built > 0 && (
+                <span className={d > 0 ? "good" : "warm"}>{d > 0 ? `You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}</span>
               )}
-
-              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-                <div role="button" tabIndex={0} onClick={startGame} style={{ cursor: "pointer", flex: 1 }}>
-                  <div style={{ borderRadius: 14, background: "#075985", paddingBottom: 5, boxShadow: "0 8px 20px -6px rgba(34,211,238,0.7)" }}>
-                    <div style={{
-                      borderRadius: "12px 12px 9px 9px",
-                      background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 50%, #0e7490 100%)",
-                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.5)",
-                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.55)",
-                    }}>
-                      <span style={{ color: "#22104f", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em" }}>BUILD AGAIN</span>
-                    </div>
-                  </div>
-                </div>
-                <div role="button" tabIndex={0}
-                  onClick={() => {
-                    setPhase("idle");
-                    setScore(0); setCombo(0);
-                    setSubmitResult(null); setSubmitError(null); setTxError(null);
-                    submittedRef.current = false;
-                  }}
-                  style={{ cursor: "pointer", flex: 1 }}>
-                  <div style={{ borderRadius: 14, background: "#1a0550", paddingBottom: 5 }}>
-                    <div style={{
-                      borderRadius: "12px 12px 9px 9px",
-                      background: "linear-gradient(160deg, #c084fc 0%, #a78bfa 50%, #6b21a8 100%)",
-                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.4)",
-                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.45)",
-                    }}>
-                      <span style={{ color: "#22104f", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em" }}>EXIT</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Send this tower to a friend as a dare. They open the link and build to beat it. */}
-              {!(submitting || signingOnChain) && levelRef.current - 1 > 0 && (
-                <button onClick={() => {
-                  const built = Math.max(0, levelRef.current - 1);
-                  const url = `${window.location.origin}/games/stack?beat=${built}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
-                  const text = `I stacked ${built} blocks in Stack Tower. Build higher if you can 🔥`;
-                  if (navigator.share) navigator.share({ title: "Stack Tower", text, url }).catch(() => {});
-                  else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
-                }} style={{
-                  marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-                  color: "#22104f", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
-                  border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
-                }}>⚔️ CHALLENGE A FRIEND TO BEAT {Math.max(0, levelRef.current - 1)} BLOCKS</button>
-              )}
-
-              {/* MARKOV cross-promo is a navigation link · hide it while
-                  the score is still saving so a reflexive tap can't abort
-                  the on-chain save and lose the run. */}
-              {!(submitting || signingOnChain) && <ArenaCrossPromo />}
-
-              {/* Leaderboard nudge · only after a clean submit so it's a reward, not noise */}
-              {submitResult && (
-                <div role="button" tabIndex={0}
-                  onClick={() => router.push("/games/stack/leaderboard")}
-                  style={{
-                    marginTop: 12, cursor: "pointer", textAlign: "center",
-                    color: "#0e7490", fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-                    opacity: 0.85,
-                  }}>
-                  SEE THE LEADERBOARD →
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+            </>}
+            stats={[{ label: "Blocks stacked", value: built }, { label: "Last combo", value: combo }]}
+            saving={saving}
+            playAgainLabel="Build again"
+            onPlayAgain={startGame}
+            onExit={() => {
+              setPhase("idle");
+              setScore(0); setCombo(0);
+              setSubmitResult(null); setSubmitError(null); setTxError(null);
+              submittedRef.current = false;
+            }}
+            challengeLabel={built > 0 ? `Challenge a friend to beat ${built} blocks` : null}
+            onChallenge={() => {
+              const url = `${window.location.origin}/games/stack?beat=${built}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+              const text = `I stacked ${built} blocks in Stack Tower. Build higher if you can 🔥`;
+              if (navigator.share) navigator.share({ title: "Stack Tower", text, url }).catch(() => {});
+              else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+            }}
+            status={mode !== "ranked"
+              ? <FreePlayNote mode={modeById(mode).name} />
+              : !authed ? <GuestScorePrompt nextPath="/games/stack" />
+              : needsMint ? <MintScorePrompt score={score} />
+              : <StackRewardPanel submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} onTopUp={() => setGasHelpOpen(true)} />}
+            after={<>
+              {submitResult && <button onClick={() => router.push("/games/stack/leaderboard")} style={{ padding: "10px 0", border: "none", background: "none", color: "#6d28d9", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>See the leaderboard ›</button>}
+              <NextUp />
+              {!saving && <ArenaCrossPromo />}
+            </>}
+          />
+        );
+      })()}
 
       {/* ═══ LEVEL-UP CELEBRATION ═══ */}
       <LevelUpToast

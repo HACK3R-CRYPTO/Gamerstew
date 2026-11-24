@@ -15,14 +15,14 @@ import { savePerkFor, type Perk } from "@/lib/perks";
 // using a save counts on the weekly leaderboard.
 
 const T = {
-  ink: "#ffffff",
-  inkDim: "rgba(224,215,255,0.82)",
-  inkSoft: "rgba(224,215,255,0.5)",
-  good: "#34d399",
-  goodDeep: "#059669",
-  purple: "#a78bfa",
-  gold: "#fde68a",
-  danger: "#fb7185",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.72)",
+  inkSoft: "rgba(34,16,79,0.62)",
+  good: "#16a34a",
+  goodDeep: "#15803d",
+  purple: "#6d28d9",
+  gold: "#b45309",
+  danger: "#be123c",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -136,7 +136,7 @@ export default function SaveRunOverlay({
   return (
     <div role="dialog" aria-modal="true" style={{
       position: "fixed", inset: 0, zIndex: 120,
-      background: "radial-gradient(120% 90% at 50% 32%, rgba(24,6,66,0.9), rgba(4,1,16,0.97))",
+      background: "radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%)",
       backdropFilter: "blur(10px)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       padding: 24, gap: 18, animation: "svIn 200ms ease-out",
@@ -157,7 +157,7 @@ export default function SaveRunOverlay({
       {/* Circular medallion + depleting timer ring + seconds badge */}
       <div style={{ position: "relative", width: 172, height: 172, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <svg width="172" height="172" viewBox="0 0 172 172" style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
-          <circle cx="86" cy="86" r={RING_R} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="7" />
+          <circle cx="86" cy="86" r={RING_R} fill="none" stroke="rgba(76,29,149,0.14)" strokeWidth="7" />
           <circle
             cx="86" cy="86" r={RING_R} fill="none"
             stroke={ringColor} strokeWidth="7" strokeLinecap="round"
@@ -169,7 +169,7 @@ export default function SaveRunOverlay({
         <div style={{
           width: 122, height: 122, borderRadius: "50%",
           backgroundImage: `url('/perks/${perk.id}.jpg')`, backgroundSize: "cover", backgroundPosition: "center",
-          boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.08), 0 0 34px -6px ${ringColor}cc`,
+          boxShadow: `0 0 0 5px #fff, 0 0 0 6px rgba(76,29,149,0.14), 0 0 34px -6px ${ringColor}cc`,
           animation: canAct && !busy && stockReady ? "svPulse 1.5s ease-in-out infinite" : "none",
         }} />
         {/* Seconds number — unmistakable timer */}
@@ -177,7 +177,7 @@ export default function SaveRunOverlay({
           <div style={{
             position: "absolute", bottom: -4, left: "50%", transform: "translateX(-50%)",
             minWidth: 30, height: 30, padding: "0 9px", borderRadius: 999,
-            background: "#0b0320", border: `2px solid ${ringColor}`,
+            background: "#fff", border: `2px solid ${ringColor}`,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontFamily: T.display, fontSize: 15, color: ringColor, lineHeight: 1,
           }}>{secondsLeft}</div>
@@ -190,7 +190,7 @@ export default function SaveRunOverlay({
       {/* Single state-aware CTA — never flips; blocks until stock is known */}
       {!stockReady ? (
         <div style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 230 }}>
-          <span style={{ width: 22, height: 22, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.2)", borderTopColor: T.good, animation: "svSpin 0.7s linear infinite" }} />
+          <span style={{ width: 22, height: 22, borderRadius: "50%", border: "3px solid rgba(76,29,149,0.2)", borderTopColor: T.good, animation: "svSpin 0.7s linear infinite" }} />
         </div>
       ) : canAct ? (
         <button
@@ -198,24 +198,24 @@ export default function SaveRunOverlay({
           disabled={busy}
           style={{
             cursor: busy ? "default" : "pointer", minWidth: 230,
-            padding: "12px 30px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.4)",
-            background: `linear-gradient(180deg, #6ee7b7 0%, ${T.good} 55%, ${T.goodDeep} 100%)`,
-            boxShadow: "0 12px 28px -8px rgba(52,211,153,0.65)",
+            padding: "12px 30px", borderRadius: 16, border: "none",
+            background: `linear-gradient(180deg, #22c55e, ${T.good})`,
+            boxShadow: `0 6px 0 ${T.goodDeep}, 0 20px 28px -16px rgba(21,128,61,0.9)`,
             display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
           }}
         >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: T.display, fontSize: 17, color: "#03130b", lineHeight: 1 }}>
-            {busy && <span style={{ width: 15, height: 15, borderRadius: "50%", border: "2.5px solid rgba(3,19,11,0.35)", borderTopColor: "#03130b", animation: "svSpin 0.7s linear infinite" }} />}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: T.display, fontSize: 19, color: "#fff", lineHeight: 1 }}>
+            {busy && <span style={{ width: 15, height: 15, borderRadius: "50%", border: "2.5px solid rgba(255,255,255,0.45)", borderTopColor: "#fff", animation: "svSpin 0.7s linear infinite" }} />}
             {ctaLabel}
           </span>
-          {!busy && <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: "rgba(3,19,11,0.72)" }}>{ctaSub}</span>}
+          {!busy && <span style={{ fontFamily: T.body, fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.92)" }}>{ctaSub}</span>}
         </button>
       ) : (
         <a href="/shop" style={{
           minWidth: 230, textAlign: "center", textDecoration: "none",
-          padding: "13px 30px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.35)",
-          fontFamily: T.display, fontSize: 15, color: "#12043a",
-          background: `linear-gradient(180deg, #d6c8ff, ${T.purple})`,
+          padding: "13px 30px", borderRadius: 16, border: "none",
+          fontFamily: T.display, fontSize: 17, color: "#fff",
+          background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 6px 0 #4c1d95",
         }}>Get {perk.priceLabel} in shop →</a>
       )}
 
@@ -228,7 +228,7 @@ export default function SaveRunOverlay({
         disabled={busy}
         style={{
           background: "none", border: "none",
-          color: "rgba(224,215,255,0.62)", fontFamily: T.body, fontSize: 14, fontWeight: 600,
+          color: "rgba(34,16,79,0.7)", fontFamily: T.body, fontSize: 15, fontWeight: 700,
           cursor: busy ? "default" : "pointer", padding: "8px 18px", marginTop: -6,
         }}
       >

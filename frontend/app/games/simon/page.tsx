@@ -14,6 +14,7 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import GameLobby from "@/components/GameLobby";
+import GameResult, { FreePlayNote } from "@/components/GameResult";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -2025,185 +2026,36 @@ function FinishedView({
   needsMint?: boolean;
 }) {
   const seconds = Math.max(0, Math.floor(gameTimeMs / 1000));
+  const ms = nextSimonMilestone(rounds);
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "#ffffff", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      display: "flex", alignItems: "flex-end", justifyContent: "center",
-      animation: "simon-sheet-fade 0.28s ease both",
-    }}>
-      <div style={{
-        width: "100%", maxWidth: "520px",
-        maxHeight: "92vh", overflowY: "auto",
-        borderRadius: "26px 26px 0 0",
-        background: "linear-gradient(180deg, #ffffff 0%, #ffffff 100%)",
-        border: "1px solid rgba(6,182,212,0.22)",
-        borderBottom: "none",
-        boxShadow: "0 -24px 60px -10px rgba(6,182,212,0.22), 0 -2px 0 rgba(255,255,255,0.04) inset",
-        paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
-        animation: "simon-sheet-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both",
-        position: "relative",
-      }}>
-        <style>{`
-          @keyframes simon-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes simon-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
-          @keyframes simon-grade-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-          @keyframes simon-score-rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        `}</style>
-
-        {/* Drag handle */}
-        <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.05)" }} />
-        </div>
-
-        <div style={{ padding: "8px 22px 22px", textAlign: "center", position: "relative" }}>
-          {/* Confetti dots around grade · subtle, not arcade */}
-          {[...Array(8)].map((_, i) => {
-            const angle = (i / 8) * Math.PI * 2;
-            return (
-              <span key={i} aria-hidden style={{
-                position: "absolute", top: "78px", left: "50%",
-                width: 4, height: 4, borderRadius: 999,
-                background: grade.color, opacity: 0.55,
-                filter: `drop-shadow(0 0 6px ${grade.color})`,
-                transform: `translate(${Math.cos(angle) * 96 - 2}px, ${Math.sin(angle) * 96 - 2}px)`,
-                animation: `pet-sparkle ${2.4 + i * 0.18}s ease-in-out ${i * 0.25}s infinite`,
-                pointerEvents: "none",
-              }} />
-            );
-          })}
-
-          {/* Eyebrow + grade letter */}
-          <div style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-            color: grade.color, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.24em",
-            textTransform: "uppercase",
-            opacity: 0.85, marginTop: 6,
-          }}>{grade.desc}</div>
-
-          <div style={{
-            position: "relative", zIndex: 1,
-            width: 116, height: 116, margin: "12px auto 0",
-            borderRadius: "50%",
-            padding: 2,
-            background: `conic-gradient(from 220deg, ${grade.color}, ${grade.color}55, ${grade.color})`,
-            boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 38px ${grade.color}55`,
-            animation: "simon-grade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both",
-          }}>
-            <div style={{
-              width: "100%", height: "100%", borderRadius: "50%",
-              background: "linear-gradient(180deg, #ffffff 0%, #ffffff 100%)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <span style={{
-                fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-                fontSize: 72, fontWeight: 900,
-                color: "#22104f",
-                WebkitTextStroke: `0.6px ${grade.color}`,
-                lineHeight: 1,
-              }}>{grade.letter}</span>
-            </div>
-          </div>
-
-          {/* Score */}
-          <div style={{
-            marginTop: 16,
-            animation: "simon-score-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both",
-          }}>
-            <div style={{
-              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-              color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
-            }}>SCORE</div>
-            <div style={{
-              fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-              color: "#92400e",
-              fontSize: "clamp(36px, 9vw, 46px)", fontWeight: 900,
-              lineHeight: 1, marginTop: 4,
-              letterSpacing: "0.01em",
-            }}>{score.toLocaleString()}</div>
-            {challenge && rounds > 0 && (
-              <div style={{ marginTop: 8, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 13, fontWeight: 900, color: rounds > challenge.rounds ? "#166534" : "#9a3412" }}>
-                {rounds > challenge.rounds ? `🔥 You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
-              </div>
-            )}
-            {/* against your own best, and how far the next named round was */}
-            {bestResult && rounds > 0 && (
-              <div style={{ marginTop: 7, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 12, fontWeight: 800, color: bestResult.isNew ? "#92400e" : "rgba(34,16,79,0.68)" }}>
-                {bestResult.isNew
-                  ? (bestResult.prev == null ? `🏆 Your first best: round ${rounds}` : `🏆 New best! Round ${rounds}, ${rounds - bestResult.prev} deeper than before`)
-                  : bestResult.prev === rounds ? `Tied your best, round ${rounds}. One more beats it` : `Your best is round ${bestResult.prev} · ${bestResult.prev! - rounds + 1} more to beat it`}
-              </div>
-            )}
-            {(() => { const ms = nextSimonMilestone(rounds); return ms && ms.at - rounds <= 3 ? (
-              <div style={{ marginTop: 4, fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 11.5, fontWeight: 700, color: "rgba(34,16,79,0.68)" }}>
-                Only <b style={{ color: "#0e7490" }}>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b style={{ color: "#0e7490" }}>{ms.name}</b>
-              </div>
-            ) : null; })()}
-          </div>
-
-          {/* Stats · Simon has only rounds + time */}
-          <div style={{
-            marginTop: 18,
-            display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8,
-          }}>
-            <StatChip label="ROUNDS" value={String(rounds)} color="#0e7490" />
-            <StatChip label="TIME"   value={`${seconds}s`}  color="#15803d" />
-          </div>
-
-          {/* Reward panel (or guest CTA) — unchanged behavior */}
-          {practice ? (
-            <div style={{ margin: "4px 0 2px", padding: "10px 14px", borderRadius: 14, textAlign: "center", background: "rgba(103,232,249,0.08)", border: "1px solid rgba(103,232,249,0.35)", fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif' }}>
-              <div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#0e7490" }}>{practice.toUpperCase()} · FREE PLAY</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(34,16,79,0.68)", marginTop: 3 }}>This run was for fun. Switch to Ranked to put a score on the board.</div>
-            </div>
-          ) : guest ? (
-            <GuestScorePrompt nextPath="/games/simon" />
-          ) : needsMint ? (
-            <MintScorePrompt score={score} />
-          ) : (
-            <RewardPanel
-              submitting={submitting}
-              signingOnChain={signingOnChain}
-              result={submitResult}
-              error={submitError}
-              txError={txError}
-              score={score}
-            />
-          )}
-
-          {/* What this run added, and what is waiting tomorrow. */}
-          <NextUp accent="#67e8f9" />
-
-          {/* CTAs. Lock the exits while the score is still saving so a
-              reflexive tap can't abort the on-chain save. The MARKOV
-              cross-promo link is hidden during the save window. */}
-          {(() => {
-            const saving = submitting || signingOnChain;
-            return (
-              <>
-                <div style={{ marginTop: 22, display: "flex", gap: 10, opacity: saving ? 0.45 : 1, pointerEvents: saving ? "none" : "auto", transition: "opacity 0.25s ease" }}>
-                  <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
-                  <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
-                </div>
-                {rounds > 0 && (
-                  <button onClick={onChallenge} style={{
-                    marginTop: 10, width: "100%", padding: "11px 12px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-                    color: "#22104f", fontSize: 13, background: "linear-gradient(180deg, rgba(251,146,60,0.28), rgba(120,40,10,0.35))",
-                    border: "1.5px solid rgba(251,146,60,0.7)", boxShadow: "0 0 14px rgba(251,146,60,0.25)",
-                  }}>⚔️ CHALLENGE A FRIEND TO BEAT ROUND {rounds}</button>
-                )}
-                {saving && (
-                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "#22104f" }}>
-                    💾 Saving your score · hold on a sec
-                  </div>
-                )}
-                {!saving && <ArenaCrossPromo />}
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    </div>
+    <GameResult
+      eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
+      notes={<>
+        {challenge && rounds > 0 && (
+          <span className={rounds > challenge.rounds ? "good" : "warm"}>
+            {rounds > challenge.rounds ? `You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
+          </span>
+        )}
+        {bestResult && rounds > 0 && (
+          <span className={bestResult.isNew ? "gold" : ""}>
+            {bestResult.isNew
+              ? (bestResult.prev == null ? `Your first best: round ${rounds}` : `New best! Round ${rounds}, ${rounds - bestResult.prev} deeper than before`)
+              : bestResult.prev === rounds ? `Tied your best, round ${rounds}. One more beats it` : `Your best is round ${bestResult.prev} · ${bestResult.prev! - rounds + 1} more to beat it`}
+          </span>
+        )}
+        {ms && ms.at - rounds <= 3 && <span>Only <b>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b>{ms.name}</b></span>}
+      </>}
+      stats={[{ label: "Rounds", value: rounds }, { label: "Time", value: `${seconds}s` }]}
+      saving={submitting || signingOnChain}
+      onPlayAgain={onPlayAgain} onExit={onExit}
+      challengeLabel={rounds > 0 ? `Challenge a friend to beat round ${rounds}` : null} onChallenge={onChallenge}
+      status={practice
+        ? <FreePlayNote mode={practice} />
+        : guest ? <GuestScorePrompt nextPath="/games/simon" />
+        : needsMint ? <MintScorePrompt score={score} />
+        : <RewardPanel submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} />}
+      after={<><NextUp />{!(submitting || signingOnChain) && <ArenaCrossPromo />}</>}
+    />
   );
 }
 
