@@ -1551,17 +1551,17 @@ export default function Game() {
           {TYRES.map((t, i) => {
             const on = i === tyreIx;
             return (
-              <button key={t.id} onClick={() => { setTyreIx(i); setPickOpen(false); }} aria-pressed={on} style={{ pointerEvents: "auto", cursor: "pointer", flex: "1 1 0", minWidth: 0, maxWidth: 150, padding: "8px 6px 9px", borderRadius: 14, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(42,18,64,0.92))" : "rgba(10,1,32,0.72)", border: `1px solid ${on ? GA.goldLight : "rgba(255,255,255,0.16)"}`, boxShadow: on ? "0 0 16px -4px rgba(251,191,36,0.7)" : "none", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}>
+              <button key={t.id} onClick={() => { setTyreIx(i); setPickOpen(false); }} aria-pressed={on} style={{ pointerEvents: "auto", cursor: "pointer", flex: "1 1 0", minWidth: 0, maxWidth: 150, padding: "8px 6px 9px", borderRadius: 14, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, #7c3aed, #5b21b6)" : "#2a1a52", border: `1px solid ${on ? GA.goldLight : "rgba(255,255,255,0.16)"}`, boxShadow: on ? "0 0 16px -4px rgba(251,191,36,0.7)" : "none", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}>
                 <div style={{ display: "flex", justifyContent: "center", gap: 3, marginBottom: 5 }}>
                   {t.paint.map((c, k) => <i key={k} style={{ width: 14, height: 5, borderRadius: 3, background: c }} />)}
                 </div>
                 <div style={{ fontFamily: DISPLAY, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 6 }}>{t.note}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(255,255,255,0.9)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 6 }}>{t.note}</div>
                 {([["Power", t.power, "#ff8a4a"], ["Curve", t.curve, "#c084fc"], ["Control", t.control, "#4ade80"]] as const).map(([label, n, c]) => (
                   <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
-                    <span style={{ width: 40, textAlign: "left", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", color: "rgba(244,241,234,0.72)" }}>{label}</span>
+                    <span style={{ width: 40, textAlign: "left", fontSize: 9.5, fontWeight: 600, letterSpacing: "0.04em", color: "rgba(255,255,255,0.9)" }}>{label}</span>
                     <span style={{ flex: 1, display: "flex", gap: 2 }} aria-label={`${label} ${n} of 5`}>
-                      {[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ flex: 1, height: 5, borderRadius: 2, background: k <= n ? c : "rgba(255,255,255,0.14)" }} />)}
+                      {[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ flex: 1, height: 5, borderRadius: 2, background: k <= n ? c : "rgba(255,255,255,0.22)" }} />)}
                     </span>
                   </div>
                 ))}
@@ -1677,12 +1677,12 @@ export default function Game() {
 
       {/* pass the phone: nobody can roll until the next player says they have it */}
       {handoff && phase === "aim" && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "rgba(10,1,32,0.62)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
-          <div style={{ width: "100%", maxWidth: 360, borderRadius: 26, padding: "22px 18px 18px", textAlign: "center", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.95), rgba(10,1,32,0.97))", border: `1.5px solid ${GA.goldLight}`, boxShadow: "0 18px 50px rgba(0,0,0,0.6)" }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>PASS THE PHONE</div>
-            <div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1.1, color: GA.goldLight, margin: "6px 0 4px" }}>{me.name}</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.8)", marginBottom: 6 }}>It is your turn · Frame {Math.min(s.frame + 1, FRAMES)}</div>
-            <div style={{ fontSize: 13, color: "rgba(244,241,234,0.6)", marginBottom: 14 }}>{seats.map((p, i) => `${p.name} ${cards[i].total}`).join("  ·  ")}</div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "#ffffff", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+          <div style={{ width: "100%", maxWidth: 360, borderRadius: 26, padding: "22px 18px 18px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: `1.5px solid ${GA.goldLight}`, boxShadow: "0 18px 50px rgba(76,29,149,0.22)" }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>PASS THE PHONE</div>
+            <div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1.1, color: "#92400e", margin: "6px 0 4px" }}>{me.name}</div>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "#22104f", marginBottom: 6 }}>It is your turn · Frame {Math.min(s.frame + 1, FRAMES)}</div>
+            <div style={{ fontSize: 13, color: "rgba(34,16,79,0.68)", marginBottom: 14 }}>{seats.map((p, i) => `${p.name} ${cards[i].total}`).join("  ·  ")}</div>
             <button onClick={() => { armSfx(); setHandoff(false); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>I have the phone</button>
           </div>
         </div>
@@ -1690,74 +1690,74 @@ export default function Game() {
 
       {/* how do you want to play: the first thing anyone sees */}
       {setup && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, rgba(10,1,32,0.8) 62%)" }}>
-          <div style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 64px)", overflowY: "auto", borderRadius: 26, padding: "16px 14px 14px", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.9), rgba(10,1,32,0.96))", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "0 -10px 40px rgba(0,0,0,0.5)" }}>
-            <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: GA.goldLight }}>Strike</span></div>
-            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(244,241,234,0.72)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, #ffffff 62%)" }}>
+          <div style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 64px)", overflowY: "auto", borderRadius: 26, padding: "16px 14px 14px", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 -10px 40px rgba(76,29,149,0.22)" }}>
+            <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: "#92400e" }}>Strike</span></div>
+            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
             <div style={{ display: room ? "none" : "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {MODES.map((m) => {
                 const on = m.id === mode;
                 return (
-                  <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: "#fff", background: on ? "linear-gradient(180deg, rgba(124,58,237,0.85), rgba(76,29,149,0.9))" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                  <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: on ? "#fff" : "#22104f", background: on ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
                     <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
                     <div style={{ fontFamily: DISPLAY, fontSize: 13, marginTop: 3, whiteSpace: "nowrap" }}>{m.name}</div>
-                    <div style={{ fontSize: 10.5, fontWeight: 500, color: "rgba(244,241,234,0.7)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 500, color: on ? "rgba(255,255,255,0.88)" : "rgba(34,16,79,0.68)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
                   </button>
                 );
               })}
             </div>
             {mode === "cpu" && (
-              <div style={{ display: "flex", gap: 6, marginTop: 8, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.06)" }}>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.05)" }}>
                 {["Easy", "Medium", "Hard"].map((l, i) => (
-                  <button key={l} onClick={() => setLevel(i)} aria-pressed={level === i} style={{ flex: 1, cursor: "pointer", padding: "8px 0", borderRadius: 10, border: "none", fontFamily: DISPLAY, fontSize: 14, color: level === i ? "#1a0b33" : "#fff", background: level === i ? "#fff" : "transparent" }}>{l}</button>
+                  <button key={l} onClick={() => setLevel(i)} aria-pressed={level === i} style={{ flex: 1, cursor: "pointer", padding: "8px 0", borderRadius: 10, border: "none", fontFamily: DISPLAY, fontSize: 14, color: level === i ? "#1a0b33" : "#22104f", background: level === i ? "#fff" : "transparent" }}>{l}</button>
                 ))}
               </div>
             )}
 
-<div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(244,241,234,0.55)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
+<div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(34,16,79,0.68)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
             {!online && (
-              <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Start</button>
+              <button onClick={() => { armSfx(); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
             )}
             {online && !room && (
               <div style={{ marginTop: 10 }}>
                 <input value={nick} onChange={(e) => setNick(e.target.value.slice(0, 14))} placeholder="Your name" maxLength={14} aria-label="Your name" style={field} />
-                <button disabled={busy} onClick={() => { armSfx(); enterRoom("create"); }} style={{ width: "100%", marginTop: 8, padding: "13px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 18, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d", opacity: busy ? 0.6 : 1 }}>Create a room</button>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 8px", fontSize: 11, letterSpacing: "0.16em", fontWeight: 600, color: "rgba(244,241,234,0.5)" }}><i style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} />OR JOIN A FRIEND<i style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} /></div>
+                <button disabled={busy} onClick={() => { armSfx(); enterRoom("create"); }} style={{ width: "100%", marginTop: 8, padding: "13px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 18, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95", opacity: busy ? 0.6 : 1 }}>Create a room</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 8px", fontSize: 11, letterSpacing: "0.16em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}><i style={{ flex: 1, height: 1, background: "rgba(76,29,149,0.05)" }} />OR JOIN A FRIEND<i style={{ flex: 1, height: 1, background: "rgba(76,29,149,0.05)" }} /></div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))} placeholder="CODE" aria-label="Room code" autoCapitalize="characters" style={{ ...field, flex: 1, textAlign: "center", letterSpacing: "0.3em", fontFamily: DISPLAY, fontSize: 20 }} />
-                  <button disabled={busy || joinCode.length !== 5} onClick={() => { armSfx(); enterRoom("join"); }} style={{ padding: "0 22px", borderRadius: 14, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 17, color: "#1a0b33", background: GA.goldLight, opacity: busy || joinCode.length !== 5 ? 0.45 : 1 }}>Join</button>
+                  <button disabled={busy || joinCode.length !== 5} onClick={() => { armSfx(); enterRoom("join"); }} style={{ padding: "0 22px", borderRadius: 14, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 17, color: "#fff", background: "#22104f", opacity: busy || joinCode.length !== 5 ? 0.45 : 1 }}>Join</button>
                 </div>
-                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 8, textAlign: "center" }}>{netErr}</div>}
+                {netErr && <div style={{ fontSize: 13, color: "#be123c", marginTop: 8, textAlign: "center" }}>{netErr}</div>}
               </div>
             )}
             {online && room && (
               <div style={{ marginTop: 4, textAlign: "center" }}>
-                <div style={{ fontSize: 10.5, letterSpacing: "0.2em", fontWeight: 600, color: "rgba(244,241,234,0.55)" }}>ROOM CODE</div>
-                <div style={{ fontFamily: DISPLAY, fontSize: 46, lineHeight: 1.1, letterSpacing: "0.18em", color: GA.goldLight, textShadow: "0 0 22px rgba(251,191,36,0.4)" }}>{room.code}</div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(244,241,234,0.75)", marginBottom: 10 }}>Send this to your friend. They tap Online, type the code and join.</div>
+                <div style={{ fontSize: 10.5, letterSpacing: "0.2em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>ROOM CODE</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: 46, lineHeight: 1.1, letterSpacing: "0.18em", color: "#92400e" }}>{room.code}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 10 }}>Send this to your friend. They tap Online, type the code and join.</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <a href={`https://wa.me/?text=${encodeURIComponent(`Come bowl me on Street Strike 🛞 Room ${room.code}: ${shareUrl}`)}`} target="_blank" rel="noreferrer" style={{ flex: 1, padding: "11px 0", borderRadius: 14, textDecoration: "none", fontFamily: DISPLAY, fontSize: 15, color: "#06230f", background: "#25d366" }}>WhatsApp</a>
-                  <button onClick={() => { navigator.clipboard?.writeText(shareUrl).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600); }).catch(() => {}); }} style={{ flex: 1, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)" }}>{copied ? "Copied ✓" : "Copy link"}</button>
+                  <button onClick={() => { navigator.clipboard?.writeText(shareUrl).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600); }).catch(() => {}); }} style={{ flex: 1, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>{copied ? "Copied ✓" : "Copy link"}</button>
                 </div>
-                <div style={{ margin: "12px 0 10px", padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,0.05)", textAlign: "left" }}>
+                <div style={{ margin: "12px 0 10px", padding: "8px 10px", borderRadius: 14, background: "rgba(76,29,149,0.05)", textAlign: "left" }}>
                   {room.players.map((pl, k) => (
                     <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", fontSize: 15, fontWeight: 500 }}>
                       <i style={{ width: 9, height: 9, borderRadius: 9, background: pl.away ? "#6b6480" : "#4ade80", boxShadow: pl.away ? "none" : "0 0 8px #4ade80" }} />
                       <span style={{ flex: 1 }}>{pl.name}{k === room.you ? " (you)" : ""}</span>
-                      {pl.host && <span style={{ fontSize: 10.5, letterSpacing: "0.12em", fontWeight: 600, color: GA.goldLight }}>HOST</span>}
+                      {pl.host && <span style={{ fontSize: 10.5, letterSpacing: "0.12em", fontWeight: 600, color: "#92400e" }}>HOST</span>}
                     </div>
                   ))}
-                  {room.players.length < 2 && <div style={{ padding: "5px 2px", fontSize: 13.5, color: "rgba(244,241,234,0.55)", animation: "ssPulse2 1.4s ease-in-out infinite" }}>Waiting for a friend to join…</div>}
+                  {room.players.length < 2 && <div style={{ padding: "5px 2px", fontSize: 13.5, color: "rgba(34,16,79,0.68)", animation: "ssPulse2 1.4s ease-in-out infinite" }}>Waiting for a friend to join…</div>}
                 </div>
                 {room.players[room.you]?.host
-                  ? <button disabled={busy || room.players.length < 2} onClick={() => { armSfx(); hostDo("start"); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d", opacity: busy || room.players.length < 2 ? 0.45 : 1 }}>{room.players.length < 2 ? "Need 2 players" : "Start the game"}</button>
-                  : <div style={{ padding: "13px 0", borderRadius: 16, fontFamily: DISPLAY, fontSize: 16, color: "rgba(244,241,234,0.85)", background: "rgba(255,255,255,0.06)" }}>You are in. Waiting for the host to start…</div>}
-                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 8 }}>{netErr}</div>}
+                  ? <button disabled={busy || room.players.length < 2} onClick={() => { armSfx(); hostDo("start"); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95", opacity: busy || room.players.length < 2 ? 0.45 : 1 }}>{room.players.length < 2 ? "Need 2 players" : "Start the game"}</button>
+                  : <div style={{ padding: "13px 0", borderRadius: 16, fontFamily: DISPLAY, fontSize: 16, color: "#22104f", background: "rgba(76,29,149,0.05)" }}>You are in. Waiting for the host to start…</div>}
+                {netErr && <div style={{ fontSize: 13, color: "#be123c", marginTop: 8 }}>{netErr}</div>}
                 <button onClick={leaveRoom} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "#9b93b8", fontSize: 13 }}>Leave room</button>
               </div>
             )}
-            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(244,241,234,0.55)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
           </div>
         </div>
       )}
@@ -1775,44 +1775,44 @@ export default function Game() {
 
       {/* end sheet */}
       {phase === "over" && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, rgba(10,1,32,0.8) 100%)" }}>
-          <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#fff", background: "linear-gradient(180deg, rgba(42,18,64,0.82), rgba(10,1,32,0.94))", border: "1px solid rgba(255,255,255,0.14)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
-            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>STREET STRIKE · FINAL</div>
+        <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, #ffffff 100%)" }}>
+          <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>STREET STRIKE · FINAL</div>
             {seats.length > 1 ? (
               <>
-                <div style={{ fontFamily: DISPLAY, fontSize: "clamp(30px,9vw,44px)", lineHeight: 1.1, color: GA.goldLight }}>{(allOver ? verdict(seats, cards, meIx) : "Waiting for the others…")}</div>
+                <div style={{ fontFamily: DISPLAY, fontSize: "clamp(30px,9vw,44px)", lineHeight: 1.1, color: "#92400e" }}>{(allOver ? verdict(seats, cards, meIx) : "Waiting for the others…")}</div>
                 <div style={{ display: "flex", justifyContent: "center", gap: 18, margin: "8px 0 4px" }}>
                   {seats.map((p, k) => (
-                    <div key={k}><div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1 }}>{cards[k].total}</div><div style={{ fontSize: 12, fontWeight: 600, color: "rgba(244,241,234,0.7)" }}>{p.name}</div></div>
+                    <div key={k}><div style={{ fontFamily: DISPLAY, fontSize: 34, lineHeight: 1 }}>{cards[k].total}</div><div style={{ fontSize: 12, fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>{p.name}</div></div>
                   ))}
                 </div>
               </>
-            ) : <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: GA.goldLight }}>{cards[0].total}</div>}
-            <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.78)", marginBottom: 12 }}>
+            ) : <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: "#92400e" }}>{cards[0].total}</div>}
+            <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 12 }}>
               {online ? (allOver ? "Good game!" : `${seats.filter((_, k) => !cards[k].done && !room?.players[k]?.away).map((p) => p.name).join(", ")} still bowling`) : mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
             </div>
             {online ? (
               <>
                 {allOver && room?.players[turn]?.host && <button disabled={busy} onClick={() => hostDo("rematch")} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Rematch</button>}
-                {allOver && !room?.players[turn]?.host && <div style={{ padding: "12px 0", fontSize: 14, fontWeight: 500, color: "rgba(244,241,234,0.75)" }}>Waiting for the host to start a rematch…</div>}
+                {allOver && !room?.players[turn]?.host && <div style={{ padding: "12px 0", fontSize: 14, fontWeight: 500, color: "rgba(34,16,79,0.68)" }}>Waiting for the host to start a rematch…</div>}
                 {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 6 }}>{netErr}</div>}
-                <button onClick={() => { leaveRoom(); restart("solo"); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Leave room</button>
+                <button onClick={() => { leaveRoom(); restart("solo"); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>Leave room</button>
               </>
             ) : (
               <>
-            {mode === "solo" && <a href="/bowling/leaderboard" style={{ display: "block", margin: "0 0 8px", fontFamily: BODY, fontSize: 12.5, fontWeight: 700, color: "#ffd56b" }}>This week's leaderboard</a>}
+            {mode === "solo" && <a href="/bowling/leaderboard" style={{ display: "block", margin: "0 0 8px", fontFamily: BODY, fontSize: 12.5, fontWeight: 700, color: "#22104f" }}>This week's leaderboard</a>}
             {mode === "solo" && (
-              <div role="status" style={{ margin: "0 0 10px", fontFamily: BODY, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(244,241,234,0.78)" }}>
+              <div role="status" style={{ margin: "0 0 10px", fontFamily: BODY, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(34,16,79,0.68)" }}>
                 {!rankedGame ? (ranked.canRank ? null : "Sign in to rank your score.")
                   : ranked.status === "checking" ? "Checking your throws…"
                   : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                   : ranked.status === "saving" ? "Saving to the leaderboard…"
-                  : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                  : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#22104f" }}>view</a></> : null}</>
                   : ranked.status === "error" ? ranked.error : null}
               </div>
             )}
             <button onClick={() => restart()} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)" }}>Play again</button>
-            <button onClick={() => { restart(); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Change mode</button>
+            <button onClick={() => { restart(); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>Change mode</button>
               </>
             )}
             <Link href="/games" style={{ display: "inline-block", marginTop: 10, color: "#9b93b8", fontSize: 13, textDecoration: "none" }}>← Arena</Link>
@@ -1844,7 +1844,7 @@ function verdict(seats: Seat[], cards: ScoreState[], meIx: number) {
   return who[0] === meIx ? "You win! 🏆" : `${seats[who[0]].name} wins!`;
 }
 
-const field: CSSProperties = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.07)", color: "#fff", fontFamily: BODY, fontSize: 16, fontWeight: 500, outline: "none" };
+const field: CSSProperties = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(76,29,149,0.2)", background: "#fff", color: "#22104f", fontFamily: BODY, fontSize: 16, fontWeight: 500, outline: "none" };
 
 const chip: CSSProperties = {
   color: "#fff",
