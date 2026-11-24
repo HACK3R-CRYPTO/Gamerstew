@@ -779,7 +779,7 @@ export default function HomePage() {
         <Onboarding
           onComplete={completeOnboarding}
           onClose={dismissOnboarding}
-          onPlayFree={() => { dismissOnboarding(); router.push("/games/stack?play=1"); }}
+          onPlayFree={() => { dismissOnboarding(); router.push("/dashboard"); }}
         />
       )}
       {showAbout && (

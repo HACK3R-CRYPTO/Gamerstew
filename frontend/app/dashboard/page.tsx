@@ -408,7 +408,7 @@ export default function DashboardPage() {
     if (id === "aimode") { router.push("/games/challenge-ai"); return; }
     // The weekly challenge counts every game, so its button goes straight into
     // the game most people here play. The full board is one tap away on the card.
-    if (id === "weekly") { router.push("/games/stack?play=1"); return; } // "Play to earn" plays
+    if (id === "weekly") { router.push("/games/stack"); return; } // opens the game; the player starts it
     // 3D games open straight into their own world.
     const world = GAMES_3D.find(x => x.id === id);
     if (world) { router.push(world.href); return; }
