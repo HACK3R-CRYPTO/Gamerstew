@@ -1,0 +1,41 @@
+import type { Application, Request, RequestHandler, Response } from 'express';
+import { createRoomService, isFail, type RoomService } from './service';
+import { ROOM_GAMES } from './games';
+
+const CREATE_LIMIT = 8; // rooms per address per window
+const CREATE_WINDOW_MS = 10 * 60 * 1000;
+function createLimiter(now: () => number) {
+  const seen = new Map<string, { n: number; from: number }>();
+  return (who: string): boolean => {
+    const t = now();
+    if (seen.size > 5000) for (const [k, v] of seen) if (t - v.from > CREATE_WINDOW_MS) seen.delete(k);
+    if (seen.size > 20000) seen.clear(); // never let the limiter itself become the leak
+    const e = seen.get(who);
+    if (!e || t - e.from > CREATE_WINDOW_MS) { seen.set(who, { n: 1, from: t }); return true; }
+    return ++e.n <= CREATE_LIMIT;
+  };
+}
+
+export function registerRoomRoutes(app: Application, deps: { requireSecret?: RequestHandler; service?: RoomService; now?: () => number } = {}): RoomService {
+  const service = deps.service ?? createRoomService(ROOM_GAMES);
+  const gate: RequestHandler = deps.requireSecret ?? ((_req, _res, next) => next());
+  const body = (req: Request): Record<string, unknown> => (typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {});
+  const route = (fn: (req: Request) => unknown): RequestHandler => (req: Request, res: Response) => {
+    Promise.resolve()
+      .then(() => fn(req))
+      .then((out) => { if (isFail(out)) res.status(out.status).json({ error: out.error, reason: out.reason }); else res.json(out); })
+      .catch((err) => { console.error('room route failed:', err); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); });
+  };
+  const allowCreate = createLimiter(deps.now ?? Date.now);
+  const who = (req: Request) => String(req.headers['x-client-ip'] ?? 'shared').slice(0, 64);
+
+  app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name) : { error: 'slow_down', status: 429 })));
+  app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name)));
+  app.get('/api/rooms/:code', gate, route((req) => service.get(req.params.code, req.query.token)));
+  app.post('/api/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
+  app.post('/api/rooms/:code/progress', gate, route((req) => service.progress(req.params.code, body(req).token, body(req).progress)));
+  app.post('/api/rooms/:code/finish', gate, route((req) => service.finish(req.params.code, body(req).token, body(req).proof)));
+  app.post('/api/rooms/:code/rematch', gate, route((req) => service.rematch(req.params.code, body(req).token)));
+  app.post('/api/rooms/:code/leave', gate, route((req) => service.leave(req.params.code, body(req).token)));
+  return service;
+}

@@ -5,6 +5,7 @@ export { loadConfig, type Config } from './platform/config';
 export { installLifecycle } from './platform/lifecycle';
 export { createMetrics } from './platform/metrics';
 export { registerStrikeRoutes } from './modules/strike/routes';
+export { registerRoomRoutes } from './modules/rooms/routes';
 export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/routes';
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';
 export { registerBoardRoutes } from './modules/board/routes';

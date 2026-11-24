@@ -421,6 +421,8 @@ require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supaba
 
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
 core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
+// Friend rooms for any game (src/modules/rooms).
+core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret });
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
