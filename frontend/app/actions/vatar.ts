@@ -88,13 +88,15 @@ export async function signVatarScore(
   score: number,
   sessionToken: string,
   tapLog?: unknown[] | null,
+  /** Rhythm only: the song that was played. The server replays the taps against it. */
+  songId?: string | null,
 ): Promise<{ success: true; txHash: string; score: number } | { success: false; error: string }> {
   if (!session || !sessionToken) return { success: false, error: 'session_required' };
   try {
     const res = await fetch(`${BACKEND_URL}/api/vatar/sign-score`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-secret': INTERNAL_SECRET ?? '' },
-      body: JSON.stringify({ session, game, score, sessionToken, tapLog: tapLog ?? null }),
+      body: JSON.stringify({ session, game, score, sessionToken, tapLog: tapLog ?? null, songId: songId ?? null }),
       cache: 'no-store',
     });
     const data = await res.json();

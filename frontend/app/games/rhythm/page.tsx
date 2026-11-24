@@ -1173,7 +1173,7 @@ export default function RhythmGamePage() {
       if (!token) return;
       const vs = await getVatarSession();
       if (!vs) return;
-      await signVatarScore(vs, "rhythm", scoreToSave, token, taps).catch(() => {});
+      await signVatarScore(vs, "rhythm", scoreToSave, token, taps, runSongRef.current).catch(() => {}); // the song matters: the server replays the taps against it
     })();
   }, [phase, inVatar, score]);
 
