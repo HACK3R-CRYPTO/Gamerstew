@@ -6,7 +6,7 @@
 // their score and a live picture of their game (components/LiveBoard), and the
 // room's chat beside them. On a phone the panels stack.
 //
-// The page asks the room for its state every second and a half, as a stranger.
+// The page asks the room for its state a little more than once a second, as a stranger.
 // It is shown names, scores and each player's screen as numbers, and never the
 // round's deal, so watching cannot help a player. Nothing here changes a room.
 
@@ -50,7 +50,8 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
         setV(await r.json()); setState("live"); misses.current = 0;
       } catch { if (live && ++misses.current >= 3) setState("offline"); }
     };
-    void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 1500);
+    // often enough that a watcher is never far behind the play
+    void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 800);
     return () => { live = false; clearInterval(t); };
   }, [code, byName]);
 

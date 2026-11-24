@@ -548,17 +548,28 @@ export default function SimonGamePage() {
   }, [playBell]);
 
   // ─── Show the full sequence — flashes each color in order, then hands over ─
+  // ── What a friend room is told ───────────────────────────────────────────
+  // The pattern as it is shown, then each pad as it is pressed, so someone
+  // watching sees the pad light up the way this player's does
+  // (components/SimonReplay.tsx). Pads go as numbers; a long pattern sends its
+  // last twelve.
+  const tellRoom = (pattern: string[], show: boolean, taps: number, wrongPad = "") => {
+    if (runModeRef.current !== "room") return;
+    const ix = (c: string) => Math.max(0, ALL_COLORS.findIndex((b) => b.id === c)); const round = Math.max(0, pattern.length - 1);
+    roomRef.current.progress(round, { round: pattern.length, pts: scoreRef.current, show: show ? 1 : 0, seq: pattern.slice(-12).map(ix), fd: getFlashDur(round), sd: getSeqDelay(round), n: taps, bad: wrongPad ? ix(wrongPad) + 1 : 0 });
+  };
   const showSequence = useCallback((pattern: string[], round: number) => {
     setIsShowingSequence(true);
     userPatternRef.current = [];
     const flashDur = getFlashDur(round);
     const seqDelay = getSeqDelay(round);
+    tellRoom(pattern, true, 0);
     pattern.forEach((colorId, i) => {
       const t = setTimeout(() => flashButton(colorId, flashDur, null), i * seqDelay);
       timeoutsRef.current.push(t);
     });
     const doneAt = pattern.length * seqDelay + flashDur;
-    const done = setTimeout(() => setIsShowingSequence(false), doneAt);
+    const done = setTimeout(() => { setIsShowingSequence(false); tellRoom(pattern, false, 0); }, doneAt);
     timeoutsRef.current.push(done);
   }, [flashButton]);
 
@@ -817,6 +828,7 @@ export default function SimonGamePage() {
     // exactly which one they hit (and which one they should have).
     // Reverse mode: the answer is the sequence read from the end.
     const want = runModeRef.current === "reverse" ? patternRef.current[patternRef.current.length - 1 - idx] : patternRef.current[idx];
+    tellRoom(patternRef.current, false, newUserPat.length, want !== colorId ? colorId : "");
     if (want !== colorId) {
       juice.bump(22);
       juice.lossPopup(50, 60, "WRONG");
@@ -852,7 +864,7 @@ export default function SimonGamePage() {
       const speedBonus = Math.max(0, Math.floor((60000 - elapsed) / 1000));
       const roundBonus = newSeqs * 2;
       const newScore   = newSeqs * BASE_SCORE + speedBonus + roundBonus;
-      if (runModeRef.current === "room") roomRef.current.progress(newSeqs, { round: newSeqs, pts: newScore }); // friends see how far you are
+      if (runModeRef.current === "room") roomRef.current.progress(newSeqs); // friends see how far you are
       scoreRef.current = newScore;
       setScore(newScore);
 

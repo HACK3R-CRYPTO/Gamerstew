@@ -13,6 +13,7 @@
 import type { LiveState } from "@/hooks/useFriendRoom";
 import StackReplay from "@/components/StackReplay";
 import RhythmReplay from "@/components/RhythmReplay";
+import SimonReplay from "@/components/SimonReplay";
 
 const n = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
 
@@ -38,6 +39,8 @@ export default function LiveBoard({ game, live, done, progress, goal }: { game: 
       </div>
     );
   }
+  // Simon Memory sends its pattern and every press: light the pad as the player's lights
+  if (game === "simon" && Array.isArray(live?.seq)) return <SimonReplay live={live} done={done} />;
   if (game === "simon") {
     const round = n(live?.round, progress);
     return (
