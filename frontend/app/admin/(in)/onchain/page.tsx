@@ -19,10 +19,10 @@ export default async function OnChain({ searchParams }: { searchParams: SP }) {
   const total = Number(d.score_transactions) + Number(d.perk_purchases ?? 0) + Number(d.gas_grants ?? 0) + Number(d.payouts ?? 0);
   return (
     <Page title="On-chain" sub="Transactions GameArena sent or recorded, from our own records." right={<RangeLinks base="/admin/onchain" days={r.days} />}>
-      <NotYet what="What this page does not show yet" why="it counts the transactions our own backend sent or stored (scores, purchases, gas grants, payouts). It does not yet read contract events straight from the chain, so GamePass mints, habitat unlocks and transfers made outside the backend are missing. That needs our own index of chain events, which replaces the stalled subgraph and is the next step." />
+      <NotYet what="What this page does not show yet" why="scores and GamePass mints are read from the GamePass contract, and purchases from the PerkShop and HabitatRegistry, by our own reader. Gas grants and payouts are what the backend stored. G$ transfers made outside these contracts are not read." />
       <Grid>
         <Stat label="Transactions on record" value={num(total)} />
-        <Stat label="Score transactions" value={num(d.score_transactions)} sub={`${num(sum(m.get("runs_onchain")))} in ${r.days} days`} />
+        <Stat label="Score transactions" value={num(d.score_transactions)} sub={`${num(sum(m.get("runs_onchain")))} in ${r.days} days · read from the GamePass contract`} />
         <Stat label="Failed" value={num(d.tx_failed)} tone={Number(d.tx_failed) > 0 ? "warn" : undefined} sub="Recorded from the day this went live" />
         <Stat label="Purchases" value={num(d.perk_purchases)} />
         <Stat label="Gas grants" value={num(d.gas_grants)} />

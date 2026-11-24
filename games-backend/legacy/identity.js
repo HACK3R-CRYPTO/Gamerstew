@@ -86,11 +86,55 @@ async function isVerified(wallet) {
 // The same question, for the admin dashboard's record of who is verified. It
 // asks the chain every time and THROWS when the chain cannot answer, so a
 // failed read is never written down as "not verified".
+// The whole answer, for the admin dashboard. GoodDollar verification is a
+// repeating ladder (reverifyDaysOptions, [3, 180] on Celo): a fresh
+// verification lasts three days, the next one 180, then it wraps round. So a
+// wallet is one of four things, and "not whitelisted" alone cannot tell two of
+// them apart:
+//   verified     whitelisted now, by itself or through a wallet it is linked to
+//   lapsed       it passed the face check and the window has run out
+//   none         it never did
+//   blacklisted
+// Wallets authenticated before TEMP_EXCLUSION_TS were placed straight on the
+// last rung by the contract. Method after the GoodDrops dapp's identity module.
+// Throws when the chain cannot answer, so a failed read is never stored as a state.
+const TEMP_EXCLUSION_TS = 1772697574;
+let _rungs = null;
+async function identityRungs() {
+  if (_rungs) return _rungs;
+  const out = [];
+  for (let i = 0; i < 6; i++) { try { out.push(Number(await _gdIdentityFull.reverifyDaysOptions(i))); } catch { break; } }
+  _rungs = out.length ? out : [3, 180];
+  return _rungs;
+}
+const _gdIdentityFull = core.provider
+  ? new core.ethers.Contract(GD_IDENTITY_ADDR, [
+      'function isWhitelisted(address) view returns (bool)',
+      'function getWhitelistedRoot(address) view returns (address)',
+      'function connectedAccounts(address) view returns (address)',
+      'function identities(address) view returns (uint256 dateAuthenticated, uint256 dateAdded, string did, uint256 whitelistedOnChainId, uint8 status, uint32 authCount)',
+      'function reverifyDaysOptions(uint256) view returns (uint256)',
+    ], core.provider)
+  : null;
 async function isVerifiedStrict(wallet) {
-  if (!_gdIdentity) throw new Error('identity contract not configured');
-  const v = await _gdIdentity.isWhitelisted(String(wallet).toLowerCase());
-  _verifiedCache.set(String(wallet).toLowerCase(), { verified: v, at: Date.now() });
-  return v;
+  if (!_gdIdentityFull) throw new Error('identity contract not configured');
+  const w = String(wallet).toLowerCase(); const ZERO = core.ethers.ZeroAddress.toLowerCase();
+  const [self, root, linked, rungs] = await Promise.all([_gdIdentityFull.isWhitelisted(w), _gdIdentityFull.getWhitelistedRoot(w), _gdIdentityFull.connectedAccounts(w).catch(() => ZERO), identityRungs()]);
+  const rootAddr = String(root).toLowerCase(); const linkedAddr = String(linked).toLowerCase();
+  const whitelisted = rootAddr !== ZERO;
+  // the identity record lives on the root: this wallet, the root it is whitelisted through, or the root it is linked to
+  const holder = whitelisted ? rootAddr : linkedAddr !== ZERO ? linkedAddr : w;
+  const id = await _gdIdentityFull.identities(holder);
+  const authAt = Number(id.dateAuthenticated); const addedAt = Number(id.dateAdded);
+  _verifiedCache.set(w, { verified: !!self, at: Date.now() }); // the gate's cache keeps its own, stricter meaning
+  if (Number(id.status) === 255) return { verified: false, state: 'blacklisted', self: false, root: null, at: addedAt || null, authAt: authAt || null, expiresAt: null, probation: false };
+  if (!authAt) return { verified: false, state: 'none', self: false, root: null, at: null, authAt: null, expiresAt: null, probation: false };
+  const grandfathered = authAt < TEMP_EXCLUSION_TS;
+  const rung = grandfathered ? rungs.length - 1 : Math.min(Number(id.authCount), rungs.length - 1);
+  return {
+    verified: whitelisted, state: whitelisted ? 'verified' : 'lapsed', self: !!self, root: holder !== w ? holder : null,
+    at: addedAt || authAt, authAt, expiresAt: authAt + rungs[rung] * 86400, probation: !grandfathered && Number(id.authCount) === 0,
+  };
 }
 
 // The identity root — one per human — used ONLY to deduplicate scoring seats,

@@ -1,8 +1,9 @@
 // Small building blocks for the admin dashboard. Server components: no state.
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TimeChart } from "./charts";
 
-export const C = { ink: "#22104f", dim: "rgba(34,16,79,0.68)", line: "rgba(76,29,149,0.16)", accent: "#6d28d9", soft: "#f3effc", good: "#15803d", bad: "#b91c1c", warn: "#b45309" };
+export const C = { ink: "#1b0d42", dim: "rgba(27,13,66,0.62)", line: "rgba(76,29,149,0.13)", accent: "#6d28d9", soft: "#f3effc", good: "#15803d", bad: "#b91c1c", warn: "#b45309" };
 export const num = (v: unknown) => (typeof v === "number" || (typeof v === "string" && v !== "" && !Number.isNaN(Number(v))) ? Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 }) : "–");
 export const short = (w: string | null | undefined) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : "–");
 export const when = (v: string | null | undefined) => (v ? new Date(v).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "–");
@@ -21,10 +22,10 @@ export function Page({ title, sub, children, right }: { title: string; sub?: str
     </div>
   );
 }
-export function Card({ title, children, note }: { title?: string; children: ReactNode; note?: string }) {
+export function Card({ title, children, note, right }: { title?: string; children: ReactNode; note?: string; right?: ReactNode }) {
   return (
-    <section style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 18, padding: 16, minWidth: 0 }}>
-      {title && <h2 style={{ margin: "0 0 10px", fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase", color: C.dim, fontWeight: 800 }}>{title}</h2>}
+    <section style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 20, padding: 18, minWidth: 0, boxShadow: "0 1px 0 rgba(76,29,149,0.04)" }}>
+      {(title || right) && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, margin: "0 0 12px" }}>{title && <h2 style={{ margin: 0, fontSize: 16, color: C.ink, fontWeight: 800 }}>{title}</h2>}{right}</div>}
       {children}
       {note && <p style={{ margin: "10px 0 0", fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>{note}</p>}
     </section>
@@ -97,25 +98,84 @@ export function RangeLinks({ base, days, extra = "" }: { base: string; days: num
   );
 }
 
-/** A plain line chart. One or two series on one scale, first and last day labelled. */
-export function Chart({ series, height = 150 }: { series: { name: string; color: string; points: Point[] }[]; height?: number }) {
-  const n = Math.max(...series.map((s) => s.points.length), 0);
-  if (n < 2) return <p style={{ color: C.dim, fontSize: 14, margin: 0 }}>Not enough days yet to draw a line.</p>;
-  const max = Math.max(1, ...series.flatMap((s) => s.points.map((p) => p.value)));
-  const W = 600; const H = height; const px = (i: number) => (i / (n - 1)) * W; const py = (v: number) => H - 4 - (v / max) * (H - 14);
+/** Kept for the pages written against the first version: the same props, the new chart. */
+export function Chart({ series, height = 230, kind, mode, stacked, unit }: { series: { name: string; color: string; points: Point[] }[]; height?: number; kind?: "area" | "bar"; mode?: "sum" | "last"; stacked?: boolean; unit?: string }) {
+  return <TimeChart series={series} height={height} kind={kind} mode={mode} stacked={stacked} unit={unit} narrow />;
+}
+
+/** A tiny trend line for a headline number. */
+export function Spark({ points, color = "#6d28d9", w = 120, h = 36 }: { points: Point[]; color?: string; w?: number; h?: number }) {
+  if (points.length < 2) return null;
+  const max = Math.max(1, ...points.map((p) => p.value)); const min = Math.min(...points.map((p) => p.value)); const span = max - min || 1;
+  const pts = points.map((p, i) => `${((i / (points.length - 1)) * w).toFixed(1)},${(h - 3 - ((p.value - min) / span) * (h - 6)).toFixed(1)}`).join(" ");
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{ width: w, height: h, display: "block" }} aria-hidden><polygon points={`0,${h} ${pts} ${w},${h}`} fill={color} opacity="0.12" /><polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" /></svg>;
+}
+/** How a number moved against the period before it. */
+export function Delta({ now, before, suffix = "vs the period before", dark = false }: { now: number; before: number; suffix?: string; dark?: boolean }) {
+  const dim = dark ? "rgba(255,255,255,0.8)" : C.dim;
+  if (!before && !now) return <span style={{ color: dim, fontSize: 12.5 }}>no activity in either period</span>;
+  if (!before) return <span style={{ color: C.good, fontSize: 12.5, fontWeight: 700 }}>new {suffix.replace("vs the", "since the")}</span>;
+  const pct = ((now - before) / before) * 100; const up = pct >= 0;
+  return <span style={{ fontSize: 12.5 }}><b style={{ color: up ? C.good : C.bad, background: up ? "#dcfce7" : "#fee2e2", borderRadius: 999, padding: "2px 8px" }}>{up ? "▲" : "▼"} {Math.abs(pct) >= 1000 ? "10×+" : Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0) + "%"}</b> <span style={{ color: dim }}>{suffix}</span></span>;
+}
+/** A headline number with its trend and its change. */
+export function Kpi({ label, value, sub, spark, color = "#6d28d9", delta, dark }: { label: string; value: ReactNode; sub?: ReactNode; spark?: Point[]; color?: string; delta?: { now: number; before: number }; dark?: boolean }) {
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height, display: "block" }} role="img" aria-label={series.map((s) => s.name).join(" and ")}>
-        {[0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1="0" x2={W} y1={py(max * f)} y2={py(max * f)} stroke={C.line} strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
-        {series.map((s) => <polyline key={s.name} fill="none" stroke={s.color} strokeWidth="2.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" points={s.points.map((p, i) => `${px(i).toFixed(1)},${py(p.value).toFixed(1)}`).join(" ")} />)}
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.dim, marginTop: 4 }}><span>{series[0].points[0]?.day}</span><span>peak {num(max)}</span><span>{series[0].points[n - 1]?.day}</span></div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
-        {series.map((s) => <span key={s.name} style={{ fontSize: 12.5, color: C.ink, display: "inline-flex", alignItems: "center", gap: 6 }}><i style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: "inline-block" }} />{s.name} · {num(sum(s.points))} in total</span>)}
+    <div style={{ background: dark ? "linear-gradient(150deg, #2a1163 0%, #4c1d95 60%, #6d28d9 100%)" : "#fff", color: dark ? "#fff" : C.ink, border: dark ? "none" : `1px solid ${C.line}`, borderRadius: 20, padding: "16px 16px 14px", minWidth: 0, boxShadow: dark ? "0 24px 40px -26px rgba(76,29,149,0.9)" : "0 1px 0 rgba(76,29,149,0.04)", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase", opacity: dark ? 0.8 : 1, color: dark ? "#fff" : C.dim }}>{label}</div>
+        {spark && <Spark points={spark} color={dark ? "#fde68a" : color} w={92} h={30} />}
       </div>
+      <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 34, lineHeight: 1.05, overflowWrap: "anywhere" }}>{value}</div>
+      {delta && <div><Delta now={delta.now} before={delta.before} dark={dark} /></div>}
+      {sub !== undefined && <div style={{ fontSize: 12.5, opacity: dark ? 0.82 : 1, color: dark ? "#fff" : C.dim }}>{sub}</div>}
     </div>
   );
 }
+/** A player, by name when they have one. */
+export function Who({ wallet, username, verified, href = true }: { wallet: string | null | undefined; username?: string | null; verified?: boolean | null; href?: boolean }) {
+  if (!wallet) return <span style={{ color: C.dim }}>–</span>;
+  const hue = parseInt(wallet.slice(2, 8), 16) % 360;
+  const inner = (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+      <span aria-hidden style={{ width: 28, height: 28, borderRadius: 999, flex: "0 0 auto", background: `linear-gradient(135deg, hsl(${hue} 80% 62%), hsl(${(hue + 60) % 360} 75% 48%))`, color: "#fff", fontSize: 12, fontWeight: 800, display: "grid", placeItems: "center" }}>{(username || wallet.slice(2)).slice(0, 1).toUpperCase()}</span>
+      <span style={{ display: "grid", lineHeight: 1.2, minWidth: 0 }}>
+        <b style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis" }}>{username ? `@${username}` : short(wallet)}{verified ? <span title="GoodDollar verified" style={{ color: C.good, marginLeft: 5 }}>✓</span> : null}</b>
+        {username && <span style={{ fontSize: 11.5, color: C.dim }}>{short(wallet)}</span>}
+      </span>
+    </span>
+  );
+  return href ? <Link href={`/admin/users/${wallet}`} style={{ textDecoration: "none" }}>{inner}</Link> : inner;
+}
+/** Steps people drop out of, widest first. */
+export function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
+  const top = Math.max(1, steps[0]?.value ?? 1);
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {steps.map((s, i) => { const pct = (s.value / top) * 100; const from = i ? steps[i - 1].value : 0; return (
+        <div key={s.label}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: C.ink, marginBottom: 4 }}><span style={{ fontWeight: 700 }}>{s.label}</span><span><b>{num(s.value)}</b>{i > 0 && from > 0 ? <span style={{ color: C.dim }}> · {Math.round((s.value / from) * 100)}% of the step before</span> : null}</span></div>
+          <div style={{ height: 26, borderRadius: 9, background: C.soft, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(pct, s.value ? 2 : 0)}%`, borderRadius: 9, background: `linear-gradient(90deg, #6d28d9, ${["#7c3aed", "#8b5cf6", "#a78bfa", "#c4b5fd"][Math.min(i, 3)]})` }} /></div>
+        </div>); })}
+    </div>
+  );
+}
+/** A calendar of squares, one per day, darker for busier days. Newest week on the right. */
+export function Heat({ points, color = "109,40,217", word = "games" }: { points: Point[]; color?: string; word?: string }) {
+  if (!points.length) return <p style={{ color: C.dim, fontSize: 14, margin: 0 }}>Nothing recorded yet.</p>;
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const first = new Date(points[0].day + "T00:00:00Z"); const pad = (first.getUTCDay() + 6) % 7; // weeks start on Monday
+  const cells: (Point | null)[] = [...Array.from({ length: pad }, () => null), ...points]; const weeks = Math.ceil(cells.length / 7);
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ display: "grid", gridTemplateRows: "repeat(7, 16px)", gridAutoFlow: "column", gridAutoColumns: "16px", gap: 4, width: "max-content" }}>
+        {Array.from({ length: weeks * 7 }, (_, i) => { const c = cells[i]; return <span key={i} title={c ? `${c.day}: ${num(c.value)} ${word}` : ""} style={{ borderRadius: 3, background: !c ? "transparent" : c.value === 0 ? "rgba(76,29,149,0.07)" : `rgba(${color},${0.22 + (Math.sqrt(c.value) / Math.sqrt(max)) * 0.78})` }} />; })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: C.dim, marginTop: 6, minWidth: 200 }}><span>{points[0].day}</span><span>busiest day: {num(max)} {word}</span><span>{points[points.length - 1].day}</span></div>
+    </div>
+  );
+}
+
 /** Horizontal bars for a ranked list. */
 export function Bars({ rows }: { rows: { label: string; value: number; hint?: string }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));

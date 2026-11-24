@@ -17,7 +17,7 @@ export { supabaseInbox } from './modules/inbox/adapters';
 export { registerInboxRoutes } from './modules/inbox/routes';
 export { createAdmin, hashPassword } from './modules/admin/service';
 export { supabaseAdminStore } from './modules/admin/adapters';
-export { createPurchaseIndexer } from './modules/admin/chain';
+export { createPurchaseIndexer, createWalker, blockTime } from './modules/admin/chain';
 export { registerAdminRoutes } from './modules/admin/routes';
 export { registerScoreRoutes, registerSubmitRoute } from './modules/scores/routes';
 export { supabaseSessions, supabaseSeason, supabaseBestThisSeason, ethersChain } from './modules/scores/adapters';

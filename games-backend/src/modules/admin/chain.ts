@@ -63,3 +63,39 @@ export function createPurchaseIndexer(deps: { reader: ChainReader; store: ChainS
     },
   };
 }
+
+// ─── The same walk, for any set of events ────────────────────────────────────
+// `read` returns whatever a block range held; `save` stores it and moves the
+// cursor in one database call. Used for the GamePass contract: every mint and
+// every recorded score, which is the full history of who joined and what was
+// played.
+export function createWalker<T>(deps: { name: string; startBlock: number; head(): Promise<number>; read(from: number, to: number): Promise<T>; size(batch: T): number; cursor(): Promise<number | null>; save(upto: number, batch: T): Promise<boolean>; logger?: { warn(m: string, ...x: unknown[]): void; error(m: string): void } }) {
+  let span = MAX_SPAN; let running = false;
+  return {
+    async run(maxRanges = 40): Promise<IndexResult> {
+      if (running) return { from: 0, to: 0, ranges: 0, found: 0, behind: 0, error: 'busy' };
+      running = true;
+      const out: IndexResult = { from: 0, to: 0, ranges: 0, found: 0, behind: 0 };
+      try {
+        const head = (await deps.head()) - CONFIRMATIONS;
+        let next = ((await deps.cursor()) ?? deps.startBlock - 1) + 1;
+        out.from = next;
+        while (out.ranges < maxRanges && next <= head) {
+          const to = Math.min(head, next + span - 1);
+          let batch: T;
+          try { batch = await deps.read(next, to); }
+          catch (e) { span = Math.max(250, Math.floor(span / 2)); out.error = String((e as Error)?.message || e).slice(0, 160); deps.logger?.warn(`[chain:${deps.name}] reading ${next}..${to} failed, range now ${span}:`, out.error); break; }
+          if (!(await deps.save(to, batch))) { out.error = 'could_not_store'; break; }
+          out.found += deps.size(batch); out.ranges++; out.to = to; next = to + 1;
+          if (span < MAX_SPAN) span = Math.min(MAX_SPAN, span * 2);
+        }
+        out.behind = Math.max(0, head - (next - 1));
+        if (out.behind > 600_000 && out.ranges < maxRanges) deps.logger?.error(`🚨 [chain:${deps.name}] the reader is ${out.behind.toLocaleString()} blocks behind the chain`);
+        return out;
+      } catch (e) { return { ...out, error: String((e as Error)?.message || e).slice(0, 160) }; } finally { running = false; }
+    },
+  };
+}
+
+/** Celo has produced exactly one block a second since before any of our contracts existed, so a block's time is worked out, not fetched. Checked against the chain at four blocks 16 million apart. */
+export const blockTime = (block: number): number => 1_775_408_158 + (block - 63_507_400);
