@@ -66,7 +66,7 @@ const overlay: CSSProperties = {
   alignItems: "flex-end",
   justifyContent: "center",
   padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)",
-  background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.15) 40%, rgba(10,1,32,0.76) 100%)",
+  background: "linear-gradient(180deg, rgba(34,16,79,0) 0%, rgba(34,16,79,0.12) 40%, rgba(34,16,79,0.55) 100%)",
   fontFamily: HUD_BODY,
 };
 
@@ -80,11 +80,12 @@ const card: CSSProperties = {
   width: "100%",
   padding: "18px 16px 14px",
   borderRadius: 26,
-  background: "linear-gradient(180deg, rgba(42,18,64,0.8), rgba(10,1,32,0.92))",
-  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(251,248,255,0.97)",
+  color: "#22104f",
+  border: "1px solid rgba(76,29,149,0.16)",
   backdropFilter: "blur(14px) saturate(1.3)",
   WebkitBackdropFilter: "blur(14px) saturate(1.3)",
-  boxShadow: "0 24px 60px -20px rgba(0,0,0,0.8), inset 0 1px rgba(255,255,255,0.12)",
+  boxShadow: "0 24px 60px -20px rgba(34,16,79,0.7)",
   fontFamily: HUD_BODY,
 };
 
@@ -96,9 +97,9 @@ const stepRow: CSSProperties = {
   width: "100%",
   padding: "9px 12px",
   borderRadius: 14,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  color: "#f4f1ea",
+  background: "#fff",
+  border: "1px solid rgba(76,29,149,0.14)",
+  color: "#22104f",
   fontSize: 13.5,
   fontWeight: 500,
   textAlign: "left",
@@ -116,12 +117,12 @@ const Steps = ({ items }: { items: [string, string][] }) => (
 
 // Speedrun grade from finish time (PAR is 45s). Drives the "aim higher" pull.
 const GRADES: { label: string; under: number; color: string }[] = [
-  { label: "S", under: 30, color: "#ffd700" },
-  { label: "A", under: 45, color: "#8ff0a4" },
-  { label: "B", under: 70, color: "#7fb8ff" },
+  { label: "S", under: 30, color: "#b45309" },
+  { label: "A", under: 45, color: "#15803d" },
+  { label: "B", under: 70, color: "#1d4ed8" },
 ];
 function gradeFor(t: number): { label: string; color: string } {
-  return GRADES.find((g) => t < g.under) ?? { label: "C", color: "#cfc7e8" };
+  return GRADES.find((g) => t < g.under) ?? { label: "C", color: "#475569" };
 }
 // "How close was I?" — the gap to the next grade up, the single most useful line
 // on a result screen for making someone press Play again.
@@ -137,13 +138,13 @@ const primaryBtn: CSSProperties = {
   padding: "14px 28px",
   borderRadius: 16,
   border: "none",
-  background: "linear-gradient(180deg, #4ade80, #22c55e)",
-  color: "#06230f",
+  background: "linear-gradient(180deg, #7c3aed, #6d28d9)",
+  color: "#fff",
   fontFamily: HUD_DISPLAY,
   fontWeight: 700,
   fontSize: 19,
   cursor: "pointer",
-  boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)",
+  boxShadow: "0 5px 0 #4c1d95, 0 16px 24px -14px rgba(76,29,149,0.9)",
 };
 
 export default function World() {
@@ -343,7 +344,7 @@ export default function World() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.inRoom, room.view?.status]);
   // dev only: lets an automated check end a round without playing the 3D street
-  useEffect(() => { if (process.env.NODE_ENV !== "production") (window as unknown as { __restore?: unknown }).__restore = { store: useRestoreStore, inRoomRun: () => roomRun.current }; }, []);
+  useEffect(() => { if (process.env.NODE_ENV !== "production") (window as unknown as { __restore?: unknown }).__restore = { store: useRestoreStore, game: useGameStore, inRoomRun: () => roomRun.current }; }, []);
 
   const toMenu = () => {
     setModesOpen(true); // back from a game → straight to the lobby
@@ -1135,8 +1136,8 @@ export default function World() {
       {appMode === "restore" && rState === "idle" && !autoStart && (
         <div style={overlay}>
           <div style={card}>
-            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>UP NEPA · THE WHOLE AREA DON BLACKOUT</div>
-            <h1 style={{ margin: "4px 0 0", fontFamily: HUD_DISPLAY, fontSize: "clamp(26px,7.5vw,36px)", fontWeight: 700, lineHeight: 1.05, color: "#fff" }}>Restore the Light</h1>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>UP NEPA · THE WHOLE AREA DON BLACKOUT</div>
+            <h1 style={{ margin: "4px 0 0", fontFamily: HUD_DISPLAY, fontSize: "clamp(26px,7.5vw,36px)", fontWeight: 700, lineHeight: 1.05, color: "#22104f" }}>Restore the Light</h1>
             <Steps
               items={[
                 ["🏃", "Run to a glowing breaker"],
@@ -1145,7 +1146,7 @@ export default function World() {
               ]}
             />
             <button style={primaryBtn} onClick={beginRestore}>Bring the light</button>
-            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "#9b93b8", fontSize: 13, cursor: "pointer" }}>
+            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "rgba(34,16,79,0.64)", fontSize: 13, cursor: "pointer" }}>
               ← Modes
             </button>
           </div>
@@ -1167,12 +1168,12 @@ export default function World() {
                 ⭐ NEW BEST!
               </div>
             )}
-            <div style={{ fontSize: 13, letterSpacing: 2, opacity: 0.7, color: rSummary.won ? "#8ff0a4" : "#ffd27a" }}>
+            <div style={{ fontSize: 13, letterSpacing: 2, opacity: 0.7, color: rSummary.won ? "#22104f" : "#22104f" }}>
               {rSummary.won ? "UP NEPA! WHOLE AREA DON GET LIGHT" : rSummary.total - rSummary.restored <= 3 ? `SO CLOSE! ONLY ${rSummary.total - rSummary.restored} MORE TO LIGHT THE AREA` : `YOU BROUGHT LIGHT TO ${rSummary.restored} ${rSummary.restored === 1 ? "SHOP" : "SHOPS"}`}
             </div>
             {rSummary.won && rSummary.timeTaken != null ? (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, margin: "8px 0 2px" }}>
-                <span style={{ fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#8ff0a4" }}>{rSummary.timeTaken.toFixed(1)}s</span>
+                <span style={{ fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#22104f" }}>{rSummary.timeTaken.toFixed(1)}s</span>
                 {(() => {
                   const g = gradeFor(rSummary.timeTaken);
                   return (
@@ -1183,64 +1184,64 @@ export default function World() {
                 })()}
               </div>
             ) : (
-              <div style={{ margin: "10px 0 2px", fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#ffd27a" }}>
+              <div style={{ margin: "10px 0 2px", fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#22104f" }}>
                 {rSummary.restored}/{rSummary.total}
               </div>
             )}
             {rSummary.won && rSummary.timeTaken != null && (() => {
               const n = nextGrade(rSummary.timeTaken);
               return n ? (
-                <div style={{ margin: "2px 0 6px", fontSize: 15, fontWeight: 600, color: "#f4f1ea" }}>
+                <div style={{ margin: "2px 0 6px", fontSize: 15, fontWeight: 600, color: "#22104f" }}>
                   Only <b style={{ color: n.color }}>{Math.max(0.1, n.gap).toFixed(1)}s</b> from grade <b style={{ color: n.color }}>{n.label}</b>
                 </div>
               ) : (
-                <div style={{ margin: "2px 0 6px", fontSize: 15, fontWeight: 600, color: "#ffd700" }}>Top grade. Now beat your own time.</div>
+                <div style={{ margin: "2px 0 6px", fontSize: 15, fontWeight: 600, color: "#22104f" }}>Top grade. Now beat your own time.</div>
               );
             })()}
-            <div style={{ color: "#cfc7e8", fontSize: 14 }}>
+            <div style={{ color: "#22104f", fontSize: 14 }}>
               {rSummary.won ? `all ${rSummary.total} breakers lit` : `${rSummary.restored}/${rSummary.total} breakers lit`}
             </div>
             {/* the score and exactly where it came from. No ceiling: skill keeps adding. */}
-            <div style={{ margin: "8px auto 2px", maxWidth: 330, padding: "9px 14px", borderRadius: 14, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ margin: "8px 0 2px", alignSelf: "stretch", padding: "10px 14px", borderRadius: 16, background: "#fff", border: "1px solid rgba(76,29,149,0.16)" }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
-                <b style={{ fontSize: 26, color: "#ffd56b", fontVariantNumeric: "tabular-nums" }}>{rSummary.score}</b>
-                <span style={{ fontSize: 12, color: "#9b93b8", fontWeight: 600 }}>pts</span>
+                <b style={{ fontSize: 26, color: "#22104f", fontVariantNumeric: "tabular-nums" }}>{rSummary.score}</b>
+                <span style={{ fontSize: 12, color: "rgba(34,16,79,0.64)", fontWeight: 600 }}>pts</span>
               </div>
               {rHigh && (
-                <div style={{ marginTop: 2, fontSize: 12.5, fontWeight: 700, color: rHigh.isNew ? "#ffd56b" : "#9b93b8" }}>
+                <div style={{ marginTop: 2, fontSize: 12.5, fontWeight: 700, color: rHigh.isNew ? "#22104f" : "rgba(34,16,79,0.64)" }}>
                   {rHigh.isNew ? (rHigh.prev == null ? "🏆 Your first high score" : `🏆 New high score! +${rSummary.score - rHigh.prev} on your old best`) : `High score ${rHigh.best} · ${rHigh.best - rSummary.score} more to beat it`}
                 </div>
               )}
               {rSummary.parts && (
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 14, marginTop: 6 }}>
-                  {([["Breakers", rSummary.parts.breakers, SCORE_MAX.breakers, "#8ff0a4"], ["Speed", rSummary.parts.speed, SCORE_MAX.speed, "#7fb8ff"], ["Skill", rSummary.parts.skill, 0, "#ff9ad5"]] as const).map(([label, v, max, c]) => (
+                  {([["Breakers", rSummary.parts.breakers, SCORE_MAX.breakers, "#16a34a"], ["Speed", rSummary.parts.speed, SCORE_MAX.speed, "#2563eb"], ["Skill", rSummary.parts.skill, 0, "#db2777"]] as const).map(([label, v, max, c]) => (
                     <div key={label} style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.02em", color: "#9b93b8", textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#f4f1ea", fontVariantNumeric: "tabular-nums" }}>{max ? v : `+${v}`}{max > 0 && <span style={{ color: "#6f6890", fontWeight: 600 }}>/{max}</span>}</div>
-                      <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", marginTop: 3, overflow: "hidden" }}><div style={{ width: `${max ? Math.round((v / max) * 100) : Math.min(100, Math.round((v / 400) * 100))}%`, height: "100%", background: c }} /></div>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.02em", color: "rgba(34,16,79,0.64)", textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#22104f", fontVariantNumeric: "tabular-nums" }}>{max ? v : `+${v}`}{max > 0 && <span style={{ color: "rgba(34,16,79,0.7)", fontWeight: 600 }}>/{max}</span>}</div>
+                      <div style={{ height: 5, borderRadius: 3, background: "rgba(76,29,149,0.12)", marginTop: 3, overflow: "hidden" }}><div style={{ width: `${max ? Math.round((v / max) * 100) : Math.min(100, Math.round((v / 400) * 100))}%`, height: "100%", background: c }} /></div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
             {rSummary.won && rSummary.timeTaken != null && bestInfo.prevBest != null && (
-              <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 700, color: bestInfo.isBest ? "#8ff0a4" : "#9b93b8" }}>
+              <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 700, color: bestInfo.isBest ? "#22104f" : "rgba(34,16,79,0.64)" }}>
                 {bestInfo.isBest
                   ? `−${(bestInfo.prevBest - rSummary.timeTaken).toFixed(1)}s vs your best`
                   : `your best ${bestInfo.prevBest.toFixed(1)}s`}
               </div>
             )}
-            <div role="status" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(244,241,234,0.78)" }}>
-              {!rankedRound ? (ranked.canRank ? "This round was not ranked." : <>Sign in to rank your score. <a href="/home?signin=1" style={{ color: "#ffd56b" }}>Sign in</a></>)
+            <div role="status" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(34,16,79,0.68)" }}>
+              {!rankedRound ? (ranked.canRank ? "This round was not ranked." : <>Sign in to rank your score. <a href="/home?signin=1" style={{ color: "#22104f" }}>Sign in</a></>)
                 : ranked.status === "checking" ? "Checking your run…"
                 : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                 : ranked.status === "saving" ? "Saving to the leaderboard…"
-                : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#22104f" }}>view</a></> : null}</>
                 : ranked.status === "error" ? ranked.error : null}
-              {" "}<a href="/world/leaderboard" style={{ color: "#ffd56b" }}>Leaderboard</a>
+              {" "}<a href="/world/leaderboard" style={{ color: "#22104f" }}>Leaderboard</a>
             </div>
             <button style={{ ...primaryBtn, marginTop: 18, fontSize: 18, padding: "14px 0" }} onClick={beginRestore}>▶ Play again</button>
-            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "#9b93b8", fontSize: 13, cursor: "pointer" }}>
+            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "rgba(34,16,79,0.64)", fontSize: 13, cursor: "pointer" }}>
               ← Modes
             </button>
           </div>
@@ -1251,8 +1252,8 @@ export default function World() {
       {appMode === "charge" && mode === "idle" && !autoStart && (
         <div style={overlay}>
           <div style={card}>
-            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(244,241,234,0.62)" }}>UP NEPA · LIGHT DON COME</div>
-            <h1 style={{ margin: "4px 0 0", fontFamily: HUD_DISPLAY, fontSize: "clamp(26px,7.5vw,36px)", fontWeight: 700, lineHeight: 1.05, color: "#fff" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>UP NEPA · LIGHT DON COME</div>
+            <h1 style={{ margin: "4px 0 0", fontFamily: HUD_DISPLAY, fontSize: "clamp(26px,7.5vw,36px)", fontWeight: 700, lineHeight: 1.05, color: "#22104f" }}>
               Charge Rush
             </h1>
             <Steps
@@ -1265,7 +1266,7 @@ export default function World() {
             <button style={primaryBtn} onClick={beginRound}>
               Start charging
             </button>
-            <div style={{ marginTop: 10, color: "#9b93b8", fontSize: 12 }}>
+            <div style={{ marginTop: 10, color: "rgba(34,16,79,0.64)", fontSize: 12 }}>
               {isMobile ? "Stick to move · drag to look" : "WASD to move · drag to look"}
             </div>
           </div>
@@ -1276,13 +1277,13 @@ export default function World() {
       {appMode === "charge" && mode === "over" && summary && (
         <div style={overlay}>
           <div style={card}>
-            <div style={{ fontSize: 13, letterSpacing: 2, opacity: 0.7, color: "#ffd27a" }}>🌑 NEPA DON CARRY LIGHT FOR GOOD</div>
-            <div style={{ margin: "10px 0 2px", fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#8ff0a4" }}>
+            <div style={{ fontSize: 13, letterSpacing: 2, opacity: 0.7, color: "#22104f" }}>🌑 NEPA DON CARRY LIGHT FOR GOOD</div>
+            <div style={{ margin: "10px 0 2px", fontFamily: HUD_DISPLAY, fontSize: "clamp(34px,10vw,54px)", fontWeight: 700, color: "#22104f" }}>
               {naira(summary.score)}
             </div>
-            <div style={{ color: "#cfc7e8", fontSize: 14 }}>from {summary.banked} device{summary.banked === 1 ? "" : "s"} charged before NEPA took light</div>
+            <div style={{ color: "#22104f", fontSize: 14 }}>from {summary.banked} device{summary.banked === 1 ? "" : "s"} charged before NEPA took light</div>
             {cHigh && (
-              <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: cHigh.isNew ? "#ffd56b" : "#9b93b8" }}>
+              <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: cHigh.isNew ? "#22104f" : "rgba(34,16,79,0.64)" }}>
                 {cHigh.isNew ? (cHigh.prev == null ? "🏆 Your first high score" : `🏆 New high score! ${naira(summary.score - cHigh.prev)} more than your old best`) : `High score ${naira(cHigh.best)} · ${naira(cHigh.best - summary.score)} more to beat it`}
               </div>
             )}
@@ -1290,14 +1291,14 @@ export default function World() {
               <span style={pill("#ffb8f0")}>🔥 Best streak ×{streakMult(summary.bestCombo)} ({summary.bestCombo})</span>
             </div>
             {summary.best && (
-              <div style={{ marginTop: 10, color: "#ffd27a", fontSize: 13 }}>
+              <div style={{ marginTop: 10, color: "#22104f", fontSize: 13 }}>
                 🏆 Biggest grab: {summary.best.label} ({naira(summary.best.value)})
               </div>
             )}
             <button style={{ ...primaryBtn, marginTop: 18 }} onClick={beginRound}>
               ▶ Play again
             </button>
-            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "#9b93b8", fontSize: 13, cursor: "pointer" }}>
+            <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "rgba(34,16,79,0.64)", fontSize: 13, cursor: "pointer" }}>
               ← Modes
             </button>
           </div>
@@ -1326,6 +1327,7 @@ export default function World() {
               fontStyle: "italic",
               fontSize: "clamp(26px, 8vw, 54px)",
               letterSpacing: 0.5,
+              // floats over the dark street, not on a sheet: light text with a dark edge
               color: shoutTone === "bad" ? "#ff8a8a" : shoutTone === "big" ? "#ffe14d" : "#8ff0a4",
               textShadow: "0 3px 0 rgba(0,0,0,0.55), 0 0 24px rgba(0,0,0,0.5)",
               transform: "rotate(-4deg)",
