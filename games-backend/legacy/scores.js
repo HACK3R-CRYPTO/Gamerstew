@@ -138,6 +138,12 @@ core.platform.registerScoreRoutes(core.app, {
 // rank and notifications. The logic is src/modules/scores/submit.ts; everything
 // below is a plain pass-through to the helpers in this file.
 const saveClaims = core.platform.supabaseSaveClaims(core.supabase);
+const rankLedger = core.platform.supabaseLedgerBoard(core.supabase);
+const rankBoard = async (gameType, seasonStart) => {
+  const game = Object.keys(core.GAME_TYPE).find((g) => core.GAME_TYPE[g] === Number(gameType));
+  if (!game) return [];
+  try { return await rankLedger(game, Number(seasonStart)); } catch { return []; }
+};
 const submitRun = core.platform.registerSubmitRoute(core.app, {
   claimSave: (ticket) => saveClaims.claimSave(ticket),
   releaseSave: (ticket) => saveClaims.releaseSave(ticket),
@@ -166,8 +172,20 @@ const submitRun = core.platform.registerSubmitRoute(core.app, {
   awardXp: (wallet, amount, reason) => core.awardXp(wallet, amount, reason),
   updateMissions: (wallet, run) => core.updateMissionProgress(wallet, run),
   unlockAchievements: (wallet, run) => core.checkAndUnlockAchievements(wallet, run),
-  seasonRank: (wallet, score, gameType, seasonStart) => core.subgraph.seasonRank(wallet, score, gameType, seasonStart),
-  leaderboard: (gameType, seasonStart, limit) => core.subgraph.leaderboard(gameType, seasonStart, limit),
+  // Rank and the board around a save come from our own record of finished
+  // runs, which is current. The subgraph they used to come from has stopped
+  // indexing, so it gave a rank from weeks ago, or none. It is still asked when
+  // our record has nothing to say (a read failed).
+  seasonRank: async (wallet, score, gameType, seasonStart) => {
+    const rows = await rankBoard(gameType, seasonStart);
+    if (!rows.length) return core.subgraph.seasonRank(wallet, score, gameType, seasonStart);
+    const me = String(wallet).toLowerCase();
+    return rows.filter((r) => r.wallet_address !== me && r.score > score).length + 1;
+  },
+  leaderboard: async (gameType, seasonStart, limit) => {
+    const rows = await rankBoard(gameType, seasonStart);
+    return rows.length ? rows.slice(0, limit) : core.subgraph.leaderboard(gameType, seasonStart, limit);
+  },
   notifyRankDisplacement: (game, wallet, before, after) => core.notifyRankDisplacement(game, wallet, before, after),
   push: {
     wagerWon: (wagered, label) => core.push.wagerWonNotification(wagered, label),
