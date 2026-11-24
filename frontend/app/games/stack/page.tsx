@@ -30,6 +30,8 @@ import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import GameLobby from "@/components/GameLobby";
+import { useFriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import LevelUpToast from "@/components/LevelUpToast";
@@ -53,7 +55,6 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
 import { useEquipped } from "@/lib/cosmetics";
-import DuelEntry from "@/components/DuelEntry";
 import NextUp from "@/components/NextUp";
 
 // Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
@@ -137,7 +138,9 @@ type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
 // RANKED is the game as it has always been and the only mode that is signed
 // and submitted. The others change the rules for fun and never leave the
 // device: no gas check, no session ticket, no score signing, no save prompt.
-type ModeId = "ranked" | "practice" | "turbo" | "thin";
+// "room" is a friend-room round: nothing is signed or sent to the chain, and the
+// result goes to the room instead.
+type ModeId = "ranked" | "practice" | "turbo" | "thin" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
   { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
@@ -363,6 +366,12 @@ export default function StackTowerPage() {
 
   // ─── Finish ───────────────────────────────────────────────────────────────
   // Declared before drop() so drop can list it as a dependency without a TDZ.
+  // Friends in a room all build at the same time; the room ranks the towers.
+  const room = useFriendRoom("stack");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+
   const finish = useCallback(() => {
     blip(140, 0.4, 0.22, "sawtooth");
     haptic([30, 40, 60]);
@@ -377,6 +386,7 @@ export default function StackTowerPage() {
       const built = Math.max(0, levelRef.current - 1);
       if (built > bestHeightRef.current) { bestHeightRef.current = built; localStorage.setItem(heightKey(runModeRef.current), String(built)); }
     } catch { /* ignore */ }
+    if (runModeRef.current === "room") void roomRef.current.finish({ dropLog: dropLogRef.current.slice(), score: scoreRef.current });
     setPhase("finished");
   }, [blip, haptic, juice]);
 
@@ -467,6 +477,7 @@ export default function StackTowerPage() {
     }
 
     levelRef.current = newLevel;
+    if (runModeRef.current === "room") roomRef.current.progress(newLevel - 1); // friends see how tall you are
     // the moment the tower tops your best ever
     if (!passedBestRef.current && lineHeightRef.current >= 3 && newLevel - 1 > lineHeightRef.current) {
       passedBestRef.current = true;
@@ -526,7 +537,9 @@ export default function StackTowerPage() {
   }, [finish]);
 
   // ─── Start a fresh run ────────────────────────────────────────────────────
-  const startGame = useCallback(async () => {
+  const startGame = useCallback(async (roomStart?: unknown) => {
+    // a room round passes true; a tap on Play passes a click event
+    const inRoom = roomStart === true;
     // Re-entry guard — bails if a session ticket request is already in flight.
     // Without this a double-click during the ~500ms /api/start-game round
     // trip inserts two game_sessions rows for one actual run.
@@ -534,7 +547,7 @@ export default function StackTowerPage() {
 
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Block a new run once a guest is out of free plays; offer sign-in.
-    if (isGuest && guestPlaysLeft("stack") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("stack") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -552,7 +565,7 @@ export default function StackTowerPage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    runModeRef.current = modeRef.current; // pinned for the whole run
+    runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -637,6 +650,22 @@ export default function StackTowerPage() {
     setPhase("countdown");
     startingRef.current = false;
   }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest]);
+
+  // the host pressed start: everyone builds now
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current || v.players[v.you]?.done) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (runModeRef.current !== "room") return;
+    if (!room.inRoom || room.view?.status === "waiting") { setPhase("idle"); runModeRef.current = modeRef.current; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
 
   // ── Straight into play ─────────────────────────────────────────────────────
   // Arriving with ?play=1 (the landing page's "Play free", or any "play now"
@@ -1198,9 +1227,11 @@ export default function StackTowerPage() {
           /* out of gas is the wrong message for a player who has not finished setup */
           gasBanner={needsMint ? null : <LowGasBanner status={gasStatus} approxSavesLeft={approxSavesLeft} onOpenHelp={() => setGasHelpOpen(true)} />}
           challenge={challenge ? <>{challenge.by} stacked <b>{challenge.blocks} blocks</b>. Build higher.</> : null}
-          friends={<DuelEntry game="stack" />}
+          friends={<FriendsPlay room={room} gameName="Stack Tower" sharePath="/games/stack" atStart part="button" />}
         />
       )}
+
+      <FriendsPlay room={room} gameName="Stack Tower" sharePath="/games/stack" atStart={phase === "idle"} progressWord="block" part="overlays" />
 
       {/* FINISHED */}
       {/* SAVE YOUR RUN · the M1 hero moment (casual mode only). Mounted only
