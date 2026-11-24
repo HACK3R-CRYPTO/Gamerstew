@@ -104,7 +104,7 @@ export default function GameLobby<M extends string>({
       <style>{`
         .gl { position: absolute; inset: 0; z-index: 10; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; text-align: left; --brand: #6d28d9; --line: rgba(76,29,149,0.16); --dim: rgba(34,16,79,0.64); }
         .gl button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        .gl-top { flex: none; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 10px 14px 4px; text-align: center; }
+        .gl-top { flex: none; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; text-align: center; }
         .gl-top b { font-size: 20px; font-weight: 400; }
         .gl-back { width: 40px; height: 40px; border-radius: 14px; border: 1px solid var(--line); background: #fff; font-size: 18px; }
         .gl-main { width: 100%; max-width: 460px; margin: 0 auto; padding: 8px 18px 28px; display: flex; flex-direction: column; gap: 14px; }

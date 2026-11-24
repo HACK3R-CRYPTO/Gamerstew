@@ -114,9 +114,16 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
     setConfirmClear(false);
     void attempt(() => { setItems([]); setMore(false); setCount(0); }, () => { setItems(before); setMore(hadMore); setCount(was); }, (t) => inboxDelete(t, address, { all: true }));
   };
+  // A long message opens up in place on the first tap, so it can be read in
+  // full. Only the second tap (or a short message) follows its link. A link to
+  // the page the player is already on is not offered: it would do nothing.
+  const [wide, setWide] = useState<string | number | null>(null);
+  const here = typeof window !== "undefined" ? window.location.pathname : "";
+  const goes = (it: InboxItem) => !!it.url && it.url.split("?")[0] !== here;
   const openItem = (it: InboxItem) => {
     markRead(it);
-    if (!it.url) return;
+    if ((it.body?.length ?? 0) > 90 && wide !== it.id) { setWide(it.id); return; }
+    if (!it.url || !goes(it)) return;
     onClose();
     if (it.url.startsWith("/")) router.push(it.url); else window.open(it.url, "_blank", "noopener,noreferrer");
   };
@@ -175,8 +182,8 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
                       <span className="nb-text">
                         <span className="nb-meta"><em style={{ color: look.tint }}>{look.label}</em><time>{ago(it.sentAt)}</time></span>
                         <b>{it.title}</b>
-                        {it.body && <span className="nb-body">{it.body}</span>}
-                        {it.url && <span className="nb-go">Open ›</span>}
+                        {it.body && <span className={`nb-body${wide === it.id ? " all" : ""}`}>{it.body}</span>}
+                        {(it.body?.length ?? 0) > 90 && wide !== it.id ? <span className="nb-go">Read more ›</span> : goes(it) ? <span className="nb-go">Open ›</span> : null}
                       </span>
                     </button>
                     <button className="nb-del" onClick={() => remove(it)} aria-label={`Delete: ${it.title}`}>✕</button>
@@ -219,6 +226,7 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
         .nb-text b { font-size: 14.5px; line-height: 1.3; font-weight: 800; }
         .nb-row:not(.unread) .nb-text b { font-weight: 700; color: rgba(34,16,79,0.82); }
         .nb-body { font-size: 13px; line-height: 1.4; color: rgba(34,16,79,0.68); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+        .nb-body.all { display: block; -webkit-line-clamp: unset; overflow: visible; }
         .nb-go { font-size: 12px; font-weight: 800; color: #6d28d9; margin-top: 2px; }
         .nb-del { flex: none; width: 40px; border: none; background: none; color: rgba(34,16,79,0.38); font-size: 13px; border-radius: 0 18px 18px 0; }
         .nb-del:hover { color: #be123c; background: #fff1f2; }
