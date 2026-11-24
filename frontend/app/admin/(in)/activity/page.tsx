@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { adminRead } from "@/lib/server/adminApi";
-import { Card, GAME_NAME, Page, Problem, Table, short, txUrl, when, C } from "@/components/admin/ui";
+import { Card, GAME_NAME, Page, Problem, Table, Who, txUrl, when, C } from "@/components/admin/ui";
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
-interface F { at: string; kind: string; wallet: string | null; game: string | null; detail: string | null; tx_hash: string | null }
-const KINDS: [string, string][] = [["", "Everything"], ["new_player", "New players"], ["verified", "Verifications"], ["game_started", "Games started"], ["game_completed", "Games completed"], ["payout", "Payouts"], ["tx_failed", "Failed transactions"]];
-const WORD: Record<string, string> = { new_player: "New player", verified: "Verified with GoodDollar", game_started: "Started a game, not finished", game_completed: "Completed a game", payout_sent: "Payout sent", payout_confirmed: "Payout confirmed", payout_pending: "Payout pending", payout_failed: "Payout failed", tx_failed: "Transaction failed", payout_recorded: "Payout recorded" };
-const TONE: Record<string, string> = { tx_failed: C.bad, payout_failed: C.bad, verified: C.good, new_player: C.good, game_started: C.dim };
+interface F { at: string; kind: string; wallet: string | null; username: string | null; game: string | null; detail: string | null; tx_hash: string | null }
+const KINDS: [string, string][] = [["", "Everything"], ["registered", "New players"], ["verified", "Verifications"], ["game_completed", "Games played"], ["game_started", "Unfinished runs"], ["purchase", "Purchases"], ["payout", "Payouts"], ["tx_failed", "Failed transactions"]];
+const WORD: Record<string, string> = { registered: "Joined GameArena", purchase: "Bought something", new_player: "New player", verified: "Verified with GoodDollar", game_started: "Started a game, not finished", game_completed: "Played a game", payout_sent: "Payout sent", payout_confirmed: "Payout confirmed", payout_pending: "Payout pending", payout_failed: "Payout failed", tx_failed: "Transaction failed", payout_recorded: "Payout recorded" };
+const TONE: Record<string, string> = { tx_failed: C.bad, payout_failed: C.bad, verified: C.good, registered: C.good, game_started: C.dim, purchase: "#b45309" };
 
 export default async function Activity({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams; const kind = typeof sp.kind === "string" ? sp.kind : ""; const before = typeof sp.before === "string" ? sp.before : "";
@@ -22,7 +22,7 @@ export default async function Activity({ searchParams }: { searchParams: SP }) {
         <Table rows={rows} cols={[
           { head: "When", cell: (x) => when(x.at) },
           { head: "What", cell: (x) => <b style={{ color: TONE[x.kind] ?? C.ink }}>{WORD[x.kind] ?? x.kind.replace(/_/g, " ")}</b> },
-          { head: "Player", cell: (x) => (x.wallet ? <Link href={`/admin/users/${x.wallet}`} style={{ color: C.accent, fontWeight: 700 }}>{short(x.wallet)}</Link> : "–") },
+          { head: "Player", cell: (x) => <Who wallet={x.wallet} username={x.username} /> },
           { head: "Game", cell: (x) => (x.game ? GAME_NAME[x.game] ?? x.game : "–") }, { head: "Detail", cell: (x) => <span title={x.detail ?? ""}>{(x.detail ?? "–").slice(0, 70)}</span> },
           { head: "Transaction", cell: (x) => (x.tx_hash ? <a href={txUrl(x.tx_hash)} target="_blank" rel="noreferrer" style={{ color: C.accent }}>{x.tx_hash.slice(0, 10)}…</a> : "–") },
         ]} empty="Nothing of this kind has been recorded." />

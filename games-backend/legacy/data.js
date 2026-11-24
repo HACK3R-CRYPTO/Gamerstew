@@ -26,6 +26,18 @@ const supabase = core.createClient(
   { global: { fetch: egress.wrap(core.platform.fetchWithTimeout(core.config.dbTimeoutMs)) } },
 );
 console.log('📦 Supabase connected');
+
+// A second connection with the service-role key, for the tables that are locked
+// to everyone else: admin accounts, the payout ledger, the event feed, daily
+// metrics, purchases, friend rooms. Those have row level security on with no
+// policies, so the ordinary key above cannot read or write them. Without this
+// key the admin dashboard cannot work, and says so.
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? core.createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: egress.wrap(core.platform.fetchWithTimeout(core.config.dbTimeoutMs)) } })
+  : null;
+core.supabaseAdmin = supabaseAdmin;
+core.lockedDb = supabaseAdmin || supabase; // what the locked tables are reached through
+console.log(supabaseAdmin ? '🔐 Service-role connection ready (admin dashboard, locked tables)' : '⚠️  SUPABASE_SERVICE_ROLE_KEY is not set: the admin dashboard and other locked tables cannot be read');
 },
 
 // ── Supabase helpers ──

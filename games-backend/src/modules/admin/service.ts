@@ -18,6 +18,8 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 export type Role = 'analyst' | 'admin' | 'super_admin';
 export interface Admin { email: string; name: string | null; role: Role; disabled: boolean; pass_hash?: string; created_at?: string; last_login_at?: string | null }
 export interface Reply { status: number; body: Record<string, unknown> }
+/** What the GoodDollar Identity contract says about one wallet. Times are unix seconds. */
+export interface Identity { verified: boolean; state?: 'verified' | 'lapsed' | 'none' | 'blacklisted'; /** this wallet itself is whitelisted, not only linked to one that is */ self?: boolean; root?: string | null; at?: number | null; authAt?: number | null; expiresAt?: number | null; probation?: boolean | null }
 
 export interface AdminStore {
   /** one database function, by name: the result, or null with a reason */
@@ -34,7 +36,7 @@ export interface AdminStore {
   setPayoutStatus(id: number, status: string): Promise<string | null>;
   event(row: { kind: string; wallet?: string | null; game?: string | null; ref?: string | null; tx_hash?: string | null; data?: unknown }): Promise<void>;
 }
-export interface AdminDeps { store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void } }
+export interface AdminDeps { store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void }; /** false when the server has no key for the locked admin tables: every read would come back empty */ canReadLocked?: () => boolean }
 
 const RANK: Record<Role, number> = { analyst: 1, admin: 2, super_admin: 3 };
 const ok = (body: Record<string, unknown>): Reply => ({ status: 200, body });
@@ -92,6 +94,9 @@ export function createAdmin(deps: AdminDeps) {
     async login(body: Record<string, unknown>): Promise<Reply> {
       const email = str(body.email).toLowerCase(); const password = typeof body.password === 'string' ? body.password : '';
       if (!email || !password) return fail(400, 'missing');
+      // Without the service key the admin table reads as empty, which would look
+      // exactly like a wrong password. Say what is actually wrong.
+      if (deps.canReadLocked && !deps.canReadLocked()) return fail(503, 'server_key_missing');
       const t = tries.get(email);
       if (t && t.until > now()) return fail(429, 'locked');
       const a = await store.admin(email);
@@ -109,6 +114,7 @@ export function createAdmin(deps: AdminDeps) {
 
     /** Every read the dashboard makes. `what` picks it; the query narrows it. */
     async read(email: unknown, what: string, q: Record<string, unknown>): Promise<Reply> {
+      if (deps.canReadLocked && !deps.canReadLocked()) return fail(503, 'server_key_missing');
       const need: Role = what === 'admins' || what === 'actions' ? 'super_admin' : 'analyst';
       const me = await who(email, need); if (isReply(me)) return me;
       const r = range(q, now());
@@ -119,7 +125,8 @@ export function createAdmin(deps: AdminDeps) {
         case 'series': return call('admin_series', { from_day: r.from, to_day: r.to });
         case 'games': return call('admin_games', { from_day: r.from, to_day: r.to });
         case 'top': return call('admin_top_players', { from_day: r.from, to_day: r.to, lim });
-        case 'players': return call('admin_players', { q: str(q.q, 60), who: ['verified', 'unverified'].includes(str(q.who)) ? str(q.who) : 'all', lim, off });
+        case 'players': return call('admin_players', { q: str(q.q, 60), who: ['verified', 'unverified', 'lapsed', 'new7', 'new30'].includes(str(q.who)) ? str(q.who) : 'all', sort: ['games', 'new'].includes(str(q.sort)) ? str(q.sort) : 'recent', lim, off });
+        case 'new_players': return call('admin_new_players', { from_day: r.from, to_day: r.to, lim });
         case 'player': return isWallet(str(q.wallet)) ? call('admin_player', { w: str(q.wallet) }) : fail(400, 'bad_wallet');
         case 'feed': return call('admin_feed', { lim, before: str(q.before) || null, only_kind: str(q.kind, 40) || null });
         case 'retention': return call('admin_retention', { weeks: Math.max(1, Math.min(26, Number(q.weeks) || 8)) });
@@ -210,19 +217,24 @@ export function createAdmin(deps: AdminDeps) {
 
     /** Hourly: yesterday's and today's numbers. */
     async rollup(): Promise<boolean> { return !(await store.rpc('admin_rollup_recent', {})).error; },
+    /** Every day, from the start. Needed while the chain history is still being read in: old days keep changing. */
+    async rebuildAll(): Promise<boolean> { return !(await store.rpc('admin_backfill', {})).error; },
 
     /** Check the verification of the wallets whose answer is the most out of date. Returns how many changed to verified. */
-    async sweepVerification(isVerified: (wallet: string) => Promise<boolean>, batch = 25): Promise<{ checked: number; newly: number }> {
+    async sweepVerification(isVerified: (wallet: string) => Promise<boolean | Identity>, batch = 25): Promise<{ checked: number; newly: number; failed: number; error?: string }> {
       const q = await store.rpc('admin_verify_queue', { lim: batch });
       const wallets = Array.isArray(q.data) ? (q.data as { wallet: string }[]).map((r) => r.wallet).filter((w) => isWallet(String(w))) : [];
-      let checked = 0; let newly = 0;
+      let checked = 0; let newly = 0; let failed = 0; let error: string | undefined = q.error ?? undefined;
       for (const w of wallets) {
-        let v: boolean;
-        try { v = await isVerified(w); } catch { continue; } // a chain error is "unknown", never "not verified"
-        const r = await store.rpc('admin_set_verified', { w, is_verified: v });
-        if (!r.error) { checked++; if (r.data === true) newly++; }
+        let id: Identity;
+        try { const a = await isVerified(w); id = typeof a === 'boolean' ? { verified: a, state: a ? 'verified' : 'none' } : a; }
+        catch (e) { failed++; error ??= String((e as Error)?.message || e).slice(0, 140); continue; } // a chain error is "unknown", never "not verified"
+        // the full picture: verified, lapsed, never or blacklisted; by itself or through a linked wallet; since when, until when
+        const state = id.state ?? (id.verified ? 'verified' : 'none');
+        const r = await store.rpc('admin_set_identity', { w, st: state, is_self: id.self ?? id.verified, via: id.root ?? null, added: id.at ?? null, authed: id.authAt ?? null, expires: id.expiresAt ?? null, on_probation: id.probation ?? null });
+        if (!r.error) { checked++; if (r.data === true) newly++; } else { failed++; error ??= r.error; }
       }
-      return { checked, newly };
+      return { checked, newly, failed, ...(error ? { error } : {}) };
     },
   };
 }

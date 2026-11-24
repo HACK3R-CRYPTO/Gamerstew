@@ -435,16 +435,33 @@ core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret
 // src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
 // until that has run, its reads answer "migration_needed" and the two jobs
 // below do nothing.
-const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.supabase), logger: console });
+const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin });
 core.admin = adminService;
 core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
 // yesterday's and today's numbers, every hour (and once, a minute after boot)
 core.jobs.every('adminRollup', 60 * 60 * 1000, async () => { await adminService.rollup(); });
 setTimeout(() => { adminService.rollup().catch(() => {}); }, 60 * 1000).unref?.();
-// who is GoodDollar-verified: 25 wallets every 5 minutes, the most out of date first
-core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
-  const out = await adminService.sweepVerification((w) => core.isVerifiedStrict(w), 25);
-  if (out.newly > 0) console.log(`[admin] ${out.newly} wallet(s) newly seen as verified · checked ${out.checked}`);
+// Who is GoodDollar-verified. 40 wallets a minute, the never-checked first, so
+// a first pass over a thousand wallets takes under half an hour. Once every
+// wallet has been checked, each is looked at again about every six hours:
+// `lastLooked` stops the same wallets being re-read minute after minute.
+const lastLooked = new Map(); // wallet -> ms, this process only
+const RECHECK_MS = 6 * 60 * 60 * 1000;
+let sweepRuns = 0;
+core.jobs.every('adminVerifySweep', 60 * 1000, async () => {
+  if (!core.supabaseAdmin) return;
+  const now = Date.now();
+  const out = await adminService.sweepVerification(async (w) => {
+    const seen = lastLooked.get(w);
+    if (seen && now - seen < RECHECK_MS) throw new Error('checked recently'); // not an error: skipped
+    const r = await core.isVerifiedStrict(w);
+    lastLooked.set(w, now);
+    return r;
+  }, 40);
+  sweepRuns += 1;
+  const real = out.error && out.error !== 'checked recently';
+  if (out.checked > 0 || real) console.log(`[admin] verification sweep · checked ${out.checked} · newly verified ${out.newly}${real ? ` · ${out.failed} could not be read: ${out.error}` : ''}`);
+  if (lastLooked.size > 50_000) lastLooked.clear();
 });
 
 // Every purchase, read from the chain (src/modules/admin/chain.ts). The two
@@ -465,19 +482,59 @@ core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
     logger: console,
     reader: {
       head: () => core.provider.getBlockNumber(),
-      blockTime: async (b) => Number((await core.provider.getBlock(b)).timestamp),
+      blockTime: async (b) => core.platform.blockTime(b), // one block a second: worked out, not fetched
       purchases: async (from, to) => (await core.provider.getLogs({ address: [perkShop, habitats], topics, fromBlock: from, toBlock: to })).map((l) => {
         const e = iface.parseLog(l); const perk = e.name === 'PerkPurchased';
         return { tx_hash: l.transactionHash, log_index: l.index, block: l.blockNumber, kind: perk ? 'perk' : 'habitat', wallet: e.args.player, item: Number(perk ? e.args.perkId : e.args.tier), total: g(e.args.totalPaid), ubi: g(e.args.ubiAmount), treasury: g(e.args.treasuryAmount) };
       }),
     },
     store: {
-      cursor: async () => { const r = await core.supabase.rpc('admin_chain_cursor', { cursor_name: 'purchases' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
-      save: async (upto, batch) => !(await core.supabase.rpc('admin_save_purchases', { cursor_name: 'purchases', upto, batch })).error,
+      cursor: async () => { const r = await core.lockedDb.rpc('admin_chain_cursor', { cursor_name: 'purchases' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
+      save: async (upto, batch) => !(await core.lockedDb.rpc('admin_save_purchases', { cursor_name: 'purchases', upto, batch })).error,
     },
   });
+  // The GamePass contract: every mint (who joined, when, under what name), every
+  // rename and every recorded score. This is the full history of players and
+  // games; the database only kept part of it. Read into chain_mints and
+  // chain_scores, which is all the dashboard then looks at.
+  const pass = new core.ethers.Interface([
+    'event PassMinted(address indexed player, uint256 indexed tokenId, string username)',
+    'event UsernameChanged(address indexed player, string oldName, string newName)',
+    'event ScoreRecorded(address indexed player, uint8 indexed gameType, uint256 score, uint256 indexed season, uint256 totalGames)',
+  ]);
+  const passTopics = [[pass.getEvent('PassMinted').topicHash, pass.getEvent('UsernameChanged').topicHash, pass.getEvent('ScoreRecorded').topicHash]];
+  let historyChanged = false;
+  const gamePassWalker = core.platform.createWalker({
+    name: 'gamepass', startBlock: Number(process.env.GAMEPASS_INDEX_START || 63507400), logger: console,
+    head: () => core.provider.getBlockNumber(),
+    size: (b) => b.mints.length + b.scores.length,
+    read: async (from, to) => {
+      const out = { mints: [], scores: [], renames: [] };
+      for (const l of await core.provider.getLogs({ address: core.GAME_PASS_ADDR, topics: passTopics, fromBlock: from, toBlock: to })) {
+        const e = pass.parseLog(l); const at = core.platform.blockTime(l.blockNumber);
+        if (e.name === 'PassMinted') out.mints.push({ wallet: e.args.player, token_id: e.args.tokenId.toString(), username: e.args.username, at, block: l.blockNumber, tx_hash: l.transactionHash });
+        else if (e.name === 'UsernameChanged') out.renames.push({ wallet: e.args.player, username: e.args.newName });
+        else out.scores.push({ tx_hash: l.transactionHash, log_index: l.index, block: l.blockNumber, at, wallet: e.args.player, game_type: Number(e.args.gameType), score: e.args.score.toString(), season: Number(e.args.season) });
+      }
+      return out;
+    },
+    cursor: async () => { const r = await core.lockedDb.rpc('admin_chain_cursor', { cursor_name: 'gamepass' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
+    save: async (upto, b) => !(await core.lockedDb.rpc('admin_save_gamepass', { cursor_name: 'gamepass', upto, mints: b.mints, scores: b.scores, renames: b.renames })).error,
+  });
+  core.jobs.every('chainGamePass', 60 * 1000, async () => {
+    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider || !core.supabaseAdmin || !core.GAME_PASS_ADDR) return;
+    const out = await gamePassWalker.run(40);
+    if (out.found > 0) { historyChanged = true; console.log(`[chain:gamepass] ${out.found} event(s) · blocks ${out.from}..${out.to} · ${out.behind} behind`); }
+  });
+  // while old history is still arriving, past days keep changing: rebuild them all every ten minutes
+  core.jobs.every('adminRebuildWhileCatchingUp', 10 * 60 * 1000, async () => {
+    if (!historyChanged) return;
+    historyChanged = false;
+    if (!(await adminService.rebuildAll())) historyChanged = true;
+  });
+
   core.jobs.every('chainPurchases', 60 * 1000, async () => {
-    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider) return;
+    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider || !core.supabaseAdmin) return; // nowhere to store them without the service key
     const out = await purchaseIndexer.run(40);
     if (out.found > 0) console.log(`[chain] ${out.found} purchase(s) read · blocks ${out.from}..${out.to} · ${out.behind} behind`);
   });
@@ -486,7 +543,7 @@ core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
 core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.
-const roomKeeper = core.platform.supabaseRoomKeeper(core.supabase);
+const roomKeeper = core.platform.supabaseRoomKeeper(core.lockedDb); // friend_rooms is a locked table too
 // Playing for G$: OFF unless ROOM_STAKES=true. No contract of ours and no money
 // held: each loser's signed permit sends their entry straight to the winner.
 let roomStakes;

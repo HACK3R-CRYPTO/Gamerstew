@@ -7,7 +7,7 @@ function world() {
   const admins = new Map<string, Admin>(); const log: [string, string][] = []; const calls: [string, Record<string, unknown>][] = []; const payouts: Record<string, unknown>[] = []; const events: string[] = [];
   const add = (email: string, role: Admin['role'], password = 'correct horse battery') => admins.set(email, { email, name: null, role, disabled: false, pass_hash: hashPassword(password) });
   const store: AdminStore = {
-    rpc: async (name, args) => { calls.push([name, args]); return { data: name === 'admin_verify_queue' ? [{ wallet: '0x' + '1'.repeat(40) }, { wallet: '0x' + '2'.repeat(40) }, { wallet: '0x' + '3'.repeat(40) }] : name === 'admin_set_verified' ? args.is_verified === true : name === 'admin_track' ? (args.batch as unknown[]).length : { n: 1 }, error: null }; },
+    rpc: async (name, args) => { calls.push([name, args]); return { data: name === 'admin_verify_queue' ? [{ wallet: '0x' + '1'.repeat(40) }, { wallet: '0x' + '2'.repeat(40) }, { wallet: '0x' + '3'.repeat(40) }] : name === 'admin_set_identity' ? args.st === 'verified' : name === 'admin_track' ? (args.batch as unknown[]).length : { n: 1 }, error: null }; },
     admin: async (e) => admins.get(e) ?? null, admins: async () => [...admins.values()],
     saveAdmin: async (r) => { admins.set(r.email, { ...r, disabled: false }); return null; }, setDisabled: async (e, d) => { const a = admins.get(e); if (a) a.disabled = d; return null; },
     touchLogin: async () => {}, log: async (e, a) => { log.push([e, a]); }, actions: async () => log,
@@ -64,7 +64,7 @@ test('reads ask the database by name, with a bounded date range', async () => {
   assert.deepEqual(range({ days: 99999 }, w.clock.t).from, '2024-11-26', 'two years at most');
   await w.svc.read('ana@x.io', 'games', { days: 7 }); await w.svc.read('ana@x.io', 'players', { q: '0xAB', who: 'verified', limit: 5000 }); await w.svc.read('ana@x.io', 'feed', { kind: 'payout' });
   assert.deepEqual(w.calls[0], ['admin_games', { from_day: '2026-11-19', to_day: '2026-11-25' }]);
-  assert.deepEqual(w.calls[1], ['admin_players', { q: '0xAB', who: 'verified', lim: 300, off: 0 }]);
+  assert.deepEqual(w.calls[1], ['admin_players', { q: '0xAB', who: 'verified', sort: 'recent', lim: 300, off: 0 }]);
   assert.deepEqual(w.calls[2], ['admin_feed', { lim: 50, before: null, only_kind: 'payout' }]);
   assert.equal((await w.svc.read('ana@x.io', 'player', { wallet: 'x' })).status, 400); assert.equal((await w.svc.read('ana@x.io', 'nonsense', {})).status, 404);
 });
@@ -82,8 +82,11 @@ test('tracking keeps what is well formed, drops the rest, and cannot be flooded 
 test('the verification sweep records what the chain says, and a chain error is "unknown", never "not verified"', async () => {
   const w = world();
   const out = await w.svc.sweepVerification(async (wallet) => { if (wallet.endsWith('2')) throw new Error('rpc down'); return wallet.endsWith('1'); });
-  assert.deepEqual(out, { checked: 2, newly: 1 });
-  assert.deepEqual(w.calls.filter(([n]) => n === 'admin_set_verified').map(([, a]) => a.is_verified), [true, false]);
+  assert.deepEqual({ checked: out.checked, newly: out.newly, failed: out.failed }, { checked: 2, newly: 1, failed: 1 }); assert.match(out.error!, /rpc down/);
+  assert.deepEqual(w.calls.filter(([n]) => n === 'admin_set_identity').map(([, a]) => a.st), ['verified', 'none']);
+  // a full answer from the contract is stored as it is: lapsed is not the same as never
+  w.calls.length = 0; await w.svc.sweepVerification(async () => ({ verified: false, state: 'lapsed', self: false, authAt: 1_780_000_000, expiresAt: 1_780_259_200, probation: true }));
+  assert.deepEqual(w.calls.find(([n]) => n === 'admin_set_identity')![1], { w: '0x' + '1'.repeat(40), st: 'lapsed', is_self: false, via: null, added: null, authed: 1_780_000_000, expires: 1_780_259_200, on_probation: true });
 });
 
 import { createPurchaseIndexer, CONFIRMATIONS, MAX_SPAN, type Purchase } from './chain';
@@ -107,4 +110,12 @@ test('the purchase reader walks forward in ranges, stores each with its cursor, 
   assert.equal((await idx.run(10)).ranges, 0, 'nothing new: nothing read');
   cursor = 100; storeDown = true; const c = await idx.run(3);
   assert.equal(c.error, 'could_not_store'); assert.equal(cursor, 100, 'if the database refuses, the cursor stays put');
+});
+
+test('with no key for the locked tables, sign-in says so instead of "wrong password"', async () => {
+  const w = world(); w.add('boss@x.io', 'super_admin');
+  const store = { admin: async () => null, rpc: async () => ({ data: null, error: null }) } as unknown as AdminStore;
+  const svc = createAdmin({ store, canReadLocked: () => false });
+  assert.deepEqual(await svc.login({ email: 'boss@x.io', password: 'correct horse battery' }), { status: 503, body: { error: 'server_key_missing' } });
+  assert.equal((await svc.read('boss@x.io', 'overview', {})).body.error, 'server_key_missing');
 });

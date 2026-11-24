@@ -138,6 +138,7 @@ A first useful dashboard (overview, users, players, games, activity feed, with h
 
 ### 6.1 Turning it on
 
+0. Give the backend the service-role key: on Railway set `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API → `service_role`). The backend's ordinary key is the low-privilege `anon` key, and every table here is locked against it. Without the service key, sign-in answers `server_key_missing`. (Found the hard way on 25 November: the first sign-in failed as "wrong password" because the admin row could not be read.)
 1. Run the migration in the Supabase SQL editor.
 2. Run `select admin_backfill();` once. It rebuilds every past day from the runs already recorded.
 3. Insert the first Super Admin (the hash is made with `hashPassword` from the backend build; it is never committed).
@@ -176,4 +177,32 @@ What players spend, what GameArena keeps, and what goes back out.
 - **Page.** `/admin/money`: kept, spent, sent to UBI, prizes paid, kept minus prizes, per day, by item, biggest spenders, latest purchases with their transactions.
 
 Not counted yet: the fee on friend-room entries, the gas the server pays for players, prizes paid in USDC, and income outside these two contracts.
+
+## 8. The chain is the truth (25 November, second pass)
+
+The first real look at the dashboard showed 445 registered users and 23,107 games, against 974 players and about 64,000 games on the home screen. Both were right about different things: the dashboard counted two database tables that hold only part of the history (player rows, and run tickets, which did not exist in the first months), while the home screen counted the chain.
+
+- **No subgraph.** The backend reads the GamePass contract's own events (`PassMinted`, `UsernameChanged`, `ScoreRecorded`) straight from Celo and copies them into `chain_mints` and `chain_scores`. The dashboard reads only the database. Job `chainGamePass`, 40 ranges of 5,000 blocks a minute from block 63,507,400; first catch-up about an hour and a half. Celo adds exactly one second per block, so each event's time is worked out, not fetched.
+- **What changed.** Registered = GamePass mints. Games played = recorded scores. A player is first seen at their mint, first score or first run ticket. Usernames come from the mint, so every list is by name. Run tickets are still used for the one thing only they know: runs started and abandoned.
+- **While history is arriving,** past days are rebuilt every ten minutes; after that, hourly for today and yesterday.
+- **Who is new** is a list: name, joined, first game, games since, came back or not, verified or not.
+
+### 8.1 Verification, four states
+
+Method taken from the GoodDrops dapp's identity module and written for our backend. The GoodDollar Identity contract is read per wallet (`isWhitelisted`, `getWhitelistedRoot`, `connectedAccounts`, `identities`) and each wallet is stored as one of:
+
+| State | Meaning |
+|---|---|
+| verified | whitelisted now, by itself or through a linked wallet |
+| lapsed | passed the face check, and the window (3 days, then 180, repeating) ran out |
+| none | no face check on record |
+| blacklisted | |
+
+Also stored: last face check, valid until, whether it is on the 3-day window, and the root wallet when verified through a link. The payout gate is unchanged and stricter: it pays only a wallet that is itself whitelisted.
+
+### 8.2 The look
+
+Sidebar grouped into Growth, Money and Records. Headline cards with a trend line and the change against the period before. Charts with axes and a hover read-out, drawn in SVG with no library (`frontend/components/admin/charts.tsx`). A growth curve, games per day by game, share of play, a visit-to-player funnel, a six-month activity calendar and a weekly retention grid.
+
+Migration for all of section 8: `games-backend/supabase-migrations/2026-11-25b_admin_chain_truth.sql`, run after the first one.
 

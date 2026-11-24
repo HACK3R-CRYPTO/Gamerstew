@@ -32,6 +32,7 @@ export const SETTINGS: Record<string, Setting> = {
   // ── data ──
   SUPABASE_URL: s('Data', 'url', 'Supabase project URL.', { required: true }),
   SUPABASE_ANON_KEY: s('Data', 'string', 'Supabase API key.', { secret: true, required: true }),
+  SUPABASE_SERVICE_ROLE_KEY: s('Data', 'string', 'Supabase service-role key. Needed for the tables locked by row level security: the admin dashboard, payouts, purchases, daily metrics, friend rooms. Server only; never give it to a browser.', { secret: true }),
   SUBGRAPH_URL: s('Data', 'url', 'Goldsky subgraph endpoint. Defaults to the public one.'),
 
   // ── chain ──
@@ -47,6 +48,7 @@ export const SETTINGS: Record<string, Setting> = {
   DUEL_ESCROW_ADDRESS: s('Chain', 'address', 'DuelEscrow contract. Unset turns duel rooms off.'),
   PERK_SHOP_ADDRESS: s('Chain', 'address', 'PerkShop contract.', { default: '0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5' }),
   CHAIN_INDEX: s('Chain', 'bool', 'Read every purchase from the PerkShop and HabitatRegistry events into the purchases table, for the admin dashboard. On unless set to "false".', { default: 'true' }),
+  GAMEPASS_INDEX_START: s('Chain', 'int', 'The block the GamePass reader starts from the first time: the block the GamePass contract was deployed in.', { default: '63507400' }),
   CHAIN_INDEX_START: s('Chain', 'int', 'The block the purchase reader starts from the first time: the block the HabitatRegistry was deployed in.', { default: '65552895' }),
   G_TOKEN_ADDR: s('Chain', 'address', 'G$ token contract.', { default: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' }),
   SIGNER_MIN_CELO: s('Chain', 'number', 'Warn when the signer holds less CELO than this.', { default: '5' }),
