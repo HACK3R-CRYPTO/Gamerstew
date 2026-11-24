@@ -22,6 +22,7 @@ interface GameCard { id: string; title: string; tag: Tag; line: string; cover: s
 
 export const HOME_GAMES: GameCard[] = [
   { id: "stack", title: "Stack Tower", tag: "skill", line: "Drop the block. Stack it clean.", cover: "/games/covers/stack.jpg", focus: "50% 60%", href: "/games/stack?play=1", accent: "#fb923c" },
+  { id: "ladder", title: "Word Ladder", tag: "skill", line: "Change one letter. Reach the word.", cover: "/games/covers/ladder.svg", focus: "50% 20%", href: "/games/ladder", accent: "#4ade80" },
   { id: "streetstrike", title: "Street Strike", tag: "3d", line: "Roll the tyre. Scatter the bottles.", cover: "/games/covers/streetstrike.jpg", focus: "50% 55%", href: "/bowling", accent: "#c084fc" },
   { id: "simon", title: "Simon Memory", tag: "skill", line: "Watch. Remember. Repeat.", cover: "/games/covers/simon.jpg", focus: "50% 45%", href: "/games/simon?play=1", accent: "#22d3ee" },
   { id: "upnepa3d", title: "UP NEPA 3D", tag: "3d", line: "Bring the light back to the street.", cover: "/games/covers/upnepa3d.jpg", focus: "58% 45%", href: "/world", accent: "#fbbf24" },
@@ -139,7 +140,7 @@ export default function HomeGames({ weekly, display }: { weekly: WeeklyStrip | n
 
         .ga-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .ga-card { position: relative; overflow: hidden; aspect-ratio: 1 / 1.08; padding: 0; border-radius: 24px; cursor: pointer; text-align: left; background: #1c0b45; border: none; box-shadow: 0 18px 34px -24px rgba(76,29,149,0.9); transition: transform .2s cubic-bezier(.2,.9,.3,1.3), box-shadow .22s ease; animation: gaIn .5s cubic-bezier(.2,.8,.2,1) both; }
-        .ga-card:nth-child(2) { animation-delay: .05s; } .ga-card:nth-child(3) { animation-delay: .1s; } .ga-card:nth-child(4) { animation-delay: .15s; } .ga-card:nth-child(5) { animation-delay: .2s; } .ga-card:nth-child(6) { animation-delay: .25s; }
+        .ga-card:nth-child(2) { animation-delay: .05s; } .ga-card:nth-child(3) { animation-delay: .1s; } .ga-card:nth-child(4) { animation-delay: .15s; } .ga-card:nth-child(5) { animation-delay: .2s; } .ga-card:nth-child(6) { animation-delay: .25s; } .ga-card:nth-child(7) { animation-delay: .3s; }
         @keyframes gaIn { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
         .ga-card:hover { transform: translateY(-5px); box-shadow: 0 28px 44px -24px rgba(76,29,149,1); }
         .ga-card:active { transform: scale(0.96); }

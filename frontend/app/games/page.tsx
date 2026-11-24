@@ -160,14 +160,16 @@ const GAMES = [
     href: "/games/challenge-ai",
   },
   {
-    // NEPA: Up Light — charge devices before NEPA takes the light. Inline-SVG
+    // Word Ladder took this slot from NEPA: Up Light (2D), which UP NEPA 3D
+    // replaced. The old page still exists at /games/nepa but is not linked.
+    // Old note: NEPA: Up Light — charge devices before NEPA takes the light. Inline-SVG
     // card art (no PNG asset needed): a glossy socket strip with a lit bulb,
     // neon purple/gold to match the lobby.
-    id: "nepa",
-    cover: "/games/covers/nepa.jpg",
-    focus: "60% 30%",
-    title: "NEPA: Up Light",
-    subtitle: "Charge fast · beat the blackout",
+    id: "ladder",
+    cover: "/games/covers/ladder.svg",
+    focus: "50% 20%",
+    title: "Word Ladder",
+    subtitle: "Change one letter · reach the word",
     art: (
       <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ filter: "drop-shadow(0 6px 16px rgba(0,0,0,0.7))" }}>
         {/* glow halo */}
@@ -198,7 +200,7 @@ const GAMES = [
     glow: "#b45309",
     active: true,
     isNew: true,
-    href: "/games/nepa",
+    href: "/games/ladder",
   },
   {
     id: "coming-soon",
