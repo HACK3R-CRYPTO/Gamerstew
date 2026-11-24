@@ -25,6 +25,7 @@ import { PUZZLES, VALID } from "./data";
 import { useRankedRun } from "@/hooks/useRankedRun";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
+import TxStatus from "@/components/TxStatus";
 import { playLadderKey, playLadderStep, playLadderWrong, playLadderUndo, playLadderHint, playLadderSolved, playWhooshIn, playWhooshOut, sfxLevel } from "@/hooks/useAppAudio";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 
@@ -417,8 +418,8 @@ export default function WordLadderPage() {
               {ranked.status === "wallet" && "Confirm in your wallet to save…"}
               {ranked.status === "saving" && "Saving to the leaderboard…"}
               {ranked.status === "saved" && <>
-                <b>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}</b>
-                {ranked.result?.txHash && <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer">View transaction</a>}
+                <b>{ranked.result?.queued ? "Saved · waiting to be sent" : "Saved"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}</b>
+                {ranked.result?.txHash && <TxStatus hash={ranked.result.txHash} compact />}
                 {ranked.error && <span>{ranked.error}</span>}
               </>}
               {ranked.status === "error" && <b>{ranked.error}</b>}

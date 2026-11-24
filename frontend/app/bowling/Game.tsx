@@ -18,6 +18,7 @@
 // and curve the swipe to hook.
 
 import { toast } from "@/lib/toast";
+import TxStatus from "@/components/TxStatus";
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -1807,7 +1808,7 @@ export default function Game() {
                   : ranked.status === "checking" ? "Checking your throws…"
                   : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                   : ranked.status === "saving" ? "Saving to the leaderboard…"
-                  : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#22104f" }}>view</a></> : null}</>
+                  : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · waiting to be sent" : "Saved"}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <div style={{ marginTop: 4, display: "flex", justifyContent: "center" }}><TxStatus hash={ranked.result.txHash} compact /></div> : null}</>
                   : ranked.status === "error" ? ranked.error : null}
               </div>
             )}

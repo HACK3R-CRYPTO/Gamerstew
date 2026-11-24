@@ -896,6 +896,7 @@ export default function RhythmGamePage() {
   // encore tiles into misses and re-trigger the prompt instantly).
   const savePausedAtRef = useRef(0);
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -1402,6 +1403,7 @@ export default function RhythmGamePage() {
             isNewPb: result.isNewPb,
             prevBest: result.prevBest,
             newAchievements: result.newAchievements || [],
+            txHash, // so the result screen can show whether the chain confirmed it
           });
           // Trigger the full-screen LEVEL UP celebration immediately
           // when the result lands. Slight delay so the finished-card

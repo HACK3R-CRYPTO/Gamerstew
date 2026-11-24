@@ -28,6 +28,7 @@ import { recordHigh, type High } from "./highscore";
 import { useFx } from "./fx";
 import { useShout } from "./shout";
 import ModeSelect from "./ModeSelect";
+import TxStatus from "@/components/TxStatus";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsPlay from "@/components/FriendsPlay";
 
@@ -1236,7 +1237,7 @@ export default function World() {
                 : ranked.status === "checking" ? "Checking your run…"
                 : ranked.status === "wallet" ? "Confirm in your wallet to save…"
                 : ranked.status === "saving" ? "Saving to the leaderboard…"
-                : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · confirming on-chain" : "Saved on-chain"}{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#22104f" }}>view</a></> : null}</>
+                : ranked.status === "saved" ? <>{ranked.result?.queued ? "Saved · waiting to be sent" : "Saved"}{ranked.result ? ` · ${ranked.result.score} pts` : ""}{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.txHash ? <div style={{ marginTop: 4, display: "flex", justifyContent: "center" }}><TxStatus hash={ranked.result.txHash} compact /></div> : null}</>
                 : ranked.status === "error" ? ranked.error : null}
               {" "}<a href="/world/leaderboard" style={{ color: "#22104f" }}>Leaderboard</a>
             </div>

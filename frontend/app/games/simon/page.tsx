@@ -444,6 +444,7 @@ export default function SimonGamePage() {
   // Lives in a ref (not localStorage) so it dies with the component.
   const sessionTokenRef = useRef<string | null>(null);
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -764,6 +765,7 @@ export default function SimonGamePage() {
           isNewPb: result.isNewPb,
           prevBest: result.prevBest,
           newAchievements: result.newAchievements || [],
+          txHash, // so the result screen can show whether the chain confirmed it
         });
         // Staged celebrations — LEVEL UP first, pet evolution queued
         // after if the new level crossed a pet-stage boundary.

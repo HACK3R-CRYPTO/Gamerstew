@@ -219,6 +219,7 @@ export default function StackTowerPage() {
   // (gameType=2). Guests keep the local-best fallback above so the practice
   // loop still feels rewarding before they sign in.
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -892,6 +893,7 @@ export default function StackTowerPage() {
             isNewPb: result.isNewPb,
             prevBest: result.prevBest,
             newAchievements: result.newAchievements || [],
+            txHash, // so the result screen can show whether the chain confirmed it
           });
           if (result.leveledUp && typeof result.level === "number") {
             const newLv = result.level;

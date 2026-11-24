@@ -33,7 +33,7 @@ export default function DevPreview() {
           status={show === "mint" ? <MintScorePrompt score={1240} /> : (
             <RunSaveStatus
               submitting={false} signingOnChain={show === "signing"} score={1240}
-              result={show === "saved" ? { rank: 4, xpEarned: 35, level: 12, leveledUp: true, isNewPb: true, prevBest: 1060, newAchievements: ["first_win", { id: "x", name: "Sharp Memory", icon: "🧠" }] } : null}
+              result={show === "saved" ? { txHash: "0x15337dfc983975b1f3a0769b2b6af5905677973395f783bb4e2ae63f15b621e7", rank: 4, xpEarned: 35, level: 12, leveledUp: true, isNewPb: true, prevBest: 1060, newAchievements: ["first_win", { id: "x", name: "Sharp Memory", icon: "🧠" }] } : null}
               error={null} txError={show === "topup" ? "Not enough CELO. Top up to save." : show === "failed" ? "The wallet rejected the request." : null}
             />
           )}

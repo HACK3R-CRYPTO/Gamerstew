@@ -10,10 +10,13 @@ import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { playRankReveal, playSaveSuccess, playLevelUp, playAchievementChime } from "@/hooks/useAppAudio";
 import { hydrateAchievement } from "@/lib/achievements";
+import TxStatus from "@/components/TxStatus";
 
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
 
 export interface RunSaved {
+  /** the transaction that recorded this score, when there is one */
+  txHash?: string | null;
   rank?: number; xpEarned?: number; xp?: number; level?: number; leveledUp?: boolean; isNewPb?: boolean; prevBest?: number;
   newAchievements?: (string | { id?: string; name?: string; icon?: string; desc?: string })[];
 }
@@ -86,7 +89,7 @@ function NeedsTopUp({ onTopUp }: { onTopUp?: () => void }) {
 }
 
 function Saved({ result, score }: { result: RunSaved; score: number }) {
-  const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
+  const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [], txHash } = result;
   // each sound lands by itself: rank, then best, then level, then achievement
   useEffect(() => { if (rank) playRankReveal(); }, [rank]);
   useEffect(() => { if (isNewPb) { const t = setTimeout(() => playSaveSuccess(), 250); return () => clearTimeout(t); } }, [isNewPb]);
@@ -95,7 +98,7 @@ function Saved({ result, score }: { result: RunSaved; score: number }) {
   const beat = isNewPb && typeof prevBest === "number" && prevBest > 0;
   return (
     <>
-      <div className="rs-card good"><em>Saved</em><b>Your score is on the board.</b></div>
+      <div className="rs-card good"><em>Saved</em><b>Your score is on the board.</b>{txHash && <div style={{ marginTop: 5 }}><TxStatus hash={txHash} /></div>}</div>
       {(rank || typeof xpEarned === "number") && (
         <div className="rs-two">
           {rank ? <div className="rs-tile"><span>Rank this week</span><b style={{ color: "#92400e" }}>#{rank}</b></div> : <div />}
