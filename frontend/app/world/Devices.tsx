@@ -15,7 +15,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { worldControls } from "./controls";
-import { DEVICES, STATION, SOCKET_COUNT, live, hands, naira, rush, type DeviceDef } from "./game";
+import { DEVICES, STATION, SOCKET_COUNT, live, hands, naira, rush, perks, type DeviceDef } from "./game";
 import { GA } from "./theme";
 import { quality } from "./quality";
 
@@ -397,7 +397,7 @@ function Station() {
 
 export default function Devices() {
   // local development only: lets a test stage a carried or plugged-in device
-  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") (window as unknown as { __charge?: unknown }).__charge = { live, hands, worldControls, DEVICES };
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") (window as unknown as { __charge?: unknown }).__charge = { live, hands, worldControls, DEVICES, perks, rush };
   return (
     <>
       <Station />
