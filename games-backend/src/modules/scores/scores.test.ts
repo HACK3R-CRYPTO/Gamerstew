@@ -18,7 +18,7 @@ function world(over: { session?: Partial<SessionRow> | null; elapsedMs?: number;
   const session: SessionRow | null = over.session === null ? null : { token: 'tok', wallet: P.toLowerCase(), game: 'rhythm', used: false, started_at: new Date(T0).toISOString(), ...over.session };
   let fails = over.submitFails ?? 0;
   const deps: ScoreDeps = {
-    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4 },
+    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5 },
     now: () => T0 + (over.elapsedMs ?? 60_000),
     randomHex: (n) => 'ab'.repeat(n),
     logger: { log: (m) => calls.logs.push(m), warn: (m) => calls.logs.push(m), error: (m) => calls.logs.push(m) },
@@ -337,4 +337,67 @@ test('adapters: the chain is read at request time and the score is signed as a B
   assert.strictEqual(await chain.signVoucher(P, 2, 1200, nonce), '0xsig');
   assert.deepStrictEqual(signed, [[{ name: 'GamePass' }, { BackendApproval: [] }, { player: P, gameType: 2, score: 1200n, nonce: 9n }]]);
   assert.deepStrictEqual(await chain.submitScore(P, 2, 1200), { hash: '0xtx' });
+});
+
+// ── Word Ladder: the only game besides rhythm whose score the server works out itself ──
+import * as ladderRules from '../ladder/rules';
+import { VALID as LADDER_VALID } from '../ladder/data';
+const LW = new Set(LADDER_VALID.split(' '));
+function ladderRoute(a: string, z: string): string[] {
+  const prev = new Map<string, string | null>([[a, null]]); const q = [a];
+  for (let h = 0; h < q.length; h++) { const w = q[h]!; if (w === z) break; for (let i = 0; i < 4; i++) for (let c = 97; c < 123; c++) { const x = w.slice(0, i) + String.fromCharCode(c) + w.slice(i + 1); if (!prev.has(x) && LW.has(x)) { prev.set(x, w); q.push(x); } } }
+  const out: string[] = []; for (let w: string | null | undefined = z; w && w !== a; w = prev.get(w)) out.unshift(w); return out;
+}
+const ladderRuns = (token: string) => ladderRules.deal(token).map(([s, t]) => { const words = ladderRoute(s, t); return { words, ms: words.length * 3_000, hints: 0 }; });
+
+test('ladder: start-game deals five ladders from the ticket and stores no seed', async () => {
+  const w = world();
+  const r = await w.svc.startGame({ wallet: P, game: 'ladder' });
+  assert.strictEqual(r.status, 200);
+  const token = r.body.sessionToken as string;
+  assert.deepStrictEqual(r.body.ladders, ladderRules.deal(token));
+  assert.strictEqual((r.body.ladders as unknown[]).length, 5);
+  assert.deepStrictEqual(w.calls.created, [{ token, wallet: P.toLowerCase(), game: 'ladder' }]);
+});
+
+test('ladder: the signed score is the server replay, whatever number the client sends', async () => {
+  const runs = ladderRuns('tok');
+  const w = world({ session: { game: 'ladder' }, elapsedMs: 60_000, gasless: true });
+  const r = await w.svc.signScore({ playerAddress: P, game: 'ladder', sessionToken: 'tok', score: 999_999, ladderRuns: runs });
+  assert.strictEqual(r.status, 200);
+  const expected = ladderRules.verify(ladderRules.deal('tok'), runs, 60_000);
+  assert.ok(expected.ok && expected.total > 0 && expected.total <= 1000);
+  assert.strictEqual(r.body.score, expected.ok ? expected.total : -1);
+  assert.strictEqual(r.body.gameType, 5);
+  assert.deepStrictEqual(w.calls.submitted, [{ player: P, gameType: 5, score: expected.ok ? expected.total : -1 }]);
+});
+
+test('ladder: a bad route, missing words, or words for another ticket are refused and nothing is spent', async () => {
+  const good = ladderRuns('tok');
+  const cases: unknown[] = [
+    undefined,                                             // no words sent at all
+    good.slice(0, 4),                                      // one ladder missing
+    good.map((r, i) => (i === 0 ? { ...r, words: ['zzzz'] } : r)), // not a word
+    ladderRuns('another-ticket'),                          // a valid round, but not the one dealt for this ticket
+  ];
+  for (const ladderRunsBody of cases) {
+    const w = world({ session: { game: 'ladder' }, elapsedMs: 60_000, gasless: true });
+    const r = await w.svc.signScore({ playerAddress: P, game: 'ladder', sessionToken: 'tok', score: 1000, ladderRuns: ladderRunsBody });
+    assert.strictEqual(r.status, 403);
+    assert.strictEqual(r.body.error, 'Ladder check failed');
+    assert.deepStrictEqual(w.calls.order, [], 'nothing marked used, nothing sent on-chain');
+  }
+});
+
+test('ladder: times that add up to more than the session lasted are refused', async () => {
+  const runs = ladderRuns('tok').map((r) => ({ ...r, ms: 30_000 })); // claims 150 s
+  const w = world({ session: { game: 'ladder' }, elapsedMs: 60_000 });
+  const r = await w.svc.signScore({ playerAddress: P, game: 'ladder', sessionToken: 'tok', score: 1, ladderRuns: runs });
+  assert.strictEqual(r.status, 403);
+});
+
+test('ladder: season points use the ladder scale', () => {
+  assert.strictEqual(seasonPoints('ladder', 1000, 60_000), 14);
+  assert.strictEqual(seasonPoints('ladder', 400, 60_000), 5);
+  assert.strictEqual(seasonPoints('ladder', 60, 60_000), 0);
 });

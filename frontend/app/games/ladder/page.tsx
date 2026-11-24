@@ -12,13 +12,16 @@
 // How you play: tap the letter you want to change, then tap its replacement on
 // the keyboard. Letters already in the right place for the target turn green.
 //
-// Nothing here talks to the backend yet: scores are kept on the device. A round
-// is a list of words, which a server can replay and check exactly, so this game
-// is a good fit for a ranked board later.
+// Ranked rounds: a signed-in player's ladders are dealt by the server, and at
+// the end the words go back to it. The server replays them, works out the score
+// itself and records it on-chain (hooks/useRankedRun.ts). Guests and the daily
+// ladder are played on the device only.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PUZZLES, VALID } from "./data";
+import { useRankedRun } from "@/hooks/useRankedRun";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const ROUND = 5;
@@ -63,21 +66,27 @@ function dealDaily(): [string, string, number][] {
 }
 
 // one good next word from `from` toward `to` (shortest route through accepted words)
+// Real words the game accepts if typed, but must never put in front of a player
+// as a hint.
+const NO_HINT = new Set("anal anus arse butt cock coon cunt damn dick dyke fags fuck gook hell homo jerk jism kike kill knob lust mick nazi piss poop porn pube rape scum sexy shag shit slag slut smut spic suck tits turd twat wank whop dead dies died gore guns hate hung drug pimp boob dong fart puke crap bong weed cums dago wops jews japs gyps dike fags abos".split(" "));
 function nextStep(from: string, to: string): string | null {
+  return routeStep(from, to, true); // no clean route means no hint, never a rude one
+}
+function routeStep(from: string, to: string, clean: boolean): string | null {
   if (from === to) return null;
   const prev = new Map<string, string>([[to, ""]]); const q = [to];
   for (let h = 0; h < q.length; h++) {
     const w = q[h];
     for (let i = 0; i < 4; i++) for (let c = 97; c < 123; c++) {
       const x = w.slice(0, i) + String.fromCharCode(c) + w.slice(i + 1);
-      if (x === w || prev.has(x) || !WORDS.has(x)) continue;
+      if (x === w || prev.has(x) || !WORDS.has(x) || (clean && x !== from && NO_HINT.has(x))) continue;
       prev.set(x, w); if (x === from) return w; q.push(x);
     }
   }
   return null;
 }
 
-interface Result { start: string; target: string; par: number; steps: number; seconds: number; hints: number; skipped: boolean; points: number }
+interface Result { start: string; target: string; par: number; steps: number; seconds: number; hints: number; skipped: boolean; points: number; words: string[]; ms: number }
 function pointsFor(par: number, steps: number, seconds: number, hints: number) {
   const route = steps <= par ? 50 : Math.max(0, 50 - (steps - par) * 10);
   const speed = Math.max(0, 50 - Math.floor(seconds / 2));
@@ -86,6 +95,9 @@ function pointsFor(par: number, steps: number, seconds: number, hints: number) {
 
 export default function WordLadderPage() {
   const router = useRouter();
+  const ranked = useRankedRun("ladder");
+  const [isRanked, setIsRanked] = useState(false); // this round has a server ticket
+  const [opening, setOpening] = useState(false);
   const [phase, setPhase] = useState<"start" | "play" | "done">("start");
   const [set, setSet] = useState<[string, string, number][]>([]);
   const [daily, setDaily] = useState(false);
@@ -122,8 +134,18 @@ export default function WordLadderPage() {
     setSel(Math.max(0, [0, 1, 2, 3].findIndex((k) => s[k] !== t[k])));
     t0.current = Date.now(); setSecs(0);
   }, []);
-  const begin = (isDaily = false) => {
-    const list = isDaily ? dealDaily() : deal();
+  const begin = async (isDaily = false) => {
+    if (opening) return;
+    let list = isDaily ? dealDaily() : null; let rankedRound = false;
+    if (!isDaily && ranked.canRank) {
+      // the server deals a ranked round; if it cannot be reached, play unranked
+      setOpening(true);
+      const opened = await ranked.start().catch(() => null);
+      setOpening(false);
+      if (opened?.success && opened.ladders?.length === ROUND) { list = opened.ladders; rankedRound = true; }
+    }
+    if (!list) list = deal();
+    setIsRanked(rankedRound);
     setDaily(isDaily); setSet(list); setResults([]); setPhase("play"); openPuzzle(list, 0);
   };
 
@@ -136,8 +158,8 @@ export default function WordLadderPage() {
 
   const say = (text: string) => setMsg({ text, key: Date.now() });
   const finishPuzzle = (steps: number, skipped: boolean) => {
-    const seconds = Math.floor((Date.now() - t0.current) / 1000);
-    const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints) };
+    const ms = Date.now() - t0.current; const seconds = Math.floor(ms / 1000);
+    const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints), words: skipped ? rungs : [...rungs.slice(0, steps - 1), target].slice(0, steps), ms };
     const all = [...results, r]; setResults(all); setSolved(true);
     setTimeout(() => {
       if (ix + 1 < ROUND) openPuzzle(set, ix + 1);
@@ -146,6 +168,10 @@ export default function WordLadderPage() {
         if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
         if (daily && dailyDone === null) { setDailyDone(total); try { localStorage.setItem(DAILY_KEY, JSON.stringify({ day: todayKey(), score: total })); } catch { /* ignore */ } }
         setPhase("done");
+        // dev only: hands the finished round to an automated test, which checks it
+        // against the server's rules
+        if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
+        if (isRanked) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof: { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) } });
       }
     }, skipped ? 500 : 1300);
   };
@@ -234,7 +260,8 @@ export default function WordLadderPage() {
           </div>
           <h1 style={{ fontFamily: DISPLAY }}>Turn one word<br />into another</h1>
           <p>Change <b>one letter</b> at a time. Every step has to be a real word.</p>
-          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play</button>
+          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)} disabled={opening}>{opening ? "Dealing…" : "Play"}</button>
+          <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
           {dailyDone === null ? (
             <button className="wl-daily" onClick={() => begin(true)}>
               <b>Daily ladder</b><span>Same five for everyone today. One try.</span>
@@ -299,6 +326,20 @@ export default function WordLadderPage() {
           <div className="wl-kicker">{daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
           <h1 style={{ fontFamily: DISPLAY }}>{total} <small>points</small></h1>
           {total >= best && total > 0 && <div className="wl-new">New best</div>}
+          {isRanked && (
+            <div className={`wl-save ${ranked.status}`} role="status">
+              {ranked.status === "checking" && "Checking your words…"}
+              {ranked.status === "wallet" && "Confirm in your wallet to save…"}
+              {ranked.status === "saving" && "Saving to the leaderboard…"}
+              {ranked.status === "saved" && <>
+                <b>Saved on-chain{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}</b>
+                {ranked.result?.txHash && <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer">View transaction</a>}
+                {ranked.error && <span>{ranked.error}</span>}
+              </>}
+              {ranked.status === "error" && <b>{ranked.error}</b>}
+            </div>
+          )}
+          {!isRanked && !daily && !ranked.canRank && <div className="wl-save guest">This score is on your device only. <Link href="/home?signin=1">Sign in</Link> to rank the next one.</div>}
           <ul>
             {results.map((r, i) => (
               <li key={i}>
@@ -360,6 +401,13 @@ export default function WordLadderPage() {
         .wl-daily { width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-radius: 18px; border: 1.5px dashed rgba(109,40,217,0.45); background: rgba(255,255,255,0.7); text-align: left; }
         .wl-daily b { font-size: 15px; color: var(--brand); } .wl-daily span { font-size: 12.5px; font-weight: 600; color: var(--dim); }
         .wl-daily.done { border-style: solid; border-color: rgba(22,163,74,0.5); } .wl-daily.done b { color: #15803d; }
+        .wl-rankline { font-size: 12.5px; font-weight: 600; color: var(--dim); line-height: 1.4; }
+        .wl a { color: var(--brand); font-weight: 800; }
+        .wl-save { display: flex; flex-direction: column; gap: 3px; align-items: center; padding: 10px 14px; border-radius: 16px; background: rgba(255,255,255,0.75); border: 1px solid var(--line); font-size: 13px; font-weight: 700; color: var(--dim); }
+        .wl-save.saved { border-color: rgba(22,163,74,0.5); } .wl-save.saved b { color: #15803d; }
+        .wl-save.error { border-color: rgba(190,18,60,0.4); } .wl-save.error b { color: #be123c; }
+        .wl-save span { font-weight: 600; font-size: 12px; }
+        .wl-primary:disabled { opacity: 0.7; }
         .wl-facts, .wl-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .wl-facts span, .wl-stats span { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 4px; border-radius: 16px; background: rgba(255,255,255,0.7); border: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--dim); }
         .wl-facts b, .wl-stats b { font-size: 19px; color: #22104f; font-variant-numeric: tabular-nums; letter-spacing: 0; }

@@ -81,7 +81,7 @@ async function internalFetch(path: string, body: unknown) {
 
 // Game type IDs · mirror games-backend/server.js GAME_TYPE map and the
 // uint8 gameType the GamePass contract emits. Stack Tower = 2.
-export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa';
+export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa' | 'ladder';
 export type ScoreData = {
   game:     GameId;
   score:    number;
@@ -438,4 +438,58 @@ export async function submitScoreMiniPay(
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
+}
+
+
+// ═══ Generic ranked run ══════════════════════════════════════════════════════
+// One pair of actions any game can use (see hooks/useRankedRun.ts), in place of
+// adding another positional argument to signScore for every new game.
+//
+// `accessToken` is the Privy token. MiniPay has no Privy session and cannot
+// sign messages, so it passes null and is checked by address shape only, the
+// same rule the *MiniPay actions above follow.
+async function allowed(accessToken: string | null, playerAddress: string): Promise<boolean> {
+  if (accessToken) return verifyUser(accessToken, playerAddress);
+  return /^0x[a-fA-F0-9]{40}$/.test(playerAddress);
+}
+
+export type StartRunResult =
+  | { success: true; sessionToken: string; seed?: string; ladders?: [string, string, number][] }
+  | { success: false; error: string };
+
+/** Open a run. The reply carries whatever the game needs dealt by the server. */
+export async function startRun(accessToken: string | null, playerAddress: string, game: GameId): Promise<StartRunResult> {
+  if (!await allowed(accessToken, playerAddress)) return { success: false, error: 'Unauthorized' };
+  try {
+    const { ok, data } = await internalFetch('/api/start-game', { wallet: playerAddress, game });
+    if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed, ladders: data.ladders };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+/** Ask the server to check and approve a run. `proof` is the game's own record
+ *  of what the player did (e.g. `{ ladderRuns }`); the server scores from it. */
+export async function signRun(
+  accessToken: string | null,
+  playerAddress: string,
+  run: { game: GameId; score: number; sessionToken: string; proof?: Record<string, unknown> },
+): Promise<SignScoreResult> {
+  if (!await allowed(accessToken, playerAddress)) return { success: false, error: 'Unauthorized' };
+  try {
+    const { ok, data } = await internalFetch('/api/sign-score', { ...(run.proof ?? {}), playerAddress, game: run.game, score: run.score, sessionToken: run.sessionToken });
+    if (!ok) return { success: false, error: data?.reason || data?.error || 'Sign failed' };
+    const score = typeof data.score === 'number' ? data.score : run.score;
+    if (data.gasless) return { success: true, gasless: true, txHash: data.txHash, gameType: data.gameType, score };
+    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType, score };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+/** Save the finished run to the leaderboard and progression (XP, missions, achievements). */
+export async function saveRun(accessToken: string | null, playerAddress: string, scoreData: ScoreData): Promise<SubmitScoreResult> {
+  if (accessToken) return submitScore(accessToken, playerAddress, scoreData);
+  return submitScoreMiniPay(playerAddress, '', '', scoreData);
 }

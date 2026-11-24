@@ -187,7 +187,7 @@ test('badges, achievements list, missions today, notifications', async () => {
   const badge = (badge: string, game: string, season_number: number) => ({ badge, game, season_number, created_at: '2026-11-01T00:00:00.400Z' });
   const p = createProgression({ store: world().store, badges: async () => [badge('gold', 'rhythm', 1), badge('gold', 'rhythm', 2), badge('silver', 'simon', 2), badge('gold', 'stack', 1), badge('gold', 'stack', 2), badge('gold', 'stack', 3)], gamesPlayed: async () => 0, now: () => NOW });
   const b = (await p.routes.badges(W)).body as { badges: Record<string, unknown>[]; streaks: Record<string, number>; summary: Record<string, unknown> };
-  assert.deepStrictEqual(b.streaks, { rhythm: 2, simon: 0, stack: 3, nepa: 0 });
+  assert.deepStrictEqual(b.streaks, { rhythm: 2, simon: 0, stack: 3, nepa: 0, ladder: 0 });
   assert.deepStrictEqual(b.summary, { totalGold: 5, totalSilver: 1, totalBronze: 0, streakLabel: '2-WEEK CHAMPION' }); // the label reads rhythm and simon only, as before
   assert.deepStrictEqual(b.badges[2], { season: 2, game: 'simon', rank: 2, type: 'silver', awardedAt: Math.floor(Date.parse('2026-11-01T00:00:00.400Z') / 1000) });
   const a = (await world({ unlocked: ['games_5'] }).p.routes.achievements(W)).body as { total: number; unlockedCount: number; achievements: Record<string, unknown>[] };

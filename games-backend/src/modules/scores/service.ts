@@ -24,6 +24,7 @@ import { randomBytes } from 'crypto';
 import type { ScoreDeps } from './ports';
 import { checkSession, isClientScore, MAX_CLIENT_SCORE, NEPA_MAX_INPUTS, seasonPoints } from './rules';
 
+import * as ladder from '../ladder/rules';
 export interface Reply { status: number; body: Record<string, unknown> }
 const reply = (status: number, body: Record<string, unknown>): Reply => ({ status, body });
 // what the old handlers logged: the error's message, whatever was thrown
@@ -55,6 +56,9 @@ export function createScoreService(deps: ScoreDeps) {
       logger.error('start-game insert error:', stored.reason);
       return reply(500, { error: 'Failed to start session' });
     }
+    // Word Ladder: the server deals the five ladders from the ticket itself, so
+    // the player cannot pick easy ones and nothing extra has to be stored.
+    if (game === 'ladder') return reply(200, { success: true, sessionToken: token, ladders: ladder.deal(token) });
     return reply(200, seed ? { success: true, sessionToken: token, seed } : { success: true, sessionToken: token });
   }
 
@@ -96,6 +100,16 @@ export function createScoreService(deps: ScoreDeps) {
         return reply(403, { error: 'Jitter check failed', reason: jitter.reason });
       }
       serverScore = run.score;
+    } else if (game === 'ladder') {
+      // Fully replayed: the score is worked out here from the player's words.
+      // The number the client sent is ignored.
+      const run = ladder.verify(ladder.deal(sessionToken), body.ladderRuns, elapsedMs);
+      if (!run.ok) {
+        logger.warn(`[ladder] rejected ${playerAddress}: ${run.error}`);
+        return reply(403, { error: 'Ladder check failed', reason: run.error });
+      }
+      if (!run.human) logger.log(`[ladder] FLAG(${run.reasons.join('; ')}) player=${who} score=${run.total} elapsed=${elapsedMs}ms`);
+      serverScore = run.total;
     } else {
       // The client's claim, inside a sanity bound. Deliberately not tightened: a
       // lower ceiling cannot tell a cheat from a great run, so it would only
