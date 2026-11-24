@@ -66,6 +66,10 @@ export interface SubmitDeps {
   /** the legacy "silent session": who signed this payload, and who should have */
   recoverSigner(payload: string, signature: string): string;
   validatorAddress(): string;
+  /** Take the right to save this run, once. false = it is already saved. */
+  claimSave?(ticket: string): Promise<boolean>;
+  /** The save failed part-way: give the claim back. */
+  releaseSave?(ticket: string): Promise<void>;
   now?: () => number;
   logger?: { log(m: string): void; warn(m: string, ...e: unknown[]): void };
 }
@@ -158,6 +162,11 @@ export function createSubmitService(deps: SubmitDeps) {
     // Personal bests are per season, to match how scores are saved. An all-time
     // best would lock a player out of "New PB" for good after one great season.
     const lower = playerAddress.toLowerCase();
+    // One run is saved once. If the server already finished this run itself (the
+    // phone's call arrived late, or twice), say so and award nothing more.
+    const claimed = ticket && deps.claimSave ? await deps.claimSave(ticket).catch(() => true) : true;
+    if (!claimed) return reply(200, { success: true, already: true, score, rank: 0, txHash, streak, xpEarned: 0, leveledUp: false, isNewPb: false, newAchievements: [] });
+    try {
     const prevBest = await deps.bestThisSeason(lower, game, season);
     await deps.saveScore({ wallet_address: lower, game, score, game_time: gameTime, season_number: season, wagered: wagered || null, wager_id: wagerId || null, tx_hash: txHash });
     // so the rank shown on the results screen includes the score just saved
@@ -236,5 +245,10 @@ export function createSubmitService(deps: SubmitDeps) {
     logger.log(`✅ [${game}] ${lower.slice(0, 8)}... → ${score} pts (rank #${rank}) +${xpEarned} XP ${txHash ? `tx: ${txHash.slice(0, 10)}...` : ''}`);
 
     return reply(200, { success: true, score, rank, txHash, streak, xpEarned, xp: xpResult?.xp, level: xpResult?.level, leveledUp: !!xpResult?.leveledUp, isNewPb, prevBest, newAchievements });
+    } catch (e) {
+      // the save did not complete: hand the claim back so it can be finished later
+      if (ticket) await deps.releaseSave?.(ticket).catch(() => {});
+      throw e;
+    }
   };
 }

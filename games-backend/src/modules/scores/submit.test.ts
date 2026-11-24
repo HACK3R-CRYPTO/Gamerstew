@@ -322,3 +322,36 @@ test('a queued run saves without a transaction, and only when the ticket matches
   const bare = await mk(true).submit(body({ txHash: null }), true);
   assert.strictEqual(bare.status, 400); assert.strictEqual(asked.length, before);
 });
+
+test('a run is saved once: the second save for the same ticket awards nothing, and a failed save can be tried again', async () => {
+  // the claim store, as the database behaves: first taker wins
+  const taken = new Set<string>(); const released: string[] = [];
+  const mk = (over: Parameters<typeof world>[0] = {}) => { const w = world(over); w.deps.claimSave = async (t) => { if (taken.has(t)) return false; taken.add(t); return true; }; w.deps.releaseSave = async (t) => { taken.delete(t); released.push(t); }; return { ...w, submit: createSubmitService(w.deps) }; };
+  const b = body({ sessionToken: 'ticket-9' });
+
+  const first = mk();
+  const r1 = await first.submit(b, true);
+  assert.strictEqual(r1.status, 200); assert.ok((r1.body.xpEarned as number) > 0); assert.ok(first.order.includes('save'));
+
+  // the phone calls back late, or the job and the phone both try: nothing is awarded twice
+  const second = mk();
+  const r2 = await second.submit(b, true);
+  assert.strictEqual(r2.status, 200); assert.strictEqual(r2.body.already, true); assert.strictEqual(r2.body.xpEarned, 0);
+  assert.ok(!second.order.includes('save') && !second.order.includes('awardXp') && !second.order.includes('missions'), 'no second save, XP or mission progress');
+
+  // a save that fails part-way gives the claim back, so the job can finish it later
+  taken.clear();
+  const broken = mk(); broken.deps.saveScore = async () => { throw new Error('activity insert failed: down'); };
+  const failing = createSubmitService(broken.deps);
+  await assert.rejects(failing(b, true), /activity insert failed/);
+  assert.deepStrictEqual(released, ['ticket-9']); assert.ok(!taken.has('ticket-9'));
+  const retry = mk();
+  assert.strictEqual((await retry.submit(b, true)).status, 200); assert.ok(retry.order.includes('save'));
+
+  // a run with no ticket (an older client) saves as it always did
+  const old = mk();
+  assert.strictEqual((await old.submit(body(), true)).status, 200); assert.ok(old.order.includes('save'));
+  // and a claim store that cannot answer does not block a save
+  const down = world(); down.deps.claimSave = async () => { throw new Error('db down'); };
+  assert.strictEqual((await createSubmitService(down.deps)(b, true)).status, 200);
+});

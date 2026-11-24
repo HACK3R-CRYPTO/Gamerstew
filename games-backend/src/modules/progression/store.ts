@@ -99,16 +99,22 @@ export function supabaseProgression(db: SupabaseLike): ProgressionStore {
       const { data } = await db.from('scores').select('id, score').eq('wallet_address', wallet).eq('game', game).order('score', { ascending: false }).limit(1);
       return data && data.length > 0 ? (data[0] as { id: unknown; score: number }) : null;
     },
+    // A write that fails must be HEARD: these three used to fail in silence, which
+    // is how a run could reach the chain and leave no row here. They still do not
+    // stop the save (the player keeps their XP and missions); they say so loudly.
     async insertScore(entry) {
-      await db.from('scores').insert(entry);
+      const { error } = await db.from('scores').insert(entry);
+      if (error) console.error(`🚨 scores insert FAILED · ${entry.game} · ${String(entry.wallet_address).slice(0, 10)}… · ${error.message ?? 'unknown'}`);
     },
     // Only the columns the old insert wrote. The scores table is not in the
     // migrations folder, so no column is assumed that the insert did not use.
     async replaceScore(id, entry) {
-      await db.from('scores').update(entry).eq('id', id);
+      const { error } = await db.from('scores').update(entry).eq('id', id);
+      if (error) console.error(`🚨 scores update FAILED · ${entry.game} · ${String(entry.wallet_address).slice(0, 10)}… · ${error.message ?? 'unknown'}`);
     },
     async addActivity(row) {
-      await db.from('activity').insert(row);
+      const { error } = await db.from('activity').insert(row);
+      if (error) console.error(`🚨 activity insert FAILED · ${row.game} · ${String(row.wallet_address).slice(0, 10)}… · ${error.message ?? 'unknown'}`);
     },
     async feed(wallet, limit) {
       const { data, error } = await db.from('notifications_feed').select('id, wallet_address, category, title, body, url, tag, sent_at').or(`wallet_address.eq.${wallet},wallet_address.is.null`).order('sent_at', { ascending: false }).limit(limit);

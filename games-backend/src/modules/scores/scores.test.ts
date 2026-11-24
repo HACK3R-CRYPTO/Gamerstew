@@ -550,3 +550,16 @@ test('outbox on: sign-score queues the run and does not touch the chain; off or 
   const v = await createScoreService(over.deps).signScore(rhythmBody);
   assert.strictEqual(v.body.signature, '0xsig');
 });
+
+test('a gasless score keeps its transaction with the run, so the server can finish the save by itself', async () => {
+  const noted: unknown[] = [];
+  const w = world({ gasless: true });
+  w.deps.sessions.noteTx = async (token, hash) => { noted.push([token, hash]); };
+  assert.strictEqual((await w.svc.signScore(rhythmBody)).status, 200);
+  await new Promise((r) => setTimeout(r, 2)); // the note is not awaited: it must never hold up the player
+  assert.deepStrictEqual(noted, [['tok', '0xtx']]);
+  // a store that cannot keep it does not fail the score
+  const broken = world({ gasless: true });
+  broken.deps.sessions.noteTx = async () => { throw new Error('column missing'); };
+  assert.strictEqual((await broken.svc.signScore(rhythmBody)).status, 200);
+});

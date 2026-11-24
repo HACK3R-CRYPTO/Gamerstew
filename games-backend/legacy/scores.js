@@ -137,7 +137,10 @@ core.platform.registerScoreRoutes(core.app, {
 // Saves a score once it is on-chain, then hands out XP, missions, achievements,
 // rank and notifications. The logic is src/modules/scores/submit.ts; everything
 // below is a plain pass-through to the helpers in this file.
-core.platform.registerSubmitRoute(core.app, {
+const saveClaims = core.platform.supabaseSaveClaims(core.supabase);
+const submitRun = core.platform.registerSubmitRoute(core.app, {
+  claimSave: (ticket) => saveClaims.claimSave(ticket),
+  releaseSave: (ticket) => saveClaims.releaseSave(ticket),
   requireSecret: core.requireSecret,
   limiter: core.gameSubmitLimiter,
   internalSecret: () => core.INTERNAL_SECRET,
@@ -174,6 +177,25 @@ core.platform.registerSubmitRoute(core.app, {
   },
   recoverSigner: (payload, signature) => core.ethers.verifyMessage(payload, signature),
   validatorAddress: () => core.validator.address,
+});
+
+// ─── Finish any run the phone did not ────────────────────────────────────────
+// A run whose score reached the chain but was never saved (the phone's last
+// call failed, or the tab closed) is saved here, a few minutes later: board
+// row, XP, missions, achievements. The save is claimed once, so a phone that
+// does call back late cannot be paid twice. Needs
+// supabase-migrations/2026-11-24_session_save.sql; until then it finds nothing.
+core.jobs.every('finishUnsavedRuns', 2 * 60 * 1000, async () => {
+  const now = Date.now();
+  const runs = await saveClaims.unsaved(new Date(now - 3 * 60 * 1000).toISOString(), new Date(now - 48 * 3600 * 1000).toISOString(), 10);
+  for (const r of runs) {
+    try {
+      const gameTime = Math.max(5000, Date.parse(r.usedAt) - Date.parse(r.createdAt) || 5000);
+      const out = await submitRun({ playerAddress: r.wallet, scoreData: { game: r.game, score: r.score, gameTime, txHash: r.txHash, sessionToken: r.token } }, true);
+      if (out.status === 200) console.log(`🧹 finished an unsaved run · ${r.game} ${r.score} · ${r.wallet.slice(0, 8)}… · ${r.txHash.slice(0, 10)}…`);
+      else console.warn(`🧹 could not finish an unsaved run · ${r.game} ${r.score} · ${r.wallet.slice(0, 8)}… ·`, JSON.stringify(out.body).slice(0, 160));
+    } catch (e) { console.warn('🧹 finishing an unsaved run failed:', e?.message || e); }
+  }
 });
 
 // ─── GET /api/leaderboard · /api/usernames · /api/activity · /api/stats ──────

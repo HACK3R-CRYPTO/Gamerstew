@@ -254,6 +254,7 @@ export function createScoreService(deps: ScoreDeps) {
               const tx = await deps.chain.submitScore(playerAddress, gameType, serverScore);
               deps.gasless.consume(playerAddress);
               deps.gasless.remember(tx.hash);
+              void deps.sessions.noteTx?.(sessionToken, tx.hash).catch(() => {});
               logger.log(`⛽ Gasless ${game} · ${who}… score ${serverScore} · ${tx.hash}${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
               return reply(200, { success: true, gasless: true, txHash: tx.hash, gameType, score: serverScore });
             } catch (e) {

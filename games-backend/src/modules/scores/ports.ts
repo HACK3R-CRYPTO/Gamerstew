@@ -11,6 +11,9 @@ export interface SessionStore {
   create(row: { token: string; wallet: string; game: string; seed?: string }): Promise<{ ok: boolean; reason?: string }>;
   find(token: string): Promise<SessionRow | null>;
   markUsed(token: string, info: { computedScore: number; tapCount: number | null }): Promise<void>;
+  /** Keep the transaction that recorded this run with the run itself. It is what
+   *  lets the server finish the save if the phone never calls back. Best effort. */
+  noteTx?(token: string, txHash: string): Promise<void>;
 }
 
 export interface SeasonLedger {
