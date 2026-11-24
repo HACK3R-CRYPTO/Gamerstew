@@ -138,6 +138,7 @@ core.platform.registerScoreRoutes(core.app, {
 // rank and notifications. The logic is src/modules/scores/submit.ts; everything
 // below is a plain pass-through to the helpers in this file.
 const saveClaims = core.platform.supabaseSaveClaims(core.supabase);
+let headSeen = { number: 0, sec: 0 }; // the subgraph's last block and its time
 const rankLedger = core.platform.supabaseLedgerBoard(core.supabase);
 const rankBoard = async (gameType, seasonStart) => {
   const game = Object.keys(core.GAME_TYPE).find((g) => core.GAME_TYPE[g] === Number(gameType));
@@ -233,7 +234,21 @@ core.platform.registerBoardRoutes(core.app, {
   results: core.results,
   streaks: core.platform.supabaseStreaks(core.supabase),
   recentPlays: core.platform.supabaseRecentPlays(core.supabase),
-  own: { ...core.platform.supabaseOwnTotals(core.supabase), subgraphHeadSec: async () => { try { const d = await core.subgraph.gql('{ _meta { block { timestamp } } }'); return Number(d && d._meta && d._meta.block && d._meta.block.timestamp) || 0; } catch { return 0; } } },
+  own: { ...core.platform.supabaseOwnTotals(core.supabase), subgraphHeadSec: async () => {
+    // The subgraph names its last block but not that block's time, so the time
+    // is read from the chain. It only moves when the subgraph does, so it is
+    // remembered per block number.
+    try {
+      const d = await core.subgraph.gql('{ _meta { block { number timestamp } } }');
+      const blk = d && d._meta && d._meta.block;
+      if (!blk) return 0;
+      if (Number(blk.timestamp) > 0) return Number(blk.timestamp);
+      const n = Number(blk.number);
+      if (!(n > 0) || !core.provider) return 0;
+      if (headSeen.number !== n) { const b = await core.provider.getBlock(n); headSeen = { number: n, sec: Number(b && b.timestamp) || 0 }; }
+      return headSeen.sec;
+    } catch { return 0; }
+  } },
   resolveUsername: (wallet) => core.resolveUsername(wallet),
   treasuryBalance: () => core.getTreasuryBalance(),
   cache: { get: (key) => core.cacheGet(key), set: (key, value, ttlMs) => core.cacheSet(key, value, ttlMs) },
