@@ -48,7 +48,6 @@ import { useMarkovVoice, rankTier, intro as markovIntro } from "@/hooks/useMarko
 import { grantPerk } from "@/app/actions/perks";
 import { usePerks } from "@/hooks/usePerks";
 import { getPerk } from "@/lib/perks";
-import DuelEntry from "@/components/DuelEntry";
 
 // ─── Player pet (mirrors simon/rhythm pages) ─────────────────────────────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
@@ -1018,7 +1017,6 @@ function Lobby({
               <span>🔒 provably fair{aiMode ? " · streams live" : ""}</span>
             </div>
             {/* Play a friend for a stake, in this game. */}
-            <DuelEntry game="challenge-ai" compact />
           </>
         )}
       </div>

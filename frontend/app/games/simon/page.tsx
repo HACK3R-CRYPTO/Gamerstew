@@ -43,7 +43,6 @@ import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
 import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
-import DuelEntry from "@/components/DuelEntry";
 import NextUp from "@/components/NextUp";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
