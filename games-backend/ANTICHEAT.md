@@ -170,8 +170,10 @@ that fits in one session, and N rounds need a known minimum time.
 | Word Ladder | Server deals the puzzles, replays the moves | Yes |
 | Simon Memory | Taps replayed against the dealt pattern, score cut to what they support | Yes |
 | Stack Tower | Bounded by the drop log, humanness check | Bounded, not replayed |
-| Street Strike | Plausibility checks on the rolls | No |
-| UP NEPA 3D | Bounds only | No |
+| Street Strike (solo) | Every throw replayed through the same physics | Yes |
+| Street Strike (its own rooms) | A legal card that only grows; the phones do the physics | No |
+| UP NEPA 3D, Restore the Light | Server's clock, impossible finishes refused, skill points bounded | Plausibility-checked |
+| UP NEPA 3D, Charge Rush | Not submitted; best score stays on the device | Not ranked |
 
-Only the first three can carry a G$ entry in a friend room, and only their room rounds are recorded on-chain. Charge Rush in UP NEPA 3D gained upgrades and rush jobs on this date; they raise what an honest round can score, and nothing on the server knows about them.
+Friend rooms treat ladder, simon and rhythm as verified: only those can carry a G$ entry, and only their room rounds are recorded on-chain. Charge Rush gained upgrades and rush jobs on this date. That is safe only because it is not ranked: if it ever is, the server will need to know about them.
 

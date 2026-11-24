@@ -237,7 +237,7 @@ Every player completes a one-time face-scan via GoodDollar's Identity SDK. No bo
 
 Every ranked score is recorded on-chain via the GamePass contract, each game under its own id. The backend checks the run, then submits the transaction itself, so the player pays no gas and signs nothing. If the daily gasless budget is used up, the backend signs the result (EIP-712) and the player submits it from their own wallet instead. Result screens wait for the transaction's receipt and link to it; leaderboard rows carry the same link.
 
-How far the backend can check a run depends on the game. Word Ladder, Simon Memory and Rhythm Rush are replayed on the server from the player's inputs, so the score is the server's own. Stack Tower and Street Strike are bounded and sanity-checked. UP NEPA 3D's score is the phone's account of the round. See [games-backend/ANTICHEAT.md](games-backend/ANTICHEAT.md).
+How far the backend can check a run depends on the game. Word Ladder, Simon Memory, Rhythm Rush and Street Strike are replayed on the server from the player's inputs (Street Strike runs every throw through the same physics the phone ran), so the score is the server's own. Stack Tower is bounded by its drop log. UP NEPA 3D ranks *Restore the Light* only, and that is plausibility-checked: the server's clock sets the time and bounds the rest. *Charge Rush* is not ranked; its best score stays on the device. See [games-backend/ANTICHEAT.md](games-backend/ANTICHEAT.md).
 
 ### Play with friends
 

@@ -79,8 +79,8 @@ Six skill games plus Challenge AI. All are free to play without a wallet. No gam
 | Stack Tower | `/games/stack` | 2 | Bounded by the drop log and a humanness check |
 | Challenge AI | `/games/challenge-ai` | 3 | Played on the server, commit-reveal |
 | Word Ladder | `/games/ladder` | 5 | The server dealt the puzzles and replays the moves |
-| Street Strike | `/bowling` | 6 | Plausibility checks on the rolls |
-| UP NEPA 3D | `/world` | 7 | The phone's account of the round |
+| Street Strike | `/bowling` | 6 | The server replays every throw through the same physics |
+| UP NEPA 3D | `/world` | 7 | Restore the Light only: the server's clock sets the time and bounds the rest. Charge Rush is not ranked |
 
 (Id 4 is the retired 2D UP NEPA.) The 2D games share `components/GameLobby.tsx` (start screen), `components/GameResult.tsx` (result screen) and `components/RunSaveStatus.tsx` + `components/TxStatus.tsx`, which wait for the transaction's receipt and say confirming, confirmed or failed.
 

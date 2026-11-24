@@ -52,7 +52,8 @@ Two independent session mechanisms guard scores. Don't confuse them.
 - `ladder`: the server dealt the puzzles from the session token and replays the moves (`src/modules/ladder`). The score is the server's own.
 - `simon`: the taps are replayed against the pattern the token fixes, and the score is cut to what they support (enforced).
 - `stack`: the score is bounded by the drop log and a humanness check (enforced).
-- `strike`: plausibility checks on the rolls. `nepa3d`: the phone's account, bounded.
+- `strike`: every throw is run through the same Rapier lane simulation the phone ran (`src/modules/strike`). The score is the server's own.
+- `nepa3d`: Restore the Light only. It cannot be replayed, so the server's clock sets the time, an impossible finish is refused, and skill points are bounded (`src/modules/nepa3d/rules.ts`). Plausibility-checked, not verified. Charge Rush is not submitted at all.
 - Which games are cut to the server's figure is the `SCORE_ENFORCE` list, read on every request. See [ANTICHEAT.md](ANTICHEAT.md).
 - Signs an EIP-712 `BackendApproval` struct with the validator key.
 
@@ -141,7 +142,7 @@ Perks are bought on-chain via the `PerkShop` contract (`0xe451Ab21587e6Fd5405224
 `src/modules/rooms` · private rooms for up to four players in any skill game (`/api/rooms/*`, internal-secret). One generic service; each game supplies `deal(seed)` and `score(seed, proof)`. Rooms live in memory and are mirrored to the `friend_rooms` table, so they survive a restart.
 
 - **Verified games** (ladder, simon, rhythm): the server scores the run itself.
-- **Unverified games** (stack, nepa3d): the score is the phone's word, so these rooms can never carry an entry.
+- **Unverified games** (stack, nepa3d): the score is not the server's own, so these rooms can never carry an entry. Street Strike has its own older rooms (`/api/strike/rooms`), where the phones do the physics.
 - **On-chain** (`ROOM_ONCHAIN`, on by default): a signed-in seat's round in a verified game is recorded gasless like a solo run and saved the same way (`core.recordRoomRun`). The site, not the browser, says which wallet a seat is.
 - **G$ entry** (`ROOM_STAKES`, off unless `true`): no escrow. Each player signs an EIP-2612 G$ permit made out to the server wallet for exactly the entry. When the round ends, each loser's permit is used once to move their entry straight to the winner, less `ROOM_STAKE_FEE_BPS`. Ties and zero rounds move nothing. Payments go through the same signer queue as scores and are retried, never taken twice. A loser who empties their wallet first does not pay; it is recorded against them.
 
@@ -366,7 +367,7 @@ The frontend points here via `NEXT_PUBLIC_BACKEND_URL` (or `BACKEND_URL` server-
 ## Operational notes
 
 - **`/api/sign-score` is the only voucher minter.** A `game_sessions` ticket must exist first (from `/api/start-game`), the payload binds wallet + gameType + score + on-chain nonce, and the ticket is burned on sign.
-- **Anti-cheat differs per game**: replay for rhythm, ladder and simon; bounds for stack and strike; trust for nepa3d. [ANTICHEAT.md](ANTICHEAT.md) is the honest account.
+- **Anti-cheat differs per game**: replay for rhythm, ladder, simon and strike; bounds for stack; plausibility for nepa3d. [ANTICHEAT.md](ANTICHEAT.md) is the honest account.
 - **Code layout**: `server.js` loads the `legacy/*.js` files in order; they are thin wiring. The rules live in `src/modules/*` (TypeScript, compiled to `dist/`), each behind small ports so it is tested without a database or a key. `src/platform/env.ts` is the catalogue of every setting; a test fails if code reads one it does not list.
 - **A push to the deployed branch redeploys this service.** Failed writes to the score, activity and mission tables log a line starting `🚨`.
 - **Season and competition freezes self-gate on epoch math**, so a cold-started process freezes correctly on the first GET after the deadline.
