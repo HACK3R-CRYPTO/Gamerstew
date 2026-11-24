@@ -11,6 +11,7 @@ function world() {
     put: async (r) => { rows.set(r.a + r.b, r); return true; },
     remove: async (a, b) => { rows.delete(a + b); return true; },
     findByName: async (n) => (n === 'bola' ? B : null),
+    searchNames: async (p) => [{ wallet: B, name: 'bola' }, { wallet: A, name: 'boat' }].filter((x) => x.name.startsWith(p)),
   };
   const f = createFriends({ store, nameOf: async (w) => (w === A ? 'ada' : w === B ? 'bola' : null), notify: async (to, category, note) => { sent.push({ to, category, url: note.url }); }, now: () => clock.t });
   return { f, rows, sent, clock };
@@ -68,4 +69,17 @@ test('online: a friend with the app open shows as online and comes first; a stra
   w.clock.t += ONLINE_MS + 1;
   const later = ((await w.f.list(A)).body.friends as P[])[0]!;
   assert.equal(later.online, false); assert.ok(later.lastSeen, 'still says when they were last seen');
+});
+
+test('search: finds players by the start of a name, never yourself, and says where you stand with each', async () => {
+  const w = world();
+  type R = { wallet: string; name: string; state: string };
+  assert.deepEqual(((await w.f.search(A, '@Bo')).body.results as R[]).map((r) => [r.name, r.state]), [['bola', 'none']], 'your own name is left out');
+  await w.f.request(A, B);
+  assert.equal(((await w.f.search(A, 'bo')).body.results as R[])[0]!.state, 'asked');
+  assert.equal(((await w.f.search(B, A)).body.results as R[])[0]!.state, 'incoming', 'a friend link is a whole wallet');
+  await w.f.accept(B, A);
+  assert.equal(((await w.f.search(A, 'bol')).body.results as R[])[0]!.state, 'friends');
+  assert.deepEqual((await w.f.search(A, 'b')).body.results, [], 'one letter is not enough');
+  assert.deepEqual((await w.f.search(A, "x'; drop")).body.results, []);
 });

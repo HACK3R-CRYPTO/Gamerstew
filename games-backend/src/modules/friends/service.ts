@@ -16,6 +16,8 @@ export interface FriendStore {
   remove(a: string, b: string): Promise<boolean>;
   /** a player's wallet from their username, any case. null: no such player */
   findByName(name: string): Promise<string | null>;
+  /** players whose username starts with these letters, any case */
+  searchNames(prefix: string, limit: number): Promise<{ wallet: string; name: string }[]>;
 }
 export interface Person { wallet: string; name: string | null; since: string; /** has the app open right now */ online: boolean; /** when they were last seen with the app open, or null if not since the server started */ lastSeen: number | null }
 export interface Reply { status: number; body: Record<string, unknown> }
@@ -78,6 +80,21 @@ export function createFriends(deps: {
       ]);
       friends.sort((x, y) => Number(y.online) - Number(x.online) || (y.lastSeen ?? 0) - (x.lastSeen ?? 0) || (x.name ?? x.wallet).localeCompare(y.name ?? y.wallet));
       return ok({ friends, incoming, outgoing, max: MAX_FRIENDS });
+    },
+
+    /** Find players to add: the start of a name, or a whole wallet (a friend link).
+     *  Each result says where the two of you stand, so the page can show the right button. */
+    async search(walletRaw: unknown, qRaw: unknown): Promise<Reply> {
+      const me = low(walletRaw); const q = low(qRaw).replace(/^@/, '');
+      if (!WALLET.test(me)) return bad('bad_wallet');
+      let found: { wallet: string; name: string | null }[] = [];
+      if (WALLET.test(q)) found = [{ wallet: q, name: await name(q) }];
+      else if (/^[a-z0-9_]{2,24}$/.test(q)) found = (await deps.store.searchNames(q, 8).catch(() => [])).map((p) => ({ wallet: p.wallet.toLowerCase(), name: p.name }));
+      else return ok({ results: [] });
+      const mine = await deps.store.list(me);
+      if (!mine.ok) return bad('unavailable', 503);
+      const where = new Map(mine.rows.map((r) => [r.a === me ? r.b : r.a, r.status === 'accepted' ? 'friends' : r.by === me ? 'asked' : 'incoming']));
+      return ok({ results: found.filter((p) => p.wallet !== me).slice(0, 6).map((p) => ({ ...p, state: where.get(p.wallet) ?? 'none' })) });
     },
 
     /** The app is open: called about once a minute by a signed-in player. */

@@ -8,7 +8,7 @@ A signed-in player keeps a list of friends.
 
 | The player wants to | How |
 |---|---|
-| Add someone | Type their GameArena name on `/friends`, or share "my friend link" (`/friends?add=0x…`) |
+| Add someone | On `/friends`, type the start of their name: matching players appear as you type, each with an Add button that turns to "Requested ✓" at once. Or send your friend link on WhatsApp (`/friends?add=0x…`): it opens as one card with one button, and survives sign-in. Or tap "Add friend" on their passport |
 | Answer a request | Accept or Decline on `/friends`. A request also arrives as a notification |
 | Play with a friend | Open a room in any game, tap "Invite a friend", tap Invite beside their name |
 | Remove a friend | The ✕ beside their name, then Remove. The other player is not told |
@@ -70,7 +70,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 352 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 353 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

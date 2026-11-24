@@ -26,6 +26,10 @@ export function supabaseFriends(db: Db): FriendStore {
       const { error } = await db.from('friendships').delete().eq('a', a).eq('b', b);
       return !error;
     },
+    async searchNames(prefix, limit) {
+      const { data, error } = await db.from('chain_mints').select('player, username').ilike('username', `${prefix.replace(/[%_\\]/g, (c) => `\\${c}`)}%`).order('username').limit(limit);
+      return error ? [] : ((data ?? []) as any[]).map((r) => ({ wallet: r.player, name: r.username }));
+    },
     async findByName(name) {
       const { data, error } = await db.from('chain_mints').select('player').ilike('username', name.replace(/[%_\\]/g, (c) => `\\${c}`)).limit(1);
       return error ? null : (data?.[0]?.player ?? null);

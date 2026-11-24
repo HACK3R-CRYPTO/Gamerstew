@@ -10,6 +10,7 @@ import { useAccount } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 
+export interface Found { wallet: string; name: string | null; state: "none" | "asked" | "incoming" | "friends" }
 export interface Friend { wallet: string; name: string | null; since: string; online?: boolean; lastSeen?: number | null }
 /** "Online", "Active 5m ago", or nothing when it is not known */
 export function seenLabel(f: Friend, nowMs = Date.now()): string {
@@ -63,6 +64,8 @@ export function useFriends() {
     void refresh();
   }, [ready, miniPay, signedIn, refresh]);
 
+  // one function for the life of the sign-in: pages list it as an effect's dependency
+  const search = useCallback(async (q: string): Promise<Found[]> => ((await call(`search?q=${encodeURIComponent(q)}`)).results as Found[]) ?? [], [call]);
   const act = useCallback(async (action: string, body: unknown) => { const d = await call(action, body); await refresh(); return d; }, [call, refresh]);
   return {
     signedIn, state, friends, incoming, outgoing, me: address?.toLowerCase() ?? null, refresh,
@@ -70,5 +73,7 @@ export function useFriends() {
     accept: (wallet: string) => act("accept", { wallet }),
     remove: (wallet: string) => act("remove", { wallet }),
     invite: (wallet: string, game: string, code: string) => call("invite", { wallet, game, code }),
+    /** players to add, by the start of a name or a whole wallet */
+    search,
   };
 }
