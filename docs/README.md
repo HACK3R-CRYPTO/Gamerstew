@@ -30,6 +30,10 @@ What each document is, and whether it describes the code as it is today.
 
 Word Ladder and Street Strike have no design document. Their rules are described in the code: `games-backend/src/modules/ladder/rules.ts`, `games-backend/src/modules/strike/game.ts`, `frontend/app/bowling/Game.tsx`.
 
+## Pictures
+
+[screenshots/](screenshots/) holds the screens used in the READMEs, captured from the app at phone size. Retake them when a screen changes: the script that took them drives a local dev server with a headless browser.
+
 ## How we write these
 
 Title, then a two-line summary and a status line with the date. Numbered sections: why, goals, design, architecture with file paths, risks and open decisions, current status split into built, not yet seen, and next. Say what was not tested. Plain sentences.

@@ -4,6 +4,10 @@ This is the player-facing web app for GameArena, a mobile-first arcade on Celo. 
 
 Built with Next.js 16 (App Router), React 19, wagmi v3, viem v2, and Privy for auth. Styling is inline theme objects plus Tailwind v4. The app is designed for phones first and runs both as a standalone web app and as a MiniPay Mini App.
 
+![Home, Word Ladder, Street Strike, UP NEPA 3D and the rankings](../docs/screenshots/overview.jpg)
+
+More screens: [the main README](../README.md#what-it-looks-like).
+
 ## Running locally
 
 ```bash

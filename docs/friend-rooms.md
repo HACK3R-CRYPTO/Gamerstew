@@ -12,6 +12,10 @@ Retention data (23 November 2026): 70% of players play on one day only. The game
 
 The earlier answer, Friend Duels on the `DuelEscrow` contract, held players' money in a contract we wrote and never audited. An outside review found real problems in it (section 8). Rooms replace it without holding money at all.
 
+A room is opened from the **Play with friends** card on any game's start screen:
+
+<img src="screenshots/stack-lobby.jpg" width="260" alt="Stack Tower start screen with the Play with friends card">
+
 ## 2. Goals
 
 - A room in every skill game, with one flow: open, share, play, standings, play again.

@@ -8,6 +8,10 @@
 >
 > Author: GameArena (ogazboiz / @AkpoloOgaga) · Updated 2026-10-13
 
+![The mode screen: Restore the Light, Charge Rush, Free Roam](screenshots/upnepa-modes.jpg)
+
+<img src="screenshots/upnepa-restore.jpg" width="260" alt="Restore the Light"> <img src="screenshots/upnepa-charge.jpg" width="260" alt="Charge Rush: carrying a fridge to the sockets">
+
 ---
 
 ## 1. Why this, why now
