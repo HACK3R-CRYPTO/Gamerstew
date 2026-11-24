@@ -329,3 +329,15 @@ test('chat: players talk, spectators read, text is cleaned, a flood is refused a
   assert.equal(watcher.chat.length, 30); assert.equal(watcher.chat[29]!.text, `m${CHAT_KEEP + 4}`);
   assert.equal(isFail(w.svc.say(r.code, r.host.token, '   ')), true);
 });
+
+test('live state: a spectator is shown each player\'s screen as numbers; words and oversized shapes never get through', () => {
+  const w = world(); const r = open(w);
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 2, { pts: 40.129, rows: [[1, 0, 0, 1], [1, 1, 0, 1]], word: 'cold', BAD: 1, deep: [[[1]]], many: Array.from({ length: 30 }, (_, i) => i) }));
+  const seen = ok<RoomView>(w.svc.get(r.code, undefined, 'tv')).players[0]!.live!;
+  assert.deepEqual(seen.pts, 40.13); assert.deepEqual(seen.rows, [[1, 0, 0, 1], [1, 1, 0, 1]]);
+  assert.equal('word' in seen, false, 'no text'); assert.equal('BAD' in seen, false); assert.equal('deep' in seen, false);
+  assert.equal((seen.many as number[]).length, 12);
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 3)); // a plain progress call keeps the last picture
+  assert.deepEqual(ok<RoomView>(w.svc.get(r.code, undefined, 'tv')).players[0]!.live!.pts, 40.13);
+});

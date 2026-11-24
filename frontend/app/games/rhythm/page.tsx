@@ -1149,8 +1149,8 @@ export default function RhythmGamePage() {
     if (phase !== "playing" || runModeRef.current !== "room") return;
     const now = Date.now();
     if (now - roomTold.current < 1000) return;
-    roomTold.current = now; roomRef.current.progress(score);
-  }, [score, phase]);
+    roomTold.current = now; roomRef.current.progress(score, { pts: score, combo, streak: perfectStreakRef.current });
+  }, [score, phase, combo]);
 
   // ═══ Vatar embed · record the finished run ═══════════════════════════════
   // The embed player has no browser wallet, so the on-chain submit path (gated

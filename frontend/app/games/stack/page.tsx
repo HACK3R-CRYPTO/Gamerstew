@@ -487,7 +487,7 @@ export default function StackTowerPage() {
     }
 
     levelRef.current = newLevel;
-    if (runModeRef.current === "room") roomRef.current.progress(newLevel - 1); // friends see how tall you are
+    if (runModeRef.current === "room") roomRef.current.progress(newLevel - 1, { lv: newLevel - 1, pts: scoreRef.current, combo: comboRef.current }); // friends see how tall you are
     // the moment the tower tops your best ever
     if (!passedBestRef.current && lineHeightRef.current >= 3 && newLevel - 1 > lineHeightRef.current) {
       passedBestRef.current = true;

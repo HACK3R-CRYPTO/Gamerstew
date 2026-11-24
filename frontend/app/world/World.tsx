@@ -349,7 +349,7 @@ export default function World() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.view]);
   // friends see how many breakers you have lit
-  useEffect(() => { if (roomRun.current && rState === "playing") roomRef.current.progress(rRestored); }, [rRestored, rState]);
+  useEffect(() => { if (roomRun.current && rState === "playing") roomRef.current.progress(rRestored, { lit: rRestored, lives: rLives }); }, [rRestored, rState, rLives]);
   // leaving the room, or a rematch being called, goes back to the lobby
   useEffect(() => {
     if (!roomRun.current) return;

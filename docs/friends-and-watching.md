@@ -74,6 +74,10 @@ Players in a room can talk: in the lobby once a second player is in, and on the 
 
 Anyone with a room code can look on without playing.
 
+- **A watcher sees the game itself.** While a round is played, each game sends a few numbers about its screen with its progress (`room.progress(n, live)`). The watch page draws the game from them (`components/LiveBoard.tsx`): Stack Tower's tower growing, Word Ladder's tiles turning green, Simon's pad on its round, Rhythm's combo, UP NEPA's shops lighting. It is a picture of the play, not a video, so it costs almost nothing to send.
+- Only numbers are accepted, at most 8 fields, so nothing a player types can reach a watcher's screen that way.
+- Word Ladder shows which letters are in place and never the letters. Everyone in a room has the same words, so the letters would hand a rival the answer.
+- The watch page is laid out like a match: the game and clock across the top, one panel per player (score, live game, who is leading), chat beside them. It uses the shared top bar and the full width on a desktop.
 - `/watch` lists the rounds being played right now, busiest first. Tap one to watch. No code is needed.
 - Each room has a second, public "watch name". The live list and the "Watch link" button use it. It lets anyone look on and can never be used to join, and a room's code never appears in the list or on a page reached from it.
 - Only a round in play between at least two people is listed.
@@ -101,7 +105,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 357 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 358 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

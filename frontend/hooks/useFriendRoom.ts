@@ -21,7 +21,8 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 /** A finished round on its way to the chain: only for a signed-in seat, in a game the server scores itself. */
 export interface ChainNote { state: "sending" | "recorded" | "failed"; tx?: string }
-export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** the signed-in player in this seat, when there is one */ wallet?: string; chain?: ChainNote }
+export type LiveState = Record<string, number | number[] | number[][]>;
+export interface RoomPlayer { live?: LiveState; name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** the signed-in player in this seat, when there is one */ wallet?: string; chain?: ChainNote }
 export type StakeState = "collecting" | "ready" | "playing" | "settling" | "settled" | "void";
 export type PayState = "paid" | "unpaid" | "expired";
 /** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */
@@ -155,7 +156,8 @@ export function useFriendRoom(game: string) {
     start: () => act("start"),
     rematch: () => act("rematch"),
     // progress is a courtesy to the others: never let it surface an error
-    progress: (n: number) => { const s = sess.current; if (s) void call(`${s.code}/progress`, { token: s.token, progress: n }).catch(() => {}); },
+    // `live` is the player's screen as a few numbers, so people watching see the game itself (never text)
+    progress: (n: number, live?: LiveState) => { const s = sess.current; if (s) void call(`${s.code}/progress`, { token: s.token, progress: n, ...(live ? { live } : {}) }).catch(() => {}); },
     finish: (proof: unknown) => act("finish", { proof }),
     // playing for G$: the host sets the entry, everyone signs, the host can call it off
     setEntry: (entryWei: string, permit: unknown) => act("stake", { entryWei, permit }),

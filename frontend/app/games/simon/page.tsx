@@ -852,7 +852,7 @@ export default function SimonGamePage() {
       const speedBonus = Math.max(0, Math.floor((60000 - elapsed) / 1000));
       const roundBonus = newSeqs * 2;
       const newScore   = newSeqs * BASE_SCORE + speedBonus + roundBonus;
-      if (runModeRef.current === "room") roomRef.current.progress(newSeqs); // friends see how far you are
+      if (runModeRef.current === "room") roomRef.current.progress(newSeqs, { round: newSeqs, pts: newScore }); // friends see how far you are
       scoreRef.current = newScore;
       setScore(newScore);
 
