@@ -2386,7 +2386,7 @@ function IdleView({ room, songs, songId, todayId, onPickSong, mode, onPickMode, 
       title="Rhythm Rush"
       headline={<>Tap the beat.<br />Chain the combo.</>}
       rules={<>Tap each note as it reaches the line. Combos multiply your score. <b>On a keyboard: A S D F or the arrow keys.</b></>}
-      cover="/games/covers/rhythm.jpg" focus="50% 40%"
+      cover="/games/covers/rhythm.svg" focus="50% 40%"
       onExit={onExit} onStart={onStart}
       modes={MODES} mode={mode} onPickMode={onPickMode}
       gameType={0} onLeaderboard={onLeaderboard}

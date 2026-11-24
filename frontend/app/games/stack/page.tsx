@@ -1221,7 +1221,7 @@ export default function StackTowerPage() {
           title="Stack Tower"
           headline={<>Drop the block.<br />Stack it clean.</>}
           rules={<>Tap to drop. Anything hanging over the edge gets sliced off. <b>A perfect drop keeps the full width</b> and builds a combo.</>}
-          cover="/games/covers/stack.jpg" focus="50% 60%"
+          cover="/games/covers/stack.svg" focus="50% 60%"
           onExit={() => router.push("/dashboard")}
           onStart={startGame}
           modes={MODES} mode={mode} onPickMode={setMode}

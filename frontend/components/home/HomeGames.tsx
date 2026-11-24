@@ -21,13 +21,13 @@ type Tag = "skill" | "3d" | "ai";
 interface GameCard { id: string; title: string; tag: Tag; line: string; cover: string; focus: string; href: string; accent: string }
 
 export const HOME_GAMES: GameCard[] = [
-  { id: "stack", title: "Stack Tower", tag: "skill", line: "Drop the block. Stack it clean.", cover: "/games/covers/stack.jpg", focus: "50% 60%", href: "/games/stack", accent: "#fb923c" },
+  { id: "stack", title: "Stack Tower", tag: "skill", line: "Drop the block. Stack it clean.", cover: "/games/covers/stack.svg", focus: "50% 60%", href: "/games/stack", accent: "#fb923c" },
   { id: "ladder", title: "Word Ladder", tag: "skill", line: "Change one letter. Reach the word.", cover: "/games/covers/ladder.svg", focus: "50% 20%", href: "/games/ladder", accent: "#4ade80" },
   { id: "streetstrike", title: "Street Strike", tag: "3d", line: "Roll the tyre. Scatter the bottles.", cover: "/games/covers/streetstrike.jpg", focus: "50% 55%", href: "/bowling", accent: "#c084fc" },
-  { id: "simon", title: "Simon Memory", tag: "skill", line: "Watch. Remember. Repeat.", cover: "/games/covers/simon.jpg", focus: "50% 45%", href: "/games/simon", accent: "#22d3ee" },
+  { id: "simon", title: "Simon Memory", tag: "skill", line: "Watch. Remember. Repeat.", cover: "/games/covers/simon.svg", focus: "50% 45%", href: "/games/simon", accent: "#22d3ee" },
   { id: "upnepa3d", title: "UP NEPA 3D", tag: "3d", line: "Bring the light back to the street.", cover: "/games/covers/upnepa3d.jpg", focus: "58% 45%", href: "/world", accent: "#fbbf24" },
-  { id: "arena", title: "Challenge AI", tag: "ai", line: "Beat MARKOV at mind games.", cover: "/games/covers/challenge-ai.jpg", focus: "50% 55%", href: "/games/challenge-ai", accent: "#fde68a" },
-  { id: "rhythm", title: "Rhythm Rush", tag: "skill", line: "Tap the beat. Chain the combo.", cover: "/games/covers/rhythm.jpg", focus: "50% 40%", href: "/games/rhythm", accent: "#f0abfc" },
+  { id: "arena", title: "Challenge AI", tag: "ai", line: "Beat MARKOV at mind games.", cover: "/games/covers/challenge-ai.svg", focus: "50% 55%", href: "/games/challenge-ai", accent: "#fde68a" },
+  { id: "rhythm", title: "Rhythm Rush", tag: "skill", line: "Tap the beat. Chain the combo.", cover: "/games/covers/rhythm.svg", focus: "50% 40%", href: "/games/rhythm", accent: "#f0abfc" },
 ];
 const FILTERS: { id: "all" | Tag; label: string }[] = [
   { id: "all", label: "All" },

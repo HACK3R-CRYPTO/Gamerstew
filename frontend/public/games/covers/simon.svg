@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b1a8a"/><stop offset="1" stop-color="#160a33"/></linearGradient></defs><rect width="640" height="480" fill="url(#bg)"/>
+  <g transform="translate(320 240)">
+    <circle r="196" fill="#0f0726"/>
+    <!-- four pads; the green one is the one lit right now -->
+    <path d="M-12 -12 L-12 -180 A180 180 0 0 0 -180 -12 Z" fill="#ef4444"/>
+    <path d="M12 -12 L180 -12 A180 180 0 0 0 12 -180 Z" fill="#22c55e" stroke="#bbf7d0" stroke-width="10"/>
+    <path d="M-12 12 L-180 12 A180 180 0 0 0 -12 180 Z" fill="#fbbf24"/>
+    <path d="M12 12 L12 180 A180 180 0 0 0 180 12 Z" fill="#3b82f6"/>
+    <circle r="66" fill="#fff"/>
+    <text y="24" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="800" font-size="70" fill="#22104f">4</text>
+  </g>
+  <g fill="#bbf7d0"><circle cx="556" cy="70" r="7"/><circle cx="586" cy="112" r="4"/><circle cx="520" cy="44" r="4"/></g>
+</svg>

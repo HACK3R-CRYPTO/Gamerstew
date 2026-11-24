@@ -195,10 +195,10 @@ const STACK_ART = (
 const COVERS: Record<string, { src: string; focus: string }> = {
   upnepa3d: { src: "/games/covers/upnepa3d.jpg", focus: "58% 45%" },
   streetstrike: { src: "/games/covers/streetstrike.jpg", focus: "50% 55%" },
-  stack: { src: "/games/covers/stack.jpg", focus: "50% 60%" },
-  rhythm: { src: "/games/covers/rhythm.jpg", focus: "50% 40%" },
-  simon: { src: "/games/covers/simon.jpg", focus: "50% 45%" },
-  arena: { src: "/games/covers/challenge-ai.jpg", focus: "50% 55%" },
+  stack: { src: "/games/covers/stack.svg", focus: "50% 60%" },
+  rhythm: { src: "/games/covers/rhythm.svg", focus: "50% 40%" },
+  simon: { src: "/games/covers/simon.svg", focus: "50% 45%" },
+  arena: { src: "/games/covers/challenge-ai.svg", focus: "50% 55%" },
 };
 const GAMES_3D: Game[] = [
   {
