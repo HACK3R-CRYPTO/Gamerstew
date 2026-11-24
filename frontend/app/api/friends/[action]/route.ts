@@ -5,7 +5,7 @@ import { checkedWallet } from "@/lib/server/roomWallet";
 // The wallet a request acts as is the one the sign-in proves (the same check a
 // friend room uses), never one the browser names in the body or the path.
 export const dynamic = "force-dynamic";
-const POSTS = new Set(["request", "accept", "remove", "invite"]);
+const POSTS = new Set(["request", "accept", "remove", "invite", "ping"]);
 
 async function forward(req: Request, action: string, method: "GET" | "POST") {
   if (method === "GET" ? action !== "list" : !POSTS.has(action)) return NextResponse.json({ error: "bad_path" }, { status: 400 });

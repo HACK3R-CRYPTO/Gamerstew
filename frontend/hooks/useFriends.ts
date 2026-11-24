@@ -10,7 +10,14 @@ import { useAccount } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 
-export interface Friend { wallet: string; name: string | null; since: string }
+export interface Friend { wallet: string; name: string | null; since: string; online?: boolean; lastSeen?: number | null }
+/** "Online", "Active 5m ago", or nothing when it is not known */
+export function seenLabel(f: Friend, nowMs = Date.now()): string {
+  if (f.online) return "Online";
+  if (!f.lastSeen) return "";
+  const m = Math.max(1, Math.round((nowMs - f.lastSeen) / 60000));
+  return m < 60 ? `Active ${m}m ago` : m < 1440 ? `Active ${Math.round(m / 60)}h ago` : `Active ${Math.round(m / 1440)}d ago`;
+}
 const WORDS: Record<string, string> = {
   sign_in: "Sign in to use friends.", no_player: "No player has that name. Check the spelling, or ask them for their link.", yourself: "That is you.",
   full: "Your friends list is full (200).", too_many_asks: "You have many requests waiting. Let some be answered first.", not_friends: "You can only invite friends.",
@@ -21,7 +28,11 @@ export const explainFriends = (code: string) => WORDS[code] ?? "Something went w
 export const friendLabel = (f: { name: string | null; wallet: string }) => (f.name ? `@${f.name}` : `${f.wallet.slice(0, 6)}…${f.wallet.slice(-4)}`);
 
 export function useFriends() {
-  const { address } = useAccount(); const { authenticated, getAccessToken, ready } = usePrivy(); const miniPay = useIsMiniPay();
+  const real = useAccount().address; const { authenticated: realAuth, getAccessToken, ready } = usePrivy(); const realMini = useIsMiniPay();
+  // local development only: ?as=0x… looks at the page as that wallet (the build drops this in production)
+  const [as, setAs] = useState<string | null>(null);
+  useEffect(() => { if (process.env.NODE_ENV !== "production") { const a = new URLSearchParams(window.location.search).get("as") || ""; if (/^0x[0-9a-fA-F]{40}$/.test(a)) setAs(a); } }, []);
+  const address = as ?? real; const miniPay = as ? true : realMini; const authenticated = realAuth;
   const signedIn = !!address && (miniPay || authenticated);
   const [friends, setFriends] = useState<Friend[]>([]); const [incoming, setIncoming] = useState<Friend[]>([]); const [outgoing, setOutgoing] = useState<Friend[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "guest" | "error">("loading");
@@ -40,6 +51,12 @@ export function useFriends() {
     try { const d = await call("list"); setFriends((d.friends as Friend[]) ?? []); setIncoming((d.incoming as Friend[]) ?? []); setOutgoing((d.outgoing as Friend[]) ?? []); setState("ready"); }
     catch { setState("error"); }
   }, [call]);
+  // keep the list fresh while the page is open, so a friend coming online shows up
+  useEffect(() => {
+    if (!signedIn) return;
+    const t = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30000);
+    return () => clearInterval(t);
+  }, [signedIn, refresh]);
   useEffect(() => {
     if (!ready && !miniPay) return;
     if (!signedIn) { setState("guest"); setFriends([]); setIncoming([]); setOutgoing([]); return; }

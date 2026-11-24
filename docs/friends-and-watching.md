@@ -15,6 +15,15 @@ A signed-in player keeps a list of friends.
 
 The Friends page opens from the profile ("👥 Friends").
 
+### Who is online
+
+A friend with the app open shows a green dot and "Online". Otherwise the row says when they were last active ("Active 5m ago"). Online friends come first, on the Friends page and in a room's invite list.
+
+- A signed-in player's app checks in once a minute while the tab is visible (`components/Presence.tsx`). Guests send nothing.
+- A player counts as online for 2.5 minutes after their last check-in.
+- Only accepted friends see it. Someone who has only sent a request learns nothing.
+- It is held in the server's memory, not the database. A restart forgets it, and it fills again within a minute.
+
 ### How it is stored
 
 One row per pair of players in `friendships`. The lower address is always column `a`, so the same two players can never be recorded twice. `asked_by` is who sent the request. The database itself refuses a row that is out of order, has a bad status, or is marked accepted with no date.
@@ -61,7 +70,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 351 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 352 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

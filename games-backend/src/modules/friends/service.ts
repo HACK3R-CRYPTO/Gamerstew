@@ -17,13 +17,15 @@ export interface FriendStore {
   /** a player's wallet from their username, any case. null: no such player */
   findByName(name: string): Promise<string | null>;
 }
-export interface Person { wallet: string; name: string | null; since: string }
+export interface Person { wallet: string; name: string | null; since: string; /** has the app open right now */ online: boolean; /** when they were last seen with the app open, or null if not since the server started */ lastSeen: number | null }
 export interface Reply { status: number; body: Record<string, unknown> }
 export interface Note { title: string; body: string; url: string; tag: string }
 
 export const MAX_FRIENDS = 200;
 export const MAX_ASKING = 30;
 export const INVITE_GAP_MS = 30_000;
+/** a player counts as online for this long after their app last checked in */
+export const ONLINE_MS = 150_000;
 const WALLET = /^0x[a-f0-9]{40}$/;
 const ok = (body: Record<string, unknown>): Reply => ({ status: 200, body });
 const bad = (error: string, status = 400): Reply => ({ status, body: { error } });
@@ -44,6 +46,10 @@ export function createFriends(deps: {
 }) {
   const now = deps.now ?? Date.now;
   const lastInvite = new Map<string, number>();
+  // Who has the app open. Kept in memory only: a restart forgets it, and it
+  // fills again within a minute as open apps check in.
+  const seen = new Map<string, number>();
+  const mark = (w: string) => { if (seen.size > 50_000) seen.clear(); seen.set(w, now()); };
   const name = async (w: string) => (await deps.nameOf(w).catch(() => null)) || null;
   const short = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`;
   const tell = (wallet: string, category: string, note: Note) => { if (deps.notify) void deps.notify(wallet, category, note).catch(() => {}); };
@@ -62,14 +68,24 @@ export function createFriends(deps: {
       if (!WALLET.test(me)) return bad('bad_wallet');
       const { ok: read, rows } = await deps.store.list(me);
       if (!read) return bad('unavailable', 503);
-      const person = async (r: Pair): Promise<Person> => { const w = r.a === me ? r.b : r.a; return { wallet: w, name: await name(w), since: r.acceptedAt ?? r.at }; };
+      mark(me); const t = now();
+      // only friends learn when someone is online; a stranger who merely asked does not
+      const person = async (r: Pair): Promise<Person> => { const w = r.a === me ? r.b : r.a; const at = r.status === 'accepted' ? seen.get(w) ?? null : null; return { wallet: w, name: await name(w), since: r.acceptedAt ?? r.at, online: at !== null && t - at < ONLINE_MS, lastSeen: at }; };
       const [friends, incoming, outgoing] = await Promise.all([
         Promise.all(rows.filter((r) => r.status === 'accepted').map(person)),
         Promise.all(rows.filter((r) => r.status === 'pending' && r.by !== me).map(person)),
         Promise.all(rows.filter((r) => r.status === 'pending' && r.by === me).map(person)),
       ]);
-      friends.sort((x, y) => (x.name ?? x.wallet).localeCompare(y.name ?? y.wallet));
+      friends.sort((x, y) => Number(y.online) - Number(x.online) || (y.lastSeen ?? 0) - (x.lastSeen ?? 0) || (x.name ?? x.wallet).localeCompare(y.name ?? y.wallet));
       return ok({ friends, incoming, outgoing, max: MAX_FRIENDS });
+    },
+
+    /** The app is open: called about once a minute by a signed-in player. */
+    ping(walletRaw: unknown): Reply {
+      const me = low(walletRaw);
+      if (!WALLET.test(me)) return bad('bad_wallet');
+      mark(me);
+      return ok({ ok: true });
     },
 
     /** Ask someone to be a friend. If they had already asked, this accepts. */

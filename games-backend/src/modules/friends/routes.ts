@@ -9,6 +9,7 @@ export function registerFriendRoutes(app: Application, deps: { friends: Friends;
     fn(req).then((r) => res.status(r.status).json(r.body)).catch((err) => { console.error('friends route failed:', err); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); });
   };
   app.get('/api/friends/:address', deps.requireSecret, send((req) => deps.friends.list(req.params.address)));
+  app.post('/api/friends/:address/ping', deps.requireSecret, send(async (req) => deps.friends.ping(req.params.address)));
   app.post('/api/friends/:address/request', deps.requireSecret, send((req) => deps.friends.request(req.params.address, body(req).to)));
   app.post('/api/friends/:address/accept', deps.requireSecret, send((req) => deps.friends.accept(req.params.address, body(req).wallet)));
   app.post('/api/friends/:address/remove', deps.requireSecret, send((req) => deps.friends.remove(req.params.address, body(req).wallet)));

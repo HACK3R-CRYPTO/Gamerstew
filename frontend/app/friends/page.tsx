@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppBottomNav from "@/components/AppBottomNav";
-import { explainFriends, friendLabel, useFriends, type Friend } from "@/hooks/useFriends";
+import { explainFriends, friendLabel, seenLabel, useFriends, type Friend } from "@/hooks/useFriends";
 import { track } from "@/lib/track";
 
 const face = (f: Friend) => (f.name ?? f.wallet.slice(2)).slice(0, 1).toUpperCase();
@@ -24,7 +24,7 @@ export default function FriendsPage() {
   const share = () => { const text = `Add me on GameArena and let's play: ${link}`; if (navigator.share) void navigator.share({ title: "Add me on GameArena", text, url: link }).catch(() => {}); else { void navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600); } };
 
   const Row = ({ p, children }: { p: Friend; children: React.ReactNode }) => (
-    <li><span className="av" style={{ background: tint(p.wallet) }}>{face(p)}</span><button className="nm" onClick={() => router.push(`/pass/${p.name ?? p.wallet}`)}>{friendLabel(p)}</button><span className="acts">{children}</span></li>
+    <li><span className="av" style={{ background: tint(p.wallet) }}>{face(p)}{p.online && <i className="dot" aria-hidden />}</span><button className="nm" onClick={() => router.push(`/pass/${p.name ?? p.wallet}`)}><b>{friendLabel(p)}</b>{seenLabel(p) && <small className={p.online ? "on" : ""}>{seenLabel(p)}</small>}</button><span className="acts">{children}</span></li>
   );
 
   return (
@@ -46,7 +46,7 @@ export default function FriendsPage() {
 
           {f.incoming.length > 0 && <section><h2>Requests · {f.incoming.length}</h2><ul>{f.incoming.map((p) => <Row key={p.wallet} p={p}><button className="yes" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.accept(p.wallet), "You are now friends.")}>Accept</button><button className="no" disabled={busy === p.wallet} onClick={() => void run(p.wallet, () => f.remove(p.wallet), "Request declined.")}>Decline</button></Row>)}</ul></section>}
 
-          <section><h2>Your friends · {f.friends.length}</h2>
+          <section><h2>Your friends · {f.friends.length}{f.friends.some((p) => p.online) ? <em> · {f.friends.filter((p) => p.online).length} online</em> : null}</h2>
             {f.friends.length === 0 ? <p className="note left">No friends yet. Add one by name, or share your link on WhatsApp.</p> : <ul>{f.friends.map((p) => <Row key={p.wallet} p={p}>{sure === p.wallet ? <><button className="no" onClick={() => { setSure(""); void run(p.wallet, () => f.remove(p.wallet), "Removed."); }}>Remove</button><button className="plain" onClick={() => setSure("")}>Keep</button></> : <button className="plain" onClick={() => setSure(p.wallet)} aria-label={`Remove ${friendLabel(p)}`}>✕</button>}</Row>)}</ul>}
             {f.friends.length > 0 && <p className="note left">To play together, open a room in any game and tap “Invite a friend”.</p>}
           </section>
@@ -65,8 +65,11 @@ export default function FriendsPage() {
         .share { min-height: 46px; border-radius: 14px; border: 2px solid rgba(109,40,217,0.3); background: #fff; color: #6d28d9; font-weight: 800; font-size: 15px; cursor: pointer; }
         .msg { margin: 0; font-size: 14.5px; font-weight: 600; } .msg.good { color: #15803d; } .msg.bad { color: #b91c1c; }
         .fr ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; } .fr li { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 16px; padding: 10px 12px; box-shadow: 0 0 0 1px rgba(76,29,149,0.1); }
-        .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 17px; flex: 0 0 auto; }
-        .nm { flex: 1; min-width: 0; text-align: left; background: none; border: none; font-weight: 800; font-size: 16px; color: #22104f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; padding: 10px 0; }
+        .av { position: relative; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 17px; flex: 0 0 auto; }
+        .dot { position: absolute; right: -1px; bottom: -1px; width: 13px; height: 13px; border-radius: 50%; background: #22c55e; border: 2.5px solid #fff; }
+        .fr h2 em { font-style: normal; color: #15803d; }
+        .nm b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .nm small { display: block; font-size: 12.5px; font-weight: 600; color: rgba(34,16,79,0.62); margin-top: 1px; } .nm small.on { color: #15803d; }
+        .nm { flex: 1; min-width: 0; text-align: left; background: none; border: none; font-weight: 800; font-size: 16px; color: #22104f; cursor: pointer; padding: 6px 0; min-height: 44px; }
         .acts { display: flex; gap: 6px; flex: 0 0 auto; } .acts button { min-height: 40px; padding: 0 14px; border-radius: 12px; font-weight: 800; font-size: 14px; cursor: pointer; border: none; } .acts button:disabled { opacity: 0.5; }
         .yes { background: #6d28d9; color: #fff; } .no { background: #fee2e2; color: #991b1b; } .plain { background: #f1ecfb; color: #4c1d95; }
         .note { margin: 0; font-size: 14.5px; color: rgba(34,16,79,0.72); text-align: center; } .note.left { text-align: left; margin: 8px 2px 0; }

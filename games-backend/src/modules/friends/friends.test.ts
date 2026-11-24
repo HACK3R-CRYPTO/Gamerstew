@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFriends, INVITE_GAP_MS, type FriendStore, type Pair } from './service';
+import { createFriends, INVITE_GAP_MS, ONLINE_MS, type FriendStore, type Pair } from './service';
 
 const A = '0x' + 'a'.repeat(40), B = '0x' + 'b'.repeat(40), C = '0x' + 'c'.repeat(40);
 function world() {
@@ -52,4 +52,20 @@ test('remove works for either side, and an invite needs a friendship, a real gam
   assert.equal((await w.f.remove(B, A)).body.state, 'none');
   assert.equal(((await w.f.list(A)).body.friends as unknown[]).length, 0);
   assert.equal((await w.f.invite(A, C, 'ladder', 'ABCDE')).body.error, 'not_friends');
+});
+
+test('online: a friend with the app open shows as online and comes first; a stranger who only asked learns nothing', async () => {
+  const w = world();
+  await w.f.request(A, B); await w.f.accept(B, A); await w.f.request(C, A);
+  w.clock.t += ONLINE_MS + 1; // everyone has gone quiet
+  type P = { wallet: string; online: boolean; lastSeen: number | null };
+  assert.equal(((await w.f.list(A)).body.friends as P[])[0]!.online, false);
+  w.f.ping(B);
+  assert.equal(((await w.f.list(A)).body.friends as P[])[0]!.online, true);
+  w.f.ping(C);
+  const asking = (await w.f.list(A)).body.incoming as P[];
+  assert.deepEqual([asking[0]!.online, asking[0]!.lastSeen], [false, null], 'not a friend yet');
+  w.clock.t += ONLINE_MS + 1;
+  const later = ((await w.f.list(A)).body.friends as P[])[0]!;
+  assert.equal(later.online, false); assert.ok(later.lastSeen, 'still says when they were last seen');
 });
