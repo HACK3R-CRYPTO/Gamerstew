@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
 import { fetchLeaderboard, type LeaderboardEntry, type GameTypeId } from "@/lib/subgraph";
+import { useVatarAddress, useVatarName } from "@/lib/vatar";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 const PAGE_SIZE = 16;
@@ -182,7 +183,7 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
 }
 
 // ─── neon pill row · ranks 4+ ────────────────────────────────────────────
-function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; isMe: boolean; accent: string }) {
+function PlayerRow({ entry, rank, isMe, accent, meName }: { entry: Entry; rank: number; isMe: boolean; accent: string; meName?: string }) {
   return (
     <div style={{
       display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 10, padding: "10px 12px 10px 10px", borderRadius: 16,
@@ -190,7 +191,7 @@ function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; 
     }}>
       <span style={{ width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#ede9fe", color: "#4c1d95", fontFamily: T.body, fontSize: 12, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{rank}</span>
       <span style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {fmtName(entry.player, entry.username)}{isMe && <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, background: accent, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.06em" }}>YOU</span>}
+        {isMe && meName?.trim() ? meName.trim() : fmtName(entry.player, entry.username)}{isMe && <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, background: accent, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.06em" }}>YOU</span>}
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontFamily: T.body, fontSize: 15, fontWeight: 900, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{entry.score.toLocaleString()}</span>
@@ -475,6 +476,11 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
 // ─── main tabs ──────────────────────────────────────────────────────────
 export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: GameKind; accent: string }) {
   const { address } = useAccount();
+  // Embed players have no browser wallet, so "self" falls back to their Vatar
+  // custodial wallet + display name — lets their own row read "You · <name>".
+  const vatarAddr = useVatarAddress();
+  const vatarName = useVatarName();
+  const selfAddr = address?.toLowerCase() ?? vatarAddr ?? null;
   const [tab, setTab] = useState<Tab>("live");
   // Season metadata + past seals come from backend; live rows come from subgraph.
   const [meta, setMeta] = useState<SeasonsMetadata | null>(null);
@@ -510,10 +516,10 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
   }, [meta, gameKind]);
 
   const myLive = useMemo(() => {
-    if (!address || !liveEntries || !liveEntries.length) return null;
-    const i = liveEntries.findIndex(e => e.player.toLowerCase() === address.toLowerCase());
+    if (!selfAddr || !liveEntries || !liveEntries.length) return null;
+    const i = liveEntries.findIndex(e => e.player.toLowerCase() === selfAddr);
     return i >= 0 ? { rank: i + 1, score: liveEntries[i].score } : null;
-  }, [address, liveEntries]);
+  }, [selfAddr, liveEntries]);
 
   // Top 3 stay on the podium · pill rows below cover ranks 4+.
   const podium = (liveEntries ?? []).slice(0, 3);
@@ -563,7 +569,7 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
               </div>
 
               {/* Personal-status chip · single slot, two states */}
-              {address && myLive && (
+              {selfAddr && myLive && (
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "#fff", border: `1.5px solid ${accent}` }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: T.ink, lineHeight: 1, letterSpacing: "0.01em" }}>You&apos;re #{myLive.rank}</div>
@@ -579,7 +585,7 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
                   )}
                 </div>
               )}
-              {address && liveEntries && !myLive && (
+              {selfAddr && liveEntries && !myLive && (
                 <a href={GAME_HREF[gameKind]} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.7)", border: `1px dashed ${accent}88`, textDecoration: "none" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked this season</div>
@@ -597,8 +603,8 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   {rest.map((e, i) => {
                     const rank = 4 + page * PAGE_SIZE + i;
-                    const isMe = !!address && e.player.toLowerCase() === address.toLowerCase();
-                    return <PlayerRow key={e.player + rank} entry={e} rank={rank} isMe={isMe} accent={accent} />;
+                    const isMe = !!selfAddr && e.player.toLowerCase() === selfAddr;
+                    return <PlayerRow key={e.player + rank} entry={e} rank={rank} isMe={isMe} meName={isMe ? vatarName : undefined} accent={accent} />;
                   })}
                 </div>
               )}

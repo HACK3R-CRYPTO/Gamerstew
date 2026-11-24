@@ -31,6 +31,8 @@ import {
   startGame as startGameAction,
   startGameMiniPay as startGameMiniPayAction,
 } from "@/app/actions/game";
+import { useIsEmbedded, getVatarSession, vatarSubmitScore } from "@/lib/vatar";
+import { startVatarGame, signVatarScore } from "@/app/actions/vatar";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI, detectFeeSpread } from "@/lib/contracts";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
 import { fetchPreview, getCachedPreview } from "@/lib/leaderboardPreview";
@@ -258,6 +260,9 @@ export default function SimonGamePage() {
   // gate — same funnel as Challenge AI's demo matches. isGuest is true only
   // for the not-signed-in bucket; signed-in-unminted players play unlimited.
   const isGuest = !authed && !authPending;
+  // Vatar embed player (Lagos Life iframe) · no browser wallet but a custodial
+  // GamePass. Their runs record on-chain via the Vatar session (effects below).
+  const inVatar = useIsEmbedded();
   const [guestLeft, setGuestLeft] = useState<number>(3);
   const [guestLimitOpen, setGuestLimitOpen] = useState(false);
   const guestCountedRef = useRef(false);
@@ -953,6 +958,7 @@ export default function SimonGamePage() {
     sequencesRef.current = 0;
     colorsRef.current = BASE_COLORS;
     submittedRef.current = false;
+    vatarSubmittedRef.current = false;
     usedPerkRef.current = false;
     pendingEndRef.current = null;
     sessionTokenRef.current = inRoom ? (roomSeed as string) : null; // the seed that makes the pattern
@@ -1004,6 +1010,17 @@ export default function SimonGamePage() {
         startingRef.current = false;
         return;
       }
+    } else if (inVatar) {
+      // Vatar embed · no browser wallet. Bind a session ticket to the player's
+      // custodial wallet (backend resolves it from the Vatar session) so the
+      // finished run can record on-chain. Non-blocking: play continues on failure.
+      try {
+        const vs = await getVatarSession();
+        if (vs) {
+          const r = await startVatarGame(vs, "simon");
+          if (r.success) sessionTokenRef.current = r.sessionToken;
+        }
+      } catch { /* ignore · play continues */ }
     }
 
     setPhase("countdown");
@@ -1014,7 +1031,28 @@ export default function SimonGamePage() {
     startingRef.current = false;
     setCountdown(3);
     getAudioCtx();  // warm up audio on user gesture
-  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint, isGuest]);
+  }, [getAudioCtx, address, isMiniPay, signMessageAsync, getAccessToken, gasStatus, needsMint, isGuest, inVatar]);
+
+  // ═══ Vatar embed · record the finished run ═══════════════════════════════
+  // The embed player has no browser wallet, so handleGameOver's on-chain path
+  // (gated on `address`) skips them. Record their run to the GameArena on-chain
+  // ladder (backend-signed gasless write, keyed to their custodial wallet via
+  // the Vatar session) AND to Vatar's own in-world board. Best-effort.
+  const vatarSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "finished" || !inVatar) return;
+    if (vatarSubmittedRef.current) return;
+    vatarSubmittedRef.current = true;
+    const token = sessionTokenRef.current;
+    const scoreToSave = Math.min(1_000_000, Math.max(0, Math.round(scoreRef.current)));
+    void (async () => {
+      void vatarSubmitScore(scoreToSave);
+      if (!token || scoreToSave <= 0) return;
+      const vs = await getVatarSession();
+      if (!vs) return;
+      await signVatarScore(vs, "simon", scoreToSave, token).catch(() => {});
+    })();
+  }, [phase, inVatar]);
 
   // Arriving with ?play=1 starts a run at once (see the same door in Stack Tower).
   const autoStartRef = useRef(false);

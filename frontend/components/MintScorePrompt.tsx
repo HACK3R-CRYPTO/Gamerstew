@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useIsEmbedded } from "@/lib/vatar";
 
 // ─── MintScorePrompt ──────────────────────────────────────────────────────────
 // Shown on a game's finish screen when the player HAS a connected wallet
@@ -29,6 +30,10 @@ export default function MintScorePrompt({
   cta?: string;
 }) {
   const router = useRouter();
+  const embedded = useIsEmbedded();
+  // No mint/sign-in upsell inside a Vatar world (the on-chain GamePass is
+  // provisioned server-side for the Vatar player already).
+  if (embedded) return null;
   return (
     <div style={{
       marginTop: 18,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useIsEmbedded } from "@/lib/vatar";
 
 // ─── GuestScorePrompt ─────────────────────────────────────────────────────────
 // Shown on a game's finish screen in place of RewardPanel when the player
@@ -29,6 +30,10 @@ export default function GuestScorePrompt({
   cta?: string;
 }) {
   const router = useRouter();
+  const embedded = useIsEmbedded();
+  // No sign-in nudge inside a Vatar world — the player has no GameArena sign-in
+  // to go to. The finish screen just shows the score.
+  if (embedded) return null;
   return (
     <div style={{
       marginTop: 18,
@@ -104,6 +109,8 @@ export default function GuestScorePrompt({
 // remaining free-run count, the chip shows it ("Free play · 2 left") so the
 // funnel countdown is visible; omit it and the chip reads as before.
 export function GuestPlayChip({ left }: { left?: number } = {}) {
+  // Hidden in the embed — no free-play countdown, no "sign in to save".
+  if (useIsEmbedded()) return null;
   const label =
     typeof left === "number"
       ? left > 0

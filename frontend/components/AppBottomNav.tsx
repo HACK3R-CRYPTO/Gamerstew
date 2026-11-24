@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { playClick } from "@/hooks/useAppAudio";
+import { isEmbedded } from "@/lib/vatar";
 
 // Four places, not five. "Play" is gone: the home screen is the games now, so
 // a second page listing the same games was one more place to get lost. "Pet"
@@ -41,6 +43,11 @@ export default function AppBottomNav({ wide = false, tone = "light" }: { wide?: 
   const router = useRouter();
   const ix = activeIndex(pathname);
   const c = TONES[tone];
+  // Inside a Vatar world the embed is the games only: no app-wide nav. Worked
+  // out after mount, so the server still renders the full nav.
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => { setEmbedded(isEmbedded()); }, []);
+  if (embedded) return null;
   return (
     <nav className={`ga-nav ${wide ? "wide" : "dock"}`} aria-label="Main" style={{ ["--ix" as string]: Math.max(ix, 0), ["--n" as string]: ITEMS.length, background: c.bg, borderColor: c.line, boxShadow: c.shadow }}>
       {ix >= 0 && <span className="ga-nav-pill" style={{ background: c.pill }} aria-hidden />}

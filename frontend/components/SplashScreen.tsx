@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { preload } from "react-dom";
 import { useRouter } from "next/navigation";
 import { captureReferralFromUrl } from "@/lib/referral";
+import { isEmbedded } from "@/lib/vatar";
 
 const SHOW_MS = 1200; // long enough not to flash by, short enough not to be a wait
 const BITS: { src: string; x: string; y: string; size: number; turn: number; delay: number }[] = [
@@ -30,7 +31,9 @@ export default function SplashScreen() {
   // Everyone lands on the dashboard: the games, straight away. Signing in is one
   // tap from there, for the moment a player wants to keep a score.
   useEffect(() => {
-    const dest = "/dashboard";
+    // Inside a Vatar world the player is already signed in there and there is no
+    // GameArena sign-in to offer, so they go straight to the games.
+    const dest = isEmbedded() ? "/games" : "/dashboard";
     router.prefetch(dest);
     let cancelled = false;
     const t = setTimeout(() => { if (!cancelled) router.push(dest); }, SHOW_MS);

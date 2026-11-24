@@ -109,6 +109,8 @@ export const SETTINGS: Record<string, Setting> = {
   PARTNER_GAMES: s('Partners', 'list', 'Partners as slug or slug:gameType:label, comma-separated. Each needs a PARTNER_KEY_<SLUG>.'),
   VATAR_API: s('Partners', 'url', 'Vatar games API.', { default: 'https://lagoslife.app/api/games/v1' }),
   VATAR_SECRET: s('Partners', 'string', 'Vatar API secret.', { secret: true }),
+  VATAR_CUSTODY_SEED: s('Partners', 'string', 'Master seed every Vatar player\'s custodial wallet is derived from. Set once, back up, never change: changing it orphans every provisioned player.', { secret: true }),
+  VATAR_GAS_DRIP_CELO: s('Partners', 'string', 'CELO sent to a new Vatar custodial wallet so it can mint its GamePass.', { default: '0.1' }),
   VATAR_WEBHOOK_SECRET: s('Partners', 'string', 'Checks the signature on Vatar webhooks.', { secret: true }),
 };
 

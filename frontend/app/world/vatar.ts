@@ -27,11 +27,9 @@ type Vatar = {
   onPurchase: (fn: (p: Purchase) => void) => void;
 };
 
-declare global {
-  interface Window {
-    Vatar?: Vatar;
-  }
-}
+// The global is typed once, in lib/vatar.ts. This file reads it through its own,
+// narrower view of the same SDK object.
+const sdk = (): Vatar | undefined => (window as unknown as { Vatar?: Vatar }).Vatar;
 
 let sdkPromise: Promise<Vatar | null> | null = null;
 let initPromise: Promise<VatarInit | null> | null = null;
@@ -49,13 +47,13 @@ export function isEmbedded(): boolean {
 
 function loadSdk(): Promise<Vatar | null> {
   if (typeof window === "undefined") return Promise.resolve(null);
-  if (window.Vatar) return Promise.resolve(window.Vatar);
+  const have = sdk(); if (have) return Promise.resolve(have);
   if (sdkPromise) return sdkPromise;
   sdkPromise = new Promise((resolve) => {
     const s = document.createElement("script");
     s.src = SDK_SRC; // load from Vatar, never a copy — it gets security fixes
     s.async = true;
-    s.onload = () => resolve(window.Vatar ?? null);
+    s.onload = () => resolve(sdk() ?? null);
     s.onerror = () => resolve(null);
     document.head.appendChild(s);
   });
