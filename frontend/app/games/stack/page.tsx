@@ -36,6 +36,7 @@ import GameResult, { FreePlayNote } from "@/components/GameResult";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
+import { BLOCK_H, HUES, drawSlab } from "@/lib/stackDraw";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
@@ -67,56 +68,6 @@ import NextUp from "@/components/NextUp";
 const CRYSTAL_PERK_ID = 4;
 
 // Draws one tower slab. Default skin shifts hue as you climb; the Crystal
-// Blocks cosmetic swaps in an icy-glass palette — a fixed cyan face with a
-// brighter top gloss and a translucent inner highlight that reads as glass.
-// `hue` is kept for the default skin; crystal ignores it so the whole tower
-// stays a single cohesive material.
-function drawSlab(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, hue: number, crystal: boolean, moving: boolean,
-) {
-  // Every slab is a solid block seen slightly from above and to the left: a lit
-  // top face and a shaded right side are drawn behind the front face. The front
-  // face is still the one that counts for alignment, so the game plays exactly
-  // as before; the tower just looks like a real stack with ledges where a block
-  // was cut short.
-  const DX = 13, DY = 8;
-  ctx.fillStyle = crystal ? "hsl(188 90% 78%)" : `hsl(${hue} 88% ${moving ? 74 : 70}%)`;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + DX, y - DY); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = crystal ? "hsl(200 70% 18%)" : `hsl(${hue} 78% 20%)`;
-  ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + w + DX, y - DY + BLOCK_H); ctx.lineTo(x + w, y + BLOCK_H); ctx.closePath(); ctx.fill();
-  if (crystal) {
-    const fh = BLOCK_H - 3;                           // face height
-    ctx.fillStyle = "hsl(200 65% 24%)";              // deep ice shadow
-    ctx.fillRect(x, y + 3, w, BLOCK_H);
-    ctx.fillStyle = "hsl(190 80% 56%)";              // cyan glass face
-    ctx.fillRect(x, y, w, fh);
-    // Cut-gem facets — a bright upper-left triangle and a darker lower-right
-    // one split the face diagonally, so it reads as a faceted crystal, not a
-    // flat cyan slab. This is the "I clearly paid for this" difference.
-    ctx.fillStyle = "rgba(236,254,255,0.22)";        // lit facet
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x, y + fh); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "rgba(8,42,64,0.28)";            // shaded facet
-    ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + fh); ctx.lineTo(x, y + fh); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "rgba(230,252,255,0.7)";         // bright top edge
-    ctx.fillRect(x, y, w, 3);
-    // Specular sparkle — a small 4-point glint near the top-left corner
-    const gx = x + Math.min(14, w * 0.22), gy = y + 7, s = 3.2;
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
-    ctx.beginPath();
-    ctx.moveTo(gx, gy - s * 1.8); ctx.lineTo(gx + s * 0.7, gy); ctx.lineTo(gx + s * 1.8, gy);
-    ctx.lineTo(gx + s * 0.7, gy + s * 0.4); ctx.lineTo(gx, gy + s * 1.8); ctx.lineTo(gx - s * 0.7, gy + s * 0.4);
-    ctx.lineTo(gx - s * 1.8, gy); ctx.lineTo(gx - s * 0.7, gy); ctx.closePath(); ctx.fill();
-    return;
-  }
-  ctx.fillStyle = `hsl(${hue} 80% 28%)`;
-  ctx.fillRect(x, y + 3, w, BLOCK_H);
-  ctx.fillStyle = `hsl(${hue} 78% 56%)`;
-  ctx.fillRect(x, y, w, BLOCK_H - 3);
-  ctx.fillStyle = `rgba(255,255,255,${moving ? 0.3 : 0.25})`;
-  ctx.fillRect(x, y, w, 4);
-}
-
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 // Hard session cap · matches simon. Backend rejects vouchers from sessions
@@ -125,7 +76,6 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 const GAME_DURATION_MS = 10 * 60 * 1000;
 
 // ─── Tuning ──────────────────────────────────────────────────────────────────
-const BLOCK_H = 28;                 // pixel height of each stacked slab
 const START_W_MIN = 180;            // initial block width on narrow phones
 const START_W_FRAC = 0.62;          // …scaled to 62% of viewport on wider
 const PERFECT_TOL = 7;              // px tolerance to count as a perfect drop
@@ -135,7 +85,6 @@ const SPEED_RAMP_QUAD = 0.002;      // tiny quadratic component (caps at 2)
 const SPEED_RAMP_QUAD_CAP = 2;
 const CAM_FOLLOW = 0.08;            // 0..1 — camera ease toward target
 const SHARD_GRAVITY = 0.45;
-const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
 
 type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
 
@@ -401,6 +350,17 @@ export default function StackTowerPage() {
   }, [blip, haptic, juice]);
 
   // ─── Drop (the whole game in one function) ───────────────────────────────
+  // ── What a friend room is told ───────────────────────────────────────────
+  // After every drop: the top of the real tower (where each block sits and how
+  // wide it was cut), the width of this player's screen, and how fast the next
+  // block is sliding. A spectator's page rebuilds the tower from it and slides
+  // a block of its own at that speed (components/StackReplay.tsx), so they see
+  // the real overhangs and the real narrowing, drop by drop.
+  const tellRoom = (over = false) => {
+    if (runModeRef.current !== "room") return;
+    const st = stackRef.current; const m = movingRef.current; const lv = Math.max(0, st.length - 1);
+    roomRef.current.progress(lv, { lv, pts: scoreRef.current, combo: comboRef.current, cw: Math.round(sizeRef.current.w), spd: m ? m.speed : 0, mw: m ? Math.round(m.w) : 0, over: over ? 1 : 0, blocks: st.slice(-11).map((b) => [Math.round(b.x), Math.round(b.w)]) });
+  };
   const drop = useCallback(() => {
     if (phase !== "playing" || !movingRef.current) return;
     const stack = stackRef.current;
@@ -424,6 +384,7 @@ export default function StackTowerPage() {
         w: m.w, vx: m.dir * 1.5, vy: 0, rot: 0, vr: m.dir * 0.04, hue: m.hue,
       });
       movingRef.current = null;
+      tellRoom(true); // a watcher sees the block miss
       // Only signed-in, minted players can buy a save on-chain. Guests and
       // not-yet-minted players fall straight through to the finish screen.
       // So does every free mode: paying to save a run that is never submitted makes no sense.
@@ -487,7 +448,6 @@ export default function StackTowerPage() {
     }
 
     levelRef.current = newLevel;
-    if (runModeRef.current === "room") roomRef.current.progress(newLevel - 1, { lv: newLevel - 1, pts: scoreRef.current, combo: comboRef.current }); // friends see how tall you are
     // the moment the tower tops your best ever
     if (!passedBestRef.current && lineHeightRef.current >= 3 && newLevel - 1 > lineHeightRef.current) {
       passedBestRef.current = true;
@@ -510,6 +470,7 @@ export default function StackTowerPage() {
       speed,
       hue: HUES[newLevel % HUES.length],
     };
+    tellRoom(); // friends, and anyone watching, see the block land where it really landed
     // Camera follows the tower up
     camTargetRef.current = Math.max(0, newLevel * BLOCK_H - sizeRef.current.h * 0.45);
   }, [phase, blip, haptic, juice, address, needsMint, finish]);
@@ -606,6 +567,7 @@ export default function StackTowerPage() {
     camYRef.current = 0;
     camTargetRef.current = 0;
     scoreRef.current = 0;
+    setTimeout(() => tellRoom(), 0); // the base block, so a watcher sees the tower from the first second
     comboRef.current = 0;
     levelRef.current = 1;
     lineHeightRef.current = bestHeightRef.current;

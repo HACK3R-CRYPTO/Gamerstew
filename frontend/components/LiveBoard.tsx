@@ -11,6 +11,7 @@
 // in the room has the same words, so the letters would be the answer.
 
 import type { LiveState } from "@/hooks/useFriendRoom";
+import StackReplay from "@/components/StackReplay";
 
 const n = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
 
@@ -25,6 +26,8 @@ export default function LiveBoard({ game, live, done, progress, goal }: { game: 
       </div>
     );
   }
+  // Stack Tower sends its real tower: draw the game itself
+  if (game === "stack" && Array.isArray(live?.blocks)) return <StackReplay live={live} done={done} />;
   if (game === "stack") {
     const lv = n(live?.lv, progress); const combo = n(live?.combo); const show = Math.min(lv, 11);
     return (
@@ -66,7 +69,7 @@ export default function LiveBoard({ game, live, done, progress, goal }: { game: 
 
 /** The styles, once per page (the watch page renders several boards). */
 export const LIVE_BOARD_CSS = `
-  .lb { display: grid; gap: 10px; justify-items: center; align-content: center; min-height: 190px; padding: 14px; border-radius: 18px; background: linear-gradient(180deg, #1b0d42, #2a1466); color: #fff; }
+  .lb { display: grid; gap: 10px; justify-items: center; align-content: center; min-height: 300px; padding: 14px; border-radius: 18px; background: linear-gradient(180deg, #1b0d42, #2a1466); color: #fff; }
   .lb-cap { font-size: 13.5px; font-weight: 700; color: rgba(255,255,255,0.86); text-align: center; } .lb-cap b { color: #fde047; }
   .lb-rows { display: grid; gap: 6px; } .lb-rows div { display: flex; gap: 6px; opacity: 0.55; } .lb-rows div.cur { opacity: 1; }
   .lb-rows i { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,0.92); transition: background .3s ease, transform .3s ease; } .lb-rows i.hit { background: #22c55e; transform: scale(1.04); }

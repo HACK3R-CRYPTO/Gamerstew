@@ -125,7 +125,7 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
         .win { padding: 14px 18px; border-radius: 18px; background: linear-gradient(180deg, #fff7d6, #fde68a); font-size: 18px; box-shadow: 0 0 0 1px rgba(180,120,0,0.25); }
         .stage { display: flex; flex-direction: column; gap: 14px; }
         .screens { display: grid; gap: 12px; grid-template-columns: 1fr; }
-        .screens article { display: grid; gap: 12px; padding: 14px; border-radius: 22px; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.12), 0 18px 30px -26px rgba(76,29,149,0.9); transition: box-shadow .3s ease; }
+        .screens article { display: grid; gap: 12px; align-content: start; padding: 14px; border-radius: 22px; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.12), 0 18px 30px -26px rgba(76,29,149,0.9); transition: box-shadow .3s ease; }
         .screens article.lead { box-shadow: 0 0 0 2px #7c3aed, 0 18px 30px -22px rgba(76,29,149,0.9); } .screens article.first { box-shadow: 0 0 0 3px #f59e0b, 0 18px 30px -22px rgba(180,120,0,0.6); } .screens article.away { opacity: 0.62; }
         .screens header { display: flex; align-items: center; gap: 10px; } .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 17px; flex: 0 0 auto; }
         .who { flex: 1; min-width: 0; display: grid; } .who b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .who small { font-size: 12.5px; color: rgba(34,16,79,0.66); font-weight: 600; }
@@ -143,7 +143,7 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
           .hero { flex-direction: row; align-items: flex-end; justify-content: space-between; padding: 30px 32px; min-height: 190px; } .hero h1 { font-size: 54px; } .facts { justify-content: flex-end; max-width: 46%; }
           .stage { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; gap: 18px; } aside { position: sticky; top: 96px; }
           .screens.n3 { grid-template-columns: 1fr 1fr 1fr; } .screens.n1 { grid-template-columns: minmax(0, 520px); }
-          .lb { min-height: 230px; }
+          .lb { min-height: 360px; }
         }
         @media (prefers-reduced-motion: reduce) { .state.playing i { animation: none; } .bar i { transition: none; } }
       `}</style>
