@@ -366,7 +366,7 @@ test('ladder: the signed score is the server replay, whatever number the client 
   const r = await w.svc.signScore({ playerAddress: P, game: 'ladder', sessionToken: 'tok', score: 999_999, ladderRuns: runs });
   assert.strictEqual(r.status, 200);
   const expected = ladderRules.verify(ladderRules.deal('tok'), runs, 60_000);
-  assert.ok(expected.ok && expected.total > 0 && expected.total <= 1000);
+  assert.ok(expected.ok && expected.total > 0 && expected.total <= 100);
   assert.strictEqual(r.body.score, expected.ok ? expected.total : -1);
   assert.strictEqual(r.body.gameType, 5);
   assert.deepStrictEqual(w.calls.submitted, [{ player: P, gameType: 5, score: expected.ok ? expected.total : -1 }]);
@@ -397,9 +397,9 @@ test('ladder: times that add up to more than the session lasted are refused', as
 });
 
 test('ladder: season points use the ladder scale', () => {
-  assert.strictEqual(seasonPoints('ladder', 1000, 60_000), 14);
-  assert.strictEqual(seasonPoints('ladder', 400, 60_000), 5);
-  assert.strictEqual(seasonPoints('ladder', 60, 60_000), 0);
+  assert.strictEqual(seasonPoints('ladder', 100, 60_000), 14);
+  assert.strictEqual(seasonPoints('ladder', 40, 60_000), 5);
+  assert.strictEqual(seasonPoints('ladder', 6, 60_000), 0);
 });
 
 // ── Street Strike: every throw replayed through the lane simulation ──

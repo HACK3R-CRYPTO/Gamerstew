@@ -51,9 +51,11 @@ const oneLetterApart = (a: string, b: string): boolean => {
 };
 
 export function pointsFor(par: number, steps: number, seconds: number, hints: number): number {
-  const route = steps <= par ? 50 : Math.max(0, 50 - (steps - par) * 10);
-  const speed = Math.max(0, 50 - Math.floor(seconds / 2));
-  return Math.max(20, 100 + route + speed - hints * 30);
+  // Small numbers a player can hold in their head: a ladder is worth up to 20
+  // (10 for solving it, 5 for matching par, 5 for speed), so a round is out of 100.
+  const route = steps <= par ? 5 : Math.max(0, 5 - (steps - par));
+  const speed = Math.max(0, 5 - Math.floor(seconds / 20));
+  return Math.max(2, 10 + route + speed - hints * 3);
 }
 
 /** Replay a whole round against the ladders the server dealt. `elapsedMs` is the

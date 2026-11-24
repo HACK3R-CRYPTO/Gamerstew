@@ -30,7 +30,7 @@ const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const ROUND = 5;
 const PARS = [2, 3, 3, 4, 4]; // short first, so the first ladder teaches the game
 const KEYS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
-const BEST_KEY = "gamearena:ladder:best";
+const BEST_KEY = "gamearena:ladder:best2"; // "2": scores went from out of 1,000 to out of 100
 
 const WORDS = new Set(VALID.split(" "));
 
@@ -55,7 +55,7 @@ function deal(): [string, string, number][] {
 
 // The daily round: the same five ladders for every player on a given day, so
 // people can compare scores and share them. One scored attempt a day.
-const DAILY_KEY = "gamearena:ladder:daily";
+const DAILY_KEY = "gamearena:ladder:daily2";
 function todayKey() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
 function dealDaily(): [string, string, number][] {
   const d = new Date(); let a = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) * 2654435761 >>> 0;
@@ -91,9 +91,11 @@ function routeStep(from: string, to: string, clean: boolean): string | null {
 
 interface Result { start: string; target: string; par: number; steps: number; seconds: number; hints: number; skipped: boolean; points: number; words: string[]; ms: number }
 function pointsFor(par: number, steps: number, seconds: number, hints: number) {
-  const route = steps <= par ? 50 : Math.max(0, 50 - (steps - par) * 10);
-  const speed = Math.max(0, 50 - Math.floor(seconds / 2));
-  return Math.max(20, 100 + route + speed - hints * 30);
+  // must match games-backend/src/modules/ladder/rules.ts: a ladder is worth up
+  // to 20 (10 solve + 5 par + 5 speed), a round is out of 100
+  const route = steps <= par ? 5 : Math.max(0, 5 - (steps - par));
+  const speed = Math.max(0, 5 - Math.floor(seconds / 20));
+  return Math.max(2, 10 + route + speed - hints * 3);
 }
 
 export default function WordLadderPage() {
@@ -303,7 +305,7 @@ export default function WordLadderPage() {
           <Link className="wl-rankline" href="/games/ladder/leaderboard">See this week's leaderboard</Link>
           <div className="wl-facts">
             <span><b>5</b>ladders a round</span>
-            <span><b>200</b>points each</span>
+            <span><b>100</b>points a round</span>
             <span><b>{best || "–"}</b>your best</span>
           </div>
         </main>
@@ -355,7 +357,7 @@ export default function WordLadderPage() {
               <div key={row}>
                 {r === 2 && <button className="wide" onClick={undo} disabled={!rungs.length || solved} aria-label="Undo">↶</button>}
                 {row.split("").map((k) => <button key={k} onClick={() => type(k)} className={hintWord && hintWord[sel] === k ? "glow" : ""}>{k}</button>)}
-                {r === 2 && <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 30 points">?</button>}
+                {r === 2 && <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 3 points">?</button>}
               </div>
             ))}
           </div>

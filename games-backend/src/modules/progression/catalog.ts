@@ -12,7 +12,7 @@ export const VALID_GAMES = Object.keys(GAME_TYPE);
 export const CHALLENGE_AI_GAME_TYPE = 3;
 export const GAME_LABEL: Record<string, string> = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower', nepa: 'Up NEPA!', ladder: 'Word Ladder', strike: 'Street Strike', nepa3d: 'UP NEPA 3D' };
 /** a run at or above this counts as a win */
-export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7, stack: 50, nepa: 50, ladder: 600, strike: 80, nepa3d: 400 }; // nepa3d: the whole street lit // ladder: three of the five solved at par
+export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7, stack: 50, nepa: 50, ladder: 60, strike: 80, nepa3d: 400 }; // nepa3d: the whole street lit // ladder: three of the five solved at par
 export const XP_PLAYED = 10;
 export const XP_WIN = 25;
 export const XP_NEW_PB = 25;
@@ -56,10 +56,10 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
   { id: 'stack_30', cat: 'skill', label: 'Stack 30+ blocks in Stack Tower', target: 1, reward: 20, match: scoreAtLeast('stack', 30) },
   { id: 'stack_45', cat: 'skill', label: 'Stack 45+ blocks in Stack Tower', target: 1, reward: 28, match: scoreAtLeast('stack', 45) },
   { id: 'stack_60', cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: scoreAtLeast('stack', 60) },
-  // a Word Ladder round tops out at 1,000 (five ladders, 200 each)
-  { id: 'ladder_500', cat: 'skill', label: 'Score 500+ in Word Ladder', target: 1, reward: 20, match: scoreAtLeast('ladder', 500) },
-  { id: 'ladder_750', cat: 'skill', label: 'Score 750+ in Word Ladder', target: 1, reward: 28, match: scoreAtLeast('ladder', 750) },
-  { id: 'ladder_900', cat: 'skill', label: 'Score 900+ in Word Ladder', target: 1, reward: 35, match: scoreAtLeast('ladder', 900) },
+  // a Word Ladder round is out of 100 (five ladders, 20 each)
+  { id: 'ladder_500', cat: 'skill', label: 'Score 50+ in Word Ladder', target: 1, reward: 20, match: scoreAtLeast('ladder', 50) },
+  { id: 'ladder_750', cat: 'skill', label: 'Score 75+ in Word Ladder', target: 1, reward: 28, match: scoreAtLeast('ladder', 75) },
+  { id: 'ladder_900', cat: 'skill', label: 'Score 90+ in Word Ladder', target: 1, reward: 35, match: scoreAtLeast('ladder', 90) },
   // a Street Strike game tops out at 150
   { id: 'strike_60', cat: 'skill', label: 'Score 60+ in Street Strike', target: 1, reward: 20, match: scoreAtLeast('strike', 60) },
   { id: 'strike_90', cat: 'skill', label: 'Score 90+ in Street Strike', target: 1, reward: 28, match: scoreAtLeast('strike', 90) },

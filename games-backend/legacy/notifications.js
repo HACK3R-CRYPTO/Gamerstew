@@ -421,6 +421,8 @@ require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supaba
 
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
 core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
+// The inbox: read, delete and announcements, remembered per player (src/modules/inbox).
+core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret });
 

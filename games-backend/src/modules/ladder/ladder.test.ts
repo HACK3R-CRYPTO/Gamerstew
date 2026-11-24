@@ -85,11 +85,12 @@ test('verify: a round typed faster than a person can is scored but flagged', () 
   assert.equal(v.human, false); assert.ok(v.reasons.length > 0);
 });
 
-test('points: par earns the route bonus, extra steps and hints cost, never below 20', () => {
-  assert.equal(pointsFor(3, 3, 0, 0), 200);
-  assert.equal(pointsFor(3, 2, 0, 0), 200);
-  assert.equal(pointsFor(3, 5, 0, 0), 180);
-  assert.equal(pointsFor(3, 3, 100, 0), 150);
-  assert.equal(pointsFor(3, 3, 0, 1), 170);
-  assert.equal(pointsFor(3, 12, 500, 9), 20);
+test('points: a ladder is out of 20; par and speed add, extra steps and hints cost, never below 2', () => {
+  assert.equal(pointsFor(3, 3, 0, 0), 20);
+  assert.equal(pointsFor(3, 2, 0, 0), 20);
+  assert.equal(pointsFor(3, 5, 0, 0), 18);   // two steps over par
+  assert.equal(pointsFor(3, 3, 45, 0), 18);  // slower
+  assert.equal(pointsFor(3, 3, 100, 0), 15); // no speed bonus left
+  assert.equal(pointsFor(3, 3, 0, 1), 17);   // one hint
+  assert.equal(pointsFor(3, 12, 500, 9), 2);
 });
