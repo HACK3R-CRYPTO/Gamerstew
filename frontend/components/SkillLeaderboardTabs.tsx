@@ -24,7 +24,7 @@ const PAGE_SIZE = 16;
 const T = {
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.8)",
-  inkSoft: "rgba(34,16,79,0.55)",
+  inkSoft: "rgba(34,16,79,0.66)",
   hairline: "rgba(76,29,149,0.14)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };

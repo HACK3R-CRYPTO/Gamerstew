@@ -14,7 +14,7 @@ import { getCollectiveChoice, chooseCollective } from "@/app/actions/collective"
 const T = {
   ink: "#ffffff",
   inkDim: "rgba(34,16,79,0.8)",
-  inkSoft: "rgba(34,16,79,0.55)",
+  inkSoft: "rgba(34,16,79,0.66)",
   surface: "rgba(40,18,100,0.55)",
   hairline: "rgba(255,255,255,0.08)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',

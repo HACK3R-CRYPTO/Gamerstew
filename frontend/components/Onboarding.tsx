@@ -16,7 +16,7 @@ const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   surface: "#ffffff",
   hairline: "rgba(76,29,149,0.14)",
   hairlineHi: "rgba(76,29,149,0.24)",
@@ -499,10 +499,10 @@ export default function Onboarding({
               onKeyDown={e => { if (e.key === "Enter") start(); }}
               style={{
                 width: "100%", boxSizing: "border-box", padding: "15px 16px", textAlign: "center",
-                background: "rgba(0,0,0,0.4)", borderRadius: 14, color: "#fff",
-                border: `1.5px solid ${(mintError?.kind === "taken" || nameStatus === "taken") ? "#b91c1c" : nameStatus === "available" ? "rgba(134,239,172,0.9)" : valid ? "rgba(134,239,172,0.6)" : T.hairlineHi}`,
+                background: "#fff", borderRadius: 14, color: "#22104f",
+                border: `1.5px solid ${(mintError?.kind === "taken" || nameStatus === "taken") ? "#b91c1c" : nameStatus === "available" ? "#16a34a" : valid ? "rgba(22,163,74,0.6)" : T.hairlineHi}`,
                 fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", outline: "none",
-                boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.15), inset 0 2px 8px rgba(0,0,0,0.5)" : "inset 0 2px 8px rgba(0,0,0,0.5)",
+                boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.18)" : "none",
                 transition: "border-color 0.15s, box-shadow 0.15s",
               }}
             />
@@ -565,11 +565,11 @@ export default function Onboarding({
         )}
 
         <button onClick={start} disabled={!canSubmit} style={{
-          width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 19, color: "#fff", padding: "17px", borderRadius: 16,
-          background: !canSubmit ? "rgba(76,29,149,0.06)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
+          width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 19, color: canSubmit ? "#fff" : "rgba(34,16,79,0.55)", padding: "17px", borderRadius: 16,
+          background: !canSubmit ? "rgba(76,29,149,0.08)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
           border: `1.5px solid ${!canSubmit ? T.hairline : T.accent}`,
           boxShadow: !canSubmit ? "none" : `0 14px 30px -8px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)`,
-          cursor: canSubmit ? "pointer" : "default", opacity: canSubmit ? 1 : 0.6, letterSpacing: "0.02em", transition: "all 0.15s",
+          cursor: canSubmit ? "pointer" : "default", opacity: 1, letterSpacing: "0.02em", transition: "all 0.15s",
         }}>
           Let&apos;s play! 🎮
         </button>
@@ -584,8 +584,8 @@ export default function Onboarding({
             </div>
             <p style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, margin: 0, lineHeight: 1.5 }}>
               {mintError?.kind === "gas"
-                ? <>Your account ran low mid-flight. One <strong style={{ color: "#fff" }}>free</strong> top-up and we&apos;ll finish setting up your slime.</>
-                : <>New accounts get switched on once — it&apos;s <strong style={{ color: "#fff" }}>free</strong> and takes a few seconds. Just say hi in our chat:</>}
+                ? <>Your account ran low mid-flight. One <strong style={{ color: "#22104f" }}>free</strong> top-up and we&apos;ll finish setting up your slime.</>
+                : <>New accounts get switched on once — it&apos;s <strong style={{ color: "#22104f" }}>free</strong> and takes a few seconds. Just say hi in our chat:</>}
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 22, height: 22, borderRadius: 999, background: "rgba(180,83,9,0.45)", border: "1px solid rgba(180,83,9,0.75)", color: "#b45309", fontFamily: T.display, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>

@@ -16,7 +16,7 @@ import { DUEL_GAMES } from "@/lib/duel";
 
 const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
-  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.55)",
+  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.66)",
   surface: "#ffffff", hairline: "rgba(76,29,149,0.08)",
   gold: "#b45309", green: "#047857", cyan: "#0e7490", accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',

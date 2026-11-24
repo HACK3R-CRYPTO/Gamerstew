@@ -33,7 +33,7 @@ const LIGHT: typeof DARK = {
   ...DARK,
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   hairline: "rgba(76,29,149,0.14)",
   accent: "#6d28d9",
   band: "rgba(243,238,255,0.86)",

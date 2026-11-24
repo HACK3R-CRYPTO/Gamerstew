@@ -31,7 +31,7 @@ const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   surface: "#ffffff",
   hairline: "rgba(76,29,149,0.14)",
   hairlineHi: "rgba(76,29,149,0.24)",
