@@ -23,6 +23,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PUZZLES, VALID } from "./data";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useFriendRoom } from "@/hooks/useFriendRoom";
+import FriendsSheet from "@/components/FriendsSheet";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const ROUND = 5;
@@ -99,6 +101,18 @@ export default function WordLadderPage() {
   const ranked = useRankedRun("ladder");
   const [isRanked, setIsRanked] = useState(false); // this round has a server ticket
   const [opening, setOpening] = useState(false);
+  // Friend rooms: everyone in the room is dealt the same five ladders and plays
+  // at once. The server scores each player from their words.
+  const room = useFriendRoom("ladder");
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [isRoomRound, setIsRoomRound] = useState(false);
+  const roomRound = useRef(0);
+  // arriving from a friend's link (?room=CODE) opens the sheet with the code filled in
+  useEffect(() => {
+    const c = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+    if (c.length === 5) { setInviteCode(c); setFriendsOpen(true); window.history.replaceState(null, "", window.location.pathname); }
+  }, []);
   const [phase, setPhase] = useState<"start" | "play" | "done">("start");
   const [set, setSet] = useState<[string, string, number][]>([]);
   const [daily, setDaily] = useState(false);
@@ -137,6 +151,7 @@ export default function WordLadderPage() {
   }, []);
   const begin = async (isDaily = false) => {
     if (opening) return;
+    setIsRoomRound(false);
     let list = isDaily ? dealDaily() : null; let rankedRound = false;
     if (!isDaily && ranked.canRank) {
       // the server deals a ranked round; if it cannot be reached, play unranked
@@ -158,11 +173,28 @@ export default function WordLadderPage() {
   }, [phase, solved, ix]);
   useEffect(() => { ladderEnd.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [rungs.length]);
 
+  // the host pressed start: begin the room's round with the ladders it dealt
+  useEffect(() => {
+    const v = room.view;
+    if (!v) return;
+    const dealt = (v.deal as { ladders?: [string, string, number][] } | undefined)?.ladders;
+    if (v.status === "playing" && v.round !== roomRound.current && dealt?.length === ROUND && !v.players[v.you]?.done) {
+      roomRound.current = v.round;
+      setIsRoomRound(true); setIsRanked(false); setDaily(false);
+      setSet(dealt); setResults([]); setPhase("play"); openPuzzle(dealt, 0); setFriendsOpen(false);
+    }
+    // the host called a rematch: back to the lobby
+    if (v.status === "waiting" && isRoomRound && phase === "done") { setPhase("start"); setIsRoomRound(false); setFriendsOpen(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view, phase, isRoomRound]);
+  const leaveRoom = () => { room.leave(); setIsRoomRound(false); roomRound.current = 0; setFriendsOpen(false); setPhase("start"); };
+
   const say = (text: string) => setMsg({ text, key: Date.now() });
   const finishPuzzle = (steps: number, skipped: boolean) => {
     const ms = Date.now() - t0.current; const seconds = Math.floor(ms / 1000);
     const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints), words: skipped ? rungs : [...rungs.slice(0, steps - 1), target].slice(0, steps), ms };
     const all = [...results, r]; setResults(all); setSolved(true);
+    if (isRoomRound) room.progress(all.length); // let the others see how far you have got
     setTimeout(() => {
       if (ix + 1 < ROUND) openPuzzle(set, ix + 1);
       else {
@@ -173,6 +205,7 @@ export default function WordLadderPage() {
         // dev only: hands the finished round to an automated test, which checks it
         // against the server's rules
         if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
+        if (isRoomRound) void room.finish({ ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
         if (isRanked) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof: { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) } });
       }
     }, skipped ? 500 : 1300);
@@ -263,6 +296,7 @@ export default function WordLadderPage() {
           <h1 style={{ fontFamily: DISPLAY }}>Turn one word<br />into another</h1>
           <p>Change <b>one letter</b> at a time. Every step has to be a real word.</p>
           <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)} disabled={opening}>{opening ? "Dealing…" : "Play"}</button>
+          <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
           <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
           {dailyDone === null ? (
             <button className="wl-daily" onClick={() => begin(true)}>
@@ -282,6 +316,16 @@ export default function WordLadderPage() {
 
       {phase === "play" && puzzle && (
         <main className="wl-play">
+          {isRoomRound && room.view && (
+            <div className="wl-room" aria-label="Players in this room">
+              {room.view.players.map((pl, i) => (
+                <span key={i} className={`${i === room.view!.you ? "me" : ""}${pl.away ? " away" : ""}${pl.done ? " done" : ""}`}>
+                  <b>{pl.name}</b>
+                  <em>{Array.from({ length: ROUND }, (_, k) => <i key={k} className={k < (i === room.view!.you ? results.length : pl.progress) ? "on" : ""} />)}</em>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="wl-stats">
             <span><b>{rungs.length}</b>steps</span>
             <span><b>{par}</b>par</span>
@@ -326,9 +370,28 @@ export default function WordLadderPage() {
 
       {phase === "done" && (
         <main className="wl-done">
-          <div className="wl-kicker">{daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
+          <div className="wl-kicker">{isRoomRound ? "YOUR SCORE" : daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
           <h1 style={{ fontFamily: DISPLAY }}>{total} <small>points</small></h1>
           {total >= best && total > 0 && <div className="wl-new">New best</div>}
+          {isRoomRound && room.view && (
+            <div className="wl-standings">
+              <div className="wl-kicker">ROOM {room.view.code} · {room.view.status === "over" ? "FINAL" : "STILL PLAYING"}</div>
+              <ol>
+                {[...room.view.players].map((pl, i) => ({ pl, i })).sort((a, b) => (b.pl.score ?? -1) - (a.pl.score ?? -1)).map(({ pl, i }, rank) => (
+                  <li key={i} className={`${i === room.view!.you ? "me" : ""}${room.view!.status === "over" && rank === 0 && pl.score != null ? " win" : ""}`}>
+                    <span>{pl.score != null ? rank + 1 : "·"}</span>
+                    <b>{pl.name}{i === room.view!.you ? " (you)" : ""}</b>
+                    <i>{pl.score != null ? pl.score : pl.away ? "left" : `ladder ${Math.min(ROUND, pl.progress + 1)} of ${ROUND}`}</i>
+                  </li>
+                ))}
+              </ol>
+              {room.error && <div className="wl-save error"><b>{room.error}</b></div>}
+              {room.view.status === "over"
+                ? (room.isHost ? <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => room.rematch()} disabled={room.busy}>Play again</button> : <div className="wl-rankline">Waiting for the host to start another round…</div>)
+                : <div className="wl-rankline">Scores appear as each friend finishes.</div>}
+              <button className="wl-skip" onClick={leaveRoom}>Leave room</button>
+            </div>
+          )}
           {isRanked && (
             <div className={`wl-save ${ranked.status}`} role="status">
               {ranked.status === "checking" && "Checking your words…"}
@@ -342,7 +405,7 @@ export default function WordLadderPage() {
               {ranked.status === "error" && <b>{ranked.error}</b>}
             </div>
           )}
-          {!isRanked && !daily && !ranked.canRank && <div className="wl-save guest">This score is on your device only. <Link href="/home?signin=1">Sign in</Link> to rank the next one.</div>}
+          {!isRanked && !daily && !isRoomRound && !ranked.canRank && <div className="wl-save guest">This score is on your device only. <Link href="/home?signin=1">Sign in</Link> to rank the next one.</div>}
           <ul>
             {results.map((r, i) => (
               <li key={i}>
@@ -352,14 +415,30 @@ export default function WordLadderPage() {
               </li>
             ))}
           </ul>
-          <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play again</button>
-          <div className="wl-pair"><button className="wl-ghost" onClick={share}>Share</button><button className="wl-ghost" onClick={() => router.push("/games/ladder/leaderboard")}>Leaderboard</button></div>
-          <button className="wl-skip" onClick={() => router.push("/dashboard")}>Home</button>
+          {!isRoomRound && <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play again</button>}
+          <div className="wl-pair" style={isRoomRound ? { display: "none" } : undefined}><button className="wl-ghost" onClick={share}>Share</button><button className="wl-ghost" onClick={() => router.push("/games/ladder/leaderboard")}>Leaderboard</button></div>
+          {!isRoomRound && <button className="wl-skip" onClick={() => router.push("/dashboard")}>Home</button>}
           {msg && <div className="wl-msg" key={msg.key}>{msg.text}</div>}
         </main>
       )}
 
+      {friendsOpen && phase === "start" && <FriendsSheet room={room} gameName="Word Ladder" sharePath="/games/ladder" initialCode={inviteCode} onClose={() => setFriendsOpen(false)} />}
+
       <style>{`
+        .wl-friends { border-color: rgba(109,40,217,0.5) !important; color: var(--brand) !important; }
+        .wl-room { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+        .wl-room::-webkit-scrollbar { display: none; }
+        .wl-room span { flex: 1 1 0; min-width: 76px; display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 12px; background: rgba(255,255,255,0.7); border: 1px solid var(--line); }
+        .wl-room span.me { border-color: var(--brand); } .wl-room span.away { opacity: 0.45; } .wl-room span.done { background: #ecfdf3; border-color: rgba(22,163,74,0.5); }
+        .wl-room b { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wl-room em { display: flex; gap: 3px; } .wl-room em i { flex: 1; height: 5px; border-radius: 3px; background: rgba(76,29,149,0.14); transition: background .3s ease; } .wl-room em i.on { background: var(--go); }
+        .wl-standings { display: flex; flex-direction: column; gap: 10px; }
+        .wl-standings ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+        .wl-standings li { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line); animation: wlIn .35s ease both; }
+        .wl-standings li.me { box-shadow: 0 0 0 2px var(--brand); }
+        .wl-standings li.win { background: #fffbeb; box-shadow: 0 0 0 2px #f59e0b; }
+        .wl-standings li span, .wl-standings li b, .wl-standings li i { grid-column: auto; grid-row: auto; align-self: center; }
+        .wl-standings li span { font-size: 15px; font-weight: 900; color: var(--dim); } .wl-standings li b { font-size: 15px; } .wl-standings li i { font-style: normal; font-weight: 900; font-size: 15px; color: var(--brand); }
         .wl { min-height: 100dvh; display: flex; flex-direction: column; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; --brand: #6d28d9; --line: rgba(76,29,149,0.16); --dim: rgba(34,16,79,0.6); --go: #16a34a; }
         .wl button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
         .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 10px 14px 4px; text-align: center; }
