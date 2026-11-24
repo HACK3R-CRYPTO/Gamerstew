@@ -63,10 +63,15 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
                 <li key={i} className={`${i === v.you ? "me" : ""}${v.status === "over" && rank === 0 && p.score != null ? " win" : ""}`}>
                   <span>{p.score != null ? rank + 1 : "·"}</span>
                   <b>{p.name}{i === v.you ? " (you)" : ""}</b>
-                  <i>{p.score != null ? p.score : p.away ? "left" : `${progressWord} ${p.progress + 1}`}</i>
+                  <i>{p.score != null ? p.score : p.away ? "left" : `${progressWord} ${p.progress + 1}`}{p.chain?.state === "recorded" && p.chain.tx ? <a className="fp-tick" href={`https://celoscan.io/tx/${p.chain.tx}`} target="_blank" rel="noreferrer" aria-label="See this score on the chain" title="On-chain">✓</a> : null}</i>
                 </li>
               ))}
             </ol>
+            {(() => { const c = v.you >= 0 ? v.players[v.you]?.chain : undefined; if (!c) return null; return (
+              <div className={`fp-chain ${c.state}`} role="status">
+                {c.state === "sending" ? "Saving your score on-chain…" : c.state === "recorded" ? <>Your score is on-chain. {c.tx && <a href={`https://celoscan.io/tx/${c.tx}`} target="_blank" rel="noreferrer">View</a>}</> : "Your score did not reach the chain this time. It still counts in this room."}
+              </div>
+            ); })()}
             {v.stake && v.status === "over" && <StakeResult view={v} />}
             {room.error && <div className="fp-err">{room.error}</div>}
             {v.status === "over"
@@ -100,6 +105,10 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
         .fp-note { text-align: center; font-size: 13.5px; font-weight: 700; color: rgba(34,16,79,0.62); padding: 4px 0; }
         .fp-leave { align-self: center; border: none; background: none; cursor: pointer; font-size: 13px; font-weight: 700; color: rgba(34,16,79,0.6); text-decoration: underline; text-underline-offset: 3px; padding: 4px 10px; }
         .fp-err { text-align: center; font-size: 13px; font-weight: 700; color: #be123c; }
+        .fp-tick { margin-left: 6px; color: #15803d; font-style: normal; font-weight: 900; text-decoration: none; }
+        .fp-chain { text-align: center; font-size: 13px; font-weight: 700; color: rgba(34,16,79,0.72); background: #f3effc; border-radius: 12px; padding: 9px 12px; }
+        .fp-chain.recorded { color: #166534; background: #dcfce7; } .fp-chain.recorded a { color: #166534; }
+        .fp-chain.failed { color: #9a3412; background: #ffedd5; }
         @media (prefers-reduced-motion: reduce) { .fp-over, .fp-card { animation: none; } }
       `}</style>
     </>

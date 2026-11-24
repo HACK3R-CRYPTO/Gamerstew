@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkedWallet } from "@/lib/server/roomWallet";
 
 // Friend rooms for any game → games-backend /api/rooms/*
 // The browser talks to this route; this route talks to the backend with the
@@ -27,6 +28,16 @@ async function forward(req: Request, path: string[], method: "GET" | "POST") {
       const raw = await req.text();
       if (raw.length > 8000) return NextResponse.json({ error: "too_big" }, { status: 413 });
       body = raw || "{}";
+      // Taking a seat (opening a room, or joining one): the wallet the seat
+      // plays as is decided HERE, from a checked sign-in, never from the body.
+      if (path.length === 1 || path[2] === "join") {
+        let data: Record<string, unknown> = {};
+        try { const p = JSON.parse(body); if (p && typeof p === "object") data = p as Record<string, unknown>; } catch { /* an empty seat request */ }
+        delete data.wallet;
+        const wallet = await checkedWallet(req);
+        if (wallet) data.wallet = wallet;
+        body = JSON.stringify(data);
+      }
     }
     const r = await fetch(`${backend}${to}`, {
       method,

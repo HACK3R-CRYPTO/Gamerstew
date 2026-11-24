@@ -443,7 +443,11 @@ if (process.env.ROOM_STAKES === 'true' && core.validator && core.provider) {
   };
   console.log(`[rooms] playing for G$ is ON · entries ${entries.length} · fee ${feeBps / 100}%`);
 }
-const roomService = core.platform.createRoomService(core.platform.ROOM_GAMES, { keep: roomKeeper, stakes: roomStakes });
+const roomService = core.platform.createRoomService(core.platform.ROOM_GAMES, {
+  keep: roomKeeper, stakes: roomStakes,
+  // a signed-in player's checked round is recorded on the chain (legacy/scores.js). Off with ROOM_ONCHAIN=false.
+  onChain: async (run) => (String(process.env.ROOM_ONCHAIN ?? 'true').toLowerCase() === 'false' || !core.recordRoomRun ? null : core.recordRoomRun(run)),
+});
 if (roomStakes) { const t = setInterval(() => { roomService.settleDue().catch(() => {}); }, 15000); if (t.unref) t.unref(); }
 roomKeeper.loadAll().then((saved) => { const n = roomService.restore(saved); if (n) console.log(`[rooms] ${n} open room(s) restored`); }).catch(() => {});
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService });

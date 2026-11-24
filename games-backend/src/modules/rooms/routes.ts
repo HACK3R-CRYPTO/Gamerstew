@@ -29,8 +29,8 @@ export function registerRoomRoutes(app: Application, deps: { requireSecret?: Req
   const allowCreate = createLimiter(deps.now ?? Date.now);
   const who = (req: Request) => String(req.headers['x-client-ip'] ?? 'shared').slice(0, 64);
 
-  app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name) : { error: 'slow_down', status: 429 })));
-  app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name)));
+  app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name, body(req).wallet) : { error: 'slow_down', status: 429 })));
+  app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name, body(req).wallet)));
   app.get('/api/rooms/:code', gate, route((req) => { paying(req.params.code); return service.get(req.params.code, req.query.token); }));
   app.post('/api/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/progress', gate, route((req) => service.progress(req.params.code, body(req).token, body(req).progress)));

@@ -255,3 +255,31 @@ test('UP NEPA 3D room: a race the server times itself; unverified, so it can nev
   assert.equal(lost.players[1]!.score, 240); // six of ten breakers, and nothing for skill on a lost run
   assert.equal(lost.status, 'over');
 });
+
+test("a signed-in seat's checked round goes on the chain after the result; guests, zero scores and unchecked games do not", async () => {
+  const A = '0x' + 'a'.repeat(40); const sent: { account: string; game: string; score: number; ref: string }[] = [];
+  const loose: GameRules = { ...toy, verified: false };
+  let fail = false;
+  const svc = createRoomService({ toy, loose }, { onChain: async (run) => { sent.push(run); if (fail) throw new Error('rpc down'); return { txHash: '0xtx' + sent.length }; } });
+  const settle = () => new Promise((r) => setTimeout(r, 5));
+  const h = ok<Seat>(svc.create('toy', 'Ada', A.toUpperCase().replace('0X', '0x'))); const g = ok<Seat>(svc.join(h.code, 'Bo')); const twin = ok<Seat>(svc.join(h.code, 'Cy', A));
+  svc.start(h.code, h.token);
+  const first = ok<RoomView>(await svc.finish(h.code, h.token, '40'));
+  assert.equal(first.players[0]!.score, 40, 'the result is answered at once');
+  assert.equal(first.players[0]!.chain?.state, 'sending');
+  await svc.finish(h.code, g.token, '30'); await svc.finish(h.code, twin.token, '20'); await settle();
+  assert.deepEqual(sent.map((s) => [s.account, s.game, s.score]), [[A, 'toy', 40]], 'only the signed-in seat, once: the guest and the second phone on the same wallet are not recorded');
+  const after = ok<RoomView>(svc.get(h.code, g.token));
+  assert.deepEqual(after.players.map((p) => p.chain ?? null), [{ state: 'recorded', tx: '0xtx1' }, null, null]);
+  // a new round starts clean, and a failed send says so instead of hanging on "sending"
+  svc.rematch(h.code, h.token); svc.start(h.code, h.token); fail = true;
+  assert.equal(ok<RoomView>(svc.get(h.code, h.token)).players[0]!.chain, undefined);
+  await svc.finish(h.code, h.token, '50'); await settle();
+  assert.equal(ok<RoomView>(svc.get(h.code, h.token)).players[0]!.chain?.state, 'failed');
+  assert.notEqual(sent[1]!.ref, sent[0]!.ref, 'every round has its own reference');
+  // a zero, and a game whose score is the phone's word, are never sent
+  const z = ok<Seat>(svc.create('toy', 'Z', A)); ok<Seat>(svc.join(z.code, 'Y')); svc.start(z.code, z.token); await svc.finish(z.code, z.token, '0');
+  const l = ok<Seat>(svc.create('loose', 'L', A)); ok<Seat>(svc.join(l.code, 'M')); svc.start(l.code, l.token); await svc.finish(l.code, l.token, '99'); await settle();
+  assert.equal(sent.length, 2);
+  assert.equal(ok<Seat | { error: string }>(svc.create('toy', 'Q', 'not-a-wallet')) && sent.length, 2);
+});

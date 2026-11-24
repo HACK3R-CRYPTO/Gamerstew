@@ -52,6 +52,7 @@ export const SETTINGS: Record<string, Setting> = {
   // ── gasless ──
   SCORE_OUTBOX: s('Chain', 'bool', 'Queue scores and send them on-chain from the outbox, instead of making the player wait. Needs the chain_outbox table.', { default: 'false' }),
   ROOM_STAKES: s('Chain', 'bool', 'Let friend rooms be played for G$. Losers pay the winner directly by permit; no money is held. Off unless set to "true".', { default: 'false' }),
+  ROOM_ONCHAIN: s('Chain', 'bool', 'Record a signed-in player\'s friend-room round on the chain, gasless, like a solo run. Only for games the server scores itself. On unless set to "false".', { default: 'true' }),
   ROOM_STAKE_ENTRIES: s('Chain', 'list', 'The G$ entries a room host may pick.', { default: '50,100,250' }),
   ROOM_STAKE_FEE_BPS: s('Chain', 'int', 'The share of each entry kept as the fee, in hundredths of a percent.', { default: '1000' }),
   ROOM_FEE_WALLET: s('Chain', 'address', 'Where room fees go. Empty: the server wallet.', { default: '' }),

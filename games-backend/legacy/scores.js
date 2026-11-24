@@ -198,6 +198,39 @@ const submitRun = core.platform.registerSubmitRoute(core.app, {
   validatorAddress: () => core.validator.address,
 });
 
+// ─── A friend-room round, recorded like a solo run ───────────────────────────
+// The room service has already scored the run itself (only for games whose
+// score is the server's own) and the site has already checked the player's
+// wallet at the door. This sends the transaction, gasless, under the same daily
+// budget as solo runs, and then saves the run: activity, XP, missions,
+// achievements. The run is written as a used session with its transaction, so
+// if the save below does not finish, the job after this one finishes it.
+const roomSessions = core.platform.supabaseSessions(core.supabase);
+core.recordRoomRun = async ({ account, game, score, ref, ms }) => {
+  const gameType = core.GAME_TYPE[game];
+  if (gameType === undefined || !core.GASLESS_SKILL_GAMES || !(score > 0)) return null;
+  const who = String(account).slice(0, 8);
+  const budget = core.gaslessBudgetCheck(account);
+  if (!budget.ok) { console.warn(`⛔ room round not recorded, gasless budget hit (${budget.reason}) · ${who}…`); return null; }
+  const token = require('crypto').createHash('sha256').update(`room:${ref}`).digest('hex');
+  const made = await roomSessions.create({ token, wallet: String(account).toLowerCase(), game });
+  if (!made.ok) { console.warn(`⚠️  room round not recorded, could not store it · ${who}… ·`, made.reason || ''); return null; }
+  await roomSessions.markUsed(token, { computedScore: score, tapCount: null });
+  let tx = null; let last;
+  for (let attempt = 1; attempt <= 3 && !tx; attempt++) {
+    try { tx = await core.enqueueScoreWrite(account, gameType, score); } catch (e) { last = e; }
+  }
+  if (!tx) { console.warn(`⚠️  room round did not reach the chain · ${game} ${score} · ${who}… ·`, last?.shortMessage || last?.message || last); return null; }
+  core.gaslessBudgetConsume(account);
+  core._rememberGaslessTx(tx.hash);
+  await roomSessions.noteTx(token, tx.hash).catch(() => {});
+  console.log(`⛽ Room round ${game} · ${who}… score ${score} · ${tx.hash}`);
+  void submitRun({ playerAddress: account, scoreData: { game, score, gameTime: Math.max(5000, Number(ms) || 5000), txHash: tx.hash, sessionToken: token } }, true)
+    .then((out) => { if (out.status !== 200) console.warn(`⚠️  room round is on the chain but not saved yet · ${who}… ·`, JSON.stringify(out.body).slice(0, 160)); })
+    .catch((e) => console.warn('⚠️  saving a room round failed:', e?.message || e));
+  return { txHash: tx.hash };
+};
+
 // ─── Finish any run the phone did not ────────────────────────────────────────
 // A run whose score reached the chain but was never saved (the phone's last
 // call failed, or the tab closed) is saved here, a few minutes later: board

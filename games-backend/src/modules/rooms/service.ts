@@ -34,7 +34,12 @@ export interface GameRules {
   score(seed: string, proof: unknown, elapsedMs: number): Promise<{ ok: true; score: number } | { ok: false; error: string }>;
 }
 
-export interface Player { name: string; token: string; seen: number; left: boolean; score: number | null; done: boolean; progress: number; /** the wallet staking for this seat, and its signed permit */ wallet?: string; permit?: Permit }
+/** How a seat's finished round went on its way to the chain. */
+export type ChainNote = { state: 'sending' | 'recorded' | 'failed'; tx?: string };
+/** Puts one server-checked round on the chain for a signed-in player, and saves
+ *  it like any solo run (activity, XP, missions). Null = not recorded. */
+export type RecordRun = (run: { account: string; game: string; score: number; ref: string; ms: number }) => Promise<{ txHash: string } | null>;
+export interface Player { name: string; token: string; seen: number; left: boolean; score: number | null; done: boolean; progress: number; /** the signed-in wallet this seat plays as (the site checked it at the door). Not the same thing as `wallet`, which is a signed stake. */ account?: string; /** this round's trip to the chain */ chain?: ChainNote; /** the wallet staking for this seat, and its signed permit */ wallet?: string; permit?: Permit }
 export interface Room { code: string; game: string; status: 'waiting' | 'playing' | 'over'; round: number; seed: string; startedAt: number; touched: number; players: Player[]; stake?: Stake }
 
 // ─── Playing for G$ ──────────────────────────────────────────────────────────
@@ -94,7 +99,7 @@ export interface RoomView {
   you: number;
   /** seconds since the round began, by the server's clock */
   elapsed: number;
-  players: { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean }[];
+  players: { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** this round on the chain, for a signed-in seat in a server-checked game */ chain?: ChainNote }[];
   /** the round's deal. Only sent to players in the room, and only once it has started. */
   deal?: unknown;
   /** true when this room can be played for G$ (the server allows it and the game's scores are the server's own) */
@@ -115,9 +120,12 @@ export function cleanName(raw: unknown): string {
 /** Somewhere rooms are written so a restart does not end them. Both calls are
  *  best effort: a room that cannot be saved still works, it just will not
  *  survive a restart. */
+/** A wallet address, lower-cased, or nothing. */
+function cleanAccount(a: unknown): string | null { return typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a) ? a.toLowerCase() : null; }
+
 export interface RoomKeeper { save(room: Room): void; remove(code: string): void }
 
-export function createRoomService(games: Record<string, GameRules>, opts: { now?: () => number; randomHex?: (bytes: number) => string; keep?: RoomKeeper; stakes?: StakeRules } = {}) {
+export function createRoomService(games: Record<string, GameRules>, opts: { now?: () => number; randomHex?: (bytes: number) => string; keep?: RoomKeeper; stakes?: StakeRules; /** records a checked round on the chain; rounds are not recorded when it is not given */ onChain?: RecordRun } = {}) {
   const now = opts.now ?? Date.now;
   const hex = opts.randomHex ?? ((n: number) => randomBytes(n).toString('hex'));
   const rooms = new Map<string, Room>();
@@ -129,6 +137,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   // a round played for G$ is never forgotten before its payments are made
   const sweep = (t: number) => { for (const [c, r] of rooms) if (t - r.touched > ROOM_TTL_MS && !owing(r.stake)) rooms.delete(c); };
   let record: (code: unknown) => void = () => {};
+  const chainDone = (code: string) => record(code); // keep the room's saved copy in step once a round's transaction is known
 
   /** A round is over when everyone still here has finished, or it has run too
    *  long. Worked out fresh each time, so a phone that went quiet never holds
@@ -145,7 +154,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       code: room.code, game: room.game, status, round: room.round, verified: games[room.game]!.verified, you: seat, stakes: !!opts.stakes && games[room.game]!.verified,
       elapsed: status === 'waiting' ? 0 : Math.max(0, Math.round((t - room.startedAt) / 1000)),
       // tokens are the players' keys to the room: they never leave the server
-      players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t) })),
+      players: room.players.map((p, i) => ({ name: p.name, host: i === host, score: p.score, done: p.done, progress: p.progress, away: gone(room, i, t), ...(p.chain ? { chain: { ...p.chain } } : {}) })),
     };
     if (seat >= 0 && status !== 'waiting') v.deal = games[room.game]!.deal(room.seed);
     if (v.stakes && opts.stakes) v.stakeTerms = { spender: opts.stakes.spender, entries: opts.stakes.entries, feeBps: opts.stakes.feeBps };
@@ -187,18 +196,19 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   const api = {
     games: () => Object.keys(games),
 
-    create(game: unknown, name: unknown): Seat | Fail {
+    create(game: unknown, name: unknown, account?: unknown): Seat | Fail {
       if (typeof game !== 'string' || !Object.prototype.hasOwnProperty.call(games, game)) return fail('bad_game', 400);
       const t = now(); sweep(t);
       if (rooms.size >= MAX_ROOMS) return fail('busy', 503);
       const code = newCode();
       if (!code) return fail('busy', 503);
       const me = blank(cleanName(name), t);
+      const acct = cleanAccount(account); if (acct) me.account = acct;
       rooms.set(code, { code, game, status: 'waiting', round: 0, seed: '', startedAt: 0, touched: t, players: [me] });
       return { code, token: me.token, seat: 0, game };
     },
 
-    join(code: unknown, name: unknown): Seat | Fail {
+    join(code: unknown, name: unknown, account?: unknown): Seat | Fail {
       const room = find(code);
       if (!room) return fail('no_room', 404);
       if (room.status !== 'waiting') return fail('started', 409);
@@ -210,6 +220,8 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       let n = base;
       for (let k = 2; taken(n); k++) n = `${Array.from(base).slice(0, 13).join('').trim()} ${k}`;
       const me = blank(n, t);
+      // one wallet, one seat: a second phone on the same account plays, but is not recorded twice
+      const acct = cleanAccount(account); if (acct && !room.players.some((p) => !p.left && p.account === acct)) me.account = acct;
       room.players.push(me); room.touched = t;
       return { code: room.code, token: me.token, seat: room.players.length - 1, game: room.game };
     },
@@ -273,6 +285,14 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       if (room.round !== round || room.status !== 'playing' || me.done) return fail('not_playing', 409);
       me.score = res.score; me.done = true; me.progress = games[room.game]!.maxProgress;
       touch(room, seat);
+      // A signed-in seat's round goes on the chain, like a solo run, when the
+      // score is the server's own. It is sent after the answer, never before:
+      // the round's result must not wait on the chain.
+      if (opts.onChain && me.account && games[room.game]!.verified && res.score > 0) {
+        const note: ChainNote = { state: 'sending' }; me.chain = note;
+        const run = { account: me.account, game: room.game, score: res.score, ref: `${room.code}-${round}-${seat}-${hex(4)}`, ms: Math.max(1000, now() - room.startedAt) };
+        void opts.onChain(run).then((out) => { if (out?.txHash) { note.state = 'recorded'; note.tx = out.txHash; } else note.state = 'failed'; }).catch(() => { note.state = 'failed'; }).finally(() => chainDone(room.code));
+      }
       // 'over' is never stored while a round is on: it is worked out each time, so
       // a friend whose phone went quiet can still come back and finish
       return view(room, seat);
@@ -289,7 +309,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       // the people who left are gone for good; everyone else goes back to the lobby
       room.players = room.players.filter((p) => !p.left);
       room.status = 'waiting';
-      for (const p of room.players) { p.score = null; p.done = false; p.progress = 0; delete p.wallet; delete p.permit; }
+      for (const p of room.players) { p.score = null; p.done = false; p.progress = 0; delete p.wallet; delete p.permit; delete p.chain; }
       const mine = room.players.findIndex((p) => p.token === token);
       touch(room, mine);
       return view(room, mine);
@@ -439,8 +459,8 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
   const then = <T>(out: T | Promise<T>, code: (o: T) => unknown): void => { void Promise.resolve(out).then((o) => { if (!isFail(o)) record(code(o)); }).catch(() => {}); };
   return {
     ...api,
-    create(game: unknown, name: unknown) { const out = api.create(game, name); then(out, (o) => (o as Seat).code); return out; },
-    join(code: unknown, name: unknown) { const out = api.join(code, name); then(out, () => code); return out; },
+    create(game: unknown, name: unknown, account?: unknown) { const out = api.create(game, name, account); then(out, (o) => (o as Seat).code); return out; },
+    join(code: unknown, name: unknown, account?: unknown) { const out = api.join(code, name, account); then(out, () => code); return out; },
     start(code: unknown, token: unknown) { const out = api.start(code, token); then(out, () => code); return out; },
     finish(code: unknown, token: unknown, proof: unknown) { const out = api.finish(code, token, proof); then(out, () => code); return out; },
     rematch(code: unknown, token: unknown) { const out = api.rematch(code, token); then(out, () => code); return out; },

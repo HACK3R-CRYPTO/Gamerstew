@@ -15,8 +15,13 @@
 // arrive a little late.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useAccount } from "wagmi";
+import { useIsMiniPay } from "@/hooks/useMiniPay";
 
-export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean }
+/** A finished round on its way to the chain: only for a signed-in seat, in a game the server scores itself. */
+export interface ChainNote { state: "sending" | "recorded" | "failed"; tx?: string }
+export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; chain?: ChainNote }
 export type StakeState = "collecting" | "ready" | "playing" | "settling" | "settled" | "void";
 export type PayState = "paid" | "unpaid" | "expired";
 /** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */
@@ -56,10 +61,10 @@ const WORDS: Record<string, string> = {
 };
 export const explainRoom = (code: string) => WORDS[code] ?? "Something went wrong. Try again.";
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
+async function call<T>(path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(`/api/rooms/${path === "rooms" ? "rooms" : `rooms/${path}`}`, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    r = await fetch(`/api/rooms/${path === "rooms" ? "rooms" : `rooms/${path}`}`, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json", ...(extra ?? {}) }, body: JSON.stringify(body) });
   } catch { throw new Error("unreachable"); }
   const data = await r.json().catch(() => ({ error: "unreachable" }));
   if (!r.ok || data?.error) throw Object.assign(new Error(data?.error || "unreachable"), { reason: typeof data?.reason === "string" ? data.reason : undefined });
@@ -81,6 +86,18 @@ export function useFriendRoom(game: string) {
     const c = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
     if (c.length === 5) { setInviteCode(c); setSheetOpen(true); window.history.replaceState(null, "", window.location.pathname); }
   }, []);
+  // Who is taking the seat. A signed-in player's rounds are recorded on the
+  // chain, so the site checks this before it tells the game server; a guest
+  // sends nothing and simply plays.
+  const { address } = useAccount();
+  const { authenticated, getAccessToken } = usePrivy();
+  const miniPay = useIsMiniPay();
+  const who = useCallback(async (): Promise<Record<string, string>> => {
+    if (!address) return {};
+    if (miniPay) return { "x-room-wallet": address, "x-room-minipay": "1" };
+    if (!authenticated) return {};
+    try { const t = await getAccessToken(); return t ? { "x-room-wallet": address, "x-room-auth": t } : {}; } catch { return {}; }
+  }, [address, authenticated, getAccessToken, miniPay]);
   const sess = useRef<Session | null>(null);
   sess.current = session;
 
@@ -127,8 +144,8 @@ export function useFriendRoom(game: string) {
     sheetOpen, inviteCode, openSheet: () => setSheetOpen(true), closeSheet: () => setSheetOpen(false),
     inRoom: !!session,
     isHost: !!view && view.you >= 0 && !!view.players[view.you]?.host,
-    create: (name: string) => guard(async () => { const s = await call<Session>("rooms", { game, name }); setSession(s); return s; }),
-    join: (code: string, name: string) => guard(async () => { const s = await call<Session>(`${code.trim().toUpperCase()}/join`, { name }); setSession(s); return s; }),
+    create: (name: string) => guard(async () => { const s = await call<Session>("rooms", { game, name }, await who()); setSession(s); return s; }),
+    join: (code: string, name: string) => guard(async () => { const s = await call<Session>(`${code.trim().toUpperCase()}/join`, { name }, await who()); setSession(s); return s; }),
     start: () => act("start"),
     rematch: () => act("rematch"),
     // progress is a courtesy to the others: never let it surface an error
