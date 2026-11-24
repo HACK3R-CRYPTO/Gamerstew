@@ -9,6 +9,7 @@ import { useRoomPermit } from "@/hooks/useRoomPermit";
 import { gd, winnerGain, type RoomView } from "@/hooks/useFriendRoom";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import type { FriendRoom } from "@/hooks/useFriendRoom";
+import InviteFriends from "@/components/InviteFriends";
 
 const NAME_KEY = "gamearena:roomName";
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
@@ -66,6 +67,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
               {/* a link for people who only want to look on */}
               <button onClick={() => { const w = `${window.location.origin}/watch/${room.session?.code ?? ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
             </div>
+            {v?.status === "waiting" && <InviteFriends game={room.session!.game} code={room.session!.code} />}
             <ul className="fs-players">
               {(v?.players ?? []).map((p, i) => (
                 <li key={i} className={p.away ? "away" : ""}><span>{p.name}{i === v!.you ? " (you)" : ""}</span><i className={v!.stake && !v!.stake.signed[i] ? "wait" : ""}>{p.away ? "away" : v!.stake ? (v!.stake.signed[i] ? "agreed" : "not yet") : p.host ? "host" : "ready"}</i></li>
@@ -105,7 +107,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-code { display: flex; justify-content: center; gap: 7px; }
         .fs-code b { width: 46px; height: 54px; display: grid; place-items: center; border-radius: 13px; background: #f1e9ff; font-size: 26px; font-weight: 900; color: #4c1d95; animation: fsUp .3s ease both; }
         .fs-code b:nth-child(2) { animation-delay: .04s; } .fs-code b:nth-child(3) { animation-delay: .08s; } .fs-code b:nth-child(4) { animation-delay: .12s; } .fs-code b:nth-child(5) { animation-delay: .16s; }
-        .fs-share { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .fs-share { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
         .fs-share a, .fs-share button { padding: 11px 0; border-radius: 13px; text-align: center; text-decoration: none; font-size: 14px; font-weight: 800; cursor: pointer; }
         .fs-share a { background: #16a34a; color: #fff !important; border: none; }
         .fs-share button { background: #fff; color: #22104f; border: 1px solid rgba(76,29,149,0.2); }

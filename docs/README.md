@@ -8,6 +8,7 @@ What each document is, and whether it describes the code as it is today.
 |---|---|
 | [score-path.md](score-path.md) | How a run becomes an on-chain score, a board row and XP; what each game's check is; what reads the subgraph and what no longer does |
 | [friend-rooms.md](friend-rooms.md) | Rooms in every skill game, on-chain room rounds, G$ entry by permit |
+| [friends-and-watching.md](friends-and-watching.md) | The friends list, inviting a friend into a room, watching a room live, and the guest limit on every game |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |

@@ -570,6 +570,22 @@ if (roomStakes) { const t = setInterval(() => { roomService.settleDue().catch(()
 roomKeeper.loadAll().then((saved) => { const n = roomService.restore(saved); if (n) console.log(`[rooms] ${n} open room(s) restored`); }).catch(() => {});
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService });
 
+// Friends: ask, accept, remove, invite into a room. The table is locked to the
+// server, so it is read with the service-role client. A friend is told through
+// their inbox, and by push when they have allowed it.
+core.platform.registerFriendRoutes(core.app, {
+  requireSecret: core.requireSecret,
+  friends: core.platform.createFriends({
+    store: core.platform.supabaseFriends(core.lockedDb),
+    nameOf: (w) => core.resolveUsername(w),
+    // a push when the player allows it; either way the message must reach their inbox
+    notify: async (wallet, category, note) => {
+      const pushed = await core.push.sendToWallet(core.supabase, wallet, category, note).catch(() => false);
+      if (!pushed) await core.supabase.from('notifications_feed').insert({ wallet_address: wallet.toLowerCase(), category, title: note.title, body: note.body, url: note.url, tag: note.tag }).then(() => {}, () => {});
+    },
+  }),
+});
+
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
 core.app.get('/internal/config', core.requireSecret, (_req, res) => res.json({ ...core.platform.checkEnv(), settings: core.platform.describeEnv() }));
