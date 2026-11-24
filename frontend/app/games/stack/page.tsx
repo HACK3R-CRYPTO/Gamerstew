@@ -17,6 +17,7 @@
 //     Step-up to ranked submit comes later (same path Rhythm/Simon use)
 //   • Back button + idle/finished screens visually match the other games
 
+import { toast, startProblem } from "@/lib/toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { useRouter } from "next/navigation";
@@ -617,12 +618,14 @@ export default function StackTowerPage() {
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          toast(startProblem(res.error));
           startingRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        toast(startProblem());
         startingRef.current = false;
         return;
       }

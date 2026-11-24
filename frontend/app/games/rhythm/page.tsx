@@ -1,5 +1,6 @@
 "use client";
 
+import { toast, startProblem } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1066,12 +1067,14 @@ export default function RhythmGamePage() {
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          toast(startProblem(res.error));
           startingRef.current = false; busyRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        toast(startProblem());
         startingRef.current = false; busyRef.current = false;
         return;
       }
