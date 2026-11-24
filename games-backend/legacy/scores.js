@@ -63,7 +63,7 @@ core.platform.registerScoreRoutes(core.app, {
   // Games whose score the server cuts to what the run's log supports. A list in
   // SCORE_ENFORCE, read on every request, so it can be switched off without a
   // deploy: set SCORE_ENFORCE=none.
-  enforce: (game) => String(process.env.SCORE_ENFORCE ?? 'stack').split(',').map((g) => g.trim()).includes(game),
+  enforce: (game) => String(process.env.SCORE_ENFORCE ?? 'stack,simon').split(',').map((g) => g.trim()).includes(game),
   sessions: core.platform.supabaseSessions(core.supabase),
   season: core.platform.supabaseSeason(core.supabase),
   chain: core.platform.ethersChain({
@@ -82,7 +82,7 @@ core.platform.registerScoreRoutes(core.app, {
   replay: {
     rhythm: { physicsCheck: core.rhythmPhysicsCheck, isKnownSong: core.rhythmIsKnownSong, computeScore: core.rhythmComputeScore, jitterCheck: core.rhythmJitterCheck },
     stack: { computeScore: core.computeStackScore, humanness: core.computeStackHumanness },
-    simon: { computeScore: core.computeSimonScore },
+    simon: { computeScore: core.computeSimonScore, verify: require('../lib/simonScoring').verifySimonRun },
     nepa: { computeScore: core.computeNepaScore, humanness: core.computeNepaHumanness },
   },
 });

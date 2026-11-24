@@ -482,3 +482,39 @@ test('stack enforcement is off unless switched on, and a fault in the sum never 
   const b = await createScoreService(broken.deps).signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 77, dropLog: [{}] });
   assert.strictEqual(b.status, 200); assert.strictEqual(b.body.score, 77);
 });
+
+// ── Simon, enforced: the signed score is never more than an honest run could make ──
+test('simon enforced: a claim above the server bound is cut, one below is untouched, a missing log is refused', async () => {
+  const mk = (bound: number) => { const w = world({ session: { game: 'simon' }, gasless: true }); w.deps.enforce = (g) => g === 'simon'; w.deps.replay.simon.verify = (input) => { w.calls.args.simonVerify = input; return { score: bound, rounds: 9, tapRounds: 9, failedAttempts: 1, fitsTime: true }; }; return { ...w, svc: createScoreService(w.deps) }; };
+  const cut = mk(120);
+  const a = await cut.svc.signScore({ playerAddress: P, game: 'simon', sessionToken: 'tok', score: 5_000, simonTapLog: ['red'] });
+  assert.strictEqual(a.body.score, 120);
+  assert.deepStrictEqual(cut.calls.args.simonVerify, { sessionToken: 'tok', tapLog: ['red'], elapsedMs: 60_000 }); // the SERVER's elapsed time, not the client's
+  assert.ok(cut.calls.logs.some((l) => l.includes('[simon:enforced]') && l.includes('MISMATCH')));
+
+  const fine = mk(120);
+  const b = await fine.svc.signScore({ playerAddress: P, game: 'simon', sessionToken: 'tok', score: 118, simonTapLog: ['red'] });
+  assert.strictEqual(b.body.score, 118);
+  assert.ok(!fine.calls.logs.some((l) => l.includes('MISMATCH')));
+
+  const noLog = mk(120);
+  const c = await noLog.svc.signScore({ playerAddress: P, game: 'simon', sessionToken: 'tok', score: 118 });
+  assert.strictEqual(c.status, 400); assert.deepStrictEqual(noLog.calls.order, []);
+});
+
+test('simon: the real check, run through the service, signs an honest score unchanged', async () => {
+  const real = require('../../../lib/simonScoring');
+  const pattern: string[] = real.derivePattern('tok', 7); const taps: string[] = [];
+  for (let r = 1; r <= 6; r++) for (let j = 0; j < r; j++) taps.push(pattern[j]!);
+  taps.push(pattern[0] === 'red' ? 'cyan' : 'red'); // the miss that ends the run
+  const w = world({ session: { game: 'simon' }, gasless: true, elapsedMs: 60_000 });
+  w.deps.enforce = () => true; w.deps.replay.simon.verify = real.verifySimonRun;
+  const honest = 6 * 12 + 20; // six rounds, last one cleared 40 s in
+  const r = await createScoreService(w.deps).signScore({ playerAddress: P, game: 'simon', sessionToken: 'tok', score: honest, simonTapLog: taps });
+  assert.strictEqual(r.body.score, honest);
+  const greedy = world({ session: { game: 'simon' }, gasless: true, elapsedMs: 60_000 });
+  greedy.deps.enforce = () => true; greedy.deps.replay.simon.verify = real.verifySimonRun;
+  const g = await createScoreService(greedy.deps).signScore({ playerAddress: P, game: 'simon', sessionToken: 'tok', score: 100_000, simonTapLog: taps });
+  assert.strictEqual(g.body.score, real.verifySimonRun({ sessionToken: 'tok', tapLog: taps, elapsedMs: 60_000 }).score);
+  assert.ok((g.body.score as number) < 200);
+});

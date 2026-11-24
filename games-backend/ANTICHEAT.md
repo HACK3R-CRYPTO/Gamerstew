@@ -141,3 +141,23 @@ case: switch it off and fix the port.
 Still open: a forged drop log that adds up correctly is accepted (the humanness
 check only flags). Simon is still in shadow mode and must stay there until its
 `[simon:shadow]` lines show the seeded pattern matches real play.
+
+
+## 2026-11-24: Simon enforced, with a new check
+
+The first Simon shadow replay (`computeSimonScore`) disagreed with honest play in
+two ways, found by reading the game, so it was never enforced:
+it timed the speed bonus from the end of the run where the game fixes it when the
+last round is cleared, and it stopped at the first wrong tap where a bought retry
+lets the run continue.
+
+`verifySimonRun` replaces it for enforcement. It checks taps against the ticket's
+pattern (retries allowed), drops rounds that cannot fit in the time the SERVER
+measured, bounds the speed bonus by the earliest possible clear, and returns the
+most an honest run could score. The service signs min(client, that). Log tag
+`[simon:enforced]`; same fail-soft rules and the same `SCORE_ENFORCE` switch as
+stack (default `stack,simon`; `SCORE_ENFORCE=stack` turns only simon off).
+
+Limit: the pattern is derived from the ticket the client holds, so a cheat can
+produce perfect taps. What they cannot fake is time: about 56 rounds is the most
+that fits in one session, and N rounds need a known minimum time.

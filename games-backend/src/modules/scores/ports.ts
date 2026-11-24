@@ -50,6 +50,8 @@ export interface Replay {
   };
   simon: {
     computeScore(input: { sessionToken: string; tapLog: unknown[]; clientElapsedMs: number }): { score: number; tapsOk: boolean; roundsClaimed: number; roundsVerified: number };
+    /** The highest score an honest run with these taps could have, in the time the server saw. */
+    verify?(input: { sessionToken: string; tapLog: unknown[]; elapsedMs: number }): { score: number; rounds: number; tapRounds: number; failedAttempts: number; fitsTime: boolean };
   };
   nepa: {
     computeScore(input: { seed: string | null | undefined; inputLog: unknown[] }): { points: number; nairaScore: number; banked: number; wasted: number; maxCombo: number };

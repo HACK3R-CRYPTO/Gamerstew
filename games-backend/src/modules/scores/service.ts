@@ -82,6 +82,7 @@ export function createScoreService(deps: ScoreDeps) {
     // ── the score ───────────────────────────────────────────────────────────
     let serverScore: number;
     const stackEnforced = game === 'stack' && (deps.enforce?.('stack') ?? false);
+    const simonEnforced = game === 'simon' && !!deps.replay.simon.verify && (deps.enforce?.('simon') ?? false);
     if (game === 'rhythm') {
       if (!Array.isArray(tapLog)) return reply(400, { error: 'Missing tapLog (required for rhythm)' });
 
@@ -161,6 +162,23 @@ export function createScoreService(deps: ScoreDeps) {
         }
       }
 
+      // SIMON, ENFORCED (unless switched off with SCORE_ENFORCE): the taps are
+      // checked against the pattern for this ticket, and the rounds must fit in
+      // the time this server saw pass. The server works out the most an honest
+      // run with these taps could score and signs the LOWER of that and the
+      // claim. As with stack: nothing is refused for a mismatch, a score is
+      // never raised, and a fault here signs the client's score.
+      if (simonEnforced) {
+        if (!Array.isArray(simonTapLog)) return reply(400, { error: 'Missing tap log (required for simon)' });
+        try {
+          const v = deps.replay.simon.verify!({ sessionToken, tapLog: simonTapLog, elapsedMs });
+          if (v.score < score) serverScore = v.score;
+          logger.log(`[simon:enforced] player=${who} taps=${simonTapLog.length} rounds=${v.rounds} tapRounds=${v.tapRounds} retries=${Math.max(0, v.failedAttempts - 1)} serverMax=${v.score} clientScore=${score} signed=${serverScore}${v.score < score ? ' MISMATCH' : ''}${v.fitsTime ? '' : ' FLAG(rounds do not fit the time)'} elapsed=${elapsedMs}ms`);
+        } catch (e) {
+          logger.warn(`[simon:enforced] check threw, signing the client score · player=${who}:`, msg(e));
+        }
+      }
+
       // SHADOW MODE: replay, log the comparison, change nothing. A failure in a
       // shadow replay must never cost a player their run.
       try {
@@ -170,7 +188,7 @@ export function createScoreService(deps: ScoreDeps) {
           const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
           logger.log(`[stack:shadow] player=${who} dropLog=${dropLog.length} serverScore=${shadow.score} clientScore=${score} delta=${shadow.score - score} (drops=${shadow.drops} perfects=${shadow.perfects} maxCombo=${shadow.maxCombo}) rate=${human.stats.dropsPerSec}/s ${flag} · SIGNING CLIENT SCORE`);
         }
-        if (game === 'simon' && Array.isArray(simonTapLog)) {
+        if (game === 'simon' && Array.isArray(simonTapLog) && !simonEnforced) {
           const clientElapsedMs = typeof simonElapsedMs === 'number' ? simonElapsedMs : elapsedMs;
           const sim = deps.replay.simon.computeScore({ sessionToken, tapLog: simonTapLog, clientElapsedMs });
           const flag = sim.tapsOk ? 'tapsOk' : 'FLAG(tap mismatch)';

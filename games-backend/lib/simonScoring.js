@@ -156,7 +156,61 @@ function computeSimonScore({ sessionToken, tapLog, clientElapsedMs }) {
   return { score, roundsVerified, roundsClaimed, tapsOk };
 }
 
+// ─── verifySimonRun · what the server will stand behind ──────────────────────
+// computeSimonScore above was the first shadow replay. Reading the game against
+// it showed two ways it disagrees with HONEST play, so it must never be enforced:
+//   1. it takes the speed bonus from the time the run ENDED, but the game fixes
+//      the bonus when the last round is CLEARED, which is earlier;
+//   2. it stops at the first wrong tap, but a player who buys a retry keeps
+//      going, with the wrong tap still in the log.
+//
+// This one is built for enforcement. It returns the HIGHEST score an honest run
+// with these taps could have, so the caller can sign min(client, this):
+//   · rounds are verified tap by tap against the seeded pattern, and a failed
+//     attempt followed by a retry of the same round is allowed;
+//   · rounds must FIT in the time the server itself saw: the game cannot show
+//     round r faster than its quickest playback, so N rounds need a known
+//     minimum time. Rounds that do not fit are not counted. (The pattern is
+//     derived from the ticket the client holds, so correct taps alone prove
+//     little. Time is what a forged run cannot fake.)
+//   · the speed bonus is at most what the earliest possible clear time gives.
+const ROUND_POINTS = 12;        // BASE_SCORE 10 + roundBonus 2 per cleared round
+const MAX_FAILED_ATTEMPTS = 10; // the final miss plus bought retries; generous
+// fastest the game ever plays a round back (MIN_DELAY, MIN_FLASH in page.tsx),
+// the pause before a round is shown, and the pause after one is cleared
+const SHOW_GAP_MS = 350, SHOW_FLASH_MS = 200, PRE_SHOW_MS = 600, AFTER_CLEAR_MS = 700;
+
+/** Earliest moment, in ms from the start, that round `n` can be cleared. */
+function earliestClearMs(n) {
+  if (n <= 0) return 0;
+  return n * (PRE_SHOW_MS + SHOW_FLASH_MS) + SHOW_GAP_MS * (n * (n + 1)) / 2 + (n - 1) * AFTER_CLEAR_MS;
+}
+
+function verifySimonRun({ sessionToken, tapLog, elapsedMs }) {
+  const taps = Array.isArray(tapLog) ? tapLog : [];
+  const seedHex = sessionToken ? seedFromToken(sessionToken) : null;
+  const pattern = [];
+  const want = (i) => { while (pattern.length <= i) pattern.push(drawColorId(seedHex, pattern.length)); return pattern[i]; };
+
+  let rounds = 0, idx = 0, round = 1, failed = 0;
+  while (seedHex && idx < taps.length && failed <= MAX_FAILED_ATTEMPTS) {
+    let j = 0;
+    while (j < round && idx + j < taps.length && taps[idx + j] === want(j)) j++;
+    if (j === round) { rounds++; idx += round; round++; continue; } // round cleared
+    if (idx + j >= taps.length) break;                              // log ends mid-round
+    failed++; idx += j + 1;                                          // wrong tap: this attempt is over
+  }
+  const tapRounds = rounds;
+
+  const elapsed = Number.isFinite(elapsedMs) ? elapsedMs : 0;
+  while (rounds > 0 && earliestClearMs(rounds) > elapsed) rounds--;
+  const speedBonus = rounds > 0 ? Math.max(0, Math.floor((60000 - earliestClearMs(rounds)) / 1000)) : 0;
+  return { score: rounds * ROUND_POINTS + speedBonus, rounds, tapRounds, failedAttempts: failed, fitsTime: rounds === tapRounds };
+}
+
 module.exports = {
+  verifySimonRun,
+  earliestClearMs,
   BASE_IDS,
   BONUS_ID,
   ALL_IDS,
