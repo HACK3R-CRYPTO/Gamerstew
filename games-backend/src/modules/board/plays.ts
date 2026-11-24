@@ -92,7 +92,7 @@ export function supabaseLedgerBoard(db: LedgerBoardDb) {
     if (typeof fn === 'function') {
       // the top 200 in one indexed query; nobody pages a board further than that
       const fast = await rpcBoardPage(db as unknown as RpcDb, game, sinceSec, 200, 0).catch(() => null);
-      if (fast) return fast.rows;
+      if (fast) return fast.rows.some((r) => r.tx_hash) ? fast.rows : withTransactions(db, game, sinceSec, fast.rows);
     }
     const best = new Map<string, LedgerBoardRow>();
     const sinceIso = new Date(sinceSec * 1000).toISOString();
@@ -108,8 +108,26 @@ export function supabaseLedgerBoard(db: LedgerBoardDb) {
       }
       if (rows.length < PAGE) break;
     }
-    return [...best.values()].sort((a, b) => b.score - a.score);
+    return withTransactions(db, game, sinceSec, [...best.values()].sort((a, b) => b.score - a.score));
   };
+}
+
+/** Attach, to the top of a board, the transaction that recorded each player's
+ *  best run. A board a player can check is the point of putting scores on the
+ *  chain. Only the first 50 rows are looked up, in one bounded read; a failed
+ *  read leaves the rows as they were. */
+export const TX_ROWS = 50;
+export async function withTransactions(db: LedgerBoardDb, game: string, sinceSec: number, rows: LedgerBoardRow[]): Promise<LedgerBoardRow[]> {
+  const top = rows.slice(0, TX_ROWS).filter((r) => !r.tx_hash);
+  if (top.length === 0) return rows;
+  try {
+    const { data, error } = await (db.from('activity') as unknown as { select(c: string): any }).select('wallet_address, score, tx_hash') // eslint-disable-line @typescript-eslint/no-explicit-any
+      .eq('game', game).gte('created_at', new Date(sinceSec * 1000).toISOString()).in('wallet_address', top.map((r) => r.wallet_address)).not('tx_hash', 'is', null).order('score', { ascending: false }).limit(TX_ROWS * 6);
+    if (error || !Array.isArray(data)) return rows;
+    const tx = new Map<string, string>(); // rows come best first: the first seen for a wallet is its best
+    for (const a of data as { wallet_address: string; tx_hash: string | null }[]) { const w = String(a.wallet_address).toLowerCase(); if (a.tx_hash && !tx.has(w)) tx.set(w, a.tx_hash); }
+    return rows.map((r) => (r.tx_hash || !tx.has(r.wallet_address) ? r : { ...r, tx_hash: tx.get(r.wallet_address)! }));
+  } catch { return rows; }
 }
 
 /** Two boards into one: each player's higher score, best first. */
@@ -136,7 +154,8 @@ export interface RpcDb { rpc(fn: string, args: Record<string, unknown>): Promise
 export async function rpcBoardPage(db: RpcDb, game: string, sinceSec: number, limit: number, offset: number): Promise<{ rows: LedgerBoardRow[]; total: number } | null> {
   const { data, error } = await db.rpc('board_window', { p_game: game, p_since: new Date(sinceSec * 1000).toISOString(), p_limit: limit, p_offset: offset });
   if (error || !Array.isArray(data)) return null;
-  const rows = (data as { wallet: string; best: number; last_at: string; total: number | string }[]).map((r) => ({ wallet_address: String(r.wallet).toLowerCase(), score: Number(r.best), username: null, created_at: String(r.last_at), tx_hash: null }));
+  // tx_hash is there once supabase-migrations/2026-11-24_board_tx.sql has been run
+  const rows = (data as { wallet: string; best: number; last_at: string; total: number | string; tx_hash?: string | null }[]).map((r) => ({ wallet_address: String(r.wallet).toLowerCase(), score: Number(r.best), username: null, created_at: String(r.last_at), tx_hash: r.tx_hash ?? null }));
   const total = data.length ? Number((data[0] as { total: number | string }).total) : 0;
   return { rows, total };
 }

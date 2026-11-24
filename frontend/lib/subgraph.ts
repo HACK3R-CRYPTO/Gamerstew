@@ -100,7 +100,10 @@ export type LeaderboardEntry = {
   score: number;
   timestamp: number;       // unix seconds
   streak?: number;         // not in subgraph yet; left for parity
+  txHash?: string;         // the transaction that recorded this score, when known
 };
+/** Where anyone can look a transaction up. */
+export const txUrl = (hash: string) => `https://celoscan.io/tx/${hash}`;
 
 type ScoreRow = {
   id: string;
@@ -134,9 +137,9 @@ async function boardFromServer(gameType: GameTypeId, sinceUnix: number, limit: n
     for (let page = 1; page <= 20 && out.length < limit; page++) {
       const res = await fetch(`${base}/api/leaderboard?game=${GAME_NAME[gameType]}&since=${Math.floor(sinceUnix)}&limit=50&page=${page}`);
       if (!res.ok) return page === 1 ? null : out;
-      const data = (await res.json()) as { leaderboard?: { player: string; score: number; timestamp?: number; username?: string | null }[]; pages?: number };
+      const data = (await res.json()) as { leaderboard?: { player: string; score: number; timestamp?: number; username?: string | null; tx_hash?: string | null }[]; pages?: number };
       const rows = data.leaderboard ?? [];
-      for (const r of rows) out.push({ player: String(r.player).toLowerCase(), username: r.username || undefined, score: Number(r.score), timestamp: Number(r.timestamp ?? 0) });
+      for (const r of rows) out.push({ player: String(r.player).toLowerCase(), username: r.username || undefined, score: Number(r.score), timestamp: Number(r.timestamp ?? 0), txHash: r.tx_hash && /^0x[0-9a-fA-F]{64}$/.test(r.tx_hash) ? r.tx_hash : undefined });
       if (rows.length < 50 || page >= (data.pages ?? 1)) break;
     }
     return out.slice(0, Number.isFinite(limit) ? limit : undefined);

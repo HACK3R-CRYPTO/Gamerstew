@@ -33,3 +33,18 @@ test('a thousand people opening a board at once cost one read of each record', a
   assert.equal(subgraphReads, 1); assert.equal(ledgerReads, 1);
   assert.ok(nameLookups <= 1200 * 20); // names are looked up per page shown, never for the whole board
 });
+
+test('a board row carries the transaction that recorded it, and a failed lookup leaves the board as it was', async () => {
+  const { withTransactions, TX_ROWS } = await import('./plays');
+  const rows = [{ wallet_address: '0xaa', score: 90, username: null, created_at: 'x', tx_hash: null }, { wallet_address: '0xbb', score: 70, username: null, created_at: 'x', tx_hash: null }, { wallet_address: '0xcc', score: 10, username: null, created_at: 'x', tx_hash: '0xkept' }];
+  const asked: unknown[] = [];
+  const chain = (data: unknown, error: unknown = null) => { const q: Record<string, unknown> = {}; for (const m of ['select', 'eq', 'gte', 'in', 'not', 'order']) q[m] = (...a: unknown[]) => { asked.push([m, ...a]); return q; }; q.limit = (n: number) => { asked.push(['limit', n]); return Promise.resolve({ data, error }); }; return q; };
+  // activity comes back best first; 0xaa has two saved runs, 0xbb none with a transaction
+  const db = { from: () => chain([{ wallet_address: '0xAA', score: 90, tx_hash: '0xbest' }, { wallet_address: '0xaa', score: 40, tx_hash: '0xold' }]) };
+  const out = await withTransactions(db as never, 'ladder', 1000, rows);
+  assert.deepEqual(out.map((r) => r.tx_hash), ['0xbest', null, '0xkept']);
+  assert.ok(asked.some((a) => Array.isArray(a) && a[0] === 'in' && JSON.stringify(a[2]) === '["0xaa","0xbb"]'), 'only rows without a transaction are looked up');
+  assert.ok(asked.some((a) => Array.isArray(a) && a[0] === 'limit' && a[1] === TX_ROWS * 6), 'the read is bounded');
+  assert.deepEqual(await withTransactions({ from: () => chain(null, { message: 'down' }) } as never, 'ladder', 1000, rows), rows);
+  assert.deepEqual(await withTransactions({ from: () => { throw new Error('boom'); } } as never, 'ladder', 1000, rows), rows);
+});

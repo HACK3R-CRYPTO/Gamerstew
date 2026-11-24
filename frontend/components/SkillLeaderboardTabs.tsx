@@ -13,6 +13,7 @@
 // The subgraph is the source of truth for live on-chain scores. The
 // backend only provides season boundaries + sealed past records.
 
+import { txUrl } from "@/lib/subgraph";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
@@ -171,7 +172,7 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
             maxWidth: "30%", overflow: "hidden",
           }}>
             <div style={{ color: "#22104f", fontFamily: T.body, fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{fmtName(pl.entry.player, pl.entry.username)}</div>
-            <div style={{ color: pl.color, fontFamily: T.body, fontSize: 13, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{pl.entry.score.toLocaleString()}</div>
+            <div style={{ color: pl.color, fontFamily: T.body, fontSize: 13, fontWeight: 900, fontVariantNumeric: "tabular-nums", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, pointerEvents: "auto" }}>{pl.entry.score.toLocaleString()}<OnChain hash={pl.entry.txHash} small /></div>
           </div>
           ) : null
         );
@@ -184,15 +185,30 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
 function PlayerRow({ entry, rank, isMe, accent }: { entry: Entry; rank: number; isMe: boolean; accent: string }) {
   return (
     <div style={{
-      display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 10, padding: "10px 14px 10px 10px", borderRadius: 16,
+      display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 10, padding: "10px 12px 10px 10px", borderRadius: 16,
       background: isMe ? "#f3ecff" : "#fff", boxShadow: isMe ? `0 0 0 1.5px ${accent}` : "0 0 0 1px rgba(76,29,149,0.12)",
     }}>
       <span style={{ width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#ede9fe", color: "#4c1d95", fontFamily: T.body, fontSize: 12, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{rank}</span>
       <span style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {fmtName(entry.player, entry.username)}{isMe && <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, background: accent, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.06em" }}>YOU</span>}
       </span>
-      <span style={{ fontFamily: T.body, fontSize: 15, fontWeight: 900, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{entry.score.toLocaleString()}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: T.body, fontSize: 15, fontWeight: 900, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{entry.score.toLocaleString()}</span>
+        <OnChain hash={entry.txHash} />
+      </span>
     </div>
+  );
+}
+
+// A small tick that opens the transaction which recorded a score. It is the
+// proof a score is real: anyone can follow it and see the number on the chain.
+function OnChain({ hash, small }: { hash?: string; small?: boolean }) {
+  if (!hash) return null;
+  const d = small ? 16 : 22;
+  return (
+    <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" title="See this score on the chain" aria-label="See this score on the chain"
+      onClick={(e) => e.stopPropagation()}
+      style={{ flex: "none", width: d, height: d, borderRadius: 999, display: "grid", placeItems: "center", background: "#dcfce7", color: "#166534", fontSize: small ? 10 : 12, fontWeight: 900, textDecoration: "none", border: "1px solid rgba(22,163,74,0.45)" }}>✓</a>
   );
 }
 
@@ -585,6 +601,10 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
                     return <PlayerRow key={e.player + rank} entry={e} rank={rank} isMe={isMe} accent={accent} />;
                   })}
                 </div>
+              )}
+
+              {liveEntries.some((e) => e.txHash) && (
+                <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, textAlign: "center" }}>Tap a green tick to see that score on the chain.</div>
               )}
 
               {liveEntries.length === 0 && (
