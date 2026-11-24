@@ -1,8 +1,8 @@
 # GameArena
 
-> Quick skill games that make you sharper. Verified humans with no bots, an AI that learns how you play, and real GoodDollar (G$) you earn every day · on Celo Mainnet, all on-chain and auditable.
+> Quick skill games that make you sharper, in 2D and in a 3D Lagos street. Play alone or in a room with friends. Verified humans with no bots, an AI that learns how you play, every ranked score on-chain with no gas, and real GoodDollar (G$) you earn every day · on Celo Mainnet, also in MiniPay.
 
-[![GameArena](./frontend/public/hero.png)](https://gamearenahq.xyz)
+[![GameArena: home, Word Ladder, Street Strike, UP NEPA 3D and the weekly rankings](./docs/screenshots/overview.jpg)](https://gamearenahq.xyz)
 
 [![Live](https://img.shields.io/badge/Live-Celo%20Mainnet-fbcc5c?style=for-the-badge&logo=ethereum)](https://gamearenahq.xyz)
 [![Community](https://img.shields.io/badge/Telegram-gamearenaHQ-2ca5e0?style=for-the-badge&logo=telegram)](https://t.me/gamearenaHQ)
@@ -34,6 +34,27 @@ That's it. Come play: **[gamearenahq.xyz](https://gamearenahq.xyz)**
 
 ---
 
+## What it looks like
+
+Screens captured from the app on 24 November 2026, at phone size.
+
+| Home | Rankings | Achievements |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/home.jpg" width="250" alt="Home: the game shelves and the weekly community challenge"> | <img src="docs/screenshots/ranks.jpg" width="250" alt="Rankings: this week's podium, each score with an on-chain tick"> | <img src="docs/screenshots/achievements.jpg" width="250" alt="Achievements grouped by game"> |
+| The games, and this week's shared G$ pool | A green tick opens that score's transaction | 23 achievements, grouped by game |
+
+| Stack Tower | Word Ladder | Simon Memory | Rhythm Rush |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/stack-lobby.jpg" width="190" alt="Stack Tower start screen"> | <img src="docs/screenshots/ladder-play.jpg" width="190" alt="Word Ladder in play"> | <img src="docs/screenshots/simon-lobby.jpg" width="190" alt="Simon Memory start screen"> | <img src="docs/screenshots/rhythm-lobby.jpg" width="190" alt="Rhythm Rush start screen with a song picker"> |
+
+| Street Strike | Street Strike, rolling | UP NEPA 3D · Restore the Light | UP NEPA 3D · Charge Rush |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/strike-lobby.jpg" width="190" alt="Street Strike setup: solo, versus CPU, two players, online, and three tyres"> | <img src="docs/screenshots/strike-play.jpg" width="190" alt="Street Strike: a tyre lined up on a Lagos street"> | <img src="docs/screenshots/upnepa-restore.jpg" width="190" alt="UP NEPA 3D Restore the Light"> | <img src="docs/screenshots/upnepa-charge.jpg" width="190" alt="UP NEPA 3D Charge Rush: carrying a fridge on the head to the sockets"> |
+
+<img src="docs/screenshots/upnepa-modes.jpg" alt="UP NEPA 3D mode screen: Restore the Light, Charge Rush and Free Roam">
+
+---
+
 ## Why we built this
 
 Two problems.
@@ -54,6 +75,24 @@ GoodDollar's GoodBuilders Season 4 ran through Sept 2026, and GameArena beat eve
 - **2,000,000+ G$** paid to verified players across competitions · zero bots paid
 
 Every figure is on-chain and auditable — see [Public analytics](#public-analytics).
+
+---
+
+## Since Season 4
+
+What has been built since, all in this repository:
+
+- **Three new games.** Word Ladder, Street Strike (3D) and UP NEPA 3D, a walkable Lagos street with two modes and a free roam.
+- **Friend rooms in every skill game.** Up to four players, same round, same time, by a five-letter code. In server-checked games a signed-in player's room round is recorded on-chain.
+- **G$ entry with nothing held.** Rooms in server-checked games can be played for an entry. Each player signs a G$ permit; at the end each loser's entry goes straight to the winner. No escrow contract.
+- **Gasless ranked scores.** The backend checks a run and records it on-chain for the player. Result screens wait for the receipt and link to it.
+- **Boards from confirmed runs.** Weekly boards, rank and the activity feed read the backend's own record, each row linked to its transaction.
+- **A run cannot be lost.** If a phone drops off after its score reaches the chain, a job finishes the save.
+- **An inbox.** Notifications are kept on the server, read state follows the player across devices, and GameArena can post announcements.
+- **Missions and achievements for every game**, on each game's real score scale.
+- **One look.** The whole app moved to a single light lilac theme.
+
+Details: [docs/](docs/README.md).
 
 ---
 
@@ -190,11 +229,14 @@ For MARKOV's internal four-layer architecture (Economic · Reputation · Discove
 
 ## Contents
 
+- [What it looks like](#what-it-looks-like)
+- [Since Season 4](#since-season-4)
 - [From the community](#from-the-community)
 - [Architecture](#architecture)
 - [How it works](#how-it-works)
   - [Verified humans only](#verified-humans-only)
   - [Solo games](#solo-games)
+  - [Play with friends](#play-with-friends)
   - [MARKOV · autonomous on-chain AI opponent](#markov--autonomous-on-chain-ai-opponent)
   - [Events and seasonal competitions](#events-and-seasonal-competitions)
   - [Player passport and referrals](#player-passport-and-referrals)
@@ -290,7 +332,7 @@ GameArena runs periodic competitions with G$ prize pools sourced from the platfo
 - **Solo Ladders** — individual ranking competitions running alongside team events or standalone.
 - **Sponsor cups** — rare, larger-pool events (typically in USDC) funded by sponsor partners.
 - **Community-funded pots** — player-contributed prize pools, no platform money involved.
-- **Friend Duels** — head-to-head rooms on the `DuelEscrow` contract: stake G$ (winner takes the pot, a small cut to treasury) or run a free prize-pool room. 24h to beat the score, public or private (join code / allowlist). Available any time, not just during events.
+- **Friend rooms** — play any skill game with up to three friends at any time, free or for a G$ entry. See [Play with friends](#play-with-friends). These replaced the earlier Friend Duels, which held stakes in the `DuelEscrow` contract.
 
 Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
@@ -298,7 +340,7 @@ Points accumulate across each event from every in-app action · games played, MA
 
 ### Player passport and referrals
 
-Every player gets a public passport at `gamearenahq.xyz/pass/{address}` (your username works too) · verification status read live on-chain (shows ✓ verified only if currently GoodDollar-whitelisted, otherwise a neutral GamePass badge), all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
+Every player gets a public passport at `gamearenahq.xyz/pass/{address}` (your username works too) · verification status read live on-chain (shows ✓ verified only if currently GoodDollar-whitelisted, otherwise a neutral GamePass badge), all-time rank, best score in every game, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
 
 Referrals ride on the passport. A player's referral code is their username (`?ref=ogazboiz` · a raw wallet still works), every share link carries it, and new players can type a code by hand during onboarding ("Got a referral code?" resolves live to `✓ referred by @name`). A referral counts the moment the referred player verifies and mints their GamePass. Your count shows on your profile and passport.
 
@@ -360,7 +402,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT · usernames + on-chain scores |
 | `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 20% UBI / 80% treasury    |
 | `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 20% UBI / 80% treasury |
-| `DuelEscrow.sol`     | [`0x5dd223edb3...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557)                              | Friend Duels · staked G$ / prize-pool rooms |
+| `DuelEscrow.sol`     | [`0x5dd223edb3...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557)                              | The earlier Friend Duels. Not used by friend rooms; no new work builds on it |
 | `SoloWager.sol`      | [`0xc78A8A027e...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb)                              | Solo G$ score wagers                     |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow (A2A agent interface) |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
@@ -381,6 +423,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | Habitat unlock           | Paid cosmetic tiers (free tiers are level-gated) | Player → HabitatRegistry · 80% treasury / 20% UBI |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
+| Friend-room entry        | Optional, in server-checked games          | Each loser → the winner directly by signed permit, less a fee to treasury. Nothing is held |
 | UBI share routing        | Player picks their GoodCollective in Settings | 20% splits attributed to the chosen collective    |
 
 Legacy wager era: on-chain 1v1 wagers paid the winner 98% of the pot with 2% routed to the GoodCollective UBI pool. That interface remains live on ArenaPlatform for A2A agent counterparties.
