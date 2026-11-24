@@ -31,10 +31,16 @@ export function registerRoomRoutes(app: Application, deps: { requireSecret?: Req
 
   app.post('/api/rooms', gate, route((req) => (allowCreate(who(req)) ? service.create(body(req).game, body(req).name) : { error: 'slow_down', status: 429 })));
   app.post('/api/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name)));
-  app.get('/api/rooms/:code', gate, route((req) => service.get(req.params.code, req.query.token)));
+  app.get('/api/rooms/:code', gate, route((req) => { paying(req.params.code); return service.get(req.params.code, req.query.token); }));
   app.post('/api/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/progress', gate, route((req) => service.progress(req.params.code, body(req).token, body(req).progress)));
-  app.post('/api/rooms/:code/finish', gate, route((req) => service.finish(req.params.code, body(req).token, body(req).proof)));
+  app.post('/api/rooms/:code/finish', gate, route(async (req) => { const out = await service.finish(req.params.code, body(req).token, body(req).proof); paying(req.params.code); return out; }));
+  // Playing for G$ (off unless the service was given stake rules). A round's
+  // payments are made as soon as it ends: a look at the room is enough to set it going.
+  const paying = (code: unknown) => { void service.settle(code).catch(() => {}); };
+  app.post('/api/rooms/:code/stake', gate, route((req) => service.stake(req.params.code, body(req).token, body(req).entryWei, body(req).permit)));
+  app.post('/api/rooms/:code/commit', gate, route((req) => service.commit(req.params.code, body(req).token, body(req).permit)));
+  app.post('/api/rooms/:code/unstake', gate, route((req) => service.unstake(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/rematch', gate, route((req) => service.rematch(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/leave', gate, route((req) => service.leave(req.params.code, body(req).token)));
   return service;

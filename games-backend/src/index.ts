@@ -9,6 +9,7 @@ export { registerRoomRoutes } from './modules/rooms/routes';
 export { createRoomService } from './modules/rooms/service';
 export { ROOM_GAMES } from './modules/rooms/games';
 export { supabaseRoomKeeper } from './modules/rooms/adapters';
+export { tokenStakePay, TOKEN_ABI } from './modules/rooms/pay';
 export { createInbox } from './modules/inbox/service';
 export { supabaseInbox } from './modules/inbox/adapters';
 export { registerInboxRoutes } from './modules/inbox/routes';

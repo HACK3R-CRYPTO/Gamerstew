@@ -426,7 +426,25 @@ core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.
 const roomKeeper = core.platform.supabaseRoomKeeper(core.supabase);
-const roomService = core.platform.createRoomService(core.platform.ROOM_GAMES, { keep: roomKeeper });
+// Playing for G$: OFF unless ROOM_STAKES=true. No contract of ours and no money
+// held: each loser's signed permit sends their entry straight to the winner.
+let roomStakes;
+if (process.env.ROOM_STAKES === 'true' && core.validator && core.provider) {
+  const gToken = (process.env.G_TOKEN_ADDR || '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A');
+  const spender = core.validator.address;
+  const feeBps = Math.min(2000, Math.max(0, Number(process.env.ROOM_STAKE_FEE_BPS || 1000) || 0));
+  const entries = String(process.env.ROOM_STAKE_ENTRIES || '50,100,250').split(',').map((x) => Number(x.trim())).filter((n) => Number.isFinite(n) && n > 0 && n <= 1000).map((n) => core.ethers.parseEther(String(n)).toString());
+  roomStakes = {
+    feeBps, entries, spender: spender.toLowerCase(),
+    pay: core.platform.tokenStakePay({
+      token: new core.ethers.Contract(gToken, core.platform.TOKEN_ABI, core.validator), tokenAddress: gToken, tokenName: 'GoodDollar', tokenVersion: '1', chainId: 42220,
+      spender, treasury: (process.env.ROOM_FEE_WALLET || '').trim() || spender, serialize: core.serializeSignerWrite, isVerified: core.isVerified,
+    }),
+  };
+  console.log(`[rooms] playing for G$ is ON · entries ${entries.length} · fee ${feeBps / 100}%`);
+}
+const roomService = core.platform.createRoomService(core.platform.ROOM_GAMES, { keep: roomKeeper, stakes: roomStakes });
+if (roomStakes) { const t = setInterval(() => { roomService.settleDue().catch(() => {}); }, 15000); if (t.unref) t.unref(); }
 roomKeeper.loadAll().then((saved) => { const n = roomService.restore(saved); if (n) console.log(`[rooms] ${n} open room(s) restored`); }).catch(() => {});
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService });
 

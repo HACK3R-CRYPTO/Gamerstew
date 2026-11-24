@@ -51,6 +51,10 @@ export const SETTINGS: Record<string, Setting> = {
 
   // ── gasless ──
   SCORE_OUTBOX: s('Chain', 'bool', 'Queue scores and send them on-chain from the outbox, instead of making the player wait. Needs the chain_outbox table.', { default: 'false' }),
+  ROOM_STAKES: s('Chain', 'bool', 'Let friend rooms be played for G$. Losers pay the winner directly by permit; no money is held. Off unless set to "true".', { default: 'false' }),
+  ROOM_STAKE_ENTRIES: s('Chain', 'list', 'The G$ entries a room host may pick.', { default: '50,100,250' }),
+  ROOM_STAKE_FEE_BPS: s('Chain', 'int', 'The share of each entry kept as the fee, in hundredths of a percent.', { default: '1000' }),
+  ROOM_FEE_WALLET: s('Chain', 'address', 'Where room fees go. Empty: the server wallet.', { default: '' }),
   SCORE_ENFORCE: s('Anti-cheat', 'list', 'Games whose score is cut to what the run log supports. "none" switches it off.', { default: 'stack,simon' }),
   GASLESS_SKILL_GAMES: s('Gasless', 'bool', 'Backend pays gas for skill-game scores. On unless set to "false".', { default: 'true' }),
   GASLESS_MAX_PER_WALLET_DAY: s('Gasless', 'int', 'Gasless saves one wallet may make per day.', { default: '60' }),

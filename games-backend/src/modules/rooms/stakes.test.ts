@@ -1,217 +1,206 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoomService, isFail, ROOM_TTL_MS, STAKE_TRIES, type EscrowRoom, type Fail, type GameRules, type RoomView, type Seat, type StakeChain } from './service';
+import { createRoomService, isFail, PERMIT_MIN_MS, ROOM_TTL_MS, ROUND_MAX_MS, STAKE_TRIES, type Fail, type GameRules, type Permit, type RoomView, type Seat, type StakePay } from './service';
 
 // A game whose score is simply the number sent, and one the server cannot check.
 const sure: GameRules = { verified: true, deal: () => ({}), maxProgress: 100, score: async (_s, proof) => ({ ok: true, score: Number((proof as { n: number }).n) }) };
-const unsure: GameRules = { ...sure, verified: false };
-const GAMES = { sure, unsure };
+const GAMES = { sure, unsure: { ...sure, verified: false } };
 const W = (c: string) => '0x' + c.repeat(40);
-const A = W('a'), B = W('b'), C = W('c'), X = W('e');
-const ONE = 10n ** 18n;
+const A = W('a'), B = W('b'), C = W('c');
+const ONE = 10n ** 18n; const E100 = String(100n * ONE), E50 = String(50n * ONE);
 const ok = <T>(v: T | Fail): T => { assert.ok(!isFail(v), `unexpected failure: ${JSON.stringify(v)}`); return v as T; };
 const no = (v: unknown, error: string) => { assert.ok(isFail(v), `expected ${error}, got ${JSON.stringify(v)}`); assert.equal((v as Fail).error, error); return v as Fail; };
 
-/** A pretend chain: escrow rooms in a map, and a record of every write. */
+/** A pretend chain: wallets with balances, and a record of every payment. */
 function world() {
   const clock = { t: 1_800_000_000_000 }; let n = 0;
-  const escrows = new Map<number, EscrowRoom>(); const writes: string[] = []; const fail = { resolve: 0, refund: 0, read: false, lieAfterResolve: false };
-  const chain: StakeChain = {
-    room: async (id) => { if (fail.read) throw new Error('rpc down'); const e = escrows.get(id); return e ? { ...e, players: [...e.players] } : null; },
-    codeHash: (secret) => 'hash:' + secret,
-    resolve: async (id, scores) => {
-      if (fail.resolve > 0) { fail.resolve--; throw new Error('rpc'); }
-      const e = escrows.get(id)!; assert.equal(e.status, 'open', 'never resolve a closed room'); assert.equal(scores.length, e.players.length);
-      e.status = 'resolved'; writes.push(`resolve ${id} ${scores.join(',')}`);
-      if (fail.lieAfterResolve) { fail.lieAfterResolve = false; throw new Error('timeout waiting for receipt'); }
-      return '0xresolve' + id;
+  const balance = new Map<string, bigint>([[A, 500n * ONE], [B, 500n * ONE], [C, 500n * ONE]]);
+  const used = new Set<string>(); const moves: string[] = []; const banned = new Set<string>();
+  const fail = { collect: 0, check: false, lieAfterCollect: false };
+  const sigOf = (p: Permit) => `${p.owner}:${p.value}:${p.deadline}`;
+  const pay: StakePay = {
+    // a permit here is genuine when its r names its owner, as a real signature would
+    check: async (p) => { if (fail.check) throw new Error('rpc down'); if (p.r !== '0x' + p.owner.slice(2).padStart(64, '0')) return { ok: false, why: 'Not signed by that wallet' }; if (used.has(sigOf(p))) return { ok: false, why: 'Already used' }; if ((balance.get(p.owner) ?? 0n) < BigInt(p.value)) return { ok: false, why: 'Not enough G$' }; return { ok: true }; },
+    collect: async (p, winner, winnerWei, feeWei) => {
+      if (fail.collect > 0) { fail.collect--; throw new Error('rpc'); }
+      const total = BigInt(winnerWei) + BigInt(feeWei);
+      assert.equal(String(total), p.value, 'a permit is worth exactly one entry');
+      if (used.has(sigOf(p))) return { ok: false, why: 'Already used' };
+      if ((balance.get(p.owner) ?? 0n) < total) return { ok: false, why: 'The wallet no longer holds the entry' };
+      used.add(sigOf(p)); balance.set(p.owner, balance.get(p.owner)! - total); balance.set(winner, (balance.get(winner) ?? 0n) + BigInt(winnerWei));
+      moves.push(`${p.owner.slice(2, 3)}→${winner.slice(2, 3)} ${BigInt(winnerWei) / ONE}+${BigInt(feeWei) / ONE}`);
+      if (fail.lieAfterCollect) { fail.lieAfterCollect = false; throw new Error('timeout waiting for receipt'); }
+      return { ok: true, tx: '0xtx' + moves.length };
     },
-    refundAll: async (id) => { if (fail.refund > 0) { fail.refund--; throw new Error('rpc'); } const e = escrows.get(id)!; assert.equal(e.status, 'open'); e.status = 'refunded'; writes.push(`refund ${id}`); return '0xrefund' + id; },
+    allowed: async (w) => !banned.has(w),
   };
-  const svc = createRoomService(GAMES, { now: () => clock.t, randomHex: (b) => (++n).toString(16).padStart(b * 2, '0'), stakes: { chain, feeBps: 1000, minWei: 10n * ONE, maxWei: 1000n * ONE } });
-  /** what an honest host's wallet would open on the chain */
-  const open = (id: number, by: string, capacity: number, joinCode: string, over: Partial<EscrowRoom> = {}) => { escrows.set(id, { status: 'open', creator: by, stakeWei: String(100n * ONE), seedWei: '0', feeBps: 1000, capacity, deadlineSec: Math.floor(clock.t / 1000) + 600, joinCodeHash: 'hash:' + joinCode, useAllowlist: false, players: [by], ...over }); };
-  const payIn = (id: number, wallet: string) => escrows.get(id)!.players.push(wallet);
-  return { svc, clock, escrows, writes, fail, open, payIn };
+  const svc = createRoomService(GAMES, { now: () => clock.t, randomHex: (b) => (++n).toString(16).padStart(b * 2, '0'), stakes: { pay, feeBps: 1000, entries: [E50, E100], spender: W('5') } });
+  const sign = (owner: string, value = E100, mins = 30): Permit => ({ owner, value, deadline: Math.floor(clock.t / 1000) + mins * 60, v: 27, r: '0x' + owner.slice(2).padStart(64, '0'), s: '0x' + '1'.repeat(64) });
+  return { svc, clock, balance, moves, fail, banned, sign };
 }
-/** three friends in a room, nothing staked yet */
 function lobby(w = world(), game = 'sure') {
   const host = ok<Seat>(w.svc.create(game, 'Ada')); const bo = ok<Seat>(w.svc.join(host.code, 'Bo')); const cy = ok<Seat>(w.svc.join(host.code, 'Cy'));
-  const joinCode = ok<RoomView>(w.svc.get(host.code, host.token)).joinCode!;
-  return { ...w, host, bo, cy, code: host.code, joinCode };
+  return { ...w, host, bo, cy, code: host.code };
 }
-/** ...who have all paid in, escrow 7, and are ready to start */
+/** three friends who have all signed for 100 G$ */
 async function ready() {
-  const L = lobby(); L.open(7, A, 3, L.joinCode);
-  ok<RoomView>(await L.svc.stake(L.code, L.host.token, 7, A));
-  L.payIn(7, C); ok<RoomView>(await L.svc.paid(L.code, L.cy.token, C)); // Cy pays before Bo: the escrow's order is A, C, B
-  L.payIn(7, B); const v = ok<RoomView>(await L.svc.paid(L.code, L.bo.token, B));
-  assert.equal(v.stake!.state, 'ready'); assert.deepEqual(v.stake!.paid, [true, true, true]);
+  const L = lobby();
+  ok<RoomView>(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)));
+  ok<RoomView>(await L.svc.commit(L.code, L.bo.token, L.sign(B)));
+  const v = ok<RoomView>(await L.svc.commit(L.code, L.cy.token, L.sign(C)));
+  assert.equal(v.stake!.state, 'ready'); assert.deepEqual(v.stake!.signed, [true, true, true]);
   return L;
 }
-
-test('the whole way through: everyone pays in, plays, and the contract is given the scores in ITS order', async () => {
-  const L = await ready();
+const play = async (L: Awaited<ReturnType<typeof ready>>, a: number, b: number, c: number) => {
   ok<RoomView>(L.svc.start(L.code, L.host.token));
-  ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: 40 }));
-  ok<RoomView>(await L.svc.finish(L.code, L.bo.token, { n: 90 }));
+  ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: a })); ok<RoomView>(await L.svc.finish(L.code, L.bo.token, { n: b })); ok<RoomView>(await L.svc.finish(L.code, L.cy.token, { n: c }));
+};
+
+test('the whole way through: nothing moves until the round ends, then each loser pays the winner directly', async () => {
+  const L = await ready();
+  assert.deepEqual(L.moves, [], 'signing is not paying');
+  ok<RoomView>(L.svc.start(L.code, L.host.token));
+  ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: 40 })); ok<RoomView>(await L.svc.finish(L.code, L.bo.token, { n: 90 }));
   assert.equal(await L.svc.settle(L.code), 'playing', 'nothing is paid while someone is still playing');
   ok<RoomView>(await L.svc.finish(L.code, L.cy.token, { n: 55 }));
-  assert.equal(await L.svc.settle(L.code), 'paid');
-  assert.deepEqual(L.writes, ['resolve 7 40,55,90']); // seats are Ada, Bo, Cy; the escrow is A, C, B
+  assert.equal(await L.svc.settle(L.code), 'settled');
+  assert.deepEqual(L.moves, ['a→b 90+10', 'c→b 90+10']); // 10% of each entry is the fee
+  assert.equal(L.balance.get(B), 680n * ONE); assert.equal(L.balance.get(A), 400n * ONE);
   const v = ok<RoomView>(L.svc.get(L.code, L.cy.token));
-  assert.equal(v.stake!.state, 'paid'); assert.equal(v.stake!.winnerSeat, 1); assert.equal(v.stake!.tx, '0xresolve7');
-  assert.equal(await L.svc.settle(L.code), 'paid'); assert.equal(await L.svc.settleDue(), 0);
-  assert.equal(L.writes.length, 1, 'paid once, however often it is asked');
-  // a rematch starts clean: no entry, a new join code, nobody marked as paid
+  assert.equal(v.stake!.winnerSeat, 1); assert.deepEqual(v.stake!.pays, ['paid', null, 'paid']); assert.deepEqual(v.stake!.signed, [false, false, false], 'signatures are not kept once the round is settled');
+  assert.equal(await L.svc.settle(L.code), 'settled'); assert.equal(await L.svc.settleDue(), 0);
+  assert.equal(L.moves.length, 2, 'paid once, however often it is asked');
   const again = ok<RoomView>(L.svc.rematch(L.code, L.host.token));
-  assert.equal(again.stake, undefined); assert.notEqual(again.joinCode, L.joinCode);
-  no(await L.svc.stake(L.code, L.host.token, 7, A), 'bad_escrow'); // an escrow room is used once
+  assert.equal(again.stake, undefined); // a rematch is free until the host sets an entry again
 });
 
-test('the join code goes to the players in the room and to nobody else', () => {
+test('a phone is told the terms and who has signed, never a signature', async () => {
+  const L = await ready();
+  const v = ok<RoomView>(L.svc.get(L.code, L.bo.token));
+  assert.deepEqual(v.stakeTerms, { spender: W('5'), entries: [E50, E100], feeBps: 1000 });
+  assert.ok(!JSON.stringify(v).includes('1'.repeat(64)), 'no signature in what a phone receives');
+  assert.ok(!JSON.stringify(ok<RoomView>(L.svc.get(L.code, 'f'.repeat(32)))).includes(A.slice(2)), 'a stranger does not learn the wallets either');
+});
+
+test('a tie for first, or a round nobody scores in, moves no money at all', async () => {
+  const L = await ready(); await play(L, 50, 50, 20);
+  assert.equal(await L.svc.settle(L.code), 'void'); assert.deepEqual(L.moves, []);
+  const M = await ready(); await play(M, 0, 0, 0);
+  assert.equal(await M.svc.settle(M.code), 'void'); assert.deepEqual(M.moves, []);
+  const N = await ready(); await play(N, 20, 20, 60); // a tie lower down does not matter
+  assert.equal(await N.svc.settle(N.code), 'settled'); assert.deepEqual(N.moves, ['a→c 90+10', 'b→c 90+10']);
+});
+
+test('a permit is refused unless it is genuine, for exactly the entry, long enough, and backed by the wallet', async () => {
   const L = lobby();
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.bo.token)).joinCode, L.joinCode);
-  const stranger = ok<RoomView>(L.svc.get(L.code, 'f'.repeat(32)));
-  assert.equal(stranger.you, -1); assert.equal(stranger.joinCode, undefined);
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.bo.token)).stakes, true);
-});
-
-test('an escrow room is refused unless every term on the chain is right', async () => {
-  const bad: [string, Partial<EscrowRoom>][] = [
-    ['closed', { status: 'resolved' }], ['someone else opened it', { creator: X, players: [X] }], ['others already in it', { players: [A, X] }],
-    ['wrong size', { capacity: 4 }], ['too small', { stakeWei: String(ONE) }], ['too big', { stakeWei: String(5000n * ONE) }], ['unreadable entry', { stakeWei: 'lots' }],
-    ['a prize on top', { seedWei: '5' }], ['wrong fee', { feeBps: 0 }], ['allowlist', { useAllowlist: true }], ['another room\'s code', { joinCodeHash: 'hash:other' }],
-    ['deadline too close', { deadlineSec: 1_800_000_000 + 60 }], ['deadline too far', { deadlineSec: 1_800_000_000 + 7200 }],
-  ];
-  for (const [what, over] of bad) {
-    const L = lobby(); L.open(7, A, 3, L.joinCode, over);
-    no(await L.svc.stake(L.code, L.host.token, 7, A), 'bad_escrow');
-    assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake, undefined, what);
-    ok<Seat>(L.svc.join(L.code, 'Di')); // a refused escrow locks nothing
-  }
-  const L = lobby(); L.open(7, A, 3, L.joinCode);
-  no(await L.svc.stake(L.code, L.bo.token, 7, B), 'not_host');
-  no(await L.svc.stake(L.code, L.host.token, 99, A), 'bad_escrow');   // no such room
-  no(await L.svc.stake(L.code, L.host.token, 7, 'nope'), 'bad_wallet');
-  no(await L.svc.stake(L.code, L.host.token, -1, A), 'bad_escrow');
-  L.fail.read = true; no(await L.svc.stake(L.code, L.host.token, 7, A), 'bad_escrow'); L.fail.read = false;
-  ok<RoomView>(await L.svc.stake(L.code, L.host.token, 7, A));
-  no(await L.svc.stake(L.code, L.host.token, 7, A), 'locked');         // one escrow per round
-  no(L.svc.join(L.code, 'Late'), 'locked');                           // sized to the players already here
+  no(await L.svc.stake(L.code, L.bo.token, E100, L.sign(B)), 'not_host');
+  no(await L.svc.stake(L.code, L.host.token, String(7n * ONE), L.sign(A, String(7n * ONE))), 'bad_entry'); // not an entry on offer
+  no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A, E50)), 'bad_permit');           // signed for less
+  no(await L.svc.stake(L.code, L.host.token, E100, { ...L.sign(A), r: '0x' + '9'.repeat(64) }), 'bad_permit'); // someone else's signature
+  no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A, E100, 5)), 'bad_permit');       // runs out before a round could
+  no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A, E100, 600)), 'bad_permit');     // open for ten hours
+  for (const junk of [null, 'x', {}, { ...L.sign(A), v: 3 }, { ...L.sign(A), owner: 'nope' }, { ...L.sign(A), s: '0x12' }]) no(await L.svc.stake(L.code, L.host.token, E100, junk), 'bad_permit');
+  L.balance.set(A, 10n * ONE); no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)), 'bad_permit'); L.balance.set(A, 500n * ONE);
+  L.fail.check = true; assert.equal(no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)), 'bad_permit').status, 503); L.fail.check = false;
+  L.banned.add(A); no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)), 'not_allowed'); L.banned.delete(A);
+  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake, undefined, 'a refused entry sets nothing');
+  ok<RoomView>(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)));
+  no(await L.svc.commit(L.code, L.bo.token, L.sign(A)), 'wallet_taken');                     // one wallet, one seat
+  no(await L.svc.commit(L.code, L.bo.token, L.sign(B, E50)), 'bad_permit');                  // not the entry the host set
+  no(await L.svc.commit(L.code, 'f'.repeat(32), L.sign(B)), 'not_in_room');
+  no(L.svc.start(L.code, L.host.token), 'stake_pending');                                    // not everyone has signed
 });
 
 test('stakes are only for games the server scores itself, and only when switched on', async () => {
-  const L = lobby(world(), 'unsure'); L.open(7, A, 3, L.joinCode ?? '');
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stakes, false);
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).joinCode, undefined);
-  no(await L.svc.stake(L.code, L.host.token, 7, A), 'not_verified');
+  const L = lobby(world(), 'unsure');
+  const v = ok<RoomView>(L.svc.get(L.code, L.host.token));
+  assert.equal(v.stakes, false); assert.equal(v.stakeTerms, undefined);
+  no(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)), 'not_verified');
   const off = createRoomService(GAMES); const h = ok<Seat>(off.create('sure', 'A')); ok<Seat>(off.join(h.code, 'B'));
-  no(await off.stake(h.code, h.token, 7, A), 'stakes_off'); no(await off.paid(h.code, h.token, A), 'stakes_off');
+  no(await off.stake(h.code, h.token, E100, L.sign(A)), 'stakes_off'); no(await off.commit(h.code, h.token, L.sign(A)), 'stakes_off');
   assert.equal(await off.settle(h.code), null); assert.equal(ok<RoomView>(off.get(h.code, h.token)).stakes, false);
 });
 
-test('saying you paid is not enough: the chain has to show it, and one wallet is one seat', async () => {
-  const L = lobby(); L.open(7, A, 3, L.joinCode);
-  no(await L.svc.paid(L.code, L.bo.token, B), 'stake_pending');        // no escrow yet
-  ok<RoomView>(await L.svc.stake(L.code, L.host.token, 7, A));
-  no(await L.svc.paid(L.code, L.bo.token, B), 'not_paid');             // not on the chain
-  no(await L.svc.paid(L.code, L.bo.token, A), 'wallet_taken');         // the host's wallet
-  no(await L.svc.paid(L.code, 'f'.repeat(32), B), 'not_in_room');
-  no(L.svc.start(L.code, L.host.token), 'stake_pending');
-  L.payIn(7, B); ok<RoomView>(await L.svc.paid(L.code, L.bo.token, B));
-  no(await L.svc.paid(L.code, L.cy.token, B), 'wallet_taken');         // Cy cannot ride on Bo's payment
-  no(L.svc.start(L.code, L.host.token), 'stake_pending');              // two of three is not everyone
-  L.payIn(7, X);                                                       // a stranger with the code fills the last place
-  no(await L.svc.paid(L.code, L.cy.token, C), 'not_paid');
-  no(L.svc.start(L.code, L.host.token), 'stake_pending');              // so this room never starts, and is refunded
-  L.clock.t += 11 * 60_000;
-  assert.equal(await L.svc.settle(L.code), 'refunded'); assert.deepEqual(L.writes, ['refund 7']);
-});
-
-test('someone backs out before the start: nobody plays, and everyone is refunded after the deadline', async () => {
+test('before the start nothing is owed: people can come, go, change the entry or call it off', async () => {
   const L = await ready();
-  ok(L.svc.leave(L.code, L.bo.token));
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.state, 'refund_due');
+  const di = ok<Seat>(L.svc.join(L.code, 'Di'));                                             // a newcomer has not signed
+  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.state, 'collecting');
   no(L.svc.start(L.code, L.host.token), 'stake_pending');
-  assert.equal(await L.svc.settle(L.code), 'refund_due', 'the contract will not refund before its deadline');
-  assert.deepEqual(L.writes, []);
-  L.clock.t += 10 * 60_000 + 20_000;
-  assert.equal(await L.svc.settleDue(), 1);
-  assert.deepEqual(L.writes, ['refund 7']);
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.state, 'refunded');
+  ok(L.svc.leave(L.code, di.token));                                                         // and leaves again
+  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.state, 'ready');
+  ok<RoomView>(await L.svc.stake(L.code, L.host.token, E50, L.sign(A, E50)));                // a new entry: everyone signs again
+  assert.deepEqual(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.signed, [true, false, false]);
+  no(L.svc.unstake(L.code, L.bo.token), 'not_host');
+  assert.equal(ok<RoomView>(L.svc.unstake(L.code, L.host.token)).stake, undefined);
+  ok<RoomView>(L.svc.start(L.code, L.host.token));                                           // a free round, as before
+  assert.deepEqual(L.moves, []);
 });
 
-test('a round nobody scores in crowns nobody: it is refunded', async () => {
+test('a loser who empties their wallet does not pay; it is recorded against them and the others still do', async () => {
   const L = await ready(); ok<RoomView>(L.svc.start(L.code, L.host.token));
-  for (const s of [L.host, L.bo, L.cy]) ok<RoomView>(await L.svc.finish(L.code, s.token, { n: 0 }));
-  assert.equal(await L.svc.settle(L.code), 'refund_due');
-  no(L.svc.rematch(L.code, L.host.token), 'stake_pending');           // not while money is unsettled
-  L.clock.t += 11 * 60_000; assert.equal(await L.svc.settle(L.code), 'refunded'); assert.deepEqual(L.writes, ['refund 7']);
-  ok<RoomView>(L.svc.rematch(L.code, L.host.token));
+  L.balance.set(A, 0n);                                                                      // Ada moves her G$ away mid-round
+  ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: 1 })); ok<RoomView>(await L.svc.finish(L.code, L.bo.token, { n: 9 })); ok<RoomView>(await L.svc.finish(L.code, L.cy.token, { n: 5 }));
+  assert.equal(await L.svc.settle(L.code), 'settled');
+  assert.deepEqual(L.moves, ['c→b 90+10']);
+  assert.deepEqual(ok<RoomView>(L.svc.get(L.code, L.bo.token)).stake!.pays, ['unpaid', null, 'paid']);
 });
 
-test('a tie for first place is never sent to the contract, which would hand the pot to the host', async () => {
-  const L = await ready(); ok<RoomView>(L.svc.start(L.code, L.host.token));
-  ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: 50 })); ok<RoomView>(await L.svc.finish(L.code, L.bo.token, { n: 50 })); ok<RoomView>(await L.svc.finish(L.code, L.cy.token, { n: 20 }));
-  assert.equal(await L.svc.settle(L.code), 'refund_due'); assert.deepEqual(L.writes, []);
-  L.clock.t += 11 * 60_000; assert.equal(await L.svc.settle(L.code), 'refunded'); assert.deepEqual(L.writes, ['refund 7']);
-  // a tie lower down does not matter: there is one clear winner
-  const M = await ready(); ok<RoomView>(M.svc.start(M.code, M.host.token));
-  ok<RoomView>(await M.svc.finish(M.code, M.host.token, { n: 20 })); ok<RoomView>(await M.svc.finish(M.code, M.bo.token, { n: 20 })); ok<RoomView>(await M.svc.finish(M.code, M.cy.token, { n: 60 }));
-  assert.equal(await M.svc.settle(M.code), 'paid'); assert.deepEqual(M.writes, ['resolve 7 20,60,20']);
-});
-
-test('a player who walks off mid-round scores nothing, and the others are still paid', async () => {
+test('a player who walks off mid-round scores nothing and still pays', async () => {
   const L = await ready(); ok<RoomView>(L.svc.start(L.code, L.host.token));
   ok<RoomView>(await L.svc.finish(L.code, L.host.token, { n: 12 })); ok<RoomView>(await L.svc.finish(L.code, L.cy.token, { n: 30 }));
   ok(L.svc.leave(L.code, L.bo.token));
-  assert.equal(await L.svc.settle(L.code), 'paid'); assert.deepEqual(L.writes, ['resolve 7 12,30,0']);
+  assert.equal(await L.svc.settle(L.code), 'settled'); assert.deepEqual(L.moves, ['a→c 90+10', 'b→c 90+10']);
 });
 
-test('a failed payout is tried again, never sent twice, and gives up into a refund', async () => {
-  // the chain is down three times, then answers
-  const L = await ready(); ok<RoomView>(L.svc.start(L.code, L.host.token));
-  for (const [s, n] of [[L.host, 5], [L.bo, 9], [L.cy, 7]] as const) ok<RoomView>(await L.svc.finish(L.code, s.token, { n }));
-  L.fail.resolve = 3;
-  for (let i = 0; i < 3; i++) assert.equal(await L.svc.settle(L.code), 'playing');
-  assert.equal(await L.svc.settle(L.code), 'paid'); assert.deepEqual(L.writes, ['resolve 7 5,7,9']);
+test('a payment the chain did not answer for is tried again, and never taken twice', async () => {
+  const L = await ready(); await play(L, 5, 9, 7);
+  L.fail.collect = 3;                                                                        // down for the first three calls
+  assert.equal(await L.svc.settle(L.code), 'playing'); assert.equal(await L.svc.settle(L.code), 'playing');
+  assert.equal(await L.svc.settle(L.code), 'settled'); assert.deepEqual(L.moves, ['c→b 90+10', 'a→b 90+10']);
 
-  // the payout went through but the answer never came back: the next look at the chain sees it is done
-  const M = await ready(); ok<RoomView>(M.svc.start(M.code, M.host.token));
-  for (const [s, n] of [[M.host, 3], [M.bo, 4], [M.cy, 5]] as const) ok<RoomView>(await M.svc.finish(M.code, s.token, { n }));
-  M.fail.lieAfterResolve = true;
+  // the money moved but the answer never came back: the retry finds the permit spent, and takes nothing more
+  const M = await ready(); await play(M, 3, 8, 4);
+  M.fail.lieAfterCollect = true;
   assert.equal(await M.svc.settle(M.code), 'playing');
-  assert.equal(await M.svc.settle(M.code), 'paid'); assert.equal(M.writes.length, 1, 'not paid a second time');
+  assert.equal(await M.svc.settle(M.code), 'settled');
+  assert.equal(M.moves.length, 2); assert.equal(M.balance.get(A), 400n * ONE, 'Ada paid once');
 
-  // the chain never answers: after the tries run out the room is refunded instead
-  const N = await ready(); ok<RoomView>(N.svc.start(N.code, N.host.token));
-  for (const [s, n] of [[N.host, 3], [N.bo, 4], [N.cy, 5]] as const) ok<RoomView>(await N.svc.finish(N.code, s.token, { n }));
-  N.fail.resolve = 99;
+  // the chain never answers: it stops trying, and says so
+  const N = await ready(); await play(N, 3, 8, 4); N.fail.collect = 99;
   for (let i = 0; i < STAKE_TRIES - 1; i++) assert.equal(await N.svc.settle(N.code), 'playing');
-  assert.equal(await N.svc.settle(N.code), 'refund_due');
-  N.clock.t += 11 * 60_000; N.fail.refund = 1;
-  assert.equal(await N.svc.settle(N.code), 'refund_due'); assert.equal(await N.svc.settle(N.code), 'refunded');
-  assert.deepEqual(N.writes, ['refund 7']);
+  assert.equal(await N.svc.settle(N.code), 'settled');
+  assert.deepEqual(ok<RoomView>(N.svc.get(N.code, N.host.token)).stake!.pays, ['unpaid', null, 'unpaid']); assert.deepEqual(N.moves, []);
 });
 
-test('a room holding unsettled money is never forgotten: not when it goes quiet, not across a restart', async () => {
-  const L = await ready(); ok<RoomView>(L.svc.start(L.code, L.host.token));
-  for (const [s, n] of [[L.host, 3], [L.bo, 4], [L.cy, 5]] as const) ok<RoomView>(await L.svc.finish(L.code, s.token, { n }));
-  L.fail.resolve = 99; await L.svc.settle(L.code);
-  L.clock.t += ROOM_TTL_MS * 3;
-  ok<Seat>(L.svc.create('sure', 'Someone else')); // creating a room clears out stale ones
-  assert.equal(ok<RoomView>(L.svc.get(L.code, L.host.token)).stake!.state, 'playing', 'still here');
-  for (const s of [L.host, L.bo, L.cy]) L.svc.leave(L.code, s.token);
-  assert.ok(!isFail(L.svc.get(L.code, L.host.token)), 'everyone left; the room stays until the money is settled');
+test('a permit that ran out is not used, and a round cannot start on one that will', async () => {
+  const L = await ready();
+  L.clock.t += PERMIT_MIN_MS; // 20 of the 30 minutes gone: 10 left is less than a full round
+  no(L.svc.start(L.code, L.host.token), 'stake_pending');
+  const M = await ready(); await play(M, 3, 8, 4);
+  M.fail.collect = 99; await M.svc.settle(M.code);
+  M.clock.t += 31 * 60_000; M.fail.collect = 0;
+  assert.equal(await M.svc.settle(M.code), 'settled');
+  assert.deepEqual(ok<RoomView>(M.svc.get(M.code, M.host.token)).stake!.pays, ['expired', null, 'expired']); assert.deepEqual(M.moves, []);
+});
 
-  // a restart: the saved room is stale by the clock but comes back, and is paid
-  const saved = JSON.parse(JSON.stringify({ code: 'KEPT1', game: 'sure', status: 'playing', round: 1, seed: 'aa', startedAt: L.clock.t - 3_600_000, touched: L.clock.t - 3_600_000, secret: 's',
-    players: [{ name: 'A', token: '1'.repeat(32), seen: 0, left: false, score: 8, done: true, progress: 0, wallet: A }, { name: 'B', token: '2'.repeat(32), seen: 0, left: false, score: 2, done: true, progress: 0, wallet: B }],
-    stake: { escrowId: 21, stakeWei: String(100n * ONE), feeBps: 1000, capacity: 2, deadline: L.clock.t - 60_000, state: 'playing', tries: 0 } }));
-  L.escrows.set(21, { status: 'open', creator: A, stakeWei: String(100n * ONE), seedWei: '0', feeBps: 1000, capacity: 2, deadlineSec: 0, joinCodeHash: 'hash:s', useAllowlist: false, players: [A, B] });
-  L.fail.resolve = 0;
-  assert.equal(L.svc.restore([saved, { ...saved, code: 'GONE1', stake: undefined }]), 1, 'the stale room with no money is dropped, the one with money returns');
+test('a round with payments still to make is never forgotten; an abandoned lobby is', async () => {
+  const L = await ready(); await play(L, 3, 8, 4);
+  L.fail.collect = 99; await L.svc.settle(L.code);
+  const idle = await ready(); // signed, never started, on the same service clock? no: its own world; checked below on L's service
+  void idle;
+  const h2 = ok<Seat>(L.svc.create('sure', 'Eve')); ok<Seat>(L.svc.join(h2.code, 'Fay')); ok<RoomView>(await L.svc.stake(h2.code, h2.token, E100, L.sign(C)));
+  for (const s of [L.host, L.bo, L.cy]) L.svc.leave(L.code, s.token);
+  L.clock.t += ROOM_TTL_MS + ROUND_MAX_MS;
+  ok<Seat>(L.svc.create('sure', 'Someone else')); // creating a room clears out stale ones
+  assert.ok(!isFail(L.svc.get(L.code, L.host.token)), 'everyone left and it went quiet; it stays until its payments are made');
+  no(L.svc.get(h2.code, h2.token), 'no_room'); // a lobby that only ever signed is let go: nothing was owed
+
+  // a restart: the saved room is stale by the clock but comes back, and pays
+  const saved = JSON.parse(JSON.stringify({ code: 'KEPT1', game: 'sure', status: 'playing', round: 1, seed: 'aa', startedAt: L.clock.t - 3_600_000, touched: L.clock.t - 3_600_000,
+    players: [{ name: 'A', token: '1'.repeat(32), seen: 0, left: false, score: 8, done: true, progress: 0, wallet: A, permit: L.sign(A) }, { name: 'B', token: '2'.repeat(32), seen: 0, left: false, score: 2, done: true, progress: 0, wallet: B, permit: L.sign(B) }],
+    stake: { entryWei: E100, feeBps: 1000, state: 'playing', tries: 0 } }));
+  L.fail.collect = 0; const before = L.moves.length;
+  assert.equal(L.svc.restore([saved, { ...saved, code: 'GONE1', stake: undefined }]), 1, 'the stale room with nothing owed is dropped; the one owing returns');
   await L.svc.settleDue();
-  assert.ok(L.writes.includes('resolve 21 8,2'));
+  assert.ok(L.moves.slice(before).includes('b→a 90+10'));
 });
