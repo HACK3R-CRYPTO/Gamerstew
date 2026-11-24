@@ -25,6 +25,7 @@ import type { ScoreDeps } from './ports';
 import { checkSession, isClientScore, MAX_CLIENT_SCORE, NEPA_MAX_INPUTS, seasonPoints } from './rules';
 
 import * as ladder from '../ladder/rules';
+import * as strike from '../strike/game';
 export interface Reply { status: number; body: Record<string, unknown> }
 const reply = (status: number, body: Record<string, unknown>): Reply => ({ status, body });
 // what the old handlers logged: the error's message, whatever was thrown
@@ -109,6 +110,15 @@ export function createScoreService(deps: ScoreDeps) {
         return reply(403, { error: 'Ladder check failed', reason: run.error });
       }
       if (!run.human) logger.log(`[ladder] FLAG(${run.reasons.join('; ')}) player=${who} score=${run.total} elapsed=${elapsedMs}ms`);
+      serverScore = run.total;
+    } else if (game === 'strike') {
+      // Fully replayed: every throw goes through the same lane simulation the
+      // phone ran, and the total comes from that. The client's number is ignored.
+      const run = strike.replay(await strike.engine(), body.strikeThrows, elapsedMs);
+      if (!run.ok) {
+        logger.warn(`[strike] rejected ${playerAddress}: ${run.error}`);
+        return reply(403, { error: 'Game check failed', reason: run.error });
+      }
       serverScore = run.total;
     } else {
       // The client's claim, inside a sanity bound. Deliberately not tightened: a

@@ -18,7 +18,7 @@ function world(over: { session?: Partial<SessionRow> | null; elapsedMs?: number;
   const session: SessionRow | null = over.session === null ? null : { token: 'tok', wallet: P.toLowerCase(), game: 'rhythm', used: false, started_at: new Date(T0).toISOString(), ...over.session };
   let fails = over.submitFails ?? 0;
   const deps: ScoreDeps = {
-    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5 },
+    gameTypes: { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6 },
     now: () => T0 + (over.elapsedMs ?? 60_000),
     randomHex: (n) => 'ab'.repeat(n),
     logger: { log: (m) => calls.logs.push(m), warn: (m) => calls.logs.push(m), error: (m) => calls.logs.push(m) },
@@ -400,4 +400,34 @@ test('ladder: season points use the ladder scale', () => {
   assert.strictEqual(seasonPoints('ladder', 1000, 60_000), 14);
   assert.strictEqual(seasonPoints('ladder', 400, 60_000), 5);
   assert.strictEqual(seasonPoints('ladder', 60, 60_000), 0);
+});
+
+// ── Street Strike: every throw replayed through the lane simulation ──
+import * as strikeGame from '../strike/game';
+const STRIKE_THROW = { tyre: 'danfo', x: 0.05, angle: 0, speed: 9, spin: 0 }; // knocks all ten down (pinned in game.test.ts)
+
+test('strike: twelve strikes is a perfect 150, signed from the replay whatever the client claims', async () => {
+  const throws = Array(strikeGame.FRAMES + 2).fill(STRIKE_THROW); // 4 strikes + 3 in the last frame
+  const w = world({ session: { game: 'strike' }, elapsedMs: 120_000, gasless: true });
+  const r = await w.svc.signScore({ playerAddress: P, game: 'strike', sessionToken: 'tok', score: 3, strikeThrows: throws });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.score, 150);
+  assert.strictEqual(r.body.gameType, 6);
+  assert.deepStrictEqual(w.calls.submitted, [{ player: P, gameType: 6, score: 150 }]);
+});
+
+test('strike: no throws, an unfinished game, or a game quicker than its rolls is refused and nothing is spent', async () => {
+  const full = Array(strikeGame.FRAMES + 2).fill(STRIKE_THROW);
+  for (const [strikeThrows, elapsedMs] of [[undefined, 120_000], [full.slice(0, 3), 120_000], [full, 6_000]] as [unknown, number][]) {
+    const w = world({ session: { game: 'strike' }, elapsedMs, gasless: true });
+    const r = await w.svc.signScore({ playerAddress: P, game: 'strike', sessionToken: 'tok', score: 150, strikeThrows });
+    assert.strictEqual(r.status, 403);
+    assert.strictEqual(r.body.error, 'Game check failed');
+    assert.deepStrictEqual(w.calls.order, []);
+  }
+});
+
+test('strike: season points use the bowling scale', () => {
+  assert.strictEqual(seasonPoints('strike', 150, 60_000), 15);
+  assert.strictEqual(seasonPoints('strike', 74, 60_000), 7);
 });
