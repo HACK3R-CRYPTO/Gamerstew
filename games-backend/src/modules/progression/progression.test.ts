@@ -62,7 +62,7 @@ test('daily missions: three a day, one of each kind, the same all day, and diffe
 
 test('a mission advances by what the run earned, and never past its target', () => {
   const seen = (...g: string[]) => new Set<unknown>(g);
-  const run = { game: 'rhythm', score: 55_000, isNewPb: false, seenGamesToday: seen('rhythm') };
+  const run = { game: 'rhythm', score: 550, isNewPb: false, seenGamesToday: seen('rhythm') };
   assert.deepStrictEqual(advanceMission(tpl('play_3_games'), { progress: 1, target: 3 }, run), { progress: 2, completed: false });
   assert.deepStrictEqual(advanceMission(tpl('play_3_games'), { progress: 2, target: 3 }, run), { progress: 3, completed: true });
   assert.deepStrictEqual(advanceMission(tpl('rhythm_50k'), { progress: 0, target: 1 }, run), { progress: 1, completed: true });
@@ -77,7 +77,7 @@ test('a mission advances by what the run earned, and never past its target', () 
 
 test('playing updates only the missions the run moved, and creates today\\x27s three if they are missing', async () => {
   const w = world({ missions: [mission(1, 'play_3_games', { progress: 2 }), mission(2, 'rhythm_80k'), mission(3, 'variety_2', { progress: 1 }), mission(4, 'play_5_games', { progress: 2, completed: true })], played: ['rhythm', 'stack'] });
-  await w.p.updateMissionProgress(W, { game: 'rhythm', score: 40_000 });
+  await w.p.updateMissionProgress(W, { game: 'rhythm', score: 400 });
   assert.deepStrictEqual(w.log, ['playedSince 2026-11-23T00:00:00.000Z', 'progress 1 3 true', 'progress 3 2 true']); // a finished mission is left alone
   assert.deepStrictEqual(w.logs, ['🎯 0xababab... completed: Play 3 games today', '🎯 0xababab... completed: Play 2 different games today']);
   const fresh = world();
@@ -133,11 +133,11 @@ test('saving a score keeps the best, never loses it, and always records the run'
 
 test('achievements unlock once, from the run plus the player\\x27s totals', async () => {
   const w = world({ user: { play_streak: 7 }, gamesPlayed: 26, unlocked: ['first_win'] });
-  const got = await w.p.checkAndUnlockAchievements(W, { game: 'rhythm', score: 210_000, isWin: true, fullCombo: true });
+  const got = await w.p.checkAndUnlockAchievements(W, { game: 'rhythm', score: 750, isWin: true, fullCombo: true });
   assert.deepStrictEqual(got.map((a) => a.id), ['streak_3', 'streak_7', 'games_5', 'games_25', 'rhythm_300', 'rhythm_500', 'rhythm_fc']); // not first_win again, not all-perfect
   assert.deepStrictEqual(Object.keys(got[0]!), ['id', 'name', 'icon', 'desc']);
-  assert.ok(w.log.includes('unlock rhythm_500 rhythm 210000'));
-  assert.deepStrictEqual(await w.p.checkAndUnlockAchievements(W, { game: 'rhythm', score: 210_000, isWin: true, fullCombo: true }), []); // nothing twice
+  assert.ok(w.log.includes('unlock rhythm_500 rhythm 750'));
+  assert.deepStrictEqual(await w.p.checkAndUnlockAchievements(W, { game: 'rhythm', score: 750, isWin: true, fullCombo: true }), []); // nothing twice
   assert.strictEqual(new Set(w.state.unlocked).size, w.state.unlocked.length); // and nothing stored twice
   const offline = world({ gamesPlayed: null }); // the chain could not be asked: totals count as zero, nothing breaks
   assert.deepStrictEqual((await offline.p.checkAndUnlockAchievements(W, { game: 'stack', score: 10 })).map((a) => a.id), []);
@@ -195,7 +195,7 @@ test('badges, achievements list, missions today, notifications', async () => {
   assert.deepStrictEqual(a.achievements.find((x) => x.id === 'games_5'), { id: 'games_5', icon: '🎮', name: 'Getting Started', desc: 'Play 5 games total', unlocked: true, unlockedAt: Math.floor(Date.parse('2026-11-01T00:00:00.900Z') / 1000), nftTokenId: null, txHash: null });
   const m = (await world({ missions: [mission(1, 'play_3_games', { progress: 2 }), { ...mission(2, 'simon_5'), mission_id: 'retired_mission', target: 1, reward_xp: 9 }] }).p.routes.missionsToday(W)).body as { secondsUntilReset: number; missions: Record<string, unknown>[] };
   assert.strictEqual(m.secondsUntilReset, 14 * 3600); // 10:00 UTC → midnight
-  assert.deepStrictEqual(m.missions[0], { id: 1, missionId: 'play_3_games', label: 'Play 3 games today', progress: 2, target: 3, completed: false, claimed: false, rewardXp: 20 });
+  assert.deepStrictEqual(m.missions[0], { id: 1, missionId: 'play_3_games', game: null, label: 'Play 3 games today', progress: 2, target: 3, completed: false, claimed: false, rewardXp: 20 });
   assert.strictEqual(m.missions[1]!.label, 'retired_mission'); // a mission no longer in the catalogue still shows
   const fail = world();
   fail.store.feed = async () => ({ ok: false, rows: [], reason: 'timeout' });
@@ -216,4 +216,25 @@ test('the store: a claim is one conditional write, and a better score is one upd
   calls.length = 0;
   await supabaseProgression(db({ data: [{ xp: 5, claim_streak: 2 }], error: null })).user(W);
   assert.deepStrictEqual(calls[0], ['users', 'select', 'xp, play_streak, last_play_date, claim_streak, last_claim_date']); // the claim columns are asked for now
+});
+
+test('every skill mission and score achievement can be reached on its game\x27s real scale, and none is free', async () => {
+  const { MISSION_TEMPLATES, ACHIEVEMENT_CATALOG: ACHIEVEMENTS, missionGame, SIMON_ROUND } = await import('./catalog');
+  // what a strong, honest run of each game scores, and what a run that barely started scores
+  const strong: Record<string, number> = { rhythm: 1100, simon: 20 * SIMON_ROUND, stack: 320, ladder: 100, strike: 150, nepa3d: 900 };
+  const weak: Record<string, number> = { rhythm: 40, simon: SIMON_ROUND, stack: 3, ladder: 10, strike: 9, nepa3d: 40 };
+  for (const m of MISSION_TEMPLATES.filter((x) => x.cat === 'skill')) {
+    const game = missionGame(m.id);
+    assert.ok(game && strong[game] != null, `${m.id} names a game`);
+    const run = (score: number) => m.match({ game: game!, score, seenGamesToday: new Set() });
+    assert.strictEqual(run(strong[game!]!), 1, `${m.id} ("${m.label}") can be completed`);
+    assert.strictEqual(run(weak[game!]!), 0, `${m.id} is not completed by a run that barely started`);
+  }
+  const base = { isWin: false, playStreak: 0, totalGames: 0 } as never;
+  for (const a of ACHIEVEMENTS.filter((x) => /^(rhythm|simon|stack|ladder|strike|nepa3d)_\d|_street$/.test(x.id))) {
+    const game = a.id.split('_')[0]!;
+    assert.ok(a.check({ ...(base as object), game, score: strong[game]! } as never), `${a.id} ("${a.desc}") can be unlocked`);
+    assert.ok(!a.check({ ...(base as object), game, score: weak[game]! } as never), `${a.id} is not unlocked by a run that barely started`);
+  }
+  assert.strictEqual(missionGame('play_3_games'), null); assert.strictEqual(missionGame('variety_2'), null); assert.strictEqual(missionGame('nepa3d_6'), 'nepa3d');
 });

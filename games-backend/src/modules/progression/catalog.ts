@@ -12,7 +12,7 @@ export const VALID_GAMES = Object.keys(GAME_TYPE);
 export const CHALLENGE_AI_GAME_TYPE = 3;
 export const GAME_LABEL: Record<string, string> = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', stack: 'Stack Tower', nepa: 'Up NEPA!', ladder: 'Word Ladder', strike: 'Street Strike', nepa3d: 'UP NEPA 3D' };
 /** a run at or above this counts as a win */
-export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7, stack: 50, nepa: 50, ladder: 60, strike: 80, nepa3d: 400 }; // nepa3d: the whole street lit // ladder: three of the five solved at par
+export const WIN_THRESHOLD: Record<string, number> = { rhythm: 350, simon: 7 * 12, stack: 50, nepa: 50, ladder: 60, strike: 80, nepa3d: 400 }; // nepa3d: the whole street lit // ladder: three of the five solved at par
 export const XP_PLAYED = 10;
 export const XP_WIN = 25;
 export const XP_NEW_PB = 25;
@@ -40,6 +40,8 @@ export interface MissionTemplate {
   absolute?: boolean;
   match(run: MissionInput): number;
 }
+/** Simon scores 12 points for every round cleared (lib/simonScoring.js). */
+export const SIMON_ROUND = 12;
 const scoreAtLeast = (game: string, min: number) => (r: MissionInput) => (r.game === game && (r.score ?? 0) >= min ? 1 : 0);
 const one = () => 1;
 const gamesSeen = (r: MissionInput) => r.seenGamesToday.size;
@@ -47,15 +49,24 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
   { id: 'play_3_games', cat: 'count', label: 'Play 3 games today', target: 3, reward: 20, match: one },
   { id: 'play_5_games', cat: 'count', label: 'Play 5 games today', target: 5, reward: 30, match: one },
   { id: 'play_10_games', cat: 'count', label: 'Play 10 games today', target: 10, reward: 45, match: one },
-  { id: 'rhythm_30k', cat: 'skill', label: 'Score 30,000+ in Rhythm Rush', target: 1, reward: 20, match: scoreAtLeast('rhythm', 30000) },
-  { id: 'rhythm_50k', cat: 'skill', label: 'Score 50,000+ in Rhythm Rush', target: 1, reward: 28, match: scoreAtLeast('rhythm', 50000) },
-  { id: 'rhythm_80k', cat: 'skill', label: 'Score 80,000+ in Rhythm Rush', target: 1, reward: 35, match: scoreAtLeast('rhythm', 80000) },
-  { id: 'simon_5', cat: 'skill', label: 'Reach round 5 in Simon Memory', target: 1, reward: 20, match: scoreAtLeast('simon', 5) },
-  { id: 'simon_8', cat: 'skill', label: 'Reach round 8 in Simon Memory', target: 1, reward: 28, match: scoreAtLeast('simon', 8) },
-  { id: 'simon_12', cat: 'skill', label: 'Reach round 12 in Simon Memory', target: 1, reward: 35, match: scoreAtLeast('simon', 12) },
-  { id: 'stack_30', cat: 'skill', label: 'Stack 30+ blocks in Stack Tower', target: 1, reward: 20, match: scoreAtLeast('stack', 30) },
-  { id: 'stack_45', cat: 'skill', label: 'Stack 45+ blocks in Stack Tower', target: 1, reward: 28, match: scoreAtLeast('stack', 45) },
-  { id: 'stack_60', cat: 'skill', label: 'Stack 60+ blocks in Stack Tower', target: 1, reward: 35, match: scoreAtLeast('stack', 60) },
+  // Every skill mission is checked against the score a run is SAVED with, so
+  // its number has to be on that game's real scale. (Rhythm's used to ask for
+  // 30,000+, from an old scoring; a perfect song is now under 1,000, so those
+  // could never be completed. Simon's asked for "round 5" but tested the score
+  // against 5, which the first round beats.) The ids are kept: they are stored
+  // against players' missions.
+  // Rhythm Rush: a clean song is about 900; the encore adds more.
+  { id: 'rhythm_30k', cat: 'skill', label: 'Score 300+ in Rhythm Rush', target: 1, reward: 20, match: scoreAtLeast('rhythm', 300) },
+  { id: 'rhythm_50k', cat: 'skill', label: 'Score 500+ in Rhythm Rush', target: 1, reward: 28, match: scoreAtLeast('rhythm', 500) },
+  { id: 'rhythm_80k', cat: 'skill', label: 'Score 800+ in Rhythm Rush', target: 1, reward: 35, match: scoreAtLeast('rhythm', 800) },
+  // Simon Memory: 12 points a round, so round N is a score of N × 12.
+  { id: 'simon_5', cat: 'skill', label: 'Reach round 5 in Simon Memory', target: 1, reward: 20, match: scoreAtLeast('simon', 5 * SIMON_ROUND) },
+  { id: 'simon_8', cat: 'skill', label: 'Reach round 8 in Simon Memory', target: 1, reward: 28, match: scoreAtLeast('simon', 8 * SIMON_ROUND) },
+  { id: 'simon_12', cat: 'skill', label: 'Reach round 12 in Simon Memory', target: 1, reward: 35, match: scoreAtLeast('simon', 12 * SIMON_ROUND) },
+  // Stack Tower: the score is at least the blocks stacked.
+  { id: 'stack_30', cat: 'skill', label: 'Score 30+ in Stack Tower', target: 1, reward: 20, match: scoreAtLeast('stack', 30) },
+  { id: 'stack_45', cat: 'skill', label: 'Score 45+ in Stack Tower', target: 1, reward: 28, match: scoreAtLeast('stack', 45) },
+  { id: 'stack_60', cat: 'skill', label: 'Score 60+ in Stack Tower', target: 1, reward: 35, match: scoreAtLeast('stack', 60) },
   // a Word Ladder round is out of 100 (five ladders, 20 each)
   { id: 'ladder_500', cat: 'skill', label: 'Score 50+ in Word Ladder', target: 1, reward: 20, match: scoreAtLeast('ladder', 50) },
   { id: 'ladder_750', cat: 'skill', label: 'Score 75+ in Word Ladder', target: 1, reward: 28, match: scoreAtLeast('ladder', 75) },
@@ -64,10 +75,20 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
   { id: 'strike_60', cat: 'skill', label: 'Score 60+ in Street Strike', target: 1, reward: 20, match: scoreAtLeast('strike', 60) },
   { id: 'strike_90', cat: 'skill', label: 'Score 90+ in Street Strike', target: 1, reward: 28, match: scoreAtLeast('strike', 90) },
   { id: 'strike_120', cat: 'skill', label: 'Score 120+ in Street Strike', target: 1, reward: 35, match: scoreAtLeast('strike', 120) },
+  // UP NEPA 3D, Restore the Light: 40 points a breaker, so 240 is six lit and 400 is the whole street.
+  { id: 'nepa3d_6', cat: 'skill', label: 'Light 6 breakers in UP NEPA 3D', target: 1, reward: 20, match: scoreAtLeast('nepa3d', 240) },
+  { id: 'nepa3d_street', cat: 'skill', label: 'Light the whole street in UP NEPA 3D', target: 1, reward: 28, match: scoreAtLeast('nepa3d', 400) },
+  { id: 'nepa3d_700', cat: 'skill', label: 'Score 700+ in UP NEPA 3D', target: 1, reward: 35, match: scoreAtLeast('nepa3d', 700) },
   { id: 'beat_personal_best', cat: 'special', label: 'Beat a personal best', target: 1, reward: 35, match: (r) => (r.isNewPb ? 1 : 0) },
   { id: 'variety_2', cat: 'special', absolute: true, label: 'Play 2 different games today', target: 2, reward: 25, match: gamesSeen },
   { id: 'variety_3', cat: 'special', absolute: true, label: 'Play 3 different games today', target: 3, reward: 40, match: gamesSeen },
 ];
+
+/** The game a mission is about, if it is about one: lets the app offer "Play" beside it. */
+export function missionGame(id: string): string | null {
+  const g = id.split('_')[0]!;
+  return Object.prototype.hasOwnProperty.call(GAME_TYPE, g) ? g : null;
+}
 
 /** Three missions a day, one of each kind. Seeded by wallet and date, so a
  *  player always sees the same three for the day and cannot reroll them. */
@@ -101,17 +122,23 @@ export const ACHIEVEMENT_CATALOG: Achievement[] = [
   { id: 'games_5', icon: '🎮', name: 'Getting Started', desc: 'Play 5 games total', check: (c) => c.totalGames >= 5 },
   { id: 'games_25', icon: '🎮', name: 'Regular Player', desc: 'Play 25 games total', check: (c) => c.totalGames >= 25 },
   { id: 'games_100', icon: '💎', name: 'Veteran', desc: 'Play 100 games total', check: (c) => c.totalGames >= 100 },
-  { id: 'rhythm_300', icon: '🥁', name: 'Drum Apprentice', desc: 'Score 60,000+ in Rhythm Rush', check: scored('rhythm', 60000) },
-  { id: 'rhythm_500', icon: '🥁', name: 'Rhythm Master', desc: 'Score 200,000+ in Rhythm Rush', check: scored('rhythm', 200000) },
-  { id: 'rhythm_700', icon: '👑', name: 'Rhythm Legend', desc: 'Score 400,000+ in Rhythm Rush', check: scored('rhythm', 400000) },
+  { id: 'rhythm_300', icon: '🥁', name: 'Drum Apprentice', desc: 'Score 400+ in Rhythm Rush', check: scored('rhythm', 400) },
+  { id: 'rhythm_500', icon: '🥁', name: 'Rhythm Master', desc: 'Score 700+ in Rhythm Rush', check: scored('rhythm', 700) },
+  { id: 'rhythm_700', icon: '👑', name: 'Rhythm Legend', desc: 'Score 1,000+ in Rhythm Rush', check: scored('rhythm', 1000) },
   { id: 'rhythm_fc', icon: '✨', name: 'Full Combo', desc: 'Clear the rhythm chart without missing a note', check: (c) => c.game === 'rhythm' && !!c.fullCombo },
   { id: 'rhythm_ap', icon: '🌟', name: 'All Perfect', desc: 'Every hit PERFECT — no goods, no misses', check: (c) => c.game === 'rhythm' && !!c.allPerfect },
-  { id: 'simon_5', icon: '🧠', name: 'Memory Apprentice', desc: 'Reach round 5 in Simon Memory', check: scored('simon', 5) },
-  { id: 'simon_10', icon: '🧠', name: 'Memory Master', desc: 'Reach round 10 in Simon Memory', check: scored('simon', 10) },
-  { id: 'simon_15', icon: '👑', name: 'Memory Legend', desc: 'Reach round 15 in Simon Memory', check: scored('simon', 15) },
+  { id: 'simon_5', icon: '🧠', name: 'Memory Apprentice', desc: 'Reach round 5 in Simon Memory', check: scored('simon', 5 * SIMON_ROUND) },
+  { id: 'simon_10', icon: '🧠', name: 'Memory Master', desc: 'Reach round 10 in Simon Memory', check: scored('simon', 10 * SIMON_ROUND) },
+  { id: 'simon_15', icon: '👑', name: 'Memory Legend', desc: 'Reach round 15 in Simon Memory', check: scored('simon', 15 * SIMON_ROUND) },
   { id: 'stack_50', icon: '🧱', name: 'Block Builder', desc: 'Score 50+ in Stack Tower', check: scored('stack', 50) },
   { id: 'stack_150', icon: '🏗️', name: 'Tower Master', desc: 'Score 150+ in Stack Tower', check: scored('stack', 150) },
   { id: 'stack_300', icon: '🏙️', name: 'Sky Architect', desc: 'Score 300+ in Stack Tower', check: scored('stack', 300) },
+  // the newer games
+  { id: 'ladder_60', icon: '🔤', name: 'Word Climber', desc: 'Score 60+ in Word Ladder', check: scored('ladder', 60) },
+  { id: 'ladder_90', icon: '📚', name: 'Wordsmith', desc: 'Score 90+ in Word Ladder', check: scored('ladder', 90) },
+  { id: 'strike_80', icon: '🛞', name: 'Street Bowler', desc: 'Score 80+ in Street Strike', check: scored('strike', 80) },
+  { id: 'strike_120', icon: '🎳', name: 'Tyre Legend', desc: 'Score 120+ in Street Strike', check: scored('strike', 120) },
+  { id: 'nepa3d_street', icon: '💡', name: 'UP NEPA!', desc: 'Light the whole street in UP NEPA 3D', check: scored('nepa3d', 400) },
 ];
 
 // ── badges ──

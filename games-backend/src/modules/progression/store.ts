@@ -49,7 +49,8 @@ export function supabaseProgression(db: SupabaseLike): ProgressionStore {
       return data ? data.length : 0;
     },
     async addMissions(rows) {
-      await db.from('daily_missions').upsert(rows, { onConflict: 'wallet,date,mission_id', ignoreDuplicates: true });
+      const { error } = await db.from('daily_missions').upsert(rows, { onConflict: 'wallet,date,mission_id', ignoreDuplicates: true });
+      if (error) console.error(`🚨 daily missions could not be created · ${String(rows[0]?.wallet).slice(0, 10)}… · ${error.message ?? 'unknown'}`);
     },
     async missions(wallet, date, ordered) {
       const q = db.from('daily_missions').select('*').eq('wallet', wallet).eq('date', date);
@@ -61,7 +62,8 @@ export function supabaseProgression(db: SupabaseLike): ProgressionStore {
       return ((data || []) as { game: unknown }[]).map((a) => a.game);
     },
     async setMissionProgress(id, progress, completed) {
-      await db.from('daily_missions').update({ progress, completed }).eq('id', id);
+      const { error } = await db.from('daily_missions').update({ progress, completed }).eq('id', id);
+      if (error) console.error(`🚨 mission progress could not be saved · mission ${id} · ${error.message ?? 'unknown'}`);
     },
     async mission(id, wallet) {
       const { data } = await db.from('daily_missions').select('*').eq('id', id).eq('wallet', wallet).limit(1);

@@ -1276,7 +1276,9 @@ function GamesGrid({ onPlayGame }: { onPlayGame: (id: string) => void }) {
 // Per-mission state machine: in-progress (purple bar) → ready (gold +
 // CLAIM button) → claimed (green ✓ CLAIMED, dimmed). All three missions
 // show together so a player who's done one can see what's left.
-type ApiMission = { id: number; missionId: string; label: string; progress: number; target: number; completed: boolean; claimed: boolean; rewardXp: number };
+type ApiMission = { id: number; missionId: string; game?: string | null; label: string; progress: number; target: number; completed: boolean; claimed: boolean; rewardXp: number };
+// where a mission about one game is played
+const MISSION_GAME_HREF: Record<string, string> = { stack: "/games/stack", simon: "/games/simon", rhythm: "/games/rhythm", ladder: "/games/ladder", strike: "/bowling", nepa3d: "/world" };
 const MISSIONS_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function fmtMissionCountdown(s: number) {
@@ -1288,8 +1290,12 @@ function fmtMissionCountdown(s: number) {
   return `${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
 
-function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: () => void }) {
-  const { address } = useAccount();
+function MissionCard({ connected: signedIn, onConnect }: { connected: boolean; onConnect: () => void }) {
+  const { address: realAddress } = useAccount();
+  // dev only: lets an automated check see the card for a test wallet without signing in
+  const devWallet = process.env.NODE_ENV !== "production" && typeof window !== "undefined" ? (window as unknown as { __inboxWallet?: string }).__inboxWallet : undefined;
+  const address = realAddress ?? devWallet;
+  const connected = signedIn || !!devWallet;
   const isMiniPay = useIsMiniPay();
   const { getAccessToken } = usePrivy();
   const { signMessageAsync } = useSignMessage();
@@ -1369,9 +1375,7 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
           <span style={{ fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.14em", color: T.inkDim, textTransform: "uppercase" }}>Daily missions</span>
         </div>
         {resetSec > 0 && (
-          <span style={{ fontFamily: "ui-monospace, SF Mono, Menlo, monospace", fontSize: 10, fontWeight: 800, color: "#b45309", textShadow: "0 0 6px rgba(180,83,9,0.75)" }}>
-            {fmtMissionCountdown(resetSec)}
-          </span>
+          <span style={{ fontFamily: T.body, fontSize: 12, fontWeight: 800, color: T.inkDim, fontVariantNumeric: "tabular-nums" }}>{resetSec >= 3600 ? `New set in ${Math.floor(resetSec / 3600)}h ${Math.floor((resetSec % 3600) / 60)}m` : `New set in ${Math.max(1, Math.ceil(resetSec / 60))}m`}</span>
         )}
       </div>
 
@@ -1386,60 +1390,27 @@ function MissionCard({ connected, onConnect }: { connected: boolean; onConnect: 
             const pct = m.target > 0 ? Math.min(100, Math.round((m.progress / m.target) * 100)) : 0;
             const ready = m.completed && !m.claimed;
             const done = m.claimed;
-            const barColor = done ? "#15803d" : ready ? "#6d28d9" : T.accent;
-            const tileBg = done
-              ? "linear-gradient(180deg, rgba(34,197,94,0.08) 0%, rgba(0,0,0,0.18) 100%)"
-              : ready
-                ? "linear-gradient(180deg, rgba(167,139,250,0.16) 0%, rgba(0,0,0,0.18) 100%)"
-                : "rgba(76,29,149,0.03)";
-            const border = `1px solid ${done ? "rgba(34,197,94,0.45)" : ready ? "rgba(167,139,250,0.55)" : T.hairline}`;
+            const href = m.game ? MISSION_GAME_HREF[m.game] : "/dashboard";
             return (
-              <div key={m.id} style={{
-                borderRadius: 12,
-                background: tileBg,
-                border,
-                boxShadow: ready ? "0 0 14px rgba(167,139,250,0.32)" : "none",
-                padding: "10px 11px",
-                display: "flex", flexDirection: "column", gap: 6,
-                opacity: done ? 0.7 : 1,
-              }}>
-                {/* Label + action on one row · action is a compact right chip
-                    (not a full-width bar) so each mission stays short. */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ fontFamily: T.body, fontSize: 11.5, fontWeight: 700, color: T.ink, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+              <div key={m.id} style={{ borderRadius: 16, padding: "12px 13px", display: "flex", flexDirection: "column", gap: 8, background: done ? "#f0fdf4" : "#fff", border: `1px solid ${done ? "rgba(22,163,74,0.4)" : ready ? "#6d28d9" : T.hairline}`, boxShadow: ready ? "0 0 0 3px rgba(109,40,217,0.12)" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: T.body, fontSize: 14, fontWeight: 800, color: T.ink, lineHeight: 1.3 }}>{m.label}</div>
+                    <div style={{ fontFamily: T.body, fontSize: 12, fontWeight: 700, color: done ? "#166534" : T.inkDim, marginTop: 1 }}>{done ? `Done · +${m.rewardXp} XP claimed` : ready ? "Finished. Claim your reward." : `${m.progress} of ${m.target} · +${m.rewardXp} XP`}</div>
+                  </div>
                   {done ? (
-                    <span style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#15803d", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>✓ Claimed</span>
+                    <span aria-hidden style={{ flexShrink: 0, width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#dcfce7", color: "#166534", fontWeight: 900 }}>✓</span>
                   ) : ready ? (
-                    <button
-                      onClick={() => claim(m.id)}
-                      disabled={claimingId === m.id}
-                      style={{
-                        flexShrink: 0, cursor: claimingId === m.id ? "wait" : "pointer",
-                        borderRadius: 999, padding: "5px 12px", whiteSpace: "nowrap",
-                        background: "linear-gradient(180deg, #a78bfa 0%, #6d28d9 100%)",
-                        border: "1px solid rgba(255,255,255,0.3)",
-                        boxShadow: "0 5px 12px -4px rgba(167,139,250,0.6)",
-                        color: "#fff", fontFamily: T.body, fontSize: 10.5, fontWeight: 900, letterSpacing: "0.05em",
-                      }}
-                    >{claimingId === m.id ? "Claiming…" : `Claim +${m.rewardXp} XP`}</button>
+                    <button onClick={() => claim(m.id)} disabled={claimingId === m.id} style={{ flexShrink: 0, cursor: claimingId === m.id ? "wait" : "pointer", borderRadius: 12, padding: "9px 14px", whiteSpace: "nowrap", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", border: "none", boxShadow: "0 3px 0 #4c1d95", color: "#fff", fontFamily: T.body, fontSize: 13, fontWeight: 800 }}>{claimingId === m.id ? "Claiming…" : `Claim +${m.rewardXp} XP`}</button>
                   ) : (
-                    <div style={{ flexShrink: 0, fontFamily: T.body, fontSize: 10, fontWeight: 900, color: "#6d28d9", whiteSpace: "nowrap" }}>+{m.rewardXp} XP</div>
+                    <Link href={href} style={{ flexShrink: 0, borderRadius: 12, padding: "8px 14px", background: "#ede9fe", color: "#4c1d95", fontFamily: T.body, fontSize: 13, fontWeight: 800, textDecoration: "none", whiteSpace: "nowrap" }}>Play ›</Link>
                   )}
                 </div>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                    <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 700 }}>{m.progress} / {m.target}</span>
-                    <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, fontWeight: 700 }}>{pct}%</span>
+                {!done && (
+                  <div role="img" aria-label={`${pct}% done`} style={{ height: 7, borderRadius: 999, background: "rgba(76,29,149,0.12)", overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #a78bfa, #6d28d9)", transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)" }} />
                   </div>
-                  <div style={{ height: 5, borderRadius: 999, background: "rgba(0,0,0,0.45)", overflow: "hidden", border: "1px solid rgba(167,139,250,0.1)" }}>
-                    <div style={{
-                      width: `${pct}%`, height: "100%", borderRadius: 999,
-                      background: barColor,
-                      boxShadow: ready ? "0 0 6px rgba(167,139,250,0.6)" : "none",
-                      transition: "width 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
-                    }} />
-                  </div>
-                </div>
+                )}
               </div>
             );
           })

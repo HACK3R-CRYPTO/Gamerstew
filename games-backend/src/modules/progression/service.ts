@@ -19,7 +19,7 @@
 // added to and written back, so two awards landing in the same instant can lose
 // one. Mission claims no longer race, which was the practical way to hit it.
 
-import { ACHIEVEMENT_CATALOG, advanceMission, DAY_MS, goldStreak, levelFromXp, MISSION_TEMPLATES, pickDailyMissions, utcDay, VALID_GAMES, xpProgress, type RunContext } from './catalog';
+import { ACHIEVEMENT_CATALOG, advanceMission, DAY_MS, goldStreak, levelFromXp, MISSION_TEMPLATES, pickDailyMissions, utcDay, VALID_GAMES, xpProgress, type RunContext, missionGame } from './catalog';
 import type { ProgressionStore, ScoreEntry } from './store';
 
 export interface Reply { status: number; body: Record<string, unknown> }
@@ -152,7 +152,7 @@ export function createProgression(deps: ProgressionDeps) {
       address: addr,
       date,
       secondsUntilReset: Math.max(0, Math.floor((midnight - t.getTime()) / 1000)),
-      missions: rows.map((r) => ({ id: r.id, missionId: r.mission_id, label: MISSION_TEMPLATES.find((x) => x.id === r.mission_id)?.label ?? r.mission_id, progress: r.progress, target: r.target, completed: r.completed, claimed: r.claimed, rewardXp: r.reward_xp })),
+      missions: rows.map((r) => ({ id: r.id, missionId: r.mission_id, game: missionGame(r.mission_id), label: MISSION_TEMPLATES.find((x) => x.id === r.mission_id)?.label ?? r.mission_id, progress: r.progress, target: r.target, completed: r.completed, claimed: r.claimed, rewardXp: r.reward_xp })),
     });
   }
 
