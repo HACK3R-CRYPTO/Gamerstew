@@ -441,13 +441,28 @@ core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret
 // yesterday's and today's numbers, every hour (and once, a minute after boot)
 core.jobs.every('adminRollup', 60 * 60 * 1000, async () => { await adminService.rollup(); });
 setTimeout(() => { adminService.rollup().catch(() => {}); }, 60 * 1000).unref?.();
-// who is GoodDollar-verified: 25 wallets every 5 minutes, the most out of date first
-core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
-  const out = await adminService.sweepVerification((w) => core.isVerifiedStrict(w), 25);
-  if (out.newly > 0) console.log(`[admin] ${out.newly} wallet(s) newly seen as verified · checked ${out.checked}`);
-  if (out.failed > 0) console.warn(`⚠️  [admin] verification sweep: ${out.failed} of ${out.checked + out.failed} could not be checked · ${out.error || ''}`);
+// Who is GoodDollar-verified. 40 wallets a minute, the never-checked first, so
+// a first pass over a thousand wallets takes under half an hour. Once every
+// wallet has been checked, each is looked at again about every six hours:
+// `lastLooked` stops the same wallets being re-read minute after minute.
+const lastLooked = new Map(); // wallet -> ms, this process only
+const RECHECK_MS = 6 * 60 * 60 * 1000;
+let sweepRuns = 0;
+core.jobs.every('adminVerifySweep', 60 * 1000, async () => {
+  if (!core.supabaseAdmin) return;
+  const now = Date.now();
+  const out = await adminService.sweepVerification(async (w) => {
+    const seen = lastLooked.get(w);
+    if (seen && now - seen < RECHECK_MS) throw new Error('checked recently'); // not an error: skipped
+    const r = await core.isVerifiedStrict(w);
+    lastLooked.set(w, now);
+    return r;
+  }, 40);
+  sweepRuns += 1;
+  const real = out.error && out.error !== 'checked recently';
+  if (out.checked > 0 || real) console.log(`[admin] verification sweep · checked ${out.checked} · newly verified ${out.newly}${real ? ` · ${out.failed} could not be read: ${out.error}` : ''}`);
+  if (lastLooked.size > 50_000) lastLooked.clear();
 });
-setTimeout(() => { adminService.sweepVerification((w) => core.isVerifiedStrict(w), 25).catch(() => {}); }, 90 * 1000).unref?.();
 
 // Every purchase, read from the chain (src/modules/admin/chain.ts). The two
 // contracts emit the exact split of each purchase, so what GameArena keeps is

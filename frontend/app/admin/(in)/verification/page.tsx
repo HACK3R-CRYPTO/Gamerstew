@@ -17,7 +17,7 @@ export default async function Verification({ searchParams }: { searchParams: SP 
   const everVerified = Number(d.verified) + Number(d.lapsed);
   return (
     <Page title="GoodDollar verification" sub={`Read from the GoodDollar Identity contract, wallet by wallet. Last check: ${when(d.last_checked)}.`} right={<RangeLinks base="/admin/verification" days={r.days} />}>
-      {Number(d.not_checked_yet) > 0 && <NotYet what={`${num(d.not_checked_yet)} wallets still to check`} why="25 wallets are checked every 5 minutes, the ones never checked first. The numbers below cover the wallets checked so far and keep growing until the first pass is done." />}
+      {Number(d.not_checked_yet) > 0 && <NotYet what={`${num(d.not_checked_yet)} wallets still to check`} why={`40 wallets are checked every minute, the ones never checked first, so about ${Math.max(1, Math.ceil(Number(d.not_checked_yet) / 40))} minutes remain. The list also grows while older players are still being read in from the chain. Reload to see it move.`} />}
       <Grid min={190}>
         <Kpi dark label="Verified now" value={num(d.verified)} spark={m.get("verified_total")} sub={checked ? `${Math.round((Number(d.verified) / checked) * 100)}% of the ${num(checked)} wallets checked` : "The first check is under way"} />
         <Kpi label="Lapsed" value={num(d.lapsed)} color="#b45309" sub={everVerified ? `${Math.round((Number(d.lapsed) / everVerified) * 100)}% of everyone who ever verified. They passed the face check and the window ran out` : "Passed the face check, window ran out"} />

@@ -30,11 +30,36 @@ export default async function Overview({ searchParams }: { searchParams: SP }) {
   const gm = (games.data ?? []).filter((x) => Number(x.played) > 0); const played = gm.reduce((a, x) => a + Number(x.played), 0);
   const verified = Number(d.verified); const checked = Number(d.verification_checked); const reg = Number(d.registered);
   const cohorts = [...new Set((ret.data ?? []).map((x) => x.cohort))].slice(-6); const cell = (c: string, off: number) => (ret.data ?? []).find((x) => x.cohort === c && x.week_offset === off);
-  const f = traffic.data?.funnel; const reading = (d.chain as unknown as Record<string, { block: number }> | null)?.gamepass;
+  const f = traffic.data?.funnel;
   const perPlayer = Number(d.players_scored) ? Number(d.games_played) / Number(d.players_scored) : 0;
   return (
     <Page title="Overview" sub={`GameArena since ${String(d.history_from ?? "").slice(0, 10) || "launch"}. Every figure comes from the chain or the database. Days are UTC.`} right={<RangeLinks base="/admin" days={r.days} />}>
-      {!reading && <NotYet what="History is still being read" why="players and games are copied in from the GamePass contract, about an hour and a half the first time. Until it finishes, the totals below are short and grow every minute." />}
+      {(() => {
+        // how far each background job has got, so "still loading" is a number that moves and not a promise
+        const head = 63_507_400 + Math.floor(Date.now() / 1000) - 1_775_408_158; // Celo adds one block a second
+        const chain = (d.chain ?? {}) as unknown as Record<string, { block: number; at: string }>;
+        const pct = (name: string, start: number) => (chain[name] ? Math.max(0, Math.min(100, ((chain[name].block - start) / (head - start)) * 100)) : 0);
+        const jobs: [string, number, string][] = [
+          ["Players and games from the chain", pct("gamepass", 63_507_400), chain.gamepass ? `block ${num(chain.gamepass.block)} · updated ${when(chain.gamepass.at)}` : "not started: run the second migration, then give it a minute"],
+          ["Purchases from the chain", pct("purchases", 65_552_895), chain.purchases ? `block ${num(chain.purchases.block)} · updated ${when(chain.purchases.at)}` : "not started yet"],
+          ["GoodDollar verification", Number(d.players_ever) ? (checked / Number(d.players_ever)) * 100 : 0, `${num(checked)} of ${num(d.players_ever)} wallets checked`],
+        ];
+        if (jobs.every(([, p]) => p >= 99.5)) return null;
+        return (
+          <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 18, padding: "14px 16px", marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Catching up on your history <span style={{ fontWeight: 500, color: C.dim }}>· totals below grow until these reach 100%. Reload to see them move.</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+              {jobs.map(([label, p, note]) => (
+                <div key={label}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}><span style={{ fontWeight: 700 }}>{label}</span><b style={{ color: p >= 99.5 ? C.good : C.accent }}>{p >= 99.5 ? "Done" : `${p.toFixed(p < 10 ? 1 : 0)}%`}</b></div>
+                  <div style={{ height: 8, borderRadius: 999, background: C.soft, overflow: "hidden" }}><div style={{ height: "100%", width: `${p}%`, borderRadius: 999, background: p >= 99.5 ? "#16a34a" : "linear-gradient(90deg,#7c3aed,#a78bfa)" }} /></div>
+                  <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{note}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="ov-hero">
         <Kpi dark label="Registered players" value={num(reg)} spark={g("registered_total")} delta={{ now: sum(g("registered_new")), before: was("registered_new") }} sub={`${num(sum(g("registered_new")))} joined in the last ${r.days} days`} />
