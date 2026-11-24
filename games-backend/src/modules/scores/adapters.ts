@@ -69,10 +69,10 @@ export function supabaseSaveClaims(db: SupabaseLike, nowIso: () => string = () =
     },
     /** Runs that reached the chain but were never saved, oldest first. */
     async unsaved(olderThanIso: string, newerThanIso: string, limit: number): Promise<UnsavedRun[]> {
-      const { data, error } = await t().select('token, wallet, game, computed_score, tx_hash, created_at, used_at').eq('used', true).not('tx_hash', 'is', null).is('saved_at', null)
+      const { data, error } = await t().select('token, wallet, game, computed_score, tx_hash, started_at, used_at').eq('used', true).not('tx_hash', 'is', null).is('saved_at', null)
         .not('computed_score', 'is', null).lt('used_at', olderThanIso).gt('used_at', newerThanIso).order('used_at', { ascending: true }).limit(limit);
       if (error || !Array.isArray(data)) return [];
-      return data.map((r: any) => ({ token: r.token, wallet: String(r.wallet).toLowerCase(), game: r.game, score: Number(r.computed_score), txHash: r.tx_hash, createdAt: r.created_at, usedAt: r.used_at }));
+      return data.map((r: any) => ({ token: r.token, wallet: String(r.wallet).toLowerCase(), game: r.game, score: Number(r.computed_score), txHash: r.tx_hash, createdAt: r.started_at, usedAt: r.used_at }));
     },
   };
 }

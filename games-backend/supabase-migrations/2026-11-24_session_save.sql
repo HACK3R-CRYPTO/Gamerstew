@@ -16,8 +16,8 @@ alter table game_sessions add column if not exists saved_at timestamptz;
 
 -- Runs from before today are treated as already dealt with, so the job does
 -- not go back through history and award old runs a second time.
-update game_sessions set saved_at = coalesce(used_at, created_at)
-where saved_at is null and used and coalesce(used_at, created_at) < timestamptz '2026-11-24 00:00:00+00';
+update game_sessions set saved_at = coalesce(used_at, started_at)
+where saved_at is null and used and coalesce(used_at, started_at) < timestamptz '2026-11-24 00:00:00+00';
 
 -- the job's query: used, has a transaction, not saved
 create index if not exists game_sessions_unsaved_idx on game_sessions (used_at) where used and tx_hash is not null and saved_at is null;
