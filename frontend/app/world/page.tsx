@@ -8,31 +8,14 @@
 // server-render, and never bloat any other route's bundle.
 
 import dynamic from "next/dynamic";
+import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useEffect } from "react";
 import { initVatar } from "./vatar";
 
 const World = dynamic(() => import("./World"), {
   ssr: false,
-  loading: () => (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 14,
-        background: "radial-gradient(ellipse 80% 60% at 50% 20%, #f6b36b 0%, #b5632b 35%, #2a1230 75%, #0a0120 100%)",
-        color: "#fff",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div style={{ fontSize: 40 }}>🏙️💡</div>
-      <div style={{ fontWeight: 700, fontSize: 20 }}>Loading the neighbourhood…</div>
-      <div style={{ opacity: 0.8, fontSize: 14 }}>Warming up the generator</div>
-    </div>
-  ),
+  // the same loading screen every game uses, in the app's look
+  loading: () => <GameLoadingScreen title="UP NEPA 3D" art="/games/covers/upnepa3d.jpg" bg="" glow="" />,
 });
 
 export default function WorldPage() {
