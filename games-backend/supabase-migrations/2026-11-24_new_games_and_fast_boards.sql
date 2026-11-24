@@ -57,3 +57,46 @@ language sql stable as $$
   where s.used and s.used_at >= p_start and s.used_at <= p_end
   group by lower(s.wallet);
 $$;
+
+-- ── PART 4 · the chain outbox (not used until SCORE_OUTBOX is switched on) ──
+-- Scores wait here to be sent on-chain, so a player never waits on the chain
+-- and a failed send never loses a score. `confirmed` is the only status prizes
+-- may count. One row per session ticket, enforced here, not in code.
+create table if not exists chain_outbox (
+  id            bigint generated always as identity primary key,
+  session_token text        not null unique,
+  wallet        text        not null,
+  game          text        not null,
+  game_type     smallint    not null,
+  score         integer     not null check (score >= 0),
+  status        text        not null default 'pending' check (status in ('pending', 'sent', 'confirmed', 'failed')),
+  attempts      integer     not null default 0,
+  tx_hash       text,
+  last_error    text,
+  created_at    timestamptz not null default now(),
+  next_try_at   timestamptz not null default now(),
+  sent_at       timestamptz,
+  confirmed_at  timestamptz,
+  -- a row that says it was sent or confirmed must carry the transaction
+  constraint chain_outbox_sent_has_hash check (status not in ('sent', 'confirmed') or tx_hash is not null)
+);
+create index if not exists idx_chain_outbox_due  on chain_outbox (next_try_at) where status = 'pending';
+create index if not exists idx_chain_outbox_sent on chain_outbox (sent_at)     where status = 'sent';
+create index if not exists idx_chain_outbox_wallet on chain_outbox (lower(wallet), created_at desc);
+
+-- Take rows that are due and hold them, in one step, so two workers can never
+-- take the same row. `skip locked` lets a second worker pass over rows the
+-- first is holding instead of waiting on them.
+create or replace function outbox_claim(p_limit int, p_lease_seconds int)
+returns setof chain_outbox
+language sql as $$
+  update chain_outbox o
+     set next_try_at = now() + make_interval(secs => p_lease_seconds), attempts = o.attempts + 1
+   where o.id in (
+     select id from chain_outbox
+      where status = 'pending' and next_try_at <= now()
+      order by next_try_at
+      limit greatest(1, least(p_limit, 100))
+      for update skip locked)
+  returning o.*;
+$$;
