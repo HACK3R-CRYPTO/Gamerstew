@@ -1152,6 +1152,28 @@ export default function RhythmGamePage() {
     roomTold.current = now; roomRef.current.progress(score, { pts: score, combo, streak: perfectStreakRef.current });
   }, [score, phase, combo]);
 
+  // People watching see the song itself: the tiles about to reach the line and
+  // the ones just played, with this player's clock, sent a little more than
+  // once a second. The watcher's page lets them fall between messages
+  // (components/RhythmReplay.tsx). Everyone in a room has the same song, and
+  // seeing it early is no help in a game of timing.
+  const scoreNow = useRef(0); scoreNow.current = score; const comboNow = useRef(0); comboNow.current = combo;
+  useEffect(() => {
+    if (phase !== "playing" || runModeRef.current !== "room") return;
+    const send = () => {
+      if (!startRef.current) return;
+      const t = (performance.now() - startRef.current) / 1000;
+      const near = chartRef.current.filter((n) => n.time > t - 1.2 && n.time < t + 3.4).slice(0, 12);
+      roomRef.current.progress(scoreNow.current, {
+        pts: scoreNow.current, combo: comboNow.current, streak: perfectStreakRef.current, t,
+        // lane, when it reaches the line, how long it falls, how long it is held, and whether it was missed
+        notes: near.map((n) => [n.lane, Math.round(n.time * 100), Math.round((travelLockRef.current.get(n.id) ?? n.travel) * 100), Math.round((n.hold ?? 0) * 100), missedRef.current.has(n.id) ? 1 : 0]),
+      });
+    };
+    const iv = setInterval(send, 800);
+    return () => clearInterval(iv);
+  }, [phase]);
+
   // ═══ Vatar embed · record the finished run ═══════════════════════════════
   // The embed player has no browser wallet, so the on-chain submit path (gated
   // on `address`) skips them. Record the run to the GameArena on-chain ladder

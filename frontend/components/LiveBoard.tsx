@@ -12,6 +12,7 @@
 
 import type { LiveState } from "@/hooks/useFriendRoom";
 import StackReplay from "@/components/StackReplay";
+import RhythmReplay from "@/components/RhythmReplay";
 
 const n = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
 
@@ -46,6 +47,8 @@ export default function LiveBoard({ game, live, done, progress, goal }: { game: 
       </div>
     );
   }
+  // Rhythm Rush sends its tiles and its clock: draw the song itself
+  if (game === "rhythm" && Array.isArray(live?.notes)) return <RhythmReplay live={live} done={done} />;
   if (game === "rhythm") {
     const combo = n(live?.combo); const streak = n(live?.streak);
     return (
