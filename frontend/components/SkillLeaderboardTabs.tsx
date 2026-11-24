@@ -30,17 +30,19 @@ const T = {
 };
 
 type Tab = "live" | "past";
-type GameKind = "rhythm" | "simon" | "stack" | "nepa";
+type GameKind = "rhythm" | "simon" | "stack" | "nepa" | "ladder" | "strike";
 
 // gameType ID mirrors GamePass.sol uint8 + backend's GAME_TYPE map.
 // Add a row here when a new game lands · everything else flows from it.
 // (3 is Challenge AI, which has its own ladder; nepa is 4.)
-const GAME_TYPE_ID: Record<GameKind, GameTypeId> = { rhythm: 0, simon: 1, stack: 2, nepa: 4 };
+const GAME_TYPE_ID: Record<GameKind, GameTypeId> = { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6 };
 const GAME_HREF: Record<GameKind, string> = {
   rhythm: "/games/rhythm",
   simon: "/games/simon",
   stack: "/games/stack",
   nepa: "/games/nepa",
+  ladder: "/games/ladder",
+  strike: "/bowling",
 };
 // Friendly title used in the past-season detail sheet header. One row per
 // game · add a new game and the sheet picks it up.
@@ -49,6 +51,8 @@ const GAME_LABEL: Record<GameKind, string> = {
   simon: "Simon Memory",
   stack: "Stack Tower",
   nepa: "NEPA: Up Light",
+  ladder: "Word Ladder",
+  strike: "Street Strike",
 };
 // Per-game accent for the detail sheet · matches each lobby's signature
 // color so the sheet visually belongs to the game the player came from.
@@ -57,6 +61,8 @@ const GAME_ACCENT: Record<GameKind, string> = {
   simon: "#06b6d4",
   stack: "#c2410c",
   nepa: "#b45309",
+  ladder: "#15803d",
+  strike: "#7e22ce",
 };
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the

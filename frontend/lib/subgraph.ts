@@ -116,7 +116,8 @@ type ScoreRow = {
 // weekly board reads the generic Score entity filtered by gameType, so nepa is
 // rankable with no subgraph redeploy. Per-player best fields for nepa
 // (bestNepaScore / all-time inclusion) are a later subgraph fast-follow.
-export type GameTypeId = 0 | 1 | 2 | 4;
+// 5 is Word Ladder and 6 is Street Strike: weekly board only, like nepa.
+export type GameTypeId = 0 | 1 | 2 | 4 | 5 | 6;
 
 export async function fetchLeaderboard(
   gameType: GameTypeId,
@@ -294,6 +295,8 @@ const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bes
   1: "bestSimonScore",
   2: "bestStackScore",
   4: "bestNepaScore",
+  5: "bestNepaScore", // placeholders: never queried (see the >= 4 guards below)
+  6: "bestNepaScore",
 };
 
 export async function fetchPlayerAllTimeStats(
@@ -302,7 +305,7 @@ export async function fetchPlayerAllTimeStats(
 ): Promise<{ peak: number; rank: number } | null> {
   // nepa (4) has no per-player best field in the deployed schema yet — the
   // all-time path is a deferred subgraph fast-follow. Report "no data" cleanly.
-  if (gameType === 4) return null;
+  if (gameType >= 4) return null; // newer games: no per-player best field indexed yet
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // Asking for stack on gameType=2 when the subgraph doesn't index it yet
@@ -354,7 +357,7 @@ export async function fetchPlayerRank(
   gameType: GameTypeId,
 ): Promise<number | null> {
   // nepa (4): no per-player best field indexed yet (deferred fast-follow).
-  if (gameType === 4) return null;
+  if (gameType >= 4) return null; // newer games: no per-player best field indexed yet
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // gameType=2 against an unmigrated subgraph has no truth to report.

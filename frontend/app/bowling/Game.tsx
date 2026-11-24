@@ -1799,6 +1799,7 @@ export default function Game() {
               </>
             ) : (
               <>
+            {mode === "solo" && <a href="/bowling/leaderboard" style={{ display: "block", margin: "0 0 8px", fontFamily: BODY, fontSize: 12.5, fontWeight: 700, color: "#ffd56b" }}>This week's leaderboard</a>}
             {mode === "solo" && (
               <div role="status" style={{ margin: "0 0 10px", fontFamily: BODY, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(244,241,234,0.78)" }}>
                 {!rankedGame ? (ranked.canRank ? null : "Sign in to rank your score.")

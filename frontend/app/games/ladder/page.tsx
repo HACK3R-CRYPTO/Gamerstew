@@ -269,6 +269,7 @@ export default function WordLadderPage() {
           ) : (
             <div className="wl-daily done"><b>Daily ladder: {dailyDone} points</b><span>A new one comes tomorrow.</span></div>
           )}
+          <Link className="wl-rankline" href="/games/ladder/leaderboard">See this week's leaderboard</Link>
           <div className="wl-facts">
             <span><b>5</b>ladders a round</span>
             <span><b>200</b>points each</span>
@@ -350,7 +351,8 @@ export default function WordLadderPage() {
             ))}
           </ul>
           <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)}>Play again</button>
-          <div className="wl-pair"><button className="wl-ghost" onClick={share}>Share</button><button className="wl-ghost" onClick={() => router.push("/dashboard")}>Home</button></div>
+          <div className="wl-pair"><button className="wl-ghost" onClick={share}>Share</button><button className="wl-ghost" onClick={() => router.push("/games/ladder/leaderboard")}>Leaderboard</button></div>
+          <button className="wl-skip" onClick={() => router.push("/dashboard")}>Home</button>
           {msg && <div className="wl-msg" key={msg.key}>{msg.text}</div>}
         </main>
       )}
