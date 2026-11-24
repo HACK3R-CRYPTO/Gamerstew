@@ -8,7 +8,7 @@
 // The game keeps only the room hook and three calls: start its run when the
 // room's round starts, report progress, and send the finished run.
 
-import type { FriendRoom } from "@/hooks/useFriendRoom";
+import { gd, type FriendRoom, type RoomView } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
@@ -67,6 +67,7 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
                 </li>
               ))}
             </ol>
+            {v.stake && v.status === "over" && <StakeResult view={v} />}
             {room.error && <div className="fp-err">{room.error}</div>}
             {v.status === "over"
               ? (room.isHost ? <button className="fp-go" style={{ fontFamily: DISPLAY }} disabled={room.busy} onClick={() => room.rematch()}>Play again</button> : <div className="fp-note">Waiting for the host to start another round…</div>)
@@ -82,6 +83,7 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
         .fp-btn.dark { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.3); } .fp-btn.dark b { color: #fff; } .fp-btn.dark span { color: rgba(255,255,255,0.72); }
         .fp-strip { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 50%; transform: translateX(-50%); z-index: 70; display: flex; gap: 5px; max-width: 96vw; pointer-events: none; font-family: ui-sans-serif, system-ui, sans-serif; }
         .fp-strip span { display: flex; flex-direction: column; gap: 3px; min-width: 62px; max-width: 96px; padding: 5px 8px; border-radius: 11px; background: rgba(255,255,255,0.94); border: 1.5px solid rgba(76,29,149,0.18); box-shadow: 0 6px 16px -8px rgba(0,0,0,0.5); color: #22104f; }
+        .fp-money { margin: 2px 0 4px; padding: 10px 12px; border-radius: 14px; background: #f0fdf4; border: 1px solid rgba(22,163,74,0.4); font-size: 13.5px; line-height: 1.45; color: #14532d; text-align: left; } .fp-money.none { background: #faf7ff; border-color: rgba(76,29,149,0.16); color: rgba(34,16,79,0.75); } .fp-money b { font-weight: 800; }
         .fp-strip span.me { border-color: #6d28d9; } .fp-strip span.away { opacity: 0.5; } .fp-strip span.done { background: #ecfdf3; border-color: #16a34a; }
         .fp-strip b { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fp-strip u { text-decoration: none; font-size: 10.5px; font-weight: 700; color: rgba(34,16,79,0.62); }
         .fp-strip em { display: flex; gap: 2px; } .fp-strip em i { flex: 1; height: 4px; border-radius: 2px; background: rgba(76,29,149,0.16); } .fp-strip em i.on { background: #16a34a; }
@@ -101,5 +103,24 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
         @media (prefers-reduced-motion: reduce) { .fp-over, .fp-card { animation: none; } }
       `}</style>
     </>
+  );
+}
+
+// What happened to the G$ once a staked round ended, in one or two plain lines.
+function StakeResult({ view }: { view: RoomView }) {
+  const st = view.stake!;
+  if (st.state === "void") return <div className="fp-money none"><b>No G$ moved.</b> There was no single winner, so nobody pays.</div>;
+  if (st.state !== "settled") return <div className="fp-money none">Sending the winner their G$…</div>;
+  const each = Math.floor(gd(st.entryWei) * (1 - st.feeBps / 10000));
+  const paid = st.pays.filter((x) => x === "paid").length; const missed = view.players.filter((_, i) => st.pays[i] === "unpaid" || st.pays[i] === "expired").map((p) => p.name);
+  const winner = view.players[st.winnerSeat]?.name ?? "The winner"; const me = view.you;
+  const mine = st.pays[me];
+  return (
+    <div className="fp-money">
+      <b>{me === st.winnerSeat ? `You received ${each * paid} G$.` : `${winner} received ${each * paid} G$.`}</b>
+      {mine === "paid" && <> Your {gd(st.entryWei)} G$ entry went to {winner}.</>}
+      {(mine === "unpaid" || mine === "expired") && <> Your entry could not be sent.</>}
+      {missed.length > 0 && me === st.winnerSeat && <> {missed.join(", ")} did not pay.</>}
+    </div>
   );
 }

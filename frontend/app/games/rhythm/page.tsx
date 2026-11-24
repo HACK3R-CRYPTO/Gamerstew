@@ -2281,7 +2281,8 @@ export default function RhythmGamePage() {
       )}
 
       {/* ═══ FINISHED ═══ */}
-      {phase === "finished" && (
+      {/* in a friend room the room's standings are the result screen */}
+      {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
           grade={grade}
           score={score} maxCombo={maxCombo} hits={hits}

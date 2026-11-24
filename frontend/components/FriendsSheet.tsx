@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
+import { useRoomPermit } from "@/hooks/useRoomPermit";
+import { gd, winnerGain, type RoomView } from "@/hooks/useFriendRoom";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import type { FriendRoom } from "@/hooks/useFriendRoom";
 
@@ -64,13 +66,14 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             </div>
             <ul className="fs-players">
               {(v?.players ?? []).map((p, i) => (
-                <li key={i} className={p.away ? "away" : ""}><span>{p.name}{i === v!.you ? " (you)" : ""}</span><i>{p.host ? "host" : p.away ? "away" : "ready"}</i></li>
+                <li key={i} className={p.away ? "away" : ""}><span>{p.name}{i === v!.you ? " (you)" : ""}</span><i className={v!.stake && !v!.stake.signed[i] ? "wait" : ""}>{p.away ? "away" : v!.stake ? (v!.stake.signed[i] ? "agreed" : "not yet") : p.host ? "host" : "ready"}</i></li>
               ))}
               {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty"><span>Waiting for a friend…</span></li>)}
             </ul>
+            {v?.stakes && v.stakeTerms && <StakeBox room={room} view={v} active={active} />}
             {room.isHost
-              ? <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || active < 2} onClick={() => room.start()}>{active < 2 ? "Waiting for a friend" : `Start for ${active}`}</button>
-              : <div className="fs-wait">Waiting for the host to start…</div>}
+              ? <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || active < 2 || (!!v?.stake && v.stake.state !== "ready")} onClick={() => room.start()}>{active < 2 ? "Waiting for a friend" : v?.stake && v.stake.state !== "ready" ? "Waiting for everyone to agree" : `Start for ${active}`}</button>
+              : <div className="fs-wait">{v?.stake && v.stake.state !== "ready" ? "Waiting for everyone to agree…" : "Waiting for the host to start…"}</div>}
           </>
         )}
         {room.error && <div className="fs-err" role="alert">{room.error}</div>}
@@ -107,12 +110,64 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
         .fs-players li { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-radius: 13px; background: #faf7ff; border: 1px solid rgba(76,29,149,0.12); font-size: 14.5px; font-weight: 800; }
         .fs-players li i { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #15803d; }
+        .fs-players li i.wait { color: #b45309; }
+        .fs-stake { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: #fff; border: 1px solid rgba(76,29,149,0.16); text-align: left; }
+        .fs-stake > em { font-style: normal; font-size: 10.5px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: #6d28d9; }
+        .fs-stake > b { font-size: 16px; font-weight: 800; } .fs-stake > b u { text-decoration: none; color: #166534; }
+        .fs-stake p { margin: 0; font-size: 12.5px; line-height: 1.4; color: rgba(34,16,79,0.7); }
+        .fs-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+        .fs-chips button { flex: 1; min-width: 62px; padding: 9px 0; border-radius: 12px; border: 1px solid rgba(76,29,149,0.18); background: #faf7ff; font: inherit; font-size: 13.5px; font-weight: 800; color: #22104f; cursor: pointer; }
+        .fs-chips button.on { background: #22104f; border-color: #22104f; color: #fff; } .fs-chips button:disabled { opacity: 0.5; cursor: default; }
+        .fs-agree { padding: 12px 0; border: none; border-radius: 14px; background: #166534; color: #fff !important; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; } .fs-agree:disabled { opacity: 0.55; cursor: default; }
+        .fs-link { align-self: flex-start; padding: 0; border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 800; color: #6d28d9 !important; cursor: pointer; }
         .fs-players li.away { opacity: 0.5; } .fs-players li.away i { color: rgba(34,16,79,0.6); }
         .fs-players li.empty { background: transparent; border-style: dashed; color: rgba(34,16,79,0.45); font-weight: 600; }
         .fs-wait { text-align: center; padding: 14px 0; font-size: 14px; font-weight: 700; color: rgba(34,16,79,0.62); }
         .fs-err { text-align: center; font-size: 13px; font-weight: 700; color: #be123c; }
         @media (prefers-reduced-motion: reduce) { .fs-wrap, .fs, .fs-code b { animation: none; } }
       `}</style>
+    </div>
+  );
+}
+
+// Playing the round for G$. The host picks an entry; everyone agrees by signing.
+// A signature is not a payment: nothing leaves a wallet unless its owner loses.
+function StakeBox({ room, view, active }: { room: FriendRoom; view: RoomView; active: number }) {
+  const { sign, canSign } = useRoomPermit();
+  const [working, setWorking] = useState(false);
+  const terms = view.stakeTerms!; const st = view.stake; const mine = !!st?.signed[view.you];
+  const agree = async (entryWei: string, asHost: boolean) => {
+    if (working) return;
+    setWorking(true); room.say(null);
+    const permit = await sign(terms.spender, entryWei);
+    if ("error" in permit) room.say(permit.error);
+    else if (asHost) await room.setEntry(entryWei, permit);
+    else await room.agreeEntry(permit);
+    setWorking(false);
+  };
+  if (!st) {
+    if (!room.isHost) return null;
+    return (
+      <div className="fs-stake">
+        <em>Play for G$ · optional</em>
+        <div className="fs-chips">
+          <button className="on" disabled>Free</button>
+          {terms.entries.map((e) => <button key={e} disabled={!canSign || working || room.busy} onClick={() => void agree(e, true)}>{gd(e)} G$</button>)}
+        </div>
+        <p>{canSign ? "Pick an entry and everyone agrees to it. Nothing leaves a wallet unless its owner loses the round." : "Sign in to play for G$."}</p>
+      </div>
+    );
+  }
+  const gain = winnerGain(st.entryWei, st.feeBps, active);
+  return (
+    <div className="fs-stake">
+      <em>Playing for G$</em>
+      <b>{gd(st.entryWei)} G$ each · <u>winner gets {gain} G$</u></b>
+      <p>The others pay the winner when the round ends. Nothing is taken now, and a tie moves nothing. {st.feeBps / 100}% of each entry is the fee.</p>
+      {!mine && (canSign
+        ? <button className="fs-agree" disabled={working || room.busy} onClick={() => void agree(st.entryWei, false)}>{working ? "Check your wallet…" : `Agree to ${gd(st.entryWei)} G$`}</button>
+        : <p><b>Sign in to agree, or ask the host to play for free.</b></p>)}
+      {room.isHost && <button className="fs-link" disabled={working || room.busy} onClick={() => void room.clearEntry()}>Play for free instead</button>}
     </div>
   );
 }

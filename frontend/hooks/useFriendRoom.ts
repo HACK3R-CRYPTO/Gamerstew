@@ -17,7 +17,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean }
-export interface RoomView { code: string; game: string; status: "waiting" | "playing" | "over"; round: number; verified: boolean; you: number; elapsed: number; players: RoomPlayer[]; deal?: unknown }
+export type StakeState = "collecting" | "ready" | "playing" | "settling" | "settled" | "void";
+export type PayState = "paid" | "unpaid" | "expired";
+/** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */
+export interface RoomStake { entryWei: string; feeBps: number; state: StakeState; signed: boolean[]; winnerSeat: number; pays: (PayState | null)[]; txs: (string | null)[] }
+export interface RoomView {
+  code: string; game: string; status: "waiting" | "playing" | "over"; round: number; verified: boolean; you: number; elapsed: number; players: RoomPlayer[]; deal?: unknown;
+  /** this room can be played for G$ */
+  stakes?: boolean;
+  stakeTerms?: { spender: string; entries: string[]; feeBps: number };
+  stake?: RoomStake;
+}
+/** whole G$ from wei, for display */
+export const gd = (wei: string | bigint): number => Number(BigInt(wei) / 10n ** 15n) / 1000;
+/** what the winner gains from the others, after the fee */
+export const winnerGain = (entryWei: string, feeBps: number, players: number): number => Math.floor(gd(entryWei) * Math.max(0, players - 1) * (1 - feeBps / 10000));
 interface Session { code: string; token: string; seat: number; game: string }
 
 const WORDS: Record<string, string> = {
@@ -30,6 +44,14 @@ const WORDS: Record<string, string> = {
   unreachable: "Cannot reach the game server. Check your connection.",
   busy: "The server is busy. Try again in a moment.",
   slow_down: "You have made a lot of rooms. Wait a few minutes and try again.",
+  stake_pending: "Not everyone has agreed to the entry yet.",
+  stakes_off: "Playing for G$ is not available right now.",
+  not_verified: "This game cannot be played for G$.",
+  bad_entry: "That entry is not on offer.",
+  wallet_taken: "That wallet is already in this room.",
+  not_allowed: "Only verified players can play for G$. Verify your account first.",
+  bad_permit: "That signature could not be accepted. Try again.",
+  locked: "The room changed. Try again.",
 };
 export const explainRoom = (code: string) => WORDS[code] ?? "Something went wrong. Try again.";
 
@@ -39,7 +61,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
     r = await fetch(`/api/rooms/${path === "rooms" ? "rooms" : `rooms/${path}`}`, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   } catch { throw new Error("unreachable"); }
   const data = await r.json().catch(() => ({ error: "unreachable" }));
-  if (!r.ok || data?.error) throw new Error(data?.error || "unreachable");
+  if (!r.ok || data?.error) throw Object.assign(new Error(data?.error || "unreachable"), { reason: typeof data?.reason === "string" ? data.reason : undefined });
   return data as T;
 }
 
@@ -63,7 +85,8 @@ export function useFriendRoom(game: string) {
 
   const guard = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | null> => {
     setBusy(true); setError(null);
-    try { return await fn(); } catch (e) { setError(explainRoom((e as Error).message)); return null; } finally { setBusy(false); }
+    // the server's own reason, when it gave one, says more than the code does
+    try { return await fn(); } catch (e) { setError((e as { reason?: string }).reason ?? explainRoom((e as Error).message)); return null; } finally { setBusy(false); }
   }, []);
 
   // ask for the room about once a second while we are in one
@@ -100,6 +123,11 @@ export function useFriendRoom(game: string) {
     // progress is a courtesy to the others: never let it surface an error
     progress: (n: number) => { const s = sess.current; if (s) void call(`${s.code}/progress`, { token: s.token, progress: n }).catch(() => {}); },
     finish: (proof: unknown) => act("finish", { proof }),
+    // playing for G$: the host sets the entry, everyone signs, the host can call it off
+    setEntry: (entryWei: string, permit: unknown) => act("stake", { entryWei, permit }),
+    agreeEntry: (permit: unknown) => act("commit", { permit }),
+    clearEntry: () => act("unstake"),
+    say: (message: string | null) => setError(message),
     leave: () => { const s = sess.current; setSession(null); setView(null); setError(null); if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); },
   };
 }
