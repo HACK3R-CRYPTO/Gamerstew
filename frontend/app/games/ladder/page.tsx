@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@/lib/track";
 
 // ─── Word Ladder ─────────────────────────────────────────────────────────────
 // You are given a start word and a target word. Change ONE letter at a time,
@@ -157,6 +158,7 @@ export default function WordLadderPage() {
   }, []);
   const begin = async (isDaily = false) => {
     if (opening) return;
+    track("game_start", { game: "Word Ladder" });
     setIsRoomRound(false);
     let list = isDaily ? dealDaily() : null; let rankedRound = false;
     if (!isDaily && ranked.canRank) {

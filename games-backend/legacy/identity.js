@@ -12,6 +12,7 @@ function* (core) {
   Object.defineProperties(core, {
     mapLimit: { get: () => mapLimit, enumerable: true, configurable: true },
     isVerified: { get: () => isVerified, enumerable: true, configurable: true },
+    isVerifiedStrict: { get: () => isVerifiedStrict, enumerable: true, configurable: true },
     identityRootOf: { get: () => identityRootOf, enumerable: true, configurable: true },
     everVerified: { get: () => everVerified, enumerable: true, configurable: true },
     _gdIdentity: { get: () => _gdIdentity, enumerable: true, configurable: true },
@@ -80,6 +81,16 @@ async function isVerified(wallet) {
   } catch {
     return c ? c.verified : false; // best-effort: keep last known, else treat unverified
   }
+}
+
+// The same question, for the admin dashboard's record of who is verified. It
+// asks the chain every time and THROWS when the chain cannot answer, so a
+// failed read is never written down as "not verified".
+async function isVerifiedStrict(wallet) {
+  if (!_gdIdentity) throw new Error('identity contract not configured');
+  const v = await _gdIdentity.isWhitelisted(String(wallet).toLowerCase());
+  _verifiedCache.set(String(wallet).toLowerCase(), { verified: v, at: Date.now() });
+  return v;
 }
 
 // The identity root — one per human — used ONLY to deduplicate scoring seats,

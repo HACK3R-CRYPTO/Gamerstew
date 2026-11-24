@@ -1,4 +1,5 @@
 "use client";
+import { track } from "@/lib/track";
 
 // ─── The lobby every skill game opens on ─────────────────────────────────────
 // One start screen, in the app's Lilac look, shared by Stack Tower, Simon
@@ -82,7 +83,7 @@ export default function GameLobby<M extends string>({
 
           {extra}
 
-          <button className="gl-play" style={{ fontFamily: DISPLAY }} onClick={onStart}>{startLabel}</button>
+          <button className="gl-play" style={{ fontFamily: DISPLAY }} onClick={() => { track("game_start", { game: title }); onStart(); }}>{startLabel}</button>
           {friends}
 
           {guest && (

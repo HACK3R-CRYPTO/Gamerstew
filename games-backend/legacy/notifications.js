@@ -430,6 +430,59 @@ require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supaba
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
 core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
 // The inbox: read, delete and announcements, remembered per player (src/modules/inbox).
+// ─── Admin dashboard ─────────────────────────────────────────────────────────
+// Sign-in, roles, the dashboard's reads, the payout ledger and visit tracking:
+// src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
+// until that has run, its reads answer "migration_needed" and the two jobs
+// below do nothing.
+const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.supabase), logger: console });
+core.admin = adminService;
+core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
+// yesterday's and today's numbers, every hour (and once, a minute after boot)
+core.jobs.every('adminRollup', 60 * 60 * 1000, async () => { await adminService.rollup(); });
+setTimeout(() => { adminService.rollup().catch(() => {}); }, 60 * 1000).unref?.();
+// who is GoodDollar-verified: 25 wallets every 5 minutes, the most out of date first
+core.jobs.every('adminVerifySweep', 5 * 60 * 1000, async () => {
+  const out = await adminService.sweepVerification((w) => core.isVerifiedStrict(w), 25);
+  if (out.newly > 0) console.log(`[admin] ${out.newly} wallet(s) newly seen as verified · checked ${out.checked}`);
+});
+
+// Every purchase, read from the chain (src/modules/admin/chain.ts). The two
+// contracts emit the exact split of each purchase, so what GameArena keeps is
+// counted, not estimated. It reads 40 ranges of 5,000 blocks a minute until it
+// has caught up from the first contract's deployment, then keeps pace.
+{
+  const perkShop = process.env.PERK_SHOP_ADDRESS || '0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5';
+  const habitats = process.env.HABITAT_REGISTRY_ADDRESS || '0x8888FEb43ac1833c683D0474204aa55A55BD010F';
+  const iface = new core.ethers.Interface([
+    'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
+    'event HabitatUnlocked(address indexed player, uint8 indexed tier, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
+  ]);
+  const topics = [[iface.getEvent('PerkPurchased').topicHash, iface.getEvent('HabitatUnlocked').topicHash]];
+  const g = (v) => core.ethers.formatUnits(v, 18); // G$ has 18 decimals; kept as a decimal string, never a float
+  const purchaseIndexer = core.platform.createPurchaseIndexer({
+    startBlock: Number(process.env.CHAIN_INDEX_START || 65552895),
+    logger: console,
+    reader: {
+      head: () => core.provider.getBlockNumber(),
+      blockTime: async (b) => Number((await core.provider.getBlock(b)).timestamp),
+      purchases: async (from, to) => (await core.provider.getLogs({ address: [perkShop, habitats], topics, fromBlock: from, toBlock: to })).map((l) => {
+        const e = iface.parseLog(l); const perk = e.name === 'PerkPurchased';
+        return { tx_hash: l.transactionHash, log_index: l.index, block: l.blockNumber, kind: perk ? 'perk' : 'habitat', wallet: e.args.player, item: Number(perk ? e.args.perkId : e.args.tier), total: g(e.args.totalPaid), ubi: g(e.args.ubiAmount), treasury: g(e.args.treasuryAmount) };
+      }),
+    },
+    store: {
+      cursor: async () => { const r = await core.supabase.rpc('admin_chain_cursor', { cursor_name: 'purchases' }); if (r.error) throw new Error(r.error.message); return r.data === null || r.data === undefined ? null : Number(r.data); },
+      save: async (upto, batch) => !(await core.supabase.rpc('admin_save_purchases', { cursor_name: 'purchases', upto, batch })).error,
+    },
+  });
+  core.jobs.every('chainPurchases', 60 * 1000, async () => {
+    if (String(process.env.CHAIN_INDEX ?? 'true').toLowerCase() === 'false' || !core.provider) return;
+    const out = await purchaseIndexer.run(40);
+    if (out.found > 0) console.log(`[chain] ${out.found} purchase(s) read · blocks ${out.from}..${out.to} · ${out.behind} behind`);
+  });
+}
+
 core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.

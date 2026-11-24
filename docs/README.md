@@ -10,7 +10,7 @@ What each document is, and whether it describes the code as it is today.
 | [friend-rooms.md](friend-rooms.md) | Rooms in every skill game, on-chain room rounds, G$ entry by permit |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
-| [admin-dashboard.md](admin-dashboard.md) | Audit of what is recorded today and the plan for an admin dashboard. Not built |
+| [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |
 | [engagement-rewards.md](engagement-rewards.md) | What was committed to GoodDollar for engagement rewards. Not integrated |
 
 ## Design documents, with a dated note where things have changed
