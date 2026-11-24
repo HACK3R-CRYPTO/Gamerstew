@@ -123,7 +123,7 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
   const openItem = (it: InboxItem) => {
     markRead(it);
     if ((it.body?.length ?? 0) > 90 && wide !== it.id) { setWide(it.id); return; }
-    if (!goes(it)) return;
+    if (!it.url || !goes(it)) return;
     onClose();
     if (it.url.startsWith("/")) router.push(it.url); else window.open(it.url, "_blank", "noopener,noreferrer");
   };
