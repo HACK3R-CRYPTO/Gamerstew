@@ -169,19 +169,6 @@ function weeklyHero(w: WeeklyInfo): Game {
   };
 }
 
-const TUG_HERO: Game = {
-  id: "tug",
-  title: "Tug of War",
-  subtitle: "Starts Wednesday",
-  desc: "Two sides, one rope, 1,000,000 G$. First 160 verified players get 2,500 G$ guaranteed.",
-  art: "/event-prize.png",
-  bg: "linear-gradient(115deg, #7f1d1d 0%, #2a1266 52%, #0e7490 100%)",
-  glow: "#dc2626",
-  active: true,
-  href: "/tug",
-  kind: "tug",
-};
-
 const STACK_ART = (
   // Inline SVG rainbow tower · matches the games-hub card identity so the
   // home hero banner and the /games card show the same artwork.
