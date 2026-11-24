@@ -1,5 +1,7 @@
 # GameArena Subgraph
 
+> **Status, 24 November 2026:** the deployed subgraph stopped indexing on 30 October 2026 (last block 81,592,138). The app no longer depends on it for weekly boards, rank, the activity feed or alerts; those read the backend's own record of confirmed runs. It is still read for all-time totals and past seasons. It needs a redeploy or a decision to retire it.
+
 Turns GameArena's on-chain events into a clean GraphQL API. Instead of the Express backend recomputing leaderboards and stats from Supabase, this subgraph indexes the events straight from Celo Mainnet and serves them · leaderboards, per-player stats, habitat ownership, wager history, and daily + all-time aggregates.
 
 ## Indexed contracts

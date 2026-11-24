@@ -13,14 +13,14 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 
 // ─── design tokens ──────────────────────────────────────────────────────
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -385,12 +385,12 @@ export default function Onboarding({
           <div key={setupLine} style={{ fontFamily: T.display, fontSize: 20, color: T.ink, animation: "ob-bubble-pop 0.4s ease both" }}>{SETUP_LINES[setupLine]}</div>
           <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 14 }}>
             {SETUP_LINES.map((_, i) => (
-              <span key={i} style={{ width: 7, height: 7, borderRadius: 999, background: i <= setupLine ? T.accent : "rgba(255,255,255,0.14)", boxShadow: i === setupLine ? `0 0 8px ${T.accent}` : "none", transition: "all 0.3s" }} />
+              <span key={i} style={{ width: 7, height: 7, borderRadius: 999, background: i <= setupLine ? T.accent : "rgba(76,29,149,0.14)", boxShadow: i === setupLine ? `0 0 8px ${T.accent}` : "none", transition: "all 0.3s" }} />
             ))}
           </div>
           {slowMint && (
             <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 12, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)" }}>
-              <div style={{ fontFamily: T.display, fontSize: 13, color: "#fde68a" }}>Taking a little longer than usual…</div>
+              <div style={{ fontFamily: T.display, fontSize: 13, color: "#b45309" }}>Taking a little longer than usual…</div>
               <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, marginTop: 4, lineHeight: 1.5 }}>Still working on it. If it gets stuck, we&apos;ll let you know what to do.</div>
             </div>
           )}
@@ -409,7 +409,7 @@ export default function Onboarding({
         <style>{KEYFRAMES}</style>
         <div style={{ flex: 1, overflowY: "auto", padding: "30px 22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.18em" }}>YOU&apos;RE IN 🎉</div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: "#15803d", fontWeight: 800, letterSpacing: "0.18em" }}>YOU&apos;RE IN 🎉</div>
             <h2 style={{ fontFamily: T.display, fontSize: 25, color: T.ink, margin: "5px 0 0", letterSpacing: "-0.01em" }}>Welcome, @{username}!</h2>
           </div>
 
@@ -422,7 +422,7 @@ export default function Onboarding({
           </div>
 
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontFamily: T.body, fontSize: 11, color: "#86efac", fontWeight: 800, letterSpacing: "0.16em" }}>FREE DAILY REWARD</div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: "#15803d", fontWeight: 800, letterSpacing: "0.16em" }}>FREE DAILY REWARD</div>
             <h2 style={{ fontFamily: T.display, fontSize: 27, color: T.ink, margin: "6px 0 0", letterSpacing: "-0.01em" }}>Claim free G$ every day</h2>
           </div>
 
@@ -435,7 +435,7 @@ export default function Onboarding({
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 13, background: T.surface, border: `1px solid ${T.hairline}` }}>
                 <span style={{ fontSize: 17, flexShrink: 0 }}>{r.icon}</span>
                 <span style={{ flex: 1, fontFamily: T.body, fontSize: 12.5, color: T.ink, fontWeight: 600 }}>{r.txt}</span>
-                <span style={{ color: "#22c55e" }}><CheckIcon /></span>
+                <span style={{ color: "#15803d" }}><CheckIcon /></span>
               </div>
             ))}
           </div>
@@ -453,7 +453,7 @@ export default function Onboarding({
 
           <button onClick={() => onComplete({ username, verified: false })} style={{
             width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 16, color: T.ink, padding: "14px", borderRadius: 16,
-            background: "rgba(255,255,255,0.05)", border: `1.5px solid ${T.hairlineHi}`, cursor: "pointer", letterSpacing: "0.01em",
+            background: "rgba(76,29,149,0.05)", border: `1.5px solid ${T.hairlineHi}`, cursor: "pointer", letterSpacing: "0.01em",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}>
             Skip — just start playing <PlayIcon size={14} />
@@ -472,7 +472,7 @@ export default function Onboarding({
       <img src="/splash_screen_icons/joystick.png" alt="" style={{ position: "absolute", bottom: "6%", right: -20, width: 72, opacity: 0.08, transform: "rotate(14deg)", filter: "drop-shadow(0 0 16px #06b6d4)", pointerEvents: "none" }} />
 
       <div style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "flex-end", padding: "14px 16px 0" }}>
-        <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, background: "rgba(255,255,255,0.06)", border: `1px solid ${T.hairline}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+        <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, background: "rgba(76,29,149,0.06)", border: `1px solid ${T.hairline}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
           <CloseIcon />
         </button>
       </div>
@@ -499,28 +499,28 @@ export default function Onboarding({
               onKeyDown={e => { if (e.key === "Enter") start(); }}
               style={{
                 width: "100%", boxSizing: "border-box", padding: "15px 16px", textAlign: "center",
-                background: "rgba(0,0,0,0.4)", borderRadius: 14, color: "#fff",
-                border: `1.5px solid ${(mintError?.kind === "taken" || nameStatus === "taken") ? "#f87171" : nameStatus === "available" ? "rgba(134,239,172,0.9)" : valid ? "rgba(134,239,172,0.6)" : T.hairlineHi}`,
+                background: "#fff", borderRadius: 14, color: "#22104f",
+                border: `1.5px solid ${(mintError?.kind === "taken" || nameStatus === "taken") ? "#b91c1c" : nameStatus === "available" ? "#16a34a" : valid ? "rgba(22,163,74,0.6)" : T.hairlineHi}`,
                 fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", outline: "none",
-                boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.15), inset 0 2px 8px rgba(0,0,0,0.5)" : "inset 0 2px 8px rgba(0,0,0,0.5)",
+                boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.18)" : "none",
                 transition: "border-color 0.15s, box-shadow 0.15s",
               }}
             />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, padding: "0 4px" }}>
-              <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 700, color: (mintError?.kind === "taken" || nameStatus === "taken") ? "#f87171" : nameStatus === "available" ? "#86efac" : T.inkSoft }}>
+              <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 700, color: (mintError?.kind === "taken" || nameStatus === "taken") ? "#b91c1c" : nameStatus === "available" ? "#15803d" : T.inkSoft }}>
                 {nameStatus === "checking" ? "checking…"
                   : nameStatus === "taken" ? "that name's taken"
                   : nameStatus === "available" ? "available ✓"
                   : mintError?.kind === "taken" ? mintError.message
                   : "3–16 characters"}
               </span>
-              <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 800, color: username.length > 0 ? (valid ? "#86efac" : "#f87171") : T.inkSoft }}>{username.length}/16</span>
+              <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 800, color: username.length > 0 ? (valid ? "#15803d" : "#b91c1c") : T.inkSoft }}>{username.length}/16</span>
             </div>
 
             {/* Referral · progressive disclosure. A banked ?ref link shows as a
                 quiet confirmation; word-of-mouth players open the code input. */}
             {bankedRef && !refOpen ? (
-              <div style={{ marginTop: 10, textAlign: "center", fontFamily: T.body, fontSize: 10.5, fontWeight: 700, color: "#86efac" }}>
+              <div style={{ marginTop: 10, textAlign: "center", fontFamily: T.body, fontSize: 10.5, fontWeight: 700, color: "#15803d" }}>
                 🎁 Referral linked ✓{" "}
                 <button onClick={() => setRefOpen(true)} style={{ background: "none", border: "none", color: T.inkSoft, fontSize: 10.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}>
                   change
@@ -546,7 +546,7 @@ export default function Onboarding({
                     fontFamily: T.body, fontSize: 13, fontWeight: 700, outline: "none",
                   }}
                 />
-                <div style={{ marginTop: 5, textAlign: "center", fontFamily: T.body, fontSize: 10, fontWeight: 700, color: refResolved ? "#86efac" : refResolving ? T.inkSoft : refCode.trim().length > 1 ? "#f87171" : T.inkSoft }}>
+                <div style={{ marginTop: 5, textAlign: "center", fontFamily: T.body, fontSize: 10, fontWeight: 700, color: refResolved ? "#15803d" : refResolving ? T.inkSoft : refCode.trim().length > 1 ? "#b91c1c" : T.inkSoft }}>
                   {refResolving ? "checking…"
                     : refResolved ? `✓ referred by @${refResolved.username ?? "friend"}`
                     : refCode.trim().length > 1 ? "code not found"
@@ -559,17 +559,17 @@ export default function Onboarding({
 
         {mintError?.kind === "other" && (
           <div style={{ width: "100%", maxWidth: 340, padding: "10px 13px", borderRadius: 12, background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.4)" }}>
-            <div style={{ fontFamily: T.display, fontSize: 13, color: "#fda4af" }}>Something went sideways</div>
+            <div style={{ fontFamily: T.display, fontSize: 13, color: "#be123c" }}>Something went sideways</div>
             <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, marginTop: 4, lineHeight: 1.5 }}>{mintError.message} Tap Let&apos;s play to try again.</div>
           </div>
         )}
 
         <button onClick={start} disabled={!canSubmit} style={{
-          width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 19, color: "#fff", padding: "17px", borderRadius: 16,
-          background: !canSubmit ? "rgba(255,255,255,0.06)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
+          width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 19, color: canSubmit ? "#fff" : "rgba(34,16,79,0.55)", padding: "17px", borderRadius: 16,
+          background: !canSubmit ? "rgba(76,29,149,0.08)" : `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
           border: `1.5px solid ${!canSubmit ? T.hairline : T.accent}`,
           boxShadow: !canSubmit ? "none" : `0 14px 30px -8px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)`,
-          cursor: canSubmit ? "pointer" : "default", opacity: canSubmit ? 1 : 0.6, letterSpacing: "0.02em", transition: "all 0.15s",
+          cursor: canSubmit ? "pointer" : "default", opacity: 1, letterSpacing: "0.02em", transition: "all 0.15s",
         }}>
           Let&apos;s play! 🎮
         </button>
@@ -578,38 +578,38 @@ export default function Onboarding({
           <div style={{ width: "100%", maxWidth: 340, borderRadius: 16, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.42)", padding: 14, display: "flex", flexDirection: "column", gap: 12, animation: "ob-sheetUp 0.3s cubic-bezier(0.16,1,0.3,1) both" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 17 }}>✨</span>
-              <span style={{ fontFamily: T.display, fontSize: 15, color: "#fde68a" }}>
+              <span style={{ fontFamily: T.display, fontSize: 15, color: "#b45309" }}>
                 {mintError?.kind === "gas" ? "Quick top-up needed" : "Almost in! Let's switch on your account"}
               </span>
             </div>
             <p style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, margin: 0, lineHeight: 1.5 }}>
               {mintError?.kind === "gas"
-                ? <>Your account ran low mid-flight. One <strong style={{ color: "#fff" }}>free</strong> top-up and we&apos;ll finish setting up your slime.</>
-                : <>New accounts get switched on once — it&apos;s <strong style={{ color: "#fff" }}>free</strong> and takes a few seconds. Just say hi in our chat:</>}
+                ? <>Your account ran low mid-flight. One <strong style={{ color: "#22104f" }}>free</strong> top-up and we&apos;ll finish setting up your slime.</>
+                : <>New accounts get switched on once — it&apos;s <strong style={{ color: "#22104f" }}>free</strong> and takes a few seconds. Just say hi in our chat:</>}
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 22, height: 22, borderRadius: 999, background: "rgba(251,191,36,0.2)", border: "1px solid rgba(251,191,36,0.5)", color: "#fde68a", fontFamily: T.display, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
-              <button onClick={copyCode} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "11px", borderRadius: 11, cursor: "pointer", background: "rgba(255,255,255,0.05)", border: `1px solid ${copied ? "rgba(34,197,94,0.55)" : T.hairlineHi}`, color: copied ? "#86efac" : T.ink, fontFamily: T.body, fontSize: 12.5, fontWeight: 800 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: "rgba(180,83,9,0.45)", border: "1px solid rgba(180,83,9,0.75)", color: "#b45309", fontFamily: T.display, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+              <button onClick={copyCode} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "11px", borderRadius: 11, cursor: "pointer", background: "rgba(76,29,149,0.05)", border: `1px solid ${copied ? "rgba(34,197,94,0.55)" : T.hairlineHi}`, color: copied ? "#15803d" : T.ink, fontFamily: T.body, fontSize: 12.5, fontWeight: 800 }}>
                 {copied ? "✓ Copied · paste it next" : "Copy my message"}
               </button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 22, height: 22, borderRadius: 999, background: "rgba(251,191,36,0.2)", border: "1px solid rgba(251,191,36,0.5)", color: "#fde68a", fontFamily: T.display, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: "rgba(180,83,9,0.45)", border: "1px solid rgba(180,83,9,0.75)", color: "#b45309", fontFamily: T.display, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
               <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px", borderRadius: 11, textDecoration: "none", background: "linear-gradient(180deg, #38bdf8, #0ea5e9)", border: "1px solid #7dd3fc", boxShadow: "0 8px 16px -5px rgba(56,189,248,0.5)", color: "#fff", fontFamily: T.body, fontSize: 12.5, fontWeight: 800 }}>
                 <TelegramIcon /> Paste it in our chat
               </a>
             </div>
-            <p style={{ fontFamily: T.body, fontSize: 10.5, color: "rgba(253,230,138,0.85)", margin: 0, lineHeight: 1.5 }}>
+            <p style={{ fontFamily: T.body, fontSize: 10.5, color: "rgba(180,83,9,1)", margin: 0, lineHeight: 1.5 }}>
               {triedOnceRef.current ? "Still warming up — give it a moment and tap " : "Once we reply that you're switched on, just tap "}
-              <strong style={{ color: "#fde68a" }}>Let&apos;s play</strong> up there again — and you&apos;re in. 👆
+              <strong style={{ color: "#b45309" }}>Let&apos;s play</strong> up there again — and you&apos;re in. 👆
             </p>
           </div>
         ) : showSwitch && hasGas ? (
           <div style={{ width: "100%", maxWidth: 340, borderRadius: 16, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.45)", padding: 14, display: "flex", alignItems: "center", gap: 10, animation: "ob-sheetUp 0.3s cubic-bezier(0.16,1,0.3,1) both" }}>
             <span style={{ fontSize: 18 }}>✅</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: T.display, fontSize: 14, color: "#86efac" }}>You&apos;re switched on!</div>
-              <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim }}>Tap <strong style={{ color: "#fde68a" }}>Let&apos;s play</strong> above to jump in.</div>
+              <div style={{ fontFamily: T.display, fontSize: 14, color: "#15803d" }}>You&apos;re switched on!</div>
+              <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim }}>Tap <strong style={{ color: "#b45309" }}>Let&apos;s play</strong> above to jump in.</div>
             </div>
           </div>
         ) : (
@@ -620,7 +620,7 @@ export default function Onboarding({
             </div>
             <button onClick={onPlayFree} style={{
               width: "100%", maxWidth: 340, fontFamily: T.display, fontSize: 16, color: T.ink, padding: "14px", borderRadius: 16,
-              background: "rgba(255,255,255,0.05)", border: `1.5px solid ${T.hairlineHi}`, cursor: "pointer", letterSpacing: "0.01em",
+              background: "rgba(76,29,149,0.05)", border: `1.5px solid ${T.hairlineHi}`, cursor: "pointer", letterSpacing: "0.01em",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}>
               Just look around first <ChevIcon />

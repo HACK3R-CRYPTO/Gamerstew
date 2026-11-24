@@ -19,6 +19,11 @@ const GAME_LABEL = {
   rhythm: 'Rhythm Rush',
   simon:  'Simon Memory',
   stack:  'Stack Tower',
+  ladder: 'Word Ladder',
+  strike: 'Street Strike',
+  nepa3d: 'UP NEPA 3D',
+  nepa:   'Up NEPA!',
+  'challenge-ai': 'Challenge AI',
 };
 function gameLabelOf(game) {
   return GAME_LABEL[game] || game;

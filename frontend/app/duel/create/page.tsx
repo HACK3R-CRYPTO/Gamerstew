@@ -15,10 +15,10 @@ import { useDuel } from "@/hooks/useDuel";
 import { DUEL_GAMES } from "@/lib/duel";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff", inkDim: "rgba(220,210,255,0.7)", inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.5)", hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a", green: "#34d399", cyan: "#22d3ee", accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff", hairline: "rgba(76,29,149,0.08)",
+  gold: "#b45309", green: "#047857", cyan: "#0e7490", accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -58,8 +58,22 @@ export default function CreateRoomPage() {
   const [runsHrs, setRunsHrs] = useState(24);
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [gating, setGating] = useState<"code" | "allowlist">("code");
-  const [code] = useState(randomCode());
+  // The join code is random, so it is made after the page loads. Made during
+  // render, the server and the browser each picked a different one and React
+  // threw the whole page away to rebuild it.
+  const [code, setCode] = useState("");
+  useEffect(() => { setCode(randomCode()); }, []);
   const [busy, setBusy] = useState(false);
+
+  // Arriving from a game ("Duel a friend"): that game is already chosen, and the
+  // room is a head-to-head staked duel. Read from the address bar after mount,
+  // so the page still renders the same on the server.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const g = DUEL_GAMES.find((x) => x.key === q.get("game"));
+    if (g) setGames([g.type]);
+    if (q.get("mode") === "duel") { setMode("duel"); setCapacity(2); }
+  }, []);
   const [err, setErr] = useState<string | null>(null);
 
   const isPool = mode === "pool";
@@ -110,11 +124,11 @@ export default function CreateRoomPage() {
   const Pill = ({ on, onClick, children, tint }: { on: boolean; onClick: () => void; children: React.ReactNode; tint?: string }) => (
     <button onClick={onClick} style={{
       padding: "9px 14px", borderRadius: 12, cursor: "pointer", border: `1px solid ${on ? "transparent" : T.hairline}`,
-      background: on ? (tint ?? T.accent) : "rgba(255,255,255,0.04)", color: on ? "#150a2e" : T.inkDim,
+      background: on ? (tint ?? T.accent) : "rgba(76,29,149,0.04)", color: on ? (tint ? "#150a2e" : "#fff") : T.inkDim,
       fontFamily: T.body, fontSize: 12.5, fontWeight: 800, transition: "all 0.12s",
     }}>{children}</button>
   );
-  const inputBox: React.CSSProperties = { width: "100%", padding: "13px 15px", borderRadius: 14, border: `1px solid ${T.hairline}`, background: "rgba(255,255,255,0.05)", color: T.ink, outline: "none" };
+  const inputBox: React.CSSProperties = { width: "100%", padding: "13px 15px", borderRadius: 14, border: `1px solid ${T.hairline}`, background: "rgba(76,29,149,0.05)", color: T.ink, outline: "none" };
 
   return (
     <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
@@ -207,7 +221,7 @@ export default function CreateRoomPage() {
           </div>
         )}
 
-        {err && <div style={{ color: "#fca5a5", fontSize: 12.5, fontWeight: 700 }}>{err}</div>}
+        {err && <div style={{ color: "#b91c1c", fontSize: 12.5, fontWeight: 700 }}>{err}</div>}
 
         <button onClick={onCreate} disabled={busy}
           style={{ marginTop: 4, padding: "15px 20px", borderRadius: 16, border: "none", cursor: busy ? "wait" : "pointer",

@@ -42,25 +42,27 @@ export async function GET() {
   }
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Pull every resolved match in the window. Counts roll up below.
-  // agent_match_state has one row per resolved match; resolved_at is
-  // written when resolveMatch confirms. Cap at 5000 to bound the read
-  // · realistic event volume tops out an order of magnitude lower.
-  const { data: rows, error } = await supabase
-    .from("agent_match_state")
-    .select("challenger, resolved_at")
-    .gte("resolved_at", EVENT_START_ISO)
-    .lte("resolved_at", EVENT_END_ISO)
-    .limit(5000);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  // The database counts the matches per player (agent_match_counts). If that
+  // function is not there yet, fall back to reading the rows and counting here.
   const counts = new Map<string, number>();
-  for (const r of rows ?? []) {
-    const c = (r.challenger as string | null)?.toLowerCase();
-    if (!c) continue;
-    counts.set(c, (counts.get(c) ?? 0) + 1);
+  const counted = await supabase.rpc("agent_match_counts", { p_from: EVENT_START_ISO, p_to: EVENT_END_ISO, p_limit: 20 });
+  if (!counted.error && Array.isArray(counted.data)) {
+    for (const r of counted.data as { challenger: string; matches: number }[]) counts.set(String(r.challenger).toLowerCase(), Number(r.matches));
+  } else {
+    const { data: rows, error } = await supabase
+      .from("agent_match_state")
+      .select("challenger, resolved_at")
+      .gte("resolved_at", EVENT_START_ISO)
+      .lte("resolved_at", EVENT_END_ISO)
+      .limit(5000);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    for (const r of rows ?? []) {
+      const c = (r.challenger as string | null)?.toLowerCase();
+      if (!c) continue;
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
   }
 
   // Sort, take top 20 for the public surface (we don't need more than
@@ -118,7 +120,8 @@ export async function GET() {
     headers: {
       // Edge cache · 30s s-maxage with 60s SWR. Match counts roll up
       // monotonically so brief staleness is invisible to users.
-      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      // once the event is over its board can never change: keep it at the edge for a day
+      "Cache-Control": Date.now() > Date.parse(EVENT_END_ISO) ? "public, s-maxage=86400, stale-while-revalidate=604800" : "public, s-maxage=60, stale-while-revalidate=300",
     },
   });
 }

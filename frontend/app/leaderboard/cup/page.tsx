@@ -15,16 +15,16 @@ import { fmtCupCountdown } from "@/lib/cup";
 import { TG_GROUP_INVITE } from "@/lib/telegramDeepLink";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.5)",
-  hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a",
-  green: "#34d399",
-  cyan: "#22d3ee",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  gold: "#b45309",
+  green: "#047857",
+  cyan: "#0e7490",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -164,7 +164,7 @@ export default function CupPage() {
             <Card style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "16px 18px 20px", background: `radial-gradient(120% 130% at 50% 0%, ${T.gold}1e, transparent 62%), ${T.surface}` }}>
               <img src="/event-prize.png" alt="" style={{ display: "block", width: 146, height: 146, objectFit: "contain", mixBlendMode: "screen", margin: "0 auto 6px", filter: `drop-shadow(0 0 26px ${T.gold}44)`, WebkitMaskImage: "radial-gradient(circle at 50% 47%, #000 56%, transparent 76%)", maskImage: "radial-gradient(circle at 50% 47%, #000 56%, transparent 76%)" }} />
               <div style={{ fontFamily: T.display, fontSize: 40, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 28px ${T.gold}55`, lineHeight: 1 }}>{countdown || "soon"}</div>
-              <div style={{ fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}>until the board opens</div>
+              <div style={{ fontSize: 10, color: "rgba(180,83,9,0.95)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6 }}>until the board opens</div>
               <div style={{ fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 360, margin: "11px auto 0" }}>A fresh cup board, everyone starts even. Your season scores keep counting. Warm up now before it goes live.</div>
               <button onClick={() => router.push("/games")} style={{ marginTop: 14, padding: "12px 30px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 13, fontWeight: 900, letterSpacing: "0.06em", color: "#0a0226", background: "linear-gradient(180deg,#fde68a,#fbbf24)", boxShadow: `0 8px 24px -8px ${T.gold}` }}>PLAY NOW ›</button>
               <a href={TG_GROUP_INVITE} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 13, fontSize: 12, fontWeight: 700, color: T.inkDim, textDecoration: "none" }}>Join the community so you don&apos;t miss the start ›</a>
@@ -183,7 +183,7 @@ export default function CupPage() {
                   <Eyebrow tint={T.green}>Community pot{pot.bonusG > 0 ? ` · +${fmtG(pot.bonusG)} G$` : ""}</Eyebrow>
                   <span style={{ fontSize: 11, color: T.inkSoft }}>{pot.plays.toLocaleString()}{pot.next ? ` / ${pot.next.at.toLocaleString()}` : ""}</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                <div style={{ height: 6, borderRadius: 999, background: "rgba(76,29,149,0.06)", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${potPct}%`, background: `linear-gradient(90deg,${T.green},${T.cyan})`, borderRadius: 999 }} />
                 </div>
               </div>
@@ -200,7 +200,7 @@ export default function CupPage() {
                   <Eyebrow tint={T.accent}>Your rank</Eyebrow>
                   <div style={{ fontFamily: T.display, fontSize: 20, marginTop: 2 }}>#{me.rank} · {me.username || short(me.wallet)}</div>
                   {me.lanes && <div style={{ fontSize: 10.5, color: T.inkSoft, marginTop: 3 }}>{laneBreakdown(me.lanes)}</div>}
-                  {me.verified === false && <div style={{ fontSize: 10.5, color: "#fbbf24", fontWeight: 800, marginTop: 3 }}>Verify to qualify for prizes →</div>}
+                  {me.verified === false && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 800, marginTop: 3 }}>Verify to qualify for prizes →</div>}
                 </div>
                 <span style={{ fontFamily: T.display, fontSize: 24, color: T.gold }}>{me.cupPoints.toLocaleString()}<span style={{ fontSize: 11, color: T.inkSoft }}> pts</span></span>
               </Card>
@@ -209,7 +209,7 @@ export default function CupPage() {
             ) : null}
 
             {/* tabs */}
-            <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "center" }}>
+            <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "center" }}>
               {([{ id: "human", label: "Players" }, { id: "agent", label: "Agents" }] as const).map((o) => (
                 <button key={o.id} onClick={() => setTab(o.id)} style={{
                   padding: "9px 20px", borderRadius: 10, cursor: "pointer", border: "none",
@@ -278,7 +278,7 @@ function Pg({ label, onClick, disabled, tint }: { label: string; onClick: () => 
   return (
     <button onClick={disabled ? undefined : onClick} disabled={disabled} style={{
       padding: "8px 15px", borderRadius: 999, cursor: disabled ? "not-allowed" : "pointer",
-      background: disabled ? "rgba(255,255,255,0.04)" : `${c}26`, border: `1px solid ${disabled ? "rgba(255,255,255,0.1)" : c + "70"}`,
+      background: disabled ? "rgba(76,29,149,0.04)" : `${c}26`, border: `1px solid ${disabled ? "rgba(76,29,149,0.1)" : c + "70"}`,
       color: disabled ? "rgba(200,180,255,0.35)" : "rgba(235,228,255,0.95)", fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em",
     }}>{label}</button>
   );
@@ -287,13 +287,13 @@ function Pg({ label, onClick, disabled, tint }: { label: string; onClick: () => 
 // Confetti + character podium · the app's own leaderboard language
 // (mirrors StagePodium on the Events All-time tab).
 const CONFETTI = [
-  { left: "10%", top: "22%", color: "#f9a8d4", size: 9, shape: "star", dur: 3.5, delay: 0.0 },
-  { left: "20%", top: "55%", color: "#fbbf24", size: 11, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "30%", top: "18%", color: "#22d3ee", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
-  { left: "46%", top: "10%", color: "#fde68a", size: 12, shape: "sparkle", dur: 4.0, delay: 0.8 },
-  { left: "62%", top: "20%", color: "#e879f9", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
-  { left: "74%", top: "50%", color: "#34d399", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "26%", color: "#c084fc", size: 11, shape: "note", dur: 4.1, delay: 0.7 },
+  { left: "10%", top: "22%", color: "#be185d", size: 9, shape: "star", dur: 3.5, delay: 0.0 },
+  { left: "20%", top: "55%", color: "#b45309", size: 11, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "30%", top: "18%", color: "#0e7490", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
+  { left: "46%", top: "10%", color: "#b45309", size: 12, shape: "sparkle", dur: 4.0, delay: 0.8 },
+  { left: "62%", top: "20%", color: "#a21caf", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
+  { left: "74%", top: "50%", color: "#047857", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "26%", color: "#7e22ce", size: 11, shape: "note", dur: 4.1, delay: 0.7 },
 ];
 function Confetti({ p }: { p: typeof CONFETTI[number] }) {
   const base = { position: "absolute" as const, left: p.left, top: p.top, width: p.size, height: p.size, animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`, pointerEvents: "none" as const, filter: `drop-shadow(0 0 6px ${p.color})` };
@@ -305,8 +305,8 @@ function Confetti({ p }: { p: typeof CONFETTI[number] }) {
 }
 function Podium({ entries }: { entries: Entry[] }) {
   const P = [
-    { char: "/characters/char1.png", e: entries[0], color: "#fbbf24", w: 18, bottom: 38, left: 50, z: 3 },
-    { char: "/characters/char2.png", e: entries[1], color: "#e2e8f0", w: 16, bottom: 33, left: 32, z: 2 },
+    { char: "/characters/char1.png", e: entries[0], color: "#b45309", w: 18, bottom: 38, left: 50, z: 3 },
+    { char: "/characters/char2.png", e: entries[1], color: "#475569", w: 16, bottom: 33, left: 32, z: 2 },
     { char: "/characters/char3.png", e: entries[2], color: "#f97316", w: 16, bottom: 32, left: 67, z: 2 },
   ];
   return (
@@ -338,12 +338,12 @@ function Row({ e, tint }: { e: Entry; tint: string }) {
   const sub = e.sub ?? (e.lanes ? laneBreakdown(e.lanes) : undefined);
   return (
     <div style={{ borderRadius: 999, padding: 2, background: `linear-gradient(135deg, ${tint} 0%, ${tint}55 100%)`, boxShadow: `0 0 10px ${tint}40, 0 5px 14px rgba(0,0,0,0.45)`, opacity: unverified ? 0.74 : 1 }}>
-      <div style={{ borderRadius: 999, background: e.mine ? `linear-gradient(90deg, ${tint}2e 0%, rgba(20,10,50,0.92) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
+      <div style={{ borderRadius: 999, background: e.mine ? `linear-gradient(90deg, ${tint}2e 0%, rgba(255,255,255,0.96) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${tint}22`, border: `1px solid ${tint}66`, fontFamily: T.display, fontSize: 12.5, color: T.ink }}>{e.rank}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.mine ? `You · ${e.name}` : e.name}</span>
-            {unverified && <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.03em", color: "#fbbf24", background: "#fbbf2422", border: "1px solid #fbbf2455", borderRadius: 999, padding: "1.5px 7px", whiteSpace: "nowrap", textTransform: "uppercase" }}>Verify to qualify</span>}
+            {unverified && <span style={{ flexShrink: 0, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.03em", color: "#b45309", background: "#fbbf2422", border: "1px solid #fbbf2455", borderRadius: 999, padding: "1.5px 7px", whiteSpace: "nowrap", textTransform: "uppercase" }}>Verify to qualify</span>}
           </div>
           {sub && <div style={{ fontSize: 10, color: T.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
         </div>

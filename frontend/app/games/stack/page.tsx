@@ -17,6 +17,7 @@
 //     Step-up to ranked submit comes later (same path Rhythm/Simon use)
 //   • Back button + idle/finished screens visually match the other games
 
+import { toast, startProblem } from "@/lib/toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import { useRouter } from "next/navigation";
@@ -28,6 +29,12 @@ import { useAuthStatus } from "@/hooks/useRequireAuth";
 import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
+import RunSaveStatus from "@/components/RunSaveStatus";
+
+import GameResult, { FreePlayNote } from "@/components/GameResult";
+import { useFriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import LevelUpToast from "@/components/LevelUpToast";
@@ -53,6 +60,7 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { usePerks } from "@/hooks/usePerks";
 import { useEquipped } from "@/lib/cosmetics";
+import NextUp from "@/components/NextUp";
 
 // Crystal Blocks cosmetic (PerkShop perk 4) — owned forever, re-skins the
 // tower in icy glass. Purely visual, zero gameplay effect.
@@ -67,6 +75,16 @@ function drawSlab(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, hue: number, crystal: boolean, moving: boolean,
 ) {
+  // Every slab is a solid block seen slightly from above and to the left: a lit
+  // top face and a shaded right side are drawn behind the front face. The front
+  // face is still the one that counts for alignment, so the game plays exactly
+  // as before; the tower just looks like a real stack with ledges where a block
+  // was cut short.
+  const DX = 13, DY = 8;
+  ctx.fillStyle = crystal ? "hsl(188 90% 78%)" : `hsl(${hue} 88% ${moving ? 74 : 70}%)`;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + DX, y - DY); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = crystal ? "hsl(200 70% 18%)" : `hsl(${hue} 78% 20%)`;
+  ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w + DX, y - DY); ctx.lineTo(x + w + DX, y - DY + BLOCK_H); ctx.lineTo(x + w, y + BLOCK_H); ctx.closePath(); ctx.fill();
   if (crystal) {
     const fh = BLOCK_H - 3;                           // face height
     ctx.fillStyle = "hsl(200 65% 24%)";              // deep ice shadow
@@ -120,6 +138,35 @@ const SHARD_GRAVITY = 0.45;
 const HUES = [195, 215, 245, 275, 300, 330, 0, 30, 50];
 
 type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
+
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been and the only mode that is signed
+// and submitted. The others change the rules for fun and never leave the
+// device: no gas check, no session ticket, no score signing, no save prompt.
+// "room" is a friend-room round: nothing is signed or sent to the chain, and the
+// result goes to the room instead.
+type ModeId = "ranked" | "practice" | "turbo" | "thin" | "room";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "turbo", name: "Turbo", tag: "FREE", blurb: "Every block moves 60% faster. Blink and it is gone.", color: "#f43f5e" },
+  { id: "thin", name: "Thin Ice", tag: "FREE", blurb: "You start with a block half the width. No room for error.", color: "#c084fc" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+const TURBO = 1.6;
+const THIN = 0.5;
+
+// A challenge from a friend arrives as a link: /games/stack?beat=14&mode=ranked&by=Tunde
+type Challenge = { blocks: number; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const blocks = Number(q.get("beat"));
+  if (!Number.isFinite(blocks) || blocks < 1 || blocks > 2000) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { blocks: Math.floor(blocks), mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
 type Block = { x: number; w: number; hue: number };
 type Moving = { x: number; w: number; dir: 1 | -1; speed: number; hue: number };
 type Shard = { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; hue: number };
@@ -174,6 +221,7 @@ export default function StackTowerPage() {
   // (gameType=2). Guests keep the local-best fallback above so the practice
   // loop still feels rewarding before they sign in.
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -328,6 +376,12 @@ export default function StackTowerPage() {
 
   // ─── Finish ───────────────────────────────────────────────────────────────
   // Declared before drop() so drop can list it as a dependency without a TDZ.
+  // Friends in a room all build at the same time; the room ranks the towers.
+  const room = useFriendRoom("stack");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+
   const finish = useCallback(() => {
     blip(140, 0.4, 0.22, "sawtooth");
     haptic([30, 40, 60]);
@@ -337,6 +391,12 @@ export default function StackTowerPage() {
       localStorage.setItem("stack_best", String(best));
       return best;
     });
+    // tallest tower ever built on this device: the line you climb toward next time
+    try {
+      const built = Math.max(0, levelRef.current - 1);
+      if (built > bestHeightRef.current) { bestHeightRef.current = built; localStorage.setItem(heightKey(runModeRef.current), String(built)); }
+    } catch { /* ignore */ }
+    if (runModeRef.current === "room") void roomRef.current.finish({ dropLog: dropLogRef.current.slice(), score: scoreRef.current });
     setPhase("finished");
   }, [blip, haptic, juice]);
 
@@ -366,7 +426,8 @@ export default function StackTowerPage() {
       movingRef.current = null;
       // Only signed-in, minted players can buy a save on-chain. Guests and
       // not-yet-minted players fall straight through to the finish screen.
-      if (address && !needsMint) {
+      // So does every free mode: paying to save a run that is never submitted makes no sense.
+      if (runModeRef.current === "ranked" && address && !needsMint) {
         savePausedAtRef.current = Date.now();
         setPhase("saving");
       } else {
@@ -426,14 +487,21 @@ export default function StackTowerPage() {
     }
 
     levelRef.current = newLevel;
+    if (runModeRef.current === "room") roomRef.current.progress(newLevel - 1); // friends see how tall you are
+    // the moment the tower tops your best ever
+    if (!passedBestRef.current && lineHeightRef.current >= 3 && newLevel - 1 > lineHeightRef.current) {
+      passedBestRef.current = true;
+      juice.fireCallout({ text: "NEW HEIGHT!", sub: `PAST YOUR BEST OF ${lineHeightRef.current}`, color: "#4ade80" }, 900);
+      haptic([20, 30, 60]);
+    }
     setScore(scoreRef.current);
     setCombo(comboRef.current);
 
     // New moving block: alternate entry side, speed creeps up with height
     const top = stack[stack.length - 1];
     const fromLeft = newLevel % 2 === 0;
-    const speed = BASE_SPEED + newLevel * SPEED_RAMP
-      + Math.min(newLevel * newLevel * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const speed = (BASE_SPEED + newLevel * SPEED_RAMP
+      + Math.min(newLevel * newLevel * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP)) * (runModeRef.current === "turbo" ? TURBO : 1);
     const { w: cw } = sizeRef.current;
     movingRef.current = {
       x: fromLeft ? -top.w : cw,
@@ -454,8 +522,8 @@ export default function StackTowerPage() {
     const top = stack[stack.length - 1];
     const level = levelRef.current;
     const fromLeft = level % 2 === 0;
-    const speed = BASE_SPEED + level * SPEED_RAMP
-      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP);
+    const speed = (BASE_SPEED + level * SPEED_RAMP
+      + Math.min(level * level * SPEED_RAMP_QUAD, SPEED_RAMP_QUAD_CAP)) * (runModeRef.current === "turbo" ? TURBO : 1);
     const { w: cw } = sizeRef.current;
     movingRef.current = {
       x: fromLeft ? -top.w : cw,
@@ -479,7 +547,9 @@ export default function StackTowerPage() {
   }, [finish]);
 
   // ─── Start a fresh run ────────────────────────────────────────────────────
-  const startGame = useCallback(async () => {
+  const startGame = useCallback(async (roomStart?: unknown) => {
+    // a room round passes true; a tap on Play passes a click event
+    const inRoom = roomStart === true;
     // Re-entry guard — bails if a session ticket request is already in flight.
     // Without this a double-click during the ~500ms /api/start-game round
     // trip inserts two game_sessions rows for one actual run.
@@ -487,7 +557,7 @@ export default function StackTowerPage() {
 
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Block a new run once a guest is out of free plays; offer sign-in.
-    if (isGuest && guestPlaysLeft("stack") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("stack") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -505,7 +575,9 @@ export default function StackTowerPage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
+    const ranked = runModeRef.current === "ranked";
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands, the wallet now has gas so the score
       // will save — proceed into play. Only if it can't help do we open the sheet.
@@ -522,12 +594,12 @@ export default function StackTowerPage() {
     startingRef.current = true;
 
     const { w } = sizeRef.current;
-    const startW = Math.min(280, Math.max(START_W_MIN, w * START_W_FRAC));
+    const startW = Math.min(280, Math.max(START_W_MIN, w * START_W_FRAC)) * (runModeRef.current === "thin" ? THIN : 1);
     stackRef.current = [
       { x: (w - startW) / 2, w: startW, hue: HUES[0] },
     ];
     movingRef.current = {
-      x: 0, w: startW, dir: 1, speed: BASE_SPEED, hue: HUES[1],
+      x: 0, w: startW, dir: 1, speed: BASE_SPEED * (runModeRef.current === "turbo" ? TURBO : 1), hue: HUES[1],
     };
     shardsRef.current = [];
     sparklesRef.current = [];
@@ -536,6 +608,8 @@ export default function StackTowerPage() {
     scoreRef.current = 0;
     comboRef.current = 0;
     levelRef.current = 1;
+    lineHeightRef.current = bestHeightRef.current;
+    passedBestRef.current = false;
     dropLogRef.current = [];
     setScore(0); setCombo(0);
     juice.reset();
@@ -550,7 +624,8 @@ export default function StackTowerPage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══════
     // No ticket = backend refuses to sign the score at submit time. Guests
     // skip this branch and the run stays local-only (localStorage best).
-    if (address && !needsMint) {
+    // Free modes submit nothing, so they need no ticket either.
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -568,12 +643,14 @@ export default function StackTowerPage() {
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          toast(startProblem(res.error));
           startingRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        toast(startProblem());
         startingRef.current = false;
         return;
       }
@@ -596,6 +673,45 @@ export default function StackTowerPage() {
     setPhase("countdown");
     startingRef.current = false;
   }, [address, isMiniPay, getAccessToken, getAudioCtx, juice, gasStatus, needsMint, isGuest, inVatar]);
+
+  // the host pressed start: everyone builds now
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current || v.players[v.you]?.done) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (runModeRef.current !== "room") return;
+    if (!room.inRoom || room.view?.status === "waiting") { setPhase("idle"); runModeRef.current = modeRef.current; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
+
+  // ── Straight into play ─────────────────────────────────────────────────────
+  // Arriving with ?play=1 (the landing page's "Play free", or any "play now"
+  // link) starts a run at once: no menu to read, no second button to find. The
+  // start screen is still there after the run, with the modes and the board.
+  // The flag is taken off the address so a refresh does not start another run.
+  const autoStartRef = useRef(false);
+  const [showHowTo, setShowHowTo] = useState(false);
+  useEffect(() => {
+    if (autoStartRef.current || authPending) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("play") !== "1") return;
+    autoStartRef.current = true;
+    q.delete("play");
+    window.history.replaceState(null, "", window.location.pathname + (q.toString() ? `?${q}` : ""));
+    setShowHowTo(true); // they skipped the screen that explains the game, so say it in the game
+    startGame();
+  }, [authPending, startGame]);
+  useEffect(() => {
+    if (!showHowTo || phase !== "playing") return;
+    const t = setTimeout(() => setShowHowTo(false), 6000);
+    return () => clearTimeout(t);
+  }, [showHowTo, phase]);
 
   // ─── Countdown → playing ─────────────────────────────────────────────────
   useEffect(() => {
@@ -663,6 +779,7 @@ export default function StackTowerPage() {
   // Guests with no wallet skip this entirely · their best stays in localStorage.
   useEffect(() => {
     if (phase !== "finished") return;
+    if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -692,7 +809,7 @@ export default function StackTowerPage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string | null; queued?: boolean; gameType: number; score?: number }
           | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
@@ -749,7 +866,7 @@ export default function StackTowerPage() {
             address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
             abi: GAME_PASS_ABI,
             functionName: "recordScoreWithBackendSig",
-            args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
+            args: [sig.gameType, BigInt(typeof sig.score === "number" ? sig.score : scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
             ...(isEmbeddedWallet ? { gas: 300000n } : {}),
             ...(await detectFeeSpread(isMiniPay, address as `0x${string}` | undefined)),
           });
@@ -800,7 +917,9 @@ export default function StackTowerPage() {
 
         // ── STEP 3: save off-chain ──
         let result;
-        const fullScoreData = { ...baseScoreData, txHash };
+        // the score the server approved (it may be lower than the claim), and the
+        // run's ticket so a queued score can be saved before its transaction exists
+        const fullScoreData = { ...baseScoreData, score: typeof sig.score === "number" ? sig.score : baseScoreData.score, txHash, sessionToken: sessionTokenRef.current };
         if (isMiniPay) {
           result = await submitScoreMiniPay(address, "", "", fullScoreData);
         } else if (authToken) {
@@ -817,6 +936,7 @@ export default function StackTowerPage() {
             isNewPb: result.isNewPb,
             prevBest: result.prevBest,
             newAchievements: result.newAchievements || [],
+            txHash, // so the result screen can show whether the chain confirmed it
           });
           if (result.leveledUp && typeof result.level === "number") {
             const newLv = result.level;
@@ -898,7 +1018,42 @@ export default function StackTowerPage() {
   // allocation, and the old code did it EVERY frame (60×/s). The hue only
   // moves when the level changes, so cache by (level, height): one
   // allocation per stacked block instead of ~3,600/minute.
+  // dev only: lets an automated test build a tower (drop when the block lines up)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __stack?: unknown }).__stack = {
+      phase, drop, level: () => levelRef.current, setMode, runMode: () => runModeRef.current, topW: () => stackRef.current[0]?.w, speed: () => movingRef.current?.speed,
+      offset: () => { const m = movingRef.current, st = stackRef.current; return m && st.length ? m.x - st[st.length - 1].x : null; },
+      setBest: (n: number) => { bestHeightRef.current = n; lineHeightRef.current = n; },
+    };
+  });
+
   const bgGradRef = useRef<{ key: string; grad: CanvasGradient } | null>(null);
+  // Tallest tower so far (blocks), drawn as a gold line across the sky. It is
+  // fixed for the whole run, so passing it mid-run is a moment you can see.
+  const bestHeightRef = useRef(0);
+  // Mode + an incoming friend challenge. runModeRef is the mode a run is PLAYED
+  // with, pinned when it starts: the rules and whether it submits read that.
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  const runModeRef = useRef<ModeId>("ranked");
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const challengeRef = useRef<Challenge | null>(null);
+  const heightKey = (m: ModeId) => (m === "ranked" ? "stack_best_height" : `stack_best_height_${m}`);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); challengeRef.current = c; setMode(c.mode); } }, []);
+  useEffect(() => {
+    modeRef.current = mode;
+    try { const n = Number(localStorage.getItem(heightKey(mode))); bestHeightRef.current = Number.isFinite(n) && n > 0 ? n : 0; } catch { bestHeightRef.current = 0; }
+    lineHeightRef.current = bestHeightRef.current;
+  }, [mode]);
+  const lineHeightRef = useRef(0);   // the height the line shows this run
+  const passedBestRef = useRef(false);
+  const skyRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => { skyRef.current = img; };
+    img.src = "/games/stack-sky.webp";
+  }, []);
 
   // ─── Draw ─────────────────────────────────────────────────────────────────
   const draw = (ctx: CanvasRenderingContext2D, wall: number) => {
@@ -915,9 +1070,64 @@ export default function StackTowerPage() {
     }
     ctx.fillStyle = bgGradRef.current.grad;
     ctx.fillRect(0, 0, w, h);
+    // The night sky over Lagos. The skyline sits at the bottom when you start,
+    // and the picture slides down as the tower rises (slower than the tower, so
+    // it reads as distance), until you are stacking up among the stars.
+    const sky = skyRef.current;
+    if (sky) {
+      const scale = Math.max(w / sky.width, (h * 1.45) / sky.height);
+      const dw = sky.width * scale, dh = sky.height * scale;
+      const pan = Math.min(dh - h, camYRef.current * 0.3);
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(sky, (w - dw) / 2, h - dh + pan, dw, dh);
+      ctx.globalAlpha = 0.34; // keep the hue shift that shows the climb
+      ctx.fillStyle = bgGradRef.current.grad;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
 
     ctx.save();
     ctx.translate(0, camYRef.current);
+
+    // YOUR BEST line: the top of the tallest tower you have ever built.
+    const bestH = lineHeightRef.current;
+    if (bestH >= 3) {
+      const ly = blockCenterY(bestH + 1) + BLOCK_H / 2; // top face of block number bestH
+      const passed = levelRef.current - 1 > bestH;
+      ctx.save();
+      ctx.strokeStyle = passed ? "rgba(74,222,128,0.9)" : "rgba(251,191,36,0.9)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 7]);
+      ctx.shadowColor = passed ? "#4ade80" : "#fbbf24";
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.font = '900 11px ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif';
+      ctx.fillStyle = passed ? "#86efac" : "#fde68a";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(passed ? `BEATEN · WAS ${bestH}` : `YOUR BEST · ${bestH}`, 10, ly - 4);
+      ctx.restore();
+    }
+
+    // A friend's tower to beat, drawn as its own line in the sky.
+    const ch = challengeRef.current;
+    if (ch && ch.blocks >= 1) {
+      const ly = blockCenterY(ch.blocks + 1) + BLOCK_H / 2;
+      const beaten = levelRef.current - 1 > ch.blocks;
+      ctx.save();
+      ctx.strokeStyle = beaten ? "rgba(74,222,128,0.9)" : "rgba(251,146,60,0.95)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(w, ly); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '900 11px ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif';
+      ctx.fillStyle = beaten ? "#86efac" : "#fdba74";
+      ctx.textBaseline = "bottom";
+      ctx.textAlign = "right";
+      ctx.fillText(beaten ? `${ch.by.toUpperCase()} BEATEN` : `${ch.by.toUpperCase()} · ${ch.blocks}`, w - 10, ly - 4);
+      ctx.restore();
+    }
 
     // Stack
     const crystal = hasCrystalRef.current;
@@ -993,6 +1203,12 @@ export default function StackTowerPage() {
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            {phase === "playing" && showHowTo && (
+              <div aria-live="polite" style={{ position: "absolute", left: 0, right: 0, top: "22%", zIndex: 6, textAlign: "center", pointerEvents: "none", fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+                <div style={{ display: "inline-block", padding: "9px 16px", borderRadius: 999, background: "rgba(4,0,20,0.72)", border: "1px solid rgba(103,232,249,0.5)", color: "#fff", fontSize: 15, fontWeight: 900, letterSpacing: "0.04em" }}>👆 TAP TO DROP THE BLOCK</div>
+                <div style={{ marginTop: 6, color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: 700, textShadow: "0 1px 4px #000" }}>Line it up. Whatever hangs over gets cut off.</div>
+              </div>
+            )}
             {phase === "playing" && (
               <div style={{
                 padding: "6px 12px", borderRadius: 12,
@@ -1044,99 +1260,26 @@ export default function StackTowerPage() {
             leaderboard preview, START. No decorative preview tower or stray
             "YOUR BEST" line · the leaderboard preview shows where you stand. */}
       {phase === "idle" && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 32, padding: 24, textAlign: "center",
-        }}>
-          <button onClick={() => router.push("/games")} aria-label="Back" style={{
-            position: "absolute", top: 18, left: 18, width: 40, height: 40,
-            borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "inherit",
-            background: "#6b0000", paddingBottom: 4,
-            boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-          }}>
-            <div style={{
-              width: "100%", height: 36, borderRadius: "10px 10px 8px 8px",
-              background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-              border: "2px solid rgba(255,255,255,0.45)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </div>
-          </button>
-
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.4em", color: "rgba(34,211,238,0.7)", textShadow: "0 0 14px rgba(34,211,238,0.7)" }}>GAME ARENA</div>
-            <div style={{ fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em", color: "white", marginTop: 6, lineHeight: 1, textShadow: "0 0 24px rgba(34,211,238,0.9), 0 4px 10px rgba(0,0,0,0.7)" }}>
-              STACK<br />TOWER
-            </div>
-          </div>
-
-          <div style={{
-            maxWidth: 360, textAlign: "center",
-            color: "rgba(220,200,255,0.75)", fontSize: 13, fontWeight: 700, lineHeight: 1.6,
-          }}>
-            Tap to drop the block.
-            Overhang gets sliced off.
-            <br />
-            <span style={{ color: "rgba(251,191,36,0.85)" }}>
-              Perfect alignment keeps full width and builds combos
-            </span>
-          </div>
-
-          {!authed && !authPending && <GuestPlayChip left={guestLeft} />}
-
-          {/* Signed in, no slime yet — honest twin of the guest chip. */}
-          {needsMint && <SetupPlayChip onFinishSetup={() => router.push("/home?ob=1")} />}
-
-          {/* Gas posture pill · only renders for warn/block buckets.
-              Tappable in both states · routes to GasHelpSheet so the player
-              has a single path to the top-up flow. Safe/MiniPay/guest all
-              render null so the lobby stays clean for the happy path.
-              Suppressed for unminted players — "out of gas" is the wrong
-              diagnosis when the real blocker is unfinished setup. */}
-          {!needsMint && (
-            <LowGasBanner
-              status={gasStatus}
-              approxSavesLeft={approxSavesLeft}
-              onOpenHelp={() => setGasHelpOpen(true)}
-            />
-          )}
-
-          <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
-
-          <div role="button" tabIndex={0} onClick={startGame}
-            style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-            <div style={{
-              borderRadius: 18, background: "#083a6b", paddingBottom: 6,
-              boxShadow: "0 12px 28px -6px rgba(34,211,238,0.75), 0 0 40px rgba(34,211,238,0.3)",
-            }}>
-              <div style={{
-                borderRadius: "16px 16px 12px 12px",
-                background: "linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)",
-                padding: "18px 28px", textAlign: "center",
-                border: "2px solid rgba(255,255,255,0.5)",
-                position: "relative", overflow: "hidden",
-                boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-              }}>
-                <div style={{
-                  position: "absolute", top: 2, left: "4%", right: "4%", height: "48%",
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-                  borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-                }} />
-                <span style={{
-                  position: "relative", zIndex: 1,
-                  color: "white", fontSize: 20, fontWeight: 900, letterSpacing: "0.18em",
-                  textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-                }}>STACK IT</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <GameLobby
+          title="Stack Tower"
+          headline={<>Drop the block.<br />Stack it clean.</>}
+          rules={<>Tap to drop. Anything hanging over the edge gets sliced off. <b>A perfect drop keeps the full width</b> and builds a combo.</>}
+          cover="/games/covers/stack.jpg" focus="50% 60%"
+          onExit={() => router.push("/dashboard")}
+          onStart={startGame}
+          modes={MODES} mode={mode} onPickMode={setMode}
+          gameType={2} scoreWord="Tallest towers"
+          onLeaderboard={() => router.push("/games/stack/leaderboard")}
+          guest={!authed && !authPending} guestLeft={guestLeft}
+          needsSetup={needsMint} onFinishSetup={() => router.push("/home?ob=1")}
+          /* out of gas is the wrong message for a player who has not finished setup */
+          gasBanner={needsMint ? null : <LowGasBanner status={gasStatus} approxSavesLeft={approxSavesLeft} onOpenHelp={() => setGasHelpOpen(true)} />}
+          challenge={challenge ? <>{challenge.by} stacked <b>{challenge.blocks} blocks</b>. Build higher.</> : null}
+          friends={<FriendsPlay room={room} gameName="Stack Tower" sharePath="/games/stack" atStart part="button" />}
+        />
       )}
+
+      <FriendsPlay room={room} gameName="Stack Tower" sharePath="/games/stack" atStart={phase === "idle"} progressWord="block" part="overlays" />
 
       {/* FINISHED */}
       {/* SAVE YOUR RUN · the M1 hero moment (casual mode only). Mounted only
@@ -1152,132 +1295,50 @@ export default function StackTowerPage() {
         />
       )}
 
-      {phase === "finished" && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          background: "rgba(4,0,20,0.82)", backdropFilter: "blur(10px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: 18, overflowY: "auto",
-        }}>
-          <div style={{
-            width: "100%", maxWidth: 420,
-            borderRadius: 26, background: "#1a0550", paddingBottom: 7,
-            boxShadow: "0 0 0 3px #5b21b6, 0 0 50px rgba(109,40,217,0.6)",
-          }}>
-            <div style={{
-              borderRadius: "24px 24px 20px 20px",
-              background: "linear-gradient(180deg, #2a0c6e 0%, #13063a 60%, #07021a 100%)",
-              border: "2px solid rgba(255,255,255,0.12)",
-              padding: "26px 22px", textAlign: "center",
-            }}>
-              <div style={{ fontSize: 38, marginBottom: 4 }}>🧱</div>
-              <div style={{ color: "#67e8f9", fontSize: 15, fontWeight: 900, letterSpacing: "0.16em" }}>
-                TOWER DOWN
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 10, fontWeight: 900, letterSpacing: "0.2em" }}>SCORE</div>
-                <div style={{ color: "#fbbf24", fontSize: 44, fontWeight: 900, lineHeight: 1, textShadow: "0 0 20px rgba(251,191,36,0.8)" }}>{score}</div>
-                {score >= localBest && score > 0 && (
-                  <div style={{ color: "#22d3ee", fontSize: 11, fontWeight: 900, marginTop: 4, letterSpacing: "0.1em" }}>★ NEW PERSONAL BEST</div>
-                )}
-              </div>
-
-              <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{
-                  padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(103,232,249,0.33)",
-                }}>
-                  <div style={{ color: "#67e8f9", fontSize: 19, fontWeight: 900 }}>{Math.max(0, levelRef.current - 1)}</div>
-                  <div style={{ color: "rgba(200,180,255,0.55)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>BLOCKS STACKED</div>
-                </div>
-                <div style={{
-                  padding: "10px 4px", borderRadius: 10,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(232,121,249,0.33)",
-                }}>
-                  <div style={{ color: "#f0abfc", fontSize: 19, fontWeight: 900 }}>{combo}</div>
-                  <div style={{ color: "rgba(200,180,255,0.55)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", marginTop: 2 }}>LAST COMBO</div>
-                </div>
-              </div>
-
-              {/* Submit status · guest CTA · or reward panel for signed-in runs. */}
-              {!authed ? (
-                <div style={{ marginTop: 14 }}>
-                  <GuestScorePrompt nextPath="/games/stack" />
-                </div>
-              ) : needsMint ? (
-                <div style={{ marginTop: 14 }}>
-                  <MintScorePrompt score={score} />
-                </div>
-              ) : (
-                <StackRewardPanel
-                  submitting={submitting}
-                  signingOnChain={signingOnChain}
-                  result={submitResult}
-                  error={submitError}
-                  txError={txError}
-                  score={score}
-                  onTopUp={() => setGasHelpOpen(true)}
-                />
+      {/* in a friend room the room's standings are the result screen */}
+      {phase === "finished" && runModeRef.current !== "room" && (() => {
+        const built = Math.max(0, levelRef.current - 1);
+        const saving = submitting || signingOnChain;
+        const d = challenge ? built - challenge.blocks : 0;
+        return (
+          <GameResult
+            eyebrow="Tower down" tone="#0e7490" badge="🧱" score={score}
+            notes={<>
+              {score >= localBest && score > 0 && <span className="gold">New personal best</span>}
+              {challenge && built > 0 && (
+                <span className={d > 0 ? "good" : "warm"}>{d > 0 ? `You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}</span>
               )}
-
-              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-                <div role="button" tabIndex={0} onClick={startGame} style={{ cursor: "pointer", flex: 1 }}>
-                  <div style={{ borderRadius: 14, background: "#075985", paddingBottom: 5, boxShadow: "0 8px 20px -6px rgba(34,211,238,0.7)" }}>
-                    <div style={{
-                      borderRadius: "12px 12px 9px 9px",
-                      background: "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 50%, #0e7490 100%)",
-                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.5)",
-                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.55)",
-                    }}>
-                      <span style={{ color: "white", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>BUILD AGAIN</span>
-                    </div>
-                  </div>
-                </div>
-                <div role="button" tabIndex={0}
-                  onClick={() => {
-                    setPhase("idle");
-                    setScore(0); setCombo(0);
-                    setSubmitResult(null); setSubmitError(null); setTxError(null);
-                    submittedRef.current = false;
-                  }}
-                  style={{ cursor: "pointer", flex: 1 }}>
-                  <div style={{ borderRadius: 14, background: "#1a0550", paddingBottom: 5 }}>
-                    <div style={{
-                      borderRadius: "12px 12px 9px 9px",
-                      background: "linear-gradient(160deg, #c084fc 0%, #a78bfa 50%, #6b21a8 100%)",
-                      padding: "13px 8px", border: "2px solid rgba(255,255,255,0.4)",
-                      boxShadow: "inset 0 4px 10px rgba(255,255,255,0.45)",
-                    }}>
-                      <span style={{ color: "white", fontSize: 14, fontWeight: 900, letterSpacing: "0.12em", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>EXIT</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* MARKOV cross-promo is a navigation link · hide it while
-                  the score is still saving so a reflexive tap can't abort
-                  the on-chain save and lose the run. */}
-              {!(submitting || signingOnChain) && <ArenaCrossPromo />}
-
-              {/* Leaderboard nudge · only after a clean submit so it's a reward, not noise */}
-              {submitResult && (
-                <div role="button" tabIndex={0}
-                  onClick={() => router.push("/games/stack/leaderboard")}
-                  style={{
-                    marginTop: 12, cursor: "pointer", textAlign: "center",
-                    color: "#67e8f9", fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-                    opacity: 0.85,
-                  }}>
-                  SEE THE LEADERBOARD →
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+            </>}
+            stats={[{ label: "Blocks stacked", value: built }, { label: "Last combo", value: combo }]}
+            saving={saving}
+            playAgainLabel="Build again"
+            onPlayAgain={startGame}
+            onExit={() => {
+              setPhase("idle");
+              setScore(0); setCombo(0);
+              setSubmitResult(null); setSubmitError(null); setTxError(null);
+              submittedRef.current = false;
+            }}
+            challengeLabel={built > 0 ? `Challenge a friend to beat ${built} blocks` : null}
+            onChallenge={() => {
+              const url = `${window.location.origin}/games/stack?beat=${built}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+              const text = `I stacked ${built} blocks in Stack Tower. Build higher if you can 🔥`;
+              if (navigator.share) navigator.share({ title: "Stack Tower", text, url }).catch(() => {});
+              else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+            }}
+            status={mode !== "ranked"
+              ? <FreePlayNote mode={modeById(mode).name} />
+              : !authed ? <GuestScorePrompt nextPath="/games/stack" />
+              : needsMint ? <MintScorePrompt score={score} />
+              : <RunSaveStatus submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} onTopUp={() => setGasHelpOpen(true)} />}
+            after={<>
+              {submitResult && <button onClick={() => router.push("/games/stack/leaderboard")} style={{ padding: "10px 0", border: "none", background: "none", color: "#6d28d9", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>See the leaderboard ›</button>}
+              <NextUp />
+              {!saving && <ArenaCrossPromo />}
+            </>}
+          />
+        );
+      })()}
 
       {/* ═══ LEVEL-UP CELEBRATION ═══ */}
       <LevelUpToast
@@ -1314,190 +1375,6 @@ export default function StackTowerPage() {
 
       {/* Guest free-play limit · sign-in gate once the free runs are used. */}
       <GuestLimitPrompt open={guestLimitOpen} onClose={() => setGuestLimitOpen(false)} game="Stack Tower" />
-    </div>
-  );
-}
-
-// ─── Stack reward panel · slim variant of simon's RewardPanel ────────────────
-// Shows the submit-state machine inside the finished sheet:
-//   signingOnChain → "CONFIRM IN YOUR WALLET"
-//   submitting     → "SAVING SCORE…"
-//   txError/error  → small banner with retry copy
-//   result         → rank + xp grid · achievements unlocked
-function StackRewardPanel({
-  submitting, signingOnChain, result, error, txError, score, onTopUp,
-}: {
-  submitting: boolean;
-  signingOnChain: boolean;
-  result: {
-    rank?: number;
-    xpEarned?: number;
-    level?: number;
-    leveledUp?: boolean;
-    isNewPb?: boolean;
-    prevBest?: number;
-    newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
-  } | null;
-  error: string | null;
-  txError: string | null;
-  score: number;
-  // Tappable hook on the "needs a top up" txError banner · opens
-  // GasHelpSheet so the rescue isn't just an error message, it's a
-  // single tap to the community top-up path.
-  onTopUp?: () => void;
-}) {
-  if (signingOnChain) {
-    return (
-      <div style={{
-        marginTop: 14, padding: 12, borderRadius: 10,
-        background: "rgba(251,191,36,0.1)",
-        border: "1px solid rgba(251,191,36,0.35)",
-        color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
-        textAlign: "center", boxShadow: "0 0 16px rgba(251,191,36,0.2)",
-      }}>
-        ✦ CONFIRM IN YOUR WALLET ✦
-        <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", marginTop: 4 }}>
-          Signing records your score on-chain
-        </div>
-      </div>
-    );
-  }
-  if (submitting) {
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: "rgba(167,139,250,0.08)",
-        border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(200,180,255,0.7)",
-        fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-        textAlign: "center",
-      }}>SAVING SCORE…</div>
-    );
-  }
-  if (txError) {
-    const low = txError.toLowerCase();
-    const isGasError = low.includes("top up");
-    // Gas errors get the tappable rescue path · the run is already lost
-    // but the player learns where to fix it for next time without having
-    // to hunt for the community door themselves. Classification is done
-    // upstream at the catch site, not here · so we don't overclaim "this
-    // was gas" when it was actually a different failure.
-    if (isGasError && onTopUp) {
-      return (
-        <button
-          onClick={onTopUp}
-          style={{
-            width: "100%",
-            marginTop: 14, padding: "12px 14px", borderRadius: 10,
-            background: "rgba(251,146,60,0.12)",
-            border: "1px solid rgba(251,146,60,0.45)",
-            color: "#fdba74",
-            cursor: "pointer", fontFamily: "inherit",
-            display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
-          <span style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>Score not saved · needs a top up</div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(253,186,116,0.85)", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
-          </span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
-      );
-    }
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: isGasError ? "rgba(251,146,60,0.1)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${isGasError ? "rgba(251,146,60,0.32)" : "rgba(239,68,68,0.2)"}`,
-        color: isGasError ? "#fdba74" : "rgba(252,165,165,0.85)",
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>{txError}</div>
-    );
-  }
-  if (error) {
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: "rgba(239,68,68,0.08)",
-        border: "1px solid rgba(239,68,68,0.2)",
-        color: "rgba(252,165,165,0.85)",
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>{error}</div>
-    );
-  }
-  if (!result) return null;
-
-  const { rank, xpEarned, isNewPb, prevBest, newAchievements = [] } = result;
-  const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
-  return (
-    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {rank ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: 10,
-            background: "rgba(251,191,36,0.08)",
-            border: "1px solid rgba(251,191,36,0.28)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#fbbf24", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: 2 }}>
-              #{rank}
-            </div>
-          </div>
-        ) : <div />}
-        {typeof xpEarned === "number" ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: 10,
-            background: "rgba(167,139,250,0.1)",
-            border: "1px solid rgba(167,139,250,0.3)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#a78bfa", fontSize: 22, fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: 2 }}>
-              +{xpEarned}
-            </div>
-          </div>
-        ) : <div />}
-      </div>
-
-      {showPbDelta && typeof prevBest === "number" && (
-        <div style={{
-          padding: "10px 12px", borderRadius: 10,
-          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
-          border: "1px solid rgba(6,182,212,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
-        }}>
-          <div style={{ color: "#67e8f9", fontSize: 12, fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ NEW PERSONAL BEST ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: 800, marginTop: 3 }}>
-            Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#86efac", fontWeight: 900 }}>+{Math.max(0, score - prevBest)}</span>
-          </div>
-        </div>
-      )}
-
-      {newAchievements.length > 0 && newAchievements.map(a => (
-        <div key={a.id} style={{
-          padding: "10px 12px", borderRadius: 10,
-          background: "rgba(251,191,36,0.08)",
-          border: "1px solid rgba(251,191,36,0.32)",
-          display: "flex", alignItems: "center", gap: 10,
-        }}>
-          <div style={{ fontSize: 22 }}>{a.icon || "🏆"}</div>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>UNLOCKED</div>
-            <div style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>{a.name}</div>
-            {a.desc && <div style={{ color: "rgba(200,180,255,0.65)", fontSize: 10, fontWeight: 700 }}>{a.desc}</div>}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

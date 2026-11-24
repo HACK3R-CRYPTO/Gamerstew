@@ -10,14 +10,14 @@ import { useEffect, useState } from "react";
 type Row = { rank: number; name: string; qualifiedReferrals: number };
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 42%, #0a0226 100%)",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.82)",
-  inkSoft: "rgba(220,210,255,0.62)",
-  surface: "rgba(40,18,100,0.5)",
-  hairline: "rgba(255,255,255,0.09)",
-  gold: "#fde68a",
-  accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  gold: "#b45309",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
 };
@@ -34,7 +34,7 @@ export default function CreatorContest() {
       .then((d) => { if (alive && d) { setRows(d.leaderboard || []); setMeta({ updatedAt: d.updatedAt, rule: d.rule, window: d.window }); } })
       .catch(() => {});
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(() => { if (!document.hidden) void load(); }, 60_000) /* a tab nobody is looking at does not need fresh data */;
     return () => { alive = false; clearInterval(id); };
   }, []);
 

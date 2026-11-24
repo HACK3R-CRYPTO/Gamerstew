@@ -13,13 +13,13 @@ import { getCollectiveChoice, chooseCollective } from "@/app/actions/collective"
 
 const T = {
   ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
+  inkDim: "rgba(34,16,79,0.8)",
+  inkSoft: "rgba(34,16,79,0.66)",
   surface: "rgba(40,18,100,0.55)",
   hairline: "rgba(255,255,255,0.08)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
-const GOOD = "#22c55e";
+const GOOD = "#15803d";
 
 export default function CollectivePicker() {
   const { address } = useAccount();
@@ -52,10 +52,10 @@ export default function CollectivePicker() {
   return (
     <div style={{ borderRadius: 14, background: T.surface, border: `1px solid ${T.hairline}`, overflow: "hidden" }}>
       <div style={{ padding: "12px 14px 4px", display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,197,94,0.14)", border: "1px solid rgba(134,239,172,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>💚</div>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(34,197,94,0.14)", border: "1px solid rgba(22,163,74,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>💚</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700 }}>
-            Your UBI collective {savedFlash && <span style={{ color: "#86efac", fontSize: 11 }}>· ✓ saved</span>}
+            Your UBI collective {savedFlash && <span style={{ color: "#15803d", fontSize: 11 }}>· ✓ saved</span>}
           </div>
           <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2, lineHeight: 1.35 }}>
             20% of every G$ you spend funds UBI — choose where yours goes
@@ -72,8 +72,8 @@ export default function CollectivePicker() {
               style={{
                 display: "flex", alignItems: "center", gap: 10, textAlign: "left",
                 padding: "10px 12px", borderRadius: 12, cursor: saving ? "wait" : "pointer",
-                background: on ? "rgba(34,197,94,0.12)" : "rgba(0,0,0,0.25)",
-                border: `1px solid ${on ? "rgba(134,239,172,0.5)" : T.hairline}`,
+                background: on ? "rgba(34,197,94,0.12)" : "#fff",
+                border: `1px solid ${on ? "rgba(22,163,74,0.55)" : T.hairline}`,
                 transition: "background 0.15s, border-color 0.15s",
               }}
             >
@@ -82,7 +82,7 @@ export default function CollectivePicker() {
                 <span style={{ display: "block", fontFamily: T.body, fontSize: 12.5, fontWeight: 700, color: T.ink }}>{c.name}</span>
                 <span style={{ display: "block", fontFamily: T.body, fontSize: 10, color: T.inkSoft, marginTop: 1 }}>{c.tagline}</span>
               </span>
-              <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `2px solid ${on ? GOOD : "rgba(255,255,255,0.25)"}`, background: on ? GOOD : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#04160a", fontWeight: 900 }}>
+              <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `2px solid ${on ? GOOD : "rgba(76,29,149,0.3)"}`, background: on ? GOOD : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#04160a", fontWeight: 900 }}>
                 {on ? "✓" : ""}
               </span>
             </button>

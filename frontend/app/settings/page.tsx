@@ -25,17 +25,17 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 // sfx / app audio), each with its own toggle and 0–100 slider — same
 // wiring already shipped via useAudioSettings.
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   bgSolid: "#0a0226",
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.55)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   danger: "#f43f5e",
-  good: "#22c55e",
+  good: "#15803d",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -106,7 +106,7 @@ function Toggle({ on, onChange, disabled = false }: { on: boolean; onChange: (v:
       style={{
         width: 46, height: 27, borderRadius: 999, flexShrink: 0, cursor: disabled ? "not-allowed" : "pointer",
         position: "relative", padding: 0,
-        background: on ? T.accent : "rgba(255,255,255,0.12)",
+        background: on ? T.accent : "rgba(76,29,149,0.12)",
         border: `1px solid ${on ? T.accent : T.hairlineHi}`,
         boxShadow: on ? `0 0 12px ${T.accent}66, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
         transition: "all 0.18s",
@@ -276,7 +276,7 @@ export default function SettingsPage() {
     minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body,
   } : {
     minHeight: "100vh", width: "100%",
-    background: "rgba(2,0,12,0.78)",
+    background: "rgba(243,238,255,0.7)",
     backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
     display: "flex", flexDirection: "column", justifyContent: "flex-end",
     color: T.ink, fontFamily: T.body,
@@ -287,7 +287,7 @@ export default function SettingsPage() {
     padding: "16px 32px 130px",
     display: "flex", flexDirection: "column", gap: 18,
   } : {
-    background: "linear-gradient(180deg, rgba(20,8,52,0.98) 0%, rgba(8,2,28,0.99) 100%)",
+    background: "#ffffff",
     borderRadius: "26px 26px 0 0",
     border: `1px solid ${T.hairlineHi}`,
     borderBottom: "none",
@@ -312,7 +312,7 @@ export default function SettingsPage() {
         {/* Drag handle · mobile only */}
         {!isDesktop && (
           <div style={{ padding: "10px 0 2px", display: "flex", justifyContent: "center" }}>
-            <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+            <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.18)" }} />
           </div>
         )}
 
@@ -320,7 +320,7 @@ export default function SettingsPage() {
             instead of a back chip; sheet UX expects an X. */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: isDesktop ? 4 : 2 }}>
           {isDesktop ? (
-            <button onClick={() => router.back()} aria-label="Back" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px 8px 9px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+            <button onClick={() => router.back()} aria-label="Back" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px 8px 9px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
               <Icon name="back" size={15} color="currentColor" /> Back
             </button>
           ) : null}
@@ -329,7 +329,7 @@ export default function SettingsPage() {
             <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 28 : 22, color: T.ink, margin: "2px 0 0", lineHeight: 1.1, letterSpacing: "-0.005em" }}>Settings</h1>
           </div>
           {!isDesktop && (
-            <button onClick={() => router.back()} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim }}>
+            <button onClick={() => router.back()} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           )}
@@ -352,7 +352,7 @@ export default function SettingsPage() {
                 onClick={address ? copyAddress : undefined}
               >
                 {address && (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 999, background: copied ? "rgba(34,197,94,0.16)" : "rgba(255,255,255,0.05)", border: `1px solid ${copied ? "rgba(134,239,172,0.5)" : T.hairline}`, color: copied ? "#86efac" : T.inkDim, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 999, background: copied ? "rgba(34,197,94,0.16)" : "rgba(76,29,149,0.05)", border: `1px solid ${copied ? "rgba(21,128,61,0.75)" : T.hairline}`, color: copied ? "#15803d" : T.inkDim, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em" }}>
                     {copied ? "COPIED" : (<><Icon name="copy" size={12} color="currentColor" /> COPY</>)}
                   </span>
                 )}
@@ -368,7 +368,7 @@ export default function SettingsPage() {
                 }
                 onClick={isVerified || !isVerificationResolved ? undefined : () => router.push(`/verify?next=${encodeURIComponent("/settings")}`)}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: isVerified ? "rgba(34,197,94,0.14)" : "rgba(167,139,250,0.14)", border: `1px solid ${isVerified ? "rgba(134,239,172,0.45)" : `${T.accent}55`}`, color: isVerified ? "#86efac" : T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: isVerified ? "rgba(34,197,94,0.14)" : "rgba(109,40,217,0.39)", border: `1px solid ${isVerified ? "rgba(21,128,61,0.7)" : `${T.accent}55`}`, color: isVerified ? "#15803d" : T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
                   {!isVerificationResolved ? "CHECKING" : isVerified ? "✓ VERIFIED" : hasLapsed ? "EXPIRED" : "PENDING"}
                 </span>
               </Row>
@@ -394,7 +394,7 @@ export default function SettingsPage() {
                 sub="Real GoodDollar money · earn from claims and play, spend on habitats or send out for real-world use. Tap to manage."
                 onClick={address ? () => setWalletSheetOpen(true) : undefined}
               >
-                <span style={{ fontFamily: T.display, fontSize: 15, color: "#fde68a", lineHeight: 1, textShadow: "0 0 8px rgba(251,191,36,0.4)" }}>{fmtG(gBal as bigint | undefined)}</span>
+                <span style={{ fontFamily: T.display, fontSize: 15, color: "#b45309", lineHeight: 1, textShadow: "0 0 8px rgba(180,83,9,0.65)" }}>{fmtG(gBal as bigint | undefined)}</span>
               </Row>
               {/* Gas hint row · only surfaces when the player is in warn or
                   block state. Stays invisible to MiniPay users (fee-currency
@@ -408,7 +408,7 @@ export default function SettingsPage() {
                   sub="Top up via the community to keep saving scores onchain."
                   onClick={() => setGasHelpOpen(true)}
                 >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: gasStatus === "block" ? "rgba(239,68,68,0.14)" : "rgba(251,191,36,0.14)", border: `1px solid ${gasStatus === "block" ? "rgba(239,68,68,0.5)" : "rgba(251,191,36,0.45)"}`, color: gasStatus === "block" ? "#fda4af" : "#fbbf24", fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: gasStatus === "block" ? "rgba(239,68,68,0.14)" : "rgba(180,83,9,0.39)", border: `1px solid ${gasStatus === "block" ? "rgba(239,68,68,0.5)" : "rgba(180,83,9,0.7)"}`, color: gasStatus === "block" ? "#be123c" : "#b45309", fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
                     TOP UP
                   </span>
                 </Row>
@@ -423,7 +423,7 @@ export default function SettingsPage() {
                   sub="Move your wallet to MetaMask, Rabby or any wallet — needed to vote for GameArena on Flow State."
                   onClick={address ? onExportKey : undefined}
                 >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: "rgba(167,139,250,0.14)", border: "1px solid rgba(167,139,250,0.45)", color: T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: "rgba(109,40,217,0.39)", border: "1px solid rgba(109,40,217,0.7)", color: T.accent, fontFamily: T.body, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>
                     EXPORT
                   </span>
                 </Row>
@@ -505,7 +505,7 @@ export default function SettingsPage() {
                       padding: "5px 10px", borderRadius: 999, cursor: "pointer",
                       background: "rgba(167,139,250,0.12)",
                       border: "1px solid rgba(167,139,250,0.4)",
-                      color: "rgba(220,210,255,0.9)",
+                      color: "rgba(34,16,79,0.9)",
                       fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
                     }}
                   >HOW TO ENABLE</button>
@@ -580,7 +580,7 @@ export default function SettingsPage() {
                 label="Language"
                 sub="More languages land when translations ship."
               >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em" }}>
                   English
                 </span>
               </Row>
@@ -651,7 +651,7 @@ export default function SettingsPage() {
                 borderRadius: 16,
                 background: "rgba(244,63,94,0.10)",
                 border: `1px solid ${T.danger}44`,
-                color: "#fda4af",
+                color: "#be123c",
                 fontFamily: T.body, fontSize: 13, fontWeight: 800, letterSpacing: "0.08em",
                 cursor: "pointer",
               }}

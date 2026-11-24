@@ -51,27 +51,27 @@ export function PushOptInModal({
   return (
     <div onClick={close} style={{
       position: "fixed", inset: 0, zIndex: 200,
-      background: "rgba(4,0,20,0.78)", backdropFilter: "blur(8px)",
+      background: "rgba(34,16,79,0.45)", backdropFilter: "blur(8px)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         width: "100%", maxWidth: "380px",
         borderRadius: "20px",
-        background: "linear-gradient(180deg, #2a0c6e 0%, #07021a 100%)",
-        border: "1.5px solid rgba(167,139,250,0.4)",
+        background: "#fbf8ff",
+        border: "1px solid rgba(76,29,149,0.16)",
         boxShadow: "0 0 40px rgba(167,139,250,0.4), 0 24px 48px rgba(0,0,0,0.7)",
         padding: "24px 22px",
         textAlign: "center",
       }}>
         <div style={{ fontSize: "44px" }}>🔔</div>
         <div style={{
-          color: "white", fontSize: "16px", fontWeight: 900,
+          color: "#22104f", fontSize: "16px", fontWeight: 900,
           marginTop: "10px", letterSpacing: "0.02em",
         }}>
           Don&apos;t lose your streak
         </div>
         <div style={{
-          color: "rgba(220,210,255,0.72)", fontSize: "12px",
+          color: "rgba(34,16,79,0.72)", fontSize: "12px",
           lineHeight: 1.5, marginTop: "10px",
         }}>
           Get a heads-up before your streak ends. We&apos;ll only ping you for streaks, cup deadlines, and rank changes — never spam.
@@ -81,9 +81,9 @@ export function PushOptInModal({
           <button onClick={close} disabled={busy} style={{
             flex: 1, padding: "11px",
             borderRadius: "999px",
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "rgba(255,255,255,0.7)",
+            background: "#fff",
+            border: "1px solid rgba(76,29,149,0.18)",
+            color: "#22104f",
             fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
             cursor: busy ? "not-allowed" : "pointer",
           }}>NOT NOW</button>

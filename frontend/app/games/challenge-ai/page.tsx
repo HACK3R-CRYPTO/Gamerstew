@@ -17,13 +17,16 @@
 // is revealed at match end; every MARKOV decision derives deterministically
 // from seed + observed history, so the match is replayable and verifiable.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AgentArena, { agentHue as lobbyAgentHue, useAgentLaunch, type LaunchPhase } from "@/components/AgentArena";
 import { useOwnedAgents, type OwnedAgent } from "@/hooks/useOwnedAgents";
 import { getSettingsCached, prefetchAgentData } from "@/lib/agentPrefetch";
 import AppHeader from "@/components/AppHeader";
+import dynamic from "next/dynamic";
+// The 3D fight loads only when a match starts, so the lobby stays light.
+const FightStage3D = dynamic(() => import("@/components/FightStage3D"), { ssr: false });
 import AppBottomNav from "@/components/AppBottomNav";
 import { useAccount, useReadContract } from "wagmi";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
@@ -74,6 +77,15 @@ const T = {
   hairline: "rgba(255,255,255,0.08)",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+};
+// The lobby and the result are app screens, so they use the app's light look.
+// The fight (VS sting and match) is a scene, and stays dark.
+const L = {
+  bg: "radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.7)",
+  inkSoft: "rgba(34,16,79,0.62)",
+  hairline: "rgba(76,29,149,0.16)",
 };
 // Challenge AI's identity from the games hub card: deep green + #22c55e glow
 const AI_GREEN = "#22c55e";
@@ -493,14 +505,15 @@ export default function ChallengeAiPage() {
   }, []);
 
   const inMatch = phase === "vs" || phase === "match";
+  const light = phase === "lobby" || phase === "result"; // the agent screen is still dark
 
   return (
     <div
       ref={rootRef}
       style={{
         minHeight: "100dvh",
-        background: T.bg,
-        color: T.ink,
+        background: light ? L.bg : T.bg,
+        color: light ? L.ink : T.ink,
         fontFamily: T.body,
         position: "relative",
         overflow: "hidden",
@@ -508,7 +521,7 @@ export default function ChallengeAiPage() {
     >
 
       {/* App shell on browse screens · fullscreen immersion during the fight */}
-      {!inMatch && <AppHeader />}
+      {!inMatch && <AppHeader tone={light ? "light" : "dark"} />}
 
       {/* match-phase header: quit + format badge */}
       {inMatch && (
@@ -607,7 +620,7 @@ export default function ChallengeAiPage() {
         )}
       </div>
 
-      {!inMatch && <AppBottomNav wide={isDesktop} />}
+      {!inMatch && <AppBottomNav wide={isDesktop} tone={light ? "light" : "dark"} />}
     </div>
   );
 }
@@ -717,7 +730,7 @@ function Lobby({
           game" (its Play tab is the current section). Recognition over recall:
           a clear, consistent way out from the arena. */}
       <Link href="/games" aria-label="Back to games" style={{ textDecoration: "none", position: "relative", zIndex: 3, alignSelf: "flex-start", marginBottom: 10 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 13px 6px 10px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: T.inkDim, cursor: "pointer" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 13px 6px 10px", borderRadius: 999, background: "#fff", border: `1px solid ${L.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: L.inkDim, cursor: "pointer" }}>
           <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>‹</span> GAMES
         </span>
       </Link>
@@ -749,10 +762,10 @@ function Lobby({
         {(() => {
           const mine = ladder?.me ?? (ladder && myAddress ? ladder.top.find((e) => e.wallet === myAddress.toLowerCase()) : undefined);
           return (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800 }}>
-              <span style={{ color: T.inkSoft, letterSpacing: "0.06em" }}>WEEK</span>
-              <span style={{ color: "#86efac" }}>{mine?.wins ?? 0}W</span>
-              <span style={{ color: T.inkDim }}>{mine?.matches ?? 0} played</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 999, background: "#fff", border: `1px solid ${L.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800 }}>
+              <span style={{ color: L.inkSoft, letterSpacing: "0.06em" }}>WEEK</span>
+              <span style={{ color: "#166534" }}>{mine?.wins ?? 0}W</span>
+              <span style={{ color: L.inkDim }}>{mine?.matches ?? 0} played</span>
               {record.streak > 1 && <span style={{ color: RIM }}>⚡{record.streak}</span>}
             </span>
           );
@@ -766,10 +779,10 @@ function Lobby({
             style={{
               display: "inline-flex", alignItems: "center", gap: 5,
               padding: "6px 13px", borderRadius: 999,
-              background: demoLeft === 0 ? "rgba(167,139,250,0.2)" : "rgba(0,0,0,0.4)",
-              border: `1px solid ${demoLeft === 0 ? "rgba(167,139,250,0.6)" : T.hairline}`,
+              background: demoLeft === 0 ? "rgba(167,139,250,0.2)" : "#fff",
+              border: `1px solid ${demoLeft === 0 ? "rgba(167,139,250,0.6)" : L.hairline}`,
               fontFamily: T.display, fontSize: 12.5, letterSpacing: "0.04em",
-              color: demoLeft === 0 ? "#c4b5fd" : "#fff",
+              color: demoLeft === 0 ? "#6d28d9" : "#22104f",
             }}
           >
             🎮 {demoLeft > 0 ? `DEMO · ${demoLeft} of ${DEMO_MATCH_LIMIT}` : "DEMO OVER"}
@@ -779,8 +792,8 @@ function Lobby({
             style={{
               display: "inline-flex", alignItems: "center", gap: 5,
               padding: "6px 13px", borderRadius: 999,
-              background: remaining === 0 ? "rgba(239,68,68,0.18)" : "rgba(0,0,0,0.4)",
-              border: `1px solid ${remaining === 0 ? "rgba(239,68,68,0.6)" : remaining <= 2 ? "rgba(251,191,36,0.55)" : T.hairline}`,
+              background: remaining === 0 ? "rgba(239,68,68,0.18)" : "#fff",
+              border: `1px solid ${remaining === 0 ? "rgba(239,68,68,0.6)" : remaining <= 2 ? "rgba(251,191,36,0.55)" : L.hairline}`,
               fontFamily: T.display, fontSize: 12.5, letterSpacing: "0.04em",
               color: remaining === 0 ? "#fca5a5" : remaining <= 2 ? RIM : "#fff",
             }}
@@ -789,9 +802,9 @@ function Lobby({
           </span>
         )}
         <Link href="/games/challenge-ai/leaderboard" style={{ textDecoration: "none" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: "rgba(0,0,0,0.4)", border: `1px solid ${myRank === 1 ? "rgba(251,191,36,0.5)" : T.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, color: T.inkDim, cursor: "pointer" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: "#fff", border: `1px solid ${myRank === 1 ? "rgba(251,191,36,0.5)" : L.hairline}`, fontFamily: T.body, fontSize: 11, fontWeight: 800, color: L.inkDim, cursor: "pointer" }}>
             🏆 {myRank ? (myRank === 1 ? <span style={{ color: RIM }}>#1 · {myPts} pts</span> : `#${myRank} · ${myPts} pts`) : leader ? `${leader.wallet.slice(0, 4)}… leads` : "Weekly ladder"}
-            <span style={{ color: T.inkSoft }}>›</span>
+            <span style={{ color: L.inkSoft }}>›</span>
           </span>
         </Link>
       </div>
@@ -803,14 +816,14 @@ function Lobby({
           key={tauntIdx}
           style={{
             maxWidth: 270,
-            background: "rgba(0,0,0,0.6)",
+            background: "#ffffff",
             border: "1px solid rgba(251,191,36,0.4)",
             borderRadius: 14,
             padding: "9px 14px",
             fontFamily: T.body,
             fontSize: 12.5,
             fontStyle: "italic",
-            color: "rgba(240,230,255,0.92)",
+            color: "#22104f",
             textAlign: "center",
             animation: "bubblePop 0.4s cubic-bezier(0.22,1.4,0.36,1) both",
             position: "relative",
@@ -818,7 +831,7 @@ function Lobby({
           }}
         >
           “{TAUNTS[tauntIdx % TAUNTS.length]}”
-          <span style={{ position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%) rotate(45deg)", width: 12, height: 12, background: "rgba(0,0,0,0.6)", borderRight: "1px solid rgba(251,191,36,0.4)", borderBottom: "1px solid rgba(251,191,36,0.4)" }} />
+          <span style={{ position: "absolute", bottom: -7, left: "50%", transform: "translateX(-50%) rotate(45deg)", width: 12, height: 12, background: "#ffffff", borderRight: "1px solid rgba(251,191,36,0.4)", borderBottom: "1px solid rgba(251,191,36,0.4)" }} />
         </div>
 
         {/* MARKOV · the boss */}
@@ -839,10 +852,10 @@ function Lobby({
 
         {/* name plate */}
         <div style={{ textAlign: "center", marginTop: 4 }}>
-          <div style={{ fontFamily: T.display, fontSize: 26, color: "#fff", letterSpacing: "0.05em", textShadow: `0 0 24px ${RIM}66` }}>
+          <div style={{ fontFamily: T.display, fontSize: 26, color: "#22104f", letterSpacing: "0.05em" }}>
             MARKOV
           </div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, fontWeight: 700, marginTop: 2 }}>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: L.inkDim, fontWeight: 700, marginTop: 2 }}>
             Free · Best of 5 · it learns your patterns
           </div>
         </div>
@@ -869,7 +882,7 @@ function Lobby({
       </div>
 
       {error && (
-        <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "9px 14px", fontFamily: T.body, fontSize: 12, color: "#fca5a5", textAlign: "center", position: "relative", zIndex: 2, marginBottom: 8 }}>
+        <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 12, padding: "9px 14px", fontFamily: T.body, fontSize: 12, color: "#be123c", textAlign: "center", position: "relative", zIndex: 2, marginBottom: 8 }}>
           {error}
         </div>
       )}
@@ -879,7 +892,7 @@ function Lobby({
         {refillOffer ? (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontFamily: T.display, fontSize: 14, color: RIM, letterSpacing: "0.03em" }}>OUT OF MATCHES FOR TODAY</div>
-            <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, fontWeight: 700, margin: "5px 0 8px" }}>
+            <div style={{ fontFamily: T.body, fontSize: 11.5, color: L.inkDim, fontWeight: 700, margin: "5px 0 8px" }}>
               🎟 0 left → pay {refillPriceGs} G$ → play {refillOffer.grants} more right now
             </div>
             <div
@@ -887,14 +900,14 @@ function Lobby({
               onClick={buying ? undefined : onBuyRefill}
               style={{ cursor: buying ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}
             >
-              <div style={{ borderRadius: "16px 16px 12px 12px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
+              <div style={{ borderRadius: "16px 16px 12px 12px", background: buying ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "16px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(76,29,149,0.16)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
                 <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-                <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 16, color: "#fff", letterSpacing: "0.04em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
+                <span style={{ position: "relative", zIndex: 1, fontFamily: T.display, fontSize: 16, color: "#22104f", letterSpacing: "0.04em" }}>
                   {buying ? "CONFIRMING ON CELO…" : `🎟 +${refillOffer.grants} MATCHES · ${refillPriceGs} G$`}
                 </span>
               </div>
             </div>
-            <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 7 }}>
+            <div style={{ fontFamily: T.body, fontSize: 10.5, color: L.inkSoft, marginTop: 7 }}>
               Resets daily · G$ feeds the prize pool
             </div>
           </div>
@@ -928,7 +941,7 @@ function Lobby({
           ) : (
             /* Standalone site · demo spent, this is the ask. Ranked play, a
                provable match, the ladder and G$ all live behind sign-in. */
-            <Link href="/home" style={{ textDecoration: "none" }}>
+            <Link href="/home?signin=1" style={{ textDecoration: "none" }}>
               <div style={{ cursor: "pointer", userSelect: "none", borderRadius: 18, background: "#2e1065", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(167,139,250,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)" }}>
                 <div style={{ borderRadius: "16px 16px 12px 12px", background: "linear-gradient(160deg, #d6c8ff 0%, #a78bfa 50%, #6d28d9 100%)", padding: "18px 20px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center" }}>
                   <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
@@ -937,7 +950,7 @@ function Lobby({
                   </span>
                 </div>
               </div>
-              <div style={{ textAlign: "center", marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+              <div style={{ textAlign: "center", marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: L.inkSoft, fontWeight: 700 }}>
                 That was the demo · sign in for ranked matches, the ladder, and G$
               </div>
             </Link>
@@ -949,7 +962,7 @@ function Lobby({
                 control = same context, all options visible). */}
             {showAgentOption && (
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-                <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 999, background: "rgba(0,0,0,0.45)", border: `1px solid ${T.hairline}` }}>
+                <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 999, background: "#fff", border: `1px solid ${L.hairline}` }}>
                   {([
                     { id: "you" as const, label: "🎮 YOU", on: "#22c55e", ink: "#fff" },
                     { id: "ai" as const, label: "🤖 YOUR AI", on: "#22d3ee", ink: "#062c38" },
@@ -962,7 +975,7 @@ function Lobby({
                         background: active ? opt.on : "transparent", border: "none",
                         // inkDim, not inkSoft: an unselected mode must read as
                         // tappable, never disabled.
-                        color: active ? opt.ink : T.inkDim,
+                        color: active ? opt.ink : L.inkDim,
                         fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
                         boxShadow: active ? `0 6px 14px -4px ${opt.on}aa, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
                         transition: "background 0.15s, color 0.15s",
@@ -971,7 +984,7 @@ function Lobby({
                         {opt.label}
                         {/* novelty signpost · gold pulse until first visit, then gone forever */}
                         {opt.id === "ai" && !seenAiMode && (
-                          <span style={{ position: "absolute", top: -8, right: -6, background: "#fbbf24", color: "#3b2004", fontFamily: T.body, fontSize: 8, fontWeight: 900, letterSpacing: "0.1em", borderRadius: 999, padding: "2px 7px", boxShadow: "0 3px 8px rgba(0,0,0,0.4)", animation: "glowPulse 2s ease-in-out infinite" }}>
+                          <span style={{ position: "absolute", top: -8, right: -6, background: "#fbbf24", color: "#3b2004", fontFamily: T.body, fontSize: 8, fontWeight: 900, letterSpacing: "0.1em", borderRadius: 999, padding: "2px 7px", boxShadow: "0 3px 8px rgba(76,29,149,0.22)", animation: "glowPulse 2s ease-in-out infinite" }}>
                             NEW
                           </span>
                         )}
@@ -989,14 +1002,14 @@ function Lobby({
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
                 <button
                   onClick={onAgentSettings}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 15px", minHeight: 38, borderRadius: 999, cursor: "pointer", background: "rgba(0,0,0,0.4)", border: `1px solid ${T.hairline}`, fontFamily: T.body, transition: "background 0.15s" }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 15px", minHeight: 38, borderRadius: 999, cursor: "pointer", background: "#fff", border: `1px solid ${L.hairline}`, fontFamily: T.body, transition: "background 0.15s" }}
                 >
                   <span style={{ fontSize: 12 }}>⚙️</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: T.inkSoft }}>GAME PLAN</span>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, color: "#67e8f9" }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: L.inkSoft }}>GAME PLAN</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: "#0e7490" }}>
                     {agentStrategy ? ({ random: "🎲 Random", counter: "🧠 Counter", sequence: "🔁 Sequence", fixed: "📌 Fixed" } as Record<string, string>)[agentStrategy] ?? agentStrategy : "…"}
                   </span>
-                  <span style={{ color: T.inkSoft, fontSize: 12 }}>›</span>
+                  <span style={{ color: L.inkSoft, fontSize: 12 }}>›</span>
                 </button>
               </div>
             )}
@@ -1032,7 +1045,7 @@ function Lobby({
                   onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 >
-                  <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busyAi ? "rgba(34,211,238,0.4)" : "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busyAi ? "rgba(34,211,238,0.4)" : "linear-gradient(160deg, #a5f3fc 0%, #22d3ee 55%, #0e7490 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(76,29,149,0.16)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.55), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.6) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
                     <div style={{ position: "relative", zIndex: 1 }}>
                       <div style={{ fontFamily: T.display, fontSize: busyAi || checking ? 15 : 18, color: "#062c38", letterSpacing: "0.04em" }}>
@@ -1051,21 +1064,21 @@ function Lobby({
               <div
                 role="button"
                 onClick={busy ? undefined : onStart}
-                style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#052e16", paddingBottom: 6, boxShadow: "0 12px 26px -6px rgba(34,197,94,0.6), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
+                style={{ cursor: busy ? "wait" : "pointer", userSelect: "none", borderRadius: 18, background: "#4c1d95", paddingBottom: 6, boxShadow: "0 16px 26px -12px rgba(76,29,149,0.9), inset 0 -3px 8px rgba(0,0,0,0.4)", transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}
                 onMouseDown={(e) => { if (!busy) (e.currentTarget as HTMLDivElement).style.transform = "scale(0.97) translateY(3px)"; }}
                 onMouseUp={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; }}
               >
-                <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busy ? "rgba(34,197,94,0.45)" : "linear-gradient(160deg, #6ee76e 0%, #22c55e 50%, #15803d 100%)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "2px solid rgba(255,255,255,0.4)", boxShadow: "inset 0 8px 18px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(0,0,0,0.25)", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
-                  <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.85)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
+                <div style={{ borderRadius: "16px 16px 12px 12px", minHeight: 66, boxSizing: "border-box", background: busy ? "#a78bfa" : "linear-gradient(180deg, #7c3aed, #6d28d9)", padding: "13px 20px 11px", position: "relative", overflow: "hidden", border: "none", boxShadow: "none", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ position: "absolute", top: 2, left: "4%", right: "4%", height: "48%", background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, transparent 100%)", borderRadius: "14px 14px 60px 60px", pointerEvents: "none" }} />
+                  <div style={{ position: "absolute", top: 7, left: 14, width: 28, height: 10, background: "rgba(255,255,255,0.25)", borderRadius: "50%", filter: "blur(2px)", transform: "rotate(-14deg)", pointerEvents: "none" }} />
                   <div style={{ position: "relative", zIndex: 1 }}>
-                    <div style={{ fontFamily: T.display, fontSize: 19, color: "#fff", letterSpacing: "0.05em", textShadow: "0 2px 4px rgba(0,0,0,0.45)" }}>
-                      {busy ? "SUMMONING MARKOV…" : "⚔️ FIGHT"}
+                    <div style={{ fontFamily: T.display, fontSize: 21, color: "#fff", letterSpacing: "0.05em" }}>
+                      {busy ? "Summoning MARKOV…" : "Fight"}
                     </div>
                     {!busy && (
-                      <div style={{ fontFamily: T.body, fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, textShadow: "0 1px 3px rgba(0,0,0,0.4)", whiteSpace: "nowrap" }}>
-                        YOU THROW THE MOVES
+                      <div style={{ fontFamily: T.body, fontSize: 11, color: "rgba(255,255,255,0.9)", fontWeight: 800, letterSpacing: "0.08em", marginTop: 2, whiteSpace: "nowrap" }}>
+                        You throw the moves
                       </div>
                     )}
                   </div>
@@ -1073,9 +1086,10 @@ function Lobby({
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, fontWeight: 700 }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, fontFamily: T.body, fontSize: 10.5, color: L.inkSoft, fontWeight: 700 }}>
               <span>🔒 provably fair{aiMode ? " · streams live" : ""}</span>
             </div>
+            {/* Play a friend for a stake, in this game. */}
           </>
         )}
       </div>
@@ -1120,6 +1134,14 @@ function VsSting({ pet }: { pet: PetStage }) {
 }
 
 // ═══ Match stage ══════════════════════════════════════════════════════════════
+// If WebGL is missing or the 3D scene throws, fall back to the 2D fighters.
+class FightGuard extends Component<{ onFail: () => void; children: ReactNode }, { dead: boolean }> {
+  state = { dead: false };
+  static getDerivedStateFromError() { return { dead: true }; }
+  componentDidCatch() { this.props.onFail(); }
+  render() { return this.state.dead ? null : this.props.children; }
+}
+
 function MatchStage({
   pet, score, roundNum, beat, chantIdx, lastRound, matchStreak, onThrow,
 }: {
@@ -1133,6 +1155,7 @@ function MatchStage({
   onThrow: (m: number) => void;
 }) {
   const armed = beat === "armed";
+  const [fight3d, setFight3d] = useState(true);
   const impact = beat === "impact" && lastRound;
   const playerWonRound = impact && lastRound!.result === "win";
   const aiWonRound = impact && lastRound!.result === "loss";
@@ -1201,9 +1224,11 @@ function MatchStage({
       <div
         style={{
           position: "relative",
-          minHeight: 300,
+          // The stage is a painted night arena now, and taller: it used to be a
+          // small dark box with half the screen empty beneath it.
+          minHeight: "clamp(300px, 47dvh, 440px)",
           borderRadius: 22,
-          background: "linear-gradient(180deg, rgba(8,2,32,0.55) 0%, rgba(15,8,44,0.85) 100%)",
+          background: "linear-gradient(180deg, rgba(8,2,32,0.5) 0%, rgba(8,2,32,0.15) 45%, rgba(10,4,34,0.55) 100%), url(/games/challenge-arena.webp) center 72% / cover no-repeat, #0a0424",
           border: `1px solid ${sudden ? "rgba(239,68,68,0.45)" : "rgba(255,255,255,0.1)"}`,
           overflow: "hidden",
           display: "flex",
@@ -1212,6 +1237,17 @@ function MatchStage({
           animation: sudden ? "dangerPulse 1.4s ease-in-out infinite" : undefined,
         }}
       >
+        {/* The floor: a grid of light lying flat and running away from you, so the
+            two fighters stand ON something with depth, not against a flat wall. */}
+        <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "-20%", right: "-20%", bottom: 0, height: "46%", perspective: "260px", perspectiveOrigin: "50% 0%", pointerEvents: "none", zIndex: 1 }}>
+          <div style={{
+            position: "absolute", inset: 0, transform: "rotateX(66deg)", transformOrigin: "50% 100%",
+            backgroundImage: `repeating-linear-gradient(90deg, ${sudden ? "rgba(248,113,113,0.5)" : "rgba(192,132,252,0.42)"} 0 1.5px, transparent 1.5px 44px), repeating-linear-gradient(0deg, ${sudden ? "rgba(248,113,113,0.42)" : "rgba(192,132,252,0.34)"} 0 1.5px, transparent 1.5px 44px)`,
+            WebkitMaskImage: "linear-gradient(to top, #000 0%, #000 45%, transparent 100%)",
+            maskImage: "linear-gradient(to top, #000 0%, #000 45%, transparent 100%)",
+          }} />
+        </div>
+
         {/* arena floor glow */}
         <div aria-hidden style={{ position: "absolute", left: "10%", right: "10%", bottom: 18, height: 26, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(167,139,250,0.28), transparent 70%)", filter: "blur(4px)" }} />
 
@@ -1247,15 +1283,39 @@ function MatchStage({
           </div>
         )}
 
+        {/* The fight itself, in 3D: two fighters on the platform acting out each
+            round. The server still decides the round; this only shows it. If the
+            3D scene cannot start on this device the 2D fighters below take over. */}
+        {fight3d && (
+          <FightGuard onFail={() => setFight3d(false)}>
+            <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 1 }}>
+              <FightStage3D
+                beat={beat}
+                result={impact ? lastRound!.result : null}
+                playerMove={lastRound ? lastRound.playerMove : null}
+                aiMove={lastRound ? lastRound.aiMove : null}
+                moveArt={MOVES.map((m) => m.art)}
+                matchOver={lastRound?.final ? (lastRound.final.outcome === "player_won" ? "win" : lastRound.final.outcome === "ai_won" ? "loss" : null) : null}
+                playerColor={pet.color}
+                danger={sudden}
+              />
+            </div>
+          </FightGuard>
+        )}
+
         {/* combatants — corners, watching the fight */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "14px 20px 22px", position: "relative", zIndex: 2 }}>
-          <div style={{ textAlign: "center", width: 104 }}>
+          <div style={{ textAlign: "center", width: 124, position: "relative" }}>
+            <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: `radial-gradient(ellipse, ${pet.color}99 0%, ${pet.color}33 45%, transparent 72%)`, boxShadow: `0 0 0 2px ${pet.color}66, 0 6px 0 rgba(0,0,0,0.45)` }} />
             <img
               src={pet.src}
               alt="you"
               style={{
-                width: 88,
-                height: 88,
+                position: "relative",
+                width: 112,
+                height: 112,
+                visibility: fight3d ? "hidden" : "visible", // the 3D fighter stands here instead
+                filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: playerWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
@@ -1300,13 +1360,17 @@ function MatchStage({
             )}
           </div>
 
-          <div style={{ textAlign: "center", width: 104 }}>
+          <div style={{ textAlign: "center", width: 124, position: "relative" }}>
+            <div aria-hidden style={{ display: fight3d ? "none" : "block", position: "absolute", left: "50%", bottom: 12, width: 118, height: 30, marginLeft: -59, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(251,191,36,0.6) 0%, rgba(251,191,36,0.2) 45%, transparent 72%)", boxShadow: "0 0 0 2px rgba(251,191,36,0.45), 0 6px 0 rgba(0,0,0,0.45)" }} />
             <img
               src={MARKOV_ART}
               alt="MARKOV"
               style={{
-                width: 88,
-                height: 88,
+                position: "relative",
+                width: 112,
+                height: 112,
+                visibility: fight3d ? "hidden" : "visible", // the 3D fighter stands here instead
+                filter: "drop-shadow(0 10px 10px rgba(0,0,0,0.55))",
                 objectFit: "contain",
                 animation: aiWonRound
                   ? "winnerBounce 0.7s cubic-bezier(0.22,1.4,0.36,1)"
@@ -1400,8 +1464,13 @@ function MatchStage({
                 </>
               ) : (
                 <>
+                  {/* With the 3D fight on, the two moves are real objects acting out the
+                      rule in the ring, so the flat pictures step aside (a spacer keeps
+                      the result text where it was). */}
+                  {fight3d ? <div style={{ height: 118, width: 1 }} /> : (<>
                   <img src={MOVES[lastRound!.playerMove]!.art} alt={MOVES[lastRound!.playerMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashL 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
                   <img src={MOVES[lastRound!.aiMove]!.art} alt={MOVES[lastRound!.aiMove]!.name} style={{ height: 118, filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.65))", animation: "clashR 0.5s cubic-bezier(0.22,1.2,0.36,1) both" }} />
+                  </>)}
                 </>
               )}
             </div>
@@ -1450,8 +1519,11 @@ function MatchStage({
             disabled={!armed}
             style={{
               flex: 1,
-              background: armed ? "rgba(15,11,38,0.92)" : "rgba(30,20,60,0.55)",
-              border: `1px solid ${armed ? "rgba(167,139,250,0.5)" : "rgba(255,255,255,0.06)"}`,
+              // Thick arcade keys: a lit face on a dark wall, which sinks when pressed.
+              background: armed ? "linear-gradient(180deg, #2b1f6b 0%, #170f45 100%)" : "rgba(30,20,60,0.55)",
+              border: `1px solid ${armed ? "rgba(192,132,252,0.7)" : "rgba(255,255,255,0.06)"}`,
+              boxShadow: armed ? "inset 0 2px 0 rgba(255,255,255,0.22), 0 7px 0 #0a0527, 0 14px 22px rgba(0,0,0,0.55)" : "0 3px 0 #0a0527",
+              marginBottom: 7,
               borderRadius: 18,
               padding: "16px 0 12px",
               cursor: armed ? "pointer" : "default",
@@ -1459,11 +1531,13 @@ function MatchStage({
               transform: "scale(1)",
               transition: "transform 0.12s cubic-bezier(0.22,1.4,0.36,1), opacity 0.2s ease",
             }}
-            onMouseDown={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.92)"; }}
+            onMouseDown={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(6px) scale(0.98)"; }}
+            onTouchStart={(e) => { if (armed) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(6px) scale(0.98)"; }}
+            onTouchEnd={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
             onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
           >
-            <img src={m.art} alt={m.name} style={{ height: 44, filter: armed ? "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" : "grayscale(0.5)" }} />
+            <img src={m.art} alt={m.name} style={{ height: 52, filter: armed ? "drop-shadow(0 3px 8px rgba(0,0,0,0.5))" : "grayscale(0.5)" }} />
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(220,210,255,0.75)", marginTop: 4 }}>
               {m.name}
             </div>
@@ -1591,27 +1665,26 @@ function ResultStage({
             fontSize: 32,
             fontWeight: 900,
             marginTop: 8,
-            color: won ? "#86efac" : tied ? "#c4b5fd" : "#fca5a5",
-            textShadow: "0 0 26px currentColor",
+            color: won ? "#86efac" : tied ? "#6d28d9" : "#be123c",
             animation: "resultPunch 0.55s 0.1s cubic-bezier(0.22,1.4,0.36,1) both",
           }}
         >
           {won ? "VICTORY!" : tied ? "DEAD EVEN" : "MARKOV WINS"}
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "rgba(220,210,255,0.8)", marginTop: 4 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#22104f", marginTop: 4 }}>
           {score.player} — {score.ai}{score.ties > 0 ? ` · ${score.ties} tied` : ""}
         </div>
         <div
           style={{
             display: "inline-block",
             marginTop: 12,
-            background: "rgba(0,0,0,0.5)",
-            border: "1px solid rgba(255,255,255,0.14)",
+            background: "#ffffff",
+            border: "1px solid rgba(76,29,149,0.16)",
             borderRadius: 12,
             padding: "8px 14px",
             fontSize: 12.5,
             fontStyle: "italic",
-            color: "rgba(240,230,255,0.9)",
+            color: "#22104f",
             animation: "linePop 0.4s 0.5s ease both",
           }}
         >
@@ -1631,11 +1704,11 @@ function ResultStage({
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             borderRadius: 12,
             border: "1px solid rgba(52,211,153,0.35)",
-            background: "rgba(6,20,16,0.6)",
+            background: "#ffffff",
             padding: "9px 14px",
             textDecoration: "none",
             fontSize: 11.5, fontWeight: 800, letterSpacing: "0.04em",
-            color: "rgba(167,243,208,0.95)",
+            color: "#22104f",
             animation: "riseIn 0.4s 0.3s ease both",
           }}
         >
@@ -1653,7 +1726,7 @@ function ResultStage({
           style={{
             borderRadius: 18,
             border: "1px solid rgba(251,191,36,0.3)",
-            background: "rgba(8,2,32,0.75)",
+            background: "#ffffff",
             padding: "16px 18px",
             animation: "riseIn 0.45s 0.25s ease both",
           }}
@@ -1661,10 +1734,10 @@ function ResultStage({
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: RIM, marginBottom: 8 }}>
             🧠 HOW MARKOV READ YOU
           </div>
-          <div style={{ fontSize: 13.5, lineHeight: 1.65, color: "rgba(230,222,255,0.9)" }}>
+          <div style={{ fontSize: 13.5, lineHeight: 1.65, color: "#22104f" }}>
             {typeof final.calledCount === "number" && (final.calledCount ?? 0) > 0 && (
               <div style={{ marginBottom: 6 }}>
-                MARKOV <b style={{ color: "#fca5a5" }}>called your exact throw {final.calledCount}×</b> in{" "}
+                MARKOV <b style={{ color: "#be123c" }}>called your exact throw {final.calledCount}×</b> in{" "}
                 {final.totalRounds} rounds this match.
               </div>
             )}
@@ -1678,7 +1751,7 @@ function ResultStage({
               </>
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: "rgba(220,210,255,0.5)", marginTop: 8 }}>
+          <div style={{ fontSize: 11.5, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>
             Break your pattern. Run it back.
           </div>
         </div>
@@ -1692,11 +1765,11 @@ function ResultStage({
       <details
         style={{
           borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.1)",
-          background: "rgba(8,2,32,0.6)",
+          border: "1px solid rgba(76,29,149,0.16)",
+          background: "#ffffff",
           padding: "10px 14px",
           fontSize: 11.5,
-          color: "rgba(220,210,255,0.6)",
+          color: "rgba(34,16,79,0.68)",
           animation: "riseIn 0.45s 0.35s ease both",
         }}
       >
@@ -1747,7 +1820,7 @@ function ResultStage({
           style={{
             flex: 2,
             background: demoSpent ? "rgba(255,255,255,0.08)" : `linear-gradient(180deg, ${RIM}, #f59e0b)`,
-            color: demoSpent ? "rgba(255,255,255,0.45)" : "#04001a",
+            color: demoSpent ? "rgba(34,16,79,0.68)" : "#04001a",
             border: "none",
             borderRadius: 16,
             padding: "15px 0",
@@ -1764,9 +1837,9 @@ function ResultStage({
           onClick={onLobby}
           style={{
             flex: 1,
-            background: "rgba(15,11,38,0.9)",
-            border: "1px solid rgba(255,255,255,0.16)",
-            color: "#ede9fe",
+            background: "#ffffff",
+            border: "1px solid rgba(76,29,149,0.16)",
+            color: "#22104f",
             borderRadius: 16,
             padding: "15px 0",
             fontSize: 14,
@@ -1800,7 +1873,7 @@ function ResultStage({
         style={{
           background: won ? "rgba(134,239,172,0.1)" : "rgba(255,255,255,0.04)",
           border: `1px solid ${won ? "rgba(134,239,172,0.45)" : "rgba(255,255,255,0.14)"}`,
-          color: won ? "#86efac" : "rgba(220,210,255,0.8)",
+          color: won ? "#166534" : "#22104f",
           borderRadius: 14,
           padding: "12px 0",
           fontSize: 13,
@@ -1819,7 +1892,7 @@ function ResultStage({
           onClick={closeShare}
           style={{
             position: "fixed", inset: 0, zIndex: 60,
-            background: "rgba(4,0,26,0.85)", backdropFilter: "blur(6px)",
+            background: "#ffffff", backdropFilter: "blur(6px)",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
             padding: 20, gap: 14, animation: "arenaFadeIn 0.2s ease",
           }}
@@ -1829,7 +1902,7 @@ function ResultStage({
             src={shareUrl}
             alt="Match card"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: "min(86vw, 420px)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,0.7)", animation: "riseIn 0.3s ease both" }}
+            style={{ width: "min(86vw, 420px)", borderRadius: 20, boxShadow: "0 24px 60px rgba(76,29,149,0.22)", animation: "riseIn 0.3s ease both" }}
           />
           <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 10, width: "min(86vw, 420px)" }}>
             <button
@@ -1853,8 +1926,8 @@ function ResultStage({
             <button
               onClick={closeShare}
               style={{
-                flex: 1, background: "rgba(15,11,38,0.9)", border: "1px solid rgba(255,255,255,0.16)",
-                color: "#ede9fe", borderRadius: 14, padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                flex: 1, background: "#ffffff", border: "1px solid rgba(76,29,149,0.16)",
+                color: "#22104f", borderRadius: 14, padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
               }}
             >
               Close
@@ -1863,7 +1936,7 @@ function ResultStage({
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: "rgba(220,210,255,0.4)", textAlign: "center" }}>
+      <div style={{ fontSize: 11, color: "rgba(34,16,79,0.68)", textAlign: "center" }}>
         Record vs MARKOV: {record.w}W · {record.l}L · {record.t}T
         {record.streak > 1 ? ` · ⚡ ${record.streak} win streak` : ""}
       </div>

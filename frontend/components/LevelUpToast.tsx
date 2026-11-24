@@ -82,7 +82,7 @@ export default function LevelUpToast({ level, onClose }: Props) {
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 2000,
-        background: "rgba(2,0,12,0.85)",
+        background: "rgba(246,241,255,0.96)",
         backdropFilter: "blur(10px)",
         overflow: "hidden",
         cursor: "pointer", userSelect: "none",
@@ -131,11 +131,11 @@ export default function LevelUpToast({ level, onClose }: Props) {
         {LETTERS.map((ch, i) => (
           <span key={i} style={{
             display: "inline-block",
-            color: ch === " " ? "transparent" : "white",
+            color: ch === " " ? "transparent" : "#22104f",
             fontSize: "clamp(28px, 9vw, 56px)",
             fontWeight: 900, letterSpacing: "0.04em",
             lineHeight: 1,
-            textShadow: "0 0 14px #fbbf24, 0 0 28px #f97316, 0 4px 8px rgba(0,0,0,0.8)",
+            textShadow: "0 3px 0 #fde68a",
             WebkitTextStroke: ch === " " ? "0" : "1.5px #fbbf24",
             transform: "translateY(-30px) scale(0.4)",
             opacity: 0,
@@ -158,7 +158,7 @@ export default function LevelUpToast({ level, onClose }: Props) {
           borderRadius: "28px",
           background: "linear-gradient(180deg, #fde68a 0%, #f59e0b 50%, #b45309 100%)",
           border: "3px solid rgba(255,255,255,0.6)",
-          boxShadow: "0 0 40px rgba(251,191,36,0.9), 0 0 80px rgba(251,191,36,0.5), 0 20px 40px rgba(0,0,0,0.6), inset 0 8px 18px rgba(255,255,255,0.7), inset 0 -6px 14px rgba(0,0,0,0.3)",
+          boxShadow: "0 0 40px rgba(251,191,36,0.9), 0 0 80px rgba(251,191,36,0.5), 0 20px 40px rgba(76,29,149,0.3), inset 0 8px 18px rgba(255,255,255,0.7), inset 0 -6px 14px rgba(0,0,0,0.3)",
         }}>
           <div style={{
             color: "white",
@@ -208,16 +208,16 @@ export default function LevelUpToast({ level, onClose }: Props) {
         pointerEvents: "none",
       }}>
         <div style={{
-          color: "rgba(254,215,170,0.85)",
+          color: "#92400e",
           fontSize: "clamp(12px, 3.4vw, 15px)",
           fontWeight: 800, letterSpacing: "0.08em",
-          textShadow: "0 2px 6px rgba(0,0,0,0.7)",
+          textShadow: "none",
         }}>
           You&apos;re now level {level}
         </div>
         <div style={{
           marginTop: "8px",
-          color: "rgba(200,180,255,0.55)",
+          color: "rgba(34,16,79,0.62)",
           fontSize: "clamp(9px, 2.6vw, 11px)",
           fontWeight: 700, letterSpacing: "0.18em",
           animation: "lvup-cta-pulse 1.4s ease-in-out infinite 2.2s",

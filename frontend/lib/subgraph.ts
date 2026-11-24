@@ -100,7 +100,10 @@ export type LeaderboardEntry = {
   score: number;
   timestamp: number;       // unix seconds
   streak?: number;         // not in subgraph yet; left for parity
+  txHash?: string;         // the transaction that recorded this score, when known
 };
+/** Where anyone can look a transaction up. */
+export const txUrl = (hash: string) => `https://celoscan.io/tx/${hash}`;
 
 type ScoreRow = {
   id: string;
@@ -111,13 +114,47 @@ type ScoreRow = {
 
 // Returns the top players for the current week's leaderboard. Pulls a wide
 // score window from the subgraph (top 500 by score) and dedupes per-player.
-export type GameTypeId = 0 | 1 | 2;
+// gameType uint8 mirror of GamePass.sol + backend GAME_TYPE. 3 is Challenge AI
+// (its own ladder, not a skill-board gameType). 4 is NEPA: Up Light — the
+// weekly board reads the generic Score entity filtered by gameType, so nepa is
+// rankable with no subgraph redeploy. Per-player best fields for nepa
+// (bestNepaScore / all-time inclusion) are a later subgraph fast-follow.
+// 5 is Word Ladder and 6 is Street Strike: weekly board only, like nepa.
+export type GameTypeId = 0 | 1 | 2 | 4 | 5 | 6 | 7; // 7 is UP NEPA 3D
+
+const GAME_NAME: Record<GameTypeId, string> = { 0: "rhythm", 1: "simon", 2: "stack", 4: "nepa", 5: "ladder", 6: "strike", 7: "nepa3d" };
+
+// The board comes from the game server first. It merges the subgraph with its
+// own record of every run it scored, so a board still fills when the subgraph
+// has stopped indexing (it sat three weeks behind in November 2026 and every
+// board showed "no scores yet"). The subgraph is asked directly only if the
+// server cannot be reached.
+async function boardFromServer(gameType: GameTypeId, sinceUnix: number, limit: number): Promise<LeaderboardEntry[] | null> {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!base) return null;
+  const out: LeaderboardEntry[] = [];
+  try {
+    for (let page = 1; page <= 20 && out.length < limit; page++) {
+      const res = await fetch(`${base}/api/leaderboard?game=${GAME_NAME[gameType]}&since=${Math.floor(sinceUnix)}&limit=50&page=${page}`);
+      if (!res.ok) return page === 1 ? null : out;
+      const data = (await res.json()) as { leaderboard?: { player: string; score: number; timestamp?: number; username?: string | null; tx_hash?: string | null }[]; pages?: number };
+      const rows = data.leaderboard ?? [];
+      for (const r of rows) out.push({ player: String(r.player).toLowerCase(), username: r.username || undefined, score: Number(r.score), timestamp: Number(r.timestamp ?? 0), txHash: r.tx_hash && /^0x[0-9a-fA-F]{64}$/.test(r.tx_hash) ? r.tx_hash : undefined });
+      if (rows.length < 50 || page >= (data.pages ?? 1)) break;
+    }
+    return out.slice(0, Number.isFinite(limit) ? limit : undefined);
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchLeaderboard(
   gameType: GameTypeId,
   weekStartUnix: number,
   limit = Infinity, // default: EVERY player who scored this season, not a top-N
 ): Promise<LeaderboardEntry[]> {
+  const fromServer = await boardFromServer(gameType, weekStartUnix, limit);
+  if (fromServer) return fromServer;
   // Paginate all season score events by id cursor, then dedup to each player's
   // best. The old query pulled first:500 and sliced to 50, so every player past
   // the cut (a low score, a late arrival) was silently absent from the board.
@@ -279,16 +316,28 @@ export async function fetchPlayerAllTimeCombinedStats(
 // rank vs everyone else. Used by the ALL-TIME tab to render the
 // "Your rank: #N · Your best: X" chip when they're outside the top 50.
 
-const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bestStackScore"> = {
+// Per-game best field on the Player entity. nepa (4) maps to a field the
+// deployed schema does NOT index yet — the all-time/per-game-best path is a
+// deferred subgraph fast-follow, and the weekly board (fetchLeaderboard) never
+// touches this map. The entry exists only so the Record stays exhaustive over
+// GameTypeId; nothing queries bestNepaScore until the subgraph ships it.
+const BEST_FIELD: Record<GameTypeId, "bestRhythmScore" | "bestSimonScore" | "bestStackScore" | "bestNepaScore"> = {
   0: "bestRhythmScore",
   1: "bestSimonScore",
   2: "bestStackScore",
+  4: "bestNepaScore",
+  5: "bestNepaScore", // placeholders: never queried (see the >= 4 guards below)
+  6: "bestNepaScore",
+  7: "bestNepaScore",
 };
 
 export async function fetchPlayerAllTimeStats(
   address: string,
   gameType: GameTypeId,
 ): Promise<{ peak: number; rank: number } | null> {
+  // nepa (4) has no per-player best field in the deployed schema yet — the
+  // all-time path is a deferred subgraph fast-follow. Report "no data" cleanly.
+  if (gameType >= 4) return null; // newer games: no per-player best field indexed yet
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // Asking for stack on gameType=2 when the subgraph doesn't index it yet
@@ -302,6 +351,7 @@ export async function fetchPlayerAllTimeStats(
       bestRhythmScore: string;
       bestSimonScore: string;
       bestStackScore?: string;
+      bestNepaScore?: string;
     } | null;
   }>(
     `query MyBest($id: ID!) {
@@ -338,6 +388,8 @@ export async function fetchPlayerRank(
   address: string,
   gameType: GameTypeId,
 ): Promise<number | null> {
+  // nepa (4): no per-player best field indexed yet (deferred fast-follow).
+  if (gameType >= 4) return null; // newer games: no per-player best field indexed yet
   const orderField = BEST_FIELD[gameType];
   const stack = await isStackFieldSupported();
   // gameType=2 against an unmigrated subgraph has no truth to report.
@@ -350,6 +402,7 @@ export async function fetchPlayerRank(
       bestRhythmScore: string;
       bestSimonScore: string;
       bestStackScore?: string;
+      bestNepaScore?: string;
     } | null;
   }>(
     `query MyBest($id: ID!) {

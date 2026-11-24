@@ -81,7 +81,7 @@ async function internalFetch(path: string, body: unknown) {
 
 // Game type IDs · mirror games-backend/server.js GAME_TYPE map and the
 // uint8 gameType the GamePass contract emits. Stack Tower = 2.
-export type GameId = 'rhythm' | 'simon' | 'stack';
+export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa' | 'ladder' | 'strike' | 'nepa3d';
 export type ScoreData = {
   game:     GameId;
   score:    number;
@@ -89,6 +89,9 @@ export type ScoreData = {
   wagered?: string | null;
   wagerId?: string | null;
   txHash?:  string | null;
+  // The run's session ticket. With the chain outbox on, a score is saved before
+  // its transaction exists, and this ticket is the proof the server looks up.
+  sessionToken?: string | null;
   // Rhythm-only skill flags — unlock rhythm_fc / rhythm_ap achievements.
   // Backend trusts the frontend for these since the score itself is already
   // bound on-chain via the EIP-712 voucher (a lying client still needs a
@@ -103,7 +106,9 @@ type SignScoreResult =
       // client does NOTHING on-chain — no wallet prompt, no CELO.
       success:  true;
       gasless:  true;
-      txHash:   string;
+      // null when the score was QUEUED: checked and stored, transaction to follow
+      txHash:   string | null;
+      queued?:  boolean;
       gameType: number;
       score?:   number;
     }
@@ -139,9 +144,18 @@ export type StackDrop = { dropIndex: number; level: number; landed: boolean; per
 // the ordered color ids the player tapped across the run; `rounds`/`elapsedMs`
 // are informational for the shadow log.
 export type SimonShadow = { tapLog: string[]; rounds: number; elapsedMs: number };
+// NEPA: Up Light shadow-mode payload · SHADOW MODE only (see ANTICHEAT.md).
+// Optional + additive · the server replays `inputLog` against the SEED stored
+// on the session row and logs the delta, but STILL signs the client's claimed
+// score. `inputLog` is the ordered plug/unplug events; `bankedNaira`/`elapsedMs`
+// are informational for the shadow log.
+// `gen` is a socket-less power-up action (the generator), so device/socket are
+// optional — only plug/unplug/bank carry them.
+export type NepaInput = { device?: string; socket?: number; action: 'plug' | 'unplug' | 'bank' | 'gen'; t: number };
+export type NepaShadow = { inputLog: NepaInput[]; bankedNaira: number; elapsedMs: number };
 
 type StartGameResult =
-  | { success: true;  sessionToken: string }
+  | { success: true;  sessionToken: string; seed?: string }
   | { success: false; error: string };
 
 type SubmitScoreResult =
@@ -182,7 +196,8 @@ export async function startGame(
       game,
     });
     if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
-    return { success: true, sessionToken: data.sessionToken };
+    // `seed` is only returned for seed-driven games (nepa); undefined otherwise.
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
@@ -214,7 +229,8 @@ export async function startGameMiniPay(
       game,
     });
     if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
-    return { success: true, sessionToken: data.sessionToken };
+    // `seed` is only returned for seed-driven games (nepa); undefined otherwise.
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed };
   } catch {
     return { success: false, error: 'Backend unavailable' };
   }
@@ -236,6 +252,8 @@ export async function signScore(
   tapLog?:       RhythmTap[],
   dropLog?:      StackDrop[],
   simon?:        SimonShadow,
+  nepa?:         NepaShadow,
+  songId?:       string, // Rhythm Rush: which song was played (older servers ignore it)
 ): Promise<SignScoreResult> {
   if (!await verifyUser(accessToken, playerAddress)) {
     return { success: false, error: 'Unauthorized' };
@@ -247,12 +265,17 @@ export async function signScore(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      songId: songId ?? null,
       // Stack shadow-mode drop log · optional, does not change the signed score.
       dropLog: dropLog ?? null,
       // Simon shadow-mode tap log · optional, does not change the signed score.
       simonTapLog:   simon?.tapLog ?? null,
       simonRounds:   simon?.rounds ?? null,
       simonElapsedMs: simon?.elapsedMs ?? null,
+      // NEPA shadow-mode input log · optional, does not change the signed score.
+      nepaInputLog:   nepa?.inputLog ?? null,
+      nepaBankedNaira: nepa?.bankedNaira ?? null,
+      nepaElapsedMs:  nepa?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     if (data.gasless) {
@@ -260,7 +283,8 @@ export async function signScore(
       return {
         success:  true,
         gasless:  true,
-        txHash:   data.txHash,
+        txHash:   data.txHash ?? null,
+        queued:   !!data.queued,
         gameType: data.gameType,
         score:    typeof data.score === 'number' ? data.score : scoreData.score,
       };
@@ -294,6 +318,8 @@ export async function signScoreMiniPay(
   tapLog?:        RhythmTap[],
   dropLog?:       StackDrop[],
   simon?:         SimonShadow,
+  nepa?:          NepaShadow,
+  songId?:       string, // Rhythm Rush: which song was played (older servers ignore it)
 ): Promise<SignScoreResult> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(playerAddress)) {
     return { success: false, error: 'Invalid wallet address' };
@@ -305,12 +331,17 @@ export async function signScoreMiniPay(
       score: scoreData.score,
       sessionToken,
       tapLog: tapLog ?? null,
+      songId: songId ?? null,
       // Stack shadow-mode drop log · optional, does not change the signed score.
       dropLog: dropLog ?? null,
       // Simon shadow-mode tap log · optional, does not change the signed score.
       simonTapLog:   simon?.tapLog ?? null,
       simonRounds:   simon?.rounds ?? null,
       simonElapsedMs: simon?.elapsedMs ?? null,
+      // NEPA shadow-mode input log · optional, does not change the signed score.
+      nepaInputLog:   nepa?.inputLog ?? null,
+      nepaBankedNaira: nepa?.bankedNaira ?? null,
+      nepaElapsedMs:  nepa?.elapsedMs ?? null,
     });
     if (!ok) return { success: false, error: data?.error || 'Sign failed' };
     if (data.gasless) {
@@ -318,7 +349,8 @@ export async function signScoreMiniPay(
       return {
         success:  true,
         gasless:  true,
-        txHash:   data.txHash,
+        txHash:   data.txHash ?? null,
+        queued:   !!data.queued,
         gameType: data.gameType,
         score:    typeof data.score === 'number' ? data.score : scoreData.score,
       };
@@ -414,3 +446,102 @@ export async function submitScoreMiniPay(
     return { success: false, error: 'Backend unavailable' };
   }
 }
+
+
+// ═══ Generic ranked run ══════════════════════════════════════════════════════
+// One pair of actions any game can use (see hooks/useRankedRun.ts), in place of
+// adding another positional argument to signScore for every new game.
+//
+// `accessToken` is the Privy token. MiniPay has no Privy session and cannot
+// sign messages, so it passes null and is checked by address shape only, the
+// same rule the *MiniPay actions above follow.
+async function allowed(accessToken: string | null, playerAddress: string): Promise<boolean> {
+  if (accessToken) return verifyUser(accessToken, playerAddress);
+  return /^0x[a-fA-F0-9]{40}$/.test(playerAddress);
+}
+
+export type StartRunResult =
+  | { success: true; sessionToken: string; seed?: string; ladders?: [string, string, number][] }
+  | { success: false; error: string };
+
+/** Open a run. The reply carries whatever the game needs dealt by the server. */
+export async function startRun(accessToken: string | null, playerAddress: string, game: GameId): Promise<StartRunResult> {
+  if (!await allowed(accessToken, playerAddress)) return { success: false, error: 'Unauthorized' };
+  try {
+    const { ok, data } = await internalFetch('/api/start-game', { wallet: playerAddress, game });
+    if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
+    return { success: true, sessionToken: data.sessionToken, seed: data.seed, ladders: data.ladders };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+/** Ask the server to check and approve a run. `proof` is the game's own record
+ *  of what the player did (e.g. `{ ladderRuns }`); the server scores from it. */
+export async function signRun(
+  accessToken: string | null,
+  playerAddress: string,
+  run: { game: GameId; score: number; sessionToken: string; proof?: Record<string, unknown> },
+): Promise<SignScoreResult> {
+  if (!await allowed(accessToken, playerAddress)) return { success: false, error: 'Unauthorized' };
+  try {
+    const { ok, data } = await internalFetch('/api/sign-score', { ...(run.proof ?? {}), playerAddress, game: run.game, score: run.score, sessionToken: run.sessionToken });
+    if (!ok) return { success: false, error: data?.reason || data?.error || 'Sign failed' };
+    const score = typeof data.score === 'number' ? data.score : run.score;
+    if (data.gasless) return { success: true, gasless: true, txHash: data.txHash ?? null, queued: !!data.queued, gameType: data.gameType, score };
+    return { success: true, signature: data.signature, nonce: data.nonce, gameType: data.gameType, score };
+  } catch {
+    return { success: false, error: 'Backend unavailable' };
+  }
+}
+
+/** Save the finished run to the leaderboard and progression (XP, missions, achievements). */
+export async function saveRun(accessToken: string | null, playerAddress: string, scoreData: ScoreData): Promise<SubmitScoreResult> {
+  if (accessToken) return submitScore(accessToken, playerAddress, scoreData);
+  return submitScoreMiniPay(playerAddress, '', '', scoreData);
+}
+
+// ═══ Inbox (notifications) ═══════════════════════════════════════════════════
+// Reading and deleting are done FOR a player, so they go through here, where
+// the caller is checked, and on to the backend with the internal secret.
+export type InboxKind = 'announcement' | 'whats_new' | 'reward' | 'rank' | 'reminder' | 'activity';
+export interface InboxItem { id: string; kind: InboxKind; category: string; title: string; body: string | null; url: string | null; sentAt: number; fromGameArena: boolean; read: boolean }
+export interface InboxPage { ok: boolean; items: InboxItem[]; unread: number; more: boolean; unavailable?: boolean }
+
+export async function inboxList(accessToken: string | null, address: string, before?: number): Promise<InboxPage> {
+  const none: InboxPage = { ok: false, items: [], unread: 0, more: false, unavailable: true };
+  if (!await allowed(accessToken, address)) return none;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/inbox/${address.toLowerCase()}?limit=30${before ? `&before=${Math.floor(before)}` : ''}`, { headers: { 'x-internal-secret': INTERNAL_SECRET! }, cache: 'no-store' });
+    if (!res.ok) return none;
+    const d = await res.json();
+    return { ok: true, items: d.items ?? [], unread: Number(d.unread ?? 0), more: !!d.more, unavailable: !!d.unavailable };
+  } catch {
+    return none;
+  }
+}
+
+/** Only the number for the bell's dot: a few bytes, where the full list is a page of rows. */
+export async function inboxUnread(accessToken: string | null, address: string): Promise<number | null> {
+  if (!await allowed(accessToken, address)) return null;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/inbox/${address.toLowerCase()}/unread`, { headers: { 'x-internal-secret': INTERNAL_SECRET! }, cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.unavailable ? null : Number(d.unread ?? 0);
+  } catch {
+    return null;
+  }
+}
+
+async function inboxWrite(accessToken: string | null, address: string, what: 'read' | 'delete', target: { ids: string[] } | { all: true }): Promise<boolean> {
+  if (!await allowed(accessToken, address)) return false;
+  try {
+    const { ok } = await internalFetch(`/api/inbox/${address.toLowerCase()}/${what}`, 'all' in target ? { all: true } : { ids: target.ids.map(Number) });
+    return ok;
+  } catch {
+    return false;
+  }
+}
+export async function inboxMarkRead(accessToken: string | null, address: string, target: { ids: string[] } | { all: true }): Promise<boolean> { return inboxWrite(accessToken, address, 'read', target); }
+export async function inboxDelete(accessToken: string | null, address: string, target: { ids: string[] } | { all: true }): Promise<boolean> { return inboxWrite(accessToken, address, 'delete', target); }

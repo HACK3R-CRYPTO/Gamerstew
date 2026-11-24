@@ -112,7 +112,9 @@ export default function RootLayout({
             Starting its fetch in <head> (before the JS bundle parses and React
             mounts) is the single biggest LCP win: the bytes are ready by the
             time the splash component paints it. */}
-        <link rel="preload" as="image" href="/logo-full.png" fetchPriority="high" />
+        {/* The logo used to be preloaded here at high priority on EVERY page, so each
+            game fetched it ahead of its own art without ever showing it. The splash
+            and home screens, which do show it, now ask for it themselves. */}
         {/* Structured data (JSON-LD) — tells Google this is a game web app
             from an organization, wires the sitelinks search box, and lets the
             homepage qualify for richer search results. */}

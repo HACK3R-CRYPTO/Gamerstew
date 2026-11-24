@@ -1,5 +1,8 @@
 "use client";
 
+import { useFriendRoom, type FriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
+import { toast, startProblem } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -10,6 +13,10 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
+import RunSaveStatus from "@/components/RunSaveStatus";
+
+import GameResult, { FreePlayNote } from "@/components/GameResult";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -39,6 +46,9 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { recentAverage, recordRun } from "@/lib/skillStart";
+import { readSimonBest, saveSimonBest, nextSimonMilestone, type SimonBest } from "@/lib/simonBest";
+import NextUp from "@/components/NextUp";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
@@ -64,6 +74,33 @@ const MIN_FLASH  = 200;   // ms — floor on flash as rounds get long
 const MIN_DELAY  = 350;   // ms — floor on gap
 const BASE_SCORE = 10;    // points per cleared round
 const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
+
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been and the only mode that is signed
+// and submitted. The others change the rules for fun and never leave the
+// device: no gas check, no session ticket, no score signing.
+// "room" is a friend-room round: the pattern comes from the room, nothing is
+// signed or sent to the chain, and the result goes to the room instead.
+type ModeId = "ranked" | "practice" | "lightning" | "reverse" | "room";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "lightning", name: "Lightning", tag: "FREE", blurb: "The sequence plays at top speed from round 1.", color: "#f43f5e" },
+  { id: "reverse", name: "Reverse", tag: "FREE", blurb: "Watch it forwards. Tap it back BACKWARDS.", color: "#c084fc" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+
+// A challenge from a friend arrives as a link: /games/simon?beat=9&mode=ranked&by=Tunde
+type Challenge = { rounds: number; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const rounds = Number(q.get("beat"));
+  if (!Number.isFinite(rounds) || rounds < 1 || rounds > 500) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { rounds: Math.floor(rounds), mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
 
 // ─── Hard time limit ─────────────────────────────────────────────────────────
 // 10 minutes per run. Visible countdown in the HUD, game ends cleanly at 0
@@ -182,11 +219,11 @@ function simonDrawColorId(seedHex: string, i: number): string {
 
 // ─── Grades — same bands as rhythm for UI consistency ────────────────────────
 function gradeFor(rounds: number) {
-  if (rounds >= 15) return { letter: "S", color: "#fbbf24", desc: "LEGENDARY" };
-  if (rounds >= 10) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
-  if (rounds >= 7)  return { letter: "B", color: "#67e8f9", desc: "GREAT" };
-  if (rounds >= 4)  return { letter: "C", color: "#22c55e", desc: "GOOD" };
-  return { letter: "D", color: "#f97316", desc: "KEEP PRACTICING" };
+  if (rounds >= 15) return { letter: "S", color: "#b45309", desc: "LEGENDARY" };
+  if (rounds >= 10) return { letter: "A", color: "#475569", desc: "EXCELLENT" };
+  if (rounds >= 7)  return { letter: "B", color: "#0e7490", desc: "GREAT" };
+  if (rounds >= 4)  return { letter: "C", color: "#15803d", desc: "GOOD" };
+  return { letter: "D", color: "#c2410c", desc: "KEEP PRACTICING" };
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
@@ -412,6 +449,7 @@ export default function SimonGamePage() {
   // Lives in a ref (not localStorage) so it dies with the component.
   const sessionTokenRef = useRef<string | null>(null);
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -443,9 +481,61 @@ export default function SimonGamePage() {
       a.type === "wallet" && a.walletClientType === "privy"
   );
 
+  // dev only: lets an automated test play (read the pattern, tap a colour)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __simon?: unknown }).__simon = { pattern: () => [...patternRef.current], showing: isShowingSequence, phase, tap: handleButtonClick, tapped: () => userPatternRef.current.length, setMode, runMode: () => runModeRef.current };
+  });
+
+  // ─── Mode + an incoming friend challenge ─────────────────────────────────────
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  // The mode a run is PLAYED with, pinned when it starts. The rules and whether
+  // it is submitted read this, never the live lobby choice.
+  const runModeRef = useRef<ModeId>("ranked");
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); setMode(c.mode); } }, []);
+
+  // ─── Personal best (device only, display only) ──────────────────────────────
+  const bestRef = useRef<SimonBest | null>(null);
+  const [bestRounds, setBestRounds] = useState<number | null>(null);
+  const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
+  const runCountedRef = useRef(false);
+  useEffect(() => { modeRef.current = mode; const b = readSimonBest(mode); bestRef.current = b; setBestRounds(b ? b.rounds : null); }, [mode]);
+  useEffect(() => {
+    // re-armed when play starts (not on PLAY AGAIN, when the counters have just been zeroed)
+    if (phase === "showing" || phase === "playing" || phase === "countdown") {
+      runCountedRef.current = false;
+      if (phase === "countdown") { setBestResult(null); const h = runModeRef.current === "lightning" ? 20 : runModeRef.current === "room" ? 0 /* a room starts everyone at the same pace */ : readHeadStart(); headStartRef.current = h; setHeadStart(h); }
+      return;
+    }
+    if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
+    runCountedRef.current = true;
+    const prev = bestRef.current;
+    const isNew = sequences > 0 && (!prev || sequences > prev.rounds);
+    if (isNew) {
+      const next = { rounds: sequences, score };
+      saveSimonBest(next, runModeRef.current);
+      bestRef.current = next;
+      setBestRounds(sequences);
+    }
+    setBestResult({ prev: prev ? prev.rounds : null, isNew });
+    if (runModeRef.current === "ranked" || runModeRef.current === "practice") recordRun("simon", sequences); // feeds the skill-matched start of the next run
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, sequences, score]);
+
   // ─── Timing helpers — flashes get faster each round (skill ceiling) ──────────
-  const getFlashDur = (round: number) => Math.max(MIN_FLASH, BASE_FLASH - round * 30);
-  const getSeqDelay = (round: number) => Math.max(MIN_DELAY, BASE_DELAY - round * 35);
+  // FAST START: someone who usually clears many rounds does not need rounds 1 to
+  // 5 shown at teaching speed. The playback starts `headStart` rounds "ahead" in
+  // speed (never in the pattern: every round is still played, one colour longer
+  // each time). It comes from the average of the last few runs and eases back
+  // down after rough ones. New players get 0.
+  const headStartRef = useRef(0);
+  const [headStart, setHeadStart] = useState(0);
+  const readHeadStart = () => { const avg = recentAverage("simon"); return avg == null ? 0 : Math.max(0, Math.min(8, Math.floor(avg * 0.6))); };
+  useEffect(() => { const h = readHeadStart(); headStartRef.current = h; setHeadStart(h); }, []);
+  const getFlashDur = (round: number) => Math.max(MIN_FLASH, BASE_FLASH - (round + headStartRef.current) * 30);
+  const getSeqDelay = (round: number) => Math.max(MIN_DELAY, BASE_DELAY - (round + headStartRef.current) * 35);
 
   // ─── Flash a single button: light it up, play its tone, then unlight ────────
   const flashButton = useCallback((colorId: string, duration: number, onDone: (() => void) | null) => {
@@ -492,6 +582,14 @@ export default function SimonGamePage() {
   }, [showSequence]);
 
   // ─── Game over — dispatches the 3-step on-chain-gated score submission ─────
+  // ─── Friend rooms ──────────────────────────────────────────────────────────
+  // Everyone in the room watches the same sequence (the room's seed makes it)
+  // and plays at once. The server checks the taps and the time.
+  const room = useFriendRoom("simon");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+
   const handleGameOver = useCallback(async (finalScore: number, gameTime: number) => {
     playWrong();
     firePetEvent("wrong");  // pet wilts — the run ended badly
@@ -503,6 +601,8 @@ export default function SimonGamePage() {
 
     // A retried run submits normally — using a retry counts on the weekly board.
 
+    if (runModeRef.current === "room") { void roomRef.current.finish({ simonTapLog: tapLogRef.current.slice(), score: Math.max(0, Math.round(finalScore)) }); return; }
+    if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
@@ -533,7 +633,7 @@ export default function SimonGamePage() {
     try {
       // ── STEP 1: backend voucher ──
       let sig:
-        | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+        | { success: true; gasless: true; txHash: string | null; queued?: boolean; gameType: number; score?: number }
         | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
         | { success: false; error: string };
       let authToken: string | null = null;
@@ -586,7 +686,7 @@ export default function SimonGamePage() {
           address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`,
           abi: GAME_PASS_ABI,
           functionName: "recordScoreWithBackendSig",
-          args: [sig.gameType, BigInt(scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
+          args: [sig.gameType, BigInt(typeof sig.score === "number" ? sig.score : scoreToSubmit), BigInt(sig.nonce), sig.signature as `0x${string}`],
           ...(isEmbeddedWallet ? { gas: 300000n } : {}),
           // MiniPay pays network fees in USDC via Celo's fee-currency
           // adapter since the wallet holds no CELO.
@@ -648,7 +748,9 @@ export default function SimonGamePage() {
 
       // ── STEP 3: save off-chain ──
       let result;
-      const fullScoreData = { ...baseScoreData, txHash };
+      // the score the server approved (it may be lower than the claim), and the
+        // run's ticket so a queued score can be saved before its transaction exists
+        const fullScoreData = { ...baseScoreData, score: typeof sig.score === "number" ? sig.score : baseScoreData.score, txHash, sessionToken: sessionTokenRef.current };
       if (isMiniPay) {
         // MiniPay path: no client signature (celopedia minipay-guide
         // §"No message signing"). submitScoreMiniPay ignores the
@@ -668,6 +770,7 @@ export default function SimonGamePage() {
           isNewPb: result.isNewPb,
           prevBest: result.prevBest,
           newAchievements: result.newAchievements || [],
+          txHash, // so the result screen can show whether the chain confirmed it
         });
         // Staged celebrations — LEVEL UP first, pet evolution queued
         // after if the new level crossed a pet-stage boundary.
@@ -712,11 +815,14 @@ export default function SimonGamePage() {
     // Wrong tap → game over (pet wilts in handleGameOver). Big shake +
     // a floating "WRONG" popup at the failed button so the player sees
     // exactly which one they hit (and which one they should have).
-    if (patternRef.current[idx] !== colorId) {
+    // Reverse mode: the answer is the sequence read from the end.
+    const want = runModeRef.current === "reverse" ? patternRef.current[patternRef.current.length - 1 - idx] : patternRef.current[idx];
+    if (want !== colorId) {
       juice.bump(22);
       juice.lossPopup(50, 60, "WRONG");
-      // Offer a retry (casual) before ending — signed-in, minted players only.
-      if (address && !needsMint) {
+      // Offer a retry (casual) before ending — signed-in, minted players only,
+      // and only for a run that will actually be submitted.
+      if (runModeRef.current === "ranked" && address && !needsMint) {
         pendingEndRef.current = { score: scoreRef.current, time: Date.now() - startTimeRef.current };
         setActiveBtn(null);
         setIsShowingSequence(false);
@@ -746,6 +852,7 @@ export default function SimonGamePage() {
       const speedBonus = Math.max(0, Math.floor((60000 - elapsed) / 1000));
       const roundBonus = newSeqs * 2;
       const newScore   = newSeqs * BASE_SCORE + speedBonus + roundBonus;
+      if (runModeRef.current === "room") roomRef.current.progress(newSeqs); // friends see how far you are
       scoreRef.current = newScore;
       setScore(newScore);
 
@@ -797,7 +904,9 @@ export default function SimonGamePage() {
   }, [handleGameOver]);
 
   // ─── Countdown → showing → playing ───────────────────────────────────────────
-  const startGame = useCallback(async () => {
+  const startGame = useCallback(async (roomSeed?: unknown) => {
+    // a room round passes its seed; a tap on the start button passes a click event
+    const inRoom = typeof roomSeed === "string" && roomSeed.length > 0;
     // Re-entry guard: bail if a session ticket request is already
     // in flight. Without this, a double-click or duplicated synthetic
     // event during the ~500ms round trip dispatches two /api/start-game
@@ -808,7 +917,7 @@ export default function SimonGamePage() {
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Once a guest has used their free runs, block a new one and offer the
     // sign-in that unlocks unlimited play. Signed-in players skip this.
-    if (isGuest && guestPlaysLeft("simon") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("simon") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -823,7 +932,9 @@ export default function SimonGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
+    const ranked = runModeRef.current === "ranked";
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands, the wallet now has gas so the score
       // will save — proceed into play. Only if it can't help do we open the sheet.
@@ -850,7 +961,7 @@ export default function SimonGamePage() {
     vatarSubmittedRef.current = false;
     usedPerkRef.current = false;
     pendingEndRef.current = null;
-    sessionTokenRef.current = null;
+    sessionTokenRef.current = inRoom ? (roomSeed as string) : null; // the seed that makes the pattern
     juice.reset();
     setScore(0);
     setSequences(0);
@@ -867,7 +978,8 @@ export default function SimonGamePage() {
 
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time.
-    if (address && !needsMint) {
+    // Free modes submit nothing, so they need no ticket.
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -887,12 +999,14 @@ export default function SimonGamePage() {
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
+          toast(startProblem(res.error));
           startingRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
+        toast(startProblem());
         startingRef.current = false;
         return;
       }
@@ -939,6 +1053,36 @@ export default function SimonGamePage() {
       await signVatarScore(vs, "simon", scoreToSave, token).catch(() => {});
     })();
   }, [phase, inVatar]);
+
+  // Arriving with ?play=1 starts a run at once (see the same door in Stack Tower).
+  const autoStartRef = useRef(false);
+  useEffect(() => {
+    if (autoStartRef.current || authPending) return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("play") !== "1") return;
+    autoStartRef.current = true;
+    q.delete("play");
+    window.history.replaceState(null, "", window.location.pathname + (q.toString() ? `?${q}` : ""));
+    startGame();
+  }, [authPending, startGame]);
+
+  // the host pressed start: play the room's round
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current) return;
+    const seed = (v.deal as { seed?: string } | undefined)?.seed;
+    if (!seed || v.players[v.you]?.done) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (runModeRef.current !== "room") return;
+    if (!room.inRoom || room.view?.status === "waiting") { clearTimeouts(); setPhase("idle"); runModeRef.current = modeRef.current === "room" ? "ranked" : modeRef.current; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
 
   // ─── Hard 10-minute timer ─────────────────────────────────────────────────
   // Ticks 4×/sec while playing, computes remaining time off startTimeRef so
@@ -987,7 +1131,10 @@ export default function SimonGamePage() {
       // Deep cosmic void — the device is the ONLY bright thing in the scene.
       // Background darkens outward so the glow from the Simon orb reads as
       // the room's light source, not just a colored sticker on a web page.
-      background: "radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
+      // A painted place to play in (a Lagos street-party stage / a retro arcade)
+      // under a dark wash, so the game on top stays the brightest thing on screen.
+      // The old plain gradient stays underneath as the colour while the image loads.
+      background: "linear-gradient(rgba(5,2,26,0.38), rgba(5,2,26,0.6)), url(/games/simon-arcade.webp) center / cover no-repeat, radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
       overflow: "hidden",
       fontFamily: "inherit",
       touchAction: "manipulation",
@@ -1003,9 +1150,15 @@ export default function SimonGamePage() {
         pointerEvents: "none", zIndex: 1,
       }} />
 
+      <FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart={phase === "idle"} progressWord="round" part="overlays" />
+
       {/* IDLE */}
       {phase === "idle" && (
         <IdleView
+          room={room}
+          mode={mode}
+          onPickMode={setMode}
+          challenge={challenge}
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/simon/leaderboard")}
@@ -1053,6 +1206,11 @@ export default function SimonGamePage() {
         <PlayingView
           score={score}
           round={sequences + 1}
+          bestRounds={bestRounds}
+          target={challenge ? { by: challenge.by, rounds: challenge.rounds } : null}
+          backwards={mode === "reverse"}
+          speed={Math.round((BASE_DELAY / Math.max(MIN_DELAY, BASE_DELAY - (sequences + headStart) * 35)) * 10) / 10}
+          fastStart={headStart > 0 && sequences === 0}
           bonusUnlocked={bonusUnlocked}
           activeBtn={activeBtn}
           isShowingSequence={isShowingSequence}
@@ -1075,11 +1233,21 @@ export default function SimonGamePage() {
       )}
 
       {/* FINISHED */}
-      {phase === "finished" && (
+      {/* in a friend room the room's standings are the result screen */}
+      {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
           grade={grade}
           score={score}
           rounds={sequences}
+          bestResult={bestResult}
+          practice={mode === "ranked" ? null : modeById(mode).name}
+          challenge={challenge}
+          onChallenge={() => {
+            const url = `${window.location.origin}/games/simon?beat=${sequences}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+            const text = `I reached round ${sequences} in Simon Memory. Go deeper if you can 🔥`;
+            if (navigator.share) navigator.share({ title: "Simon Memory", text, url }).catch(() => {});
+            else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+          }}
           gameTimeMs={gameTimeMs}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
@@ -1136,7 +1304,9 @@ export default function SimonGamePage() {
 }
 
 // ─── Idle: "GET READY" splash ────────────────────────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ room, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  room: FriendRoom;
+  mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
@@ -1152,100 +1322,18 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup
   gasBanner?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: "32px", padding: "24px",
-    }}>
-      {/* Back X */}
-      <button onClick={onExit} style={{
-        position: "absolute", top: "18px", left: "18px",
-        width: "40px", height: "40px", borderRadius: "12px",
-        background: "#6b0000", paddingBottom: "4px",
-        border: "none", cursor: "pointer", fontFamily: "inherit",
-        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-      }}>
-        <div style={{
-          width: "100%", height: "36px", borderRadius: "10px 10px 8px 8px",
-          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-          border: "2px solid rgba(255,255,255,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </div>
-      </button>
-
-
-      <div style={{ textAlign: "center" }}>
-        <div style={{
-          fontSize: "12px", fontWeight: 900, letterSpacing: "0.4em",
-          color: "rgba(232,121,249,0.7)",
-          textShadow: "0 0 14px rgba(232,121,249,0.7)",
-        }}>GAME ARENA</div>
-        <div style={{
-          fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em",
-          color: "white", marginTop: "6px",
-          textShadow: "0 0 24px rgba(6,182,212,0.85), 0 4px 10px rgba(0,0,0,0.7)",
-          lineHeight: 1,
-        }}>SIMON<br/>MEMORY</div>
-      </div>
-
-      <div style={{
-        maxWidth: "360px", textAlign: "center",
-        color: "rgba(220,200,255,0.75)", fontSize: "13px", fontWeight: 700, lineHeight: 1.6,
-      }}>
-        Watch the sequence.
-        Tap the buttons back in order.
-        Each round adds one more.
-        <br/>
-        <span style={{ color: "rgba(251,191,36,0.85)" }}>
-          One mistake ends the run
-        </span>
-      </div>
-
-      {guest && <GuestPlayChip left={guestLeft} />}
-      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
-
-      {/* Gas posture pill · warn/block only · null for the happy path. */}
-      {gasBanner}
-
-      {/* Top players preview · leaderboard becomes content on the play
-          surface, not chrome in the corner. Reads live Season N data so it
-          stays in sync with the leaderboard's LIVE tab. */}
-      <SimonTopPlayersPreview onViewAll={onLeaderboard} />
-
-      {/* START button */}
-      <div role="button" tabIndex={0} onClick={onStart}
-        style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-        <div style={{
-          borderRadius: "18px", background: "#083a6b", paddingBottom: "6px",
-          boxShadow: "0 12px 28px -6px rgba(6,182,212,0.75), 0 0 40px rgba(6,182,212,0.3)",
-        }}>
-          <div style={{
-            borderRadius: "16px 16px 12px 12px",
-            background: "linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)",
-            padding: "18px 28px", textAlign: "center",
-            border: "2px solid rgba(255,255,255,0.5)",
-            position: "relative", overflow: "hidden",
-            boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-          }}>
-            <div style={{
-              position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-              borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-            }} />
-            <span style={{
-              position: "relative", zIndex: 1,
-              color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.18em",
-              textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-            }}>START</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <GameLobby
+      title="Simon Memory"
+      headline={<>Watch. Remember.<br />Repeat.</>}
+      rules={<>Watch the sequence, then tap it back in order. Each round adds one more. <b>One mistake ends the run.</b></>}
+      cover="/games/covers/simon.jpg" focus="50% 45%"
+      onExit={onExit} onStart={onStart}
+      modes={MODES} mode={mode} onPickMode={onPickMode}
+      gameType={1} onLeaderboard={onLeaderboard}
+      guest={guest} guestLeft={guestLeft} needsSetup={needsSetup} onFinishSetup={onFinishSetup} gasBanner={gasBanner}
+      challenge={challenge ? <>{challenge.by} reached <b>round {challenge.rounds}</b>. Go deeper.</> : null}
+      friends={<FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart part="button" />}
+    />
   );
 }
 
@@ -1392,9 +1480,15 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
 //   once unlocked at round 5).
 // Bottom: SCORE chip + progress dots showing taps remaining this round.
 function PlayingView({
+  bestRounds, speed, fastStart, target, backwards,
   score, round, bonusUnlocked, activeBtn, isShowingSequence, roundFlash,
   pet, petEvent, tappedCount, totalInRound, isMobile, timeLeftMs, onButtonClick, onQuit,
 }: {
+  bestRounds: number | null; // deepest round ever cleared on this device
+  speed: number; // how much faster the sequence plays now than in round 1
+  fastStart: boolean; // true in round 1 when this player's history earned a quicker start
+  target: { by: string; rounds: number } | null; // a friend's round being chased
+  backwards: boolean; // Reverse mode: tap the sequence from the end
   score: number;
   round: number;
   bonusUnlocked: boolean;
@@ -1410,7 +1504,7 @@ function PlayingView({
   onButtonClick: (id: string) => void;
   onQuit: () => void;
 }) {
-  const statusLabel = isShowingSequence ? "WATCH" : "YOUR TURN";
+  const statusLabel = isShowingSequence ? "WATCH" : backwards ? "TAP IT BACKWARDS" : "YOUR TURN";
   const statusColor = isShowingSequence ? "#fbbf24" : "#67e8f9";
 
   // Timer display · MM:SS countdown with color escalation as time burns down.
@@ -1430,6 +1524,42 @@ function PlayingView({
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+
+      {/* Two quiet readouts either side of the pet. Left: how fast the sequence
+          now plays (it speeds up every round). Right: the chase, your best round
+          and how far off it is, turning gold the moment you pass it. */}
+      {(() => {
+        const cleared = round - 1;
+        const chip: React.CSSProperties = {
+          position: "absolute", top: 70, zIndex: 6, pointerEvents: "none", padding: "5px 10px", borderRadius: 12, textAlign: "center",
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', lineHeight: 1.15,
+          background: "rgba(20,10,50,0.72)", border: "1px solid rgba(167,139,250,0.3)",
+        };
+        const lab: React.CSSProperties = { display: "block", fontSize: 8.5, fontWeight: 900, letterSpacing: "0.16em", color: "rgba(200,180,255,0.6)" };
+        const beat = bestRounds != null && cleared > bestRounds;
+        const ms = nextSimonMilestone(cleared);
+        return (
+          <>
+            <div style={{ ...chip, left: 14, borderColor: speed >= 1.5 ? "rgba(251,146,60,0.6)" : speed > 1 ? "rgba(103,232,249,0.5)" : "rgba(167,139,250,0.3)" }}>
+              <span style={lab}>{fastStart ? "FAST START" : "SPEED"}</span>
+              <b style={{ fontSize: 14, color: speed >= 1.5 ? "#fb923c" : speed > 1 ? "#67e8f9" : "#e9e2ff", fontVariantNumeric: "tabular-nums" }}>×{speed.toFixed(1)}</b>
+            </div>
+            <div style={{ ...chip, right: 14, borderColor: beat ? "rgba(251,191,36,0.75)" : "rgba(167,139,250,0.3)", boxShadow: beat ? "0 0 14px rgba(251,191,36,0.35)" : "none" }}>
+              {target ? (
+                cleared > target.rounds
+                  ? <><span style={{ ...lab, color: "#86efac" }}>AHEAD OF</span><b style={{ fontSize: 12.5, color: "#4ade80" }}>{target.by}</b></>
+                  : <><span style={{ ...lab, color: "#fdba74" }}>BEAT {target.by.toUpperCase()}</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{target.rounds - cleared + 1} rounds to go</b></>
+              ) : bestRounds == null ? (
+                ms ? (<><span style={lab}>NEXT</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{ms.name} · {ms.at - cleared} to go</b></>) : null
+              ) : beat ? (
+                <><span style={{ ...lab, color: "#fde68a" }}>NEW BEST</span><b style={{ fontSize: 14, color: "#fbbf24" }}>🏆 ROUND {cleared}</b></>
+              ) : (
+                <><span style={lab}>BEST · ROUND {bestRounds}</span><b style={{ fontSize: 11.5, color: "#e9e2ff" }}>{bestRounds - cleared + 1} to beat it</b></>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ═══ TOP HUD — quit (left) · score pill (right). Pet moves to its own
                centered stage below so it's a present companion, not a corner widget. */}
@@ -1526,6 +1656,10 @@ function PlayingView({
       <div style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         padding: "0 16px", position: "relative",
+        // The device is a thick disc lying on the arcade floor, seen from where
+        // you stand: this gives the tilt its depth. Taps still land exactly on
+        // the slices, because the browser hit-tests the tilted shape.
+        perspective: "900px", perspectiveOrigin: "50% 30%",
       }}>
         <SimonCircle
           round={round}
@@ -1630,6 +1764,7 @@ function SimonCircle({
       position: "relative",
       width: "min(380px, 88vw)",
       aspectRatio: "1",
+      transform: "rotateX(42deg) scale(0.88)", transformOrigin: "50% 60%",
       // Desktop: triple drop-shadow for depth + colored bleed + wide ambient.
       // Mobile: single modest shadow — the 200px blur filter was causing
       // renderer OOMs ("Aww, snap!" / "Can't open this page") on low-end
@@ -1653,6 +1788,17 @@ function SimonCircle({
         pointerEvents: "none",
       }} />
 
+      {/* The body of the device: the same disc pushed down, so a thick side wall
+          shows below the face and the wheel reads as a solid object on the floor. */}
+      {[44, 30, 16].map((dy, i) => (
+        <div key={dy} style={{
+          position: "absolute", inset: "-12px", borderRadius: "50%", pointerEvents: "none",
+          transform: `translateY(${dy}px)`,
+          background: ["#0d0428", "#1a0a45", "#2a1266"][i],
+          boxShadow: i === 0 ? "0 3px 0 rgba(192,132,252,0.75), 0 22px 34px rgba(0,0,0,0.75)" : "none",
+        }} />
+      ))}
+
       {/* Outer bezel — dark ring that frames the "screen" */}
       <div style={{
         position: "absolute", inset: "-12px",
@@ -1663,7 +1809,12 @@ function SimonCircle({
           inset 0 0 40px rgba(0,0,0,0.95),
           inset 0 0 0 2px rgba(167,139,250,0.4),
           inset 0 0 0 5px rgba(0,0,0,0.75),
-          inset 0 0 0 7px rgba(167,139,250,0.2)
+          inset 0 0 0 7px rgba(167,139,250,0.2),
+          0 12px 0 #3a1a8a,
+          0 24px 0 #2a1266,
+          0 36px 0 #1a0a45,
+          0 48px 0 #0d0428,
+          0 52px 0 rgba(192,132,252,0.6)
         `,
         transition: "box-shadow 0.15s",
       }} />
@@ -1894,11 +2045,16 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bestResult, practice, challenge, onChallenge,
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  bestResult: { prev: number | null; isNew: boolean } | null; // deepest round before this run, and whether this run beat it
+  practice: string | null; // name of the free mode just played, null for a ranked run
+  challenge: Challenge | null; // a friend's round this run was chasing
+  onChallenge: () => void; // send this run to a friend to beat
   grade: ReturnType<typeof gradeFor>;
   score: number; rounds: number; gameTimeMs: number;
   onPlayAgain: () => void;
@@ -1912,154 +2068,36 @@ function FinishedView({
   needsMint?: boolean;
 }) {
   const seconds = Math.max(0, Math.floor(gameTimeMs / 1000));
+  const ms = nextSimonMilestone(rounds);
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(2,0,12,0.78)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      display: "flex", alignItems: "flex-end", justifyContent: "center",
-      animation: "simon-sheet-fade 0.28s ease both",
-    }}>
-      <div style={{
-        width: "100%", maxWidth: "520px",
-        maxHeight: "92vh", overflowY: "auto",
-        borderRadius: "26px 26px 0 0",
-        background: "linear-gradient(180deg, rgba(8,30,52,0.98) 0%, rgba(4,12,30,0.99) 100%)",
-        border: "1px solid rgba(6,182,212,0.22)",
-        borderBottom: "none",
-        boxShadow: "0 -24px 60px -10px rgba(6,182,212,0.22), 0 -2px 0 rgba(255,255,255,0.04) inset",
-        paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
-        animation: "simon-sheet-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both",
-        position: "relative",
-      }}>
-        <style>{`
-          @keyframes simon-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes simon-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
-          @keyframes simon-grade-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-          @keyframes simon-score-rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        `}</style>
-
-        {/* Drag handle */}
-        <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
-        </div>
-
-        <div style={{ padding: "8px 22px 22px", textAlign: "center", position: "relative" }}>
-          {/* Confetti dots around grade · subtle, not arcade */}
-          {[...Array(8)].map((_, i) => {
-            const angle = (i / 8) * Math.PI * 2;
-            return (
-              <span key={i} aria-hidden style={{
-                position: "absolute", top: "78px", left: "50%",
-                width: 4, height: 4, borderRadius: 999,
-                background: grade.color, opacity: 0.55,
-                filter: `drop-shadow(0 0 6px ${grade.color})`,
-                transform: `translate(${Math.cos(angle) * 96 - 2}px, ${Math.sin(angle) * 96 - 2}px)`,
-                animation: `pet-sparkle ${2.4 + i * 0.18}s ease-in-out ${i * 0.25}s infinite`,
-                pointerEvents: "none",
-              }} />
-            );
-          })}
-
-          {/* Eyebrow + grade letter */}
-          <div style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-            color: grade.color, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.24em",
-            textTransform: "uppercase",
-            opacity: 0.85, marginTop: 6,
-          }}>{grade.desc}</div>
-
-          <div style={{
-            position: "relative", zIndex: 1,
-            width: 116, height: 116, margin: "12px auto 0",
-            borderRadius: "50%",
-            padding: 2,
-            background: `conic-gradient(from 220deg, ${grade.color}, ${grade.color}55, ${grade.color})`,
-            boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 38px ${grade.color}55`,
-            animation: "simon-grade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both",
-          }}>
-            <div style={{
-              width: "100%", height: "100%", borderRadius: "50%",
-              background: "linear-gradient(180deg, rgba(8,30,52,0.96) 0%, rgba(4,12,30,1) 100%)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <span style={{
-                fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-                fontSize: 72, fontWeight: 900,
-                color: "#fff",
-                textShadow: `0 0 14px ${grade.color}, 0 0 30px ${grade.color}aa, 0 2px 4px rgba(0,0,0,0.7)`,
-                WebkitTextStroke: `0.6px ${grade.color}`,
-                lineHeight: 1,
-              }}>{grade.letter}</span>
-            </div>
-          </div>
-
-          {/* Score */}
-          <div style={{
-            marginTop: 16,
-            animation: "simon-score-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both",
-          }}>
-            <div style={{
-              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-              color: "rgba(220,210,255,0.5)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
-            }}>SCORE</div>
-            <div style={{
-              fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-              color: "#fde68a",
-              fontSize: "clamp(36px, 9vw, 46px)", fontWeight: 900,
-              textShadow: "0 0 22px rgba(251,191,36,0.55), 0 2px 8px rgba(0,0,0,0.55)",
-              lineHeight: 1, marginTop: 4,
-              letterSpacing: "0.01em",
-            }}>{score.toLocaleString()}</div>
-          </div>
-
-          {/* Stats · Simon has only rounds + time */}
-          <div style={{
-            marginTop: 18,
-            display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8,
-          }}>
-            <StatChip label="ROUNDS" value={String(rounds)} color="#06b6d4" />
-            <StatChip label="TIME"   value={`${seconds}s`}  color="#22c55e" />
-          </div>
-
-          {/* Reward panel (or guest CTA) — unchanged behavior */}
-          {guest ? (
-            <GuestScorePrompt nextPath="/games/simon" />
-          ) : needsMint ? (
-            <MintScorePrompt score={score} />
-          ) : (
-            <RewardPanel
-              submitting={submitting}
-              signingOnChain={signingOnChain}
-              result={submitResult}
-              error={submitError}
-              txError={txError}
-              score={score}
-            />
-          )}
-
-          {/* CTAs. Lock the exits while the score is still saving so a
-              reflexive tap can't abort the on-chain save. The MARKOV
-              cross-promo link is hidden during the save window. */}
-          {(() => {
-            const saving = submitting || signingOnChain;
-            return (
-              <>
-                <div style={{ marginTop: 22, display: "flex", gap: 10, opacity: saving ? 0.45 : 1, pointerEvents: saving ? "none" : "auto", transition: "opacity 0.25s ease" }}>
-                  <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
-                  <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
-                </div>
-                {saving && (
-                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
-                    💾 Saving your score · hold on a sec
-                  </div>
-                )}
-                {!saving && <ArenaCrossPromo />}
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    </div>
+    <GameResult
+      eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
+      notes={<>
+        {challenge && rounds > 0 && (
+          <span className={rounds > challenge.rounds ? "good" : "warm"}>
+            {rounds > challenge.rounds ? `You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
+          </span>
+        )}
+        {bestResult && rounds > 0 && (
+          <span className={bestResult.isNew ? "gold" : ""}>
+            {bestResult.isNew
+              ? (bestResult.prev == null ? `Your first best: round ${rounds}` : `New best! Round ${rounds}, ${rounds - bestResult.prev} deeper than before`)
+              : bestResult.prev === rounds ? `Tied your best, round ${rounds}. One more beats it` : `Your best is round ${bestResult.prev} · ${bestResult.prev! - rounds + 1} more to beat it`}
+          </span>
+        )}
+        {ms && ms.at - rounds <= 3 && <span>Only <b>{ms.at - rounds}</b> round{ms.at - rounds === 1 ? "" : "s"} from <b>{ms.name}</b></span>}
+      </>}
+      stats={[{ label: "Rounds", value: rounds }, { label: "Time", value: `${seconds}s` }]}
+      saving={submitting || signingOnChain}
+      onPlayAgain={onPlayAgain} onExit={onExit}
+      challengeLabel={rounds > 0 ? `Challenge a friend to beat round ${rounds}` : null} onChallenge={onChallenge}
+      status={practice
+        ? <FreePlayNote mode={practice} />
+        : guest ? <GuestScorePrompt nextPath="/games/simon" />
+        : needsMint ? <MintScorePrompt score={score} />
+        : <RunSaveStatus submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} />}
+      after={<><NextUp />{!(submitting || signingOnChain) && <ArenaCrossPromo />}</>}
+    />
   );
 }
 
@@ -2068,7 +2106,7 @@ function StatChip({ label, value, color }: { label: string; value: string; color
   return (
     <div style={{
       borderRadius: 11,
-      background: "rgba(255,255,255,0.03)",
+      background: "rgba(76,29,149,0.05)",
       border: `1px solid ${color}33`,
       padding: "9px 4px 7px",
       textAlign: "center",
@@ -2077,12 +2115,11 @@ function StatChip({ label, value, color }: { label: string; value: string; color
       <div style={{
         fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
         color, fontSize: 17, fontWeight: 900,
-        textShadow: `0 0 10px ${color}66`,
         lineHeight: 1,
       }}>{value}</div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(220,210,255,0.5)", fontSize: 8.5, fontWeight: 800,
+        color: "rgba(34,16,79,0.68)", fontSize: 8.5, fontWeight: 800,
         letterSpacing: "0.14em", marginTop: 4,
       }}>{label}</div>
     </div>
@@ -2099,7 +2136,7 @@ function SheetBtn({ label, variant, onClick }: { label: string; variant: "primar
       padding: "13px 10px",
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
       fontSize: 12.5, fontWeight: 900, letterSpacing: "0.14em",
-      color: "#fff",
+      color: "#22104f",
       background: primary
         ? "linear-gradient(180deg, #a5f3fc 0%, #06b6d4 50%, #0e7490 100%)"
         : "rgba(255,255,255,0.04)",
@@ -2111,374 +2148,6 @@ function SheetBtn({ label, variant, onClick }: { label: string; variant: "primar
     }}>{label}</button>
   );
 }
-
-// ─── Reward panel — same state machine as rhythm's finish screen ─────────────
-function RewardPanel({
-  submitting, signingOnChain, result, error, txError, score,
-}: {
-  submitting: boolean;
-  signingOnChain: boolean;
-  result: FinishedSubmit | null;
-  error: string | null;
-  txError: string | null;
-  score: number;
-}) {
-  if (signingOnChain) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "12px",
-        borderRadius: "10px",
-        background: "rgba(251,191,36,0.1)",
-        border: "1px solid rgba(251,191,36,0.35)",
-        color: "#fbbf24",
-        fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em",
-        textAlign: "center",
-        boxShadow: "0 0 16px rgba(251,191,36,0.2)",
-      }}>
-        ✦ CONFIRM IN YOUR WALLET ✦
-        <div style={{
-          color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 700,
-          letterSpacing: "0.1em", marginTop: "4px",
-        }}>Signing records your score on-chain</div>
-      </div>
-    );
-  }
-
-  if (submitting) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(167,139,250,0.08)",
-        border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(200,180,255,0.7)",
-        fontSize: "11px", fontWeight: 900, letterSpacing: "0.14em",
-        textAlign: "center",
-      }}>
-        SAVING SCORE…
-      </div>
-    );
-  }
-
-  if (txError) {
-    // Strict classification — only call it gas when the catch block tagged
-    // the message with "top up" (i.e. it confirmed insufficient-funds /
-    // gas-related signals). User-rejected and other failures get the
-    // small red banner instead, with no misleading gas blame.
-    const low = txError.toLowerCase();
-    const isGasError = low.includes("top up");
-    return (
-      <GasAwareTxError
-        txError={txError}
-        isGasError={isGasError}
-      />
-    );
-  }
-
-  if (error) {
-    // Quick-exit prefix → calm neutral chip, NOT red error.
-    // The handleGameOver guard sets submitError to "Quick exit. ..."
-    // for sub-5s 0-point runs so the player isn't told their score
-    // failed when there was no score in the first place.
-    const isQuickExit = error.toLowerCase().startsWith("quick exit");
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: isQuickExit ? "rgba(167,139,250,0.08)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${isQuickExit ? "rgba(167,139,250,0.25)" : "rgba(239,68,68,0.2)"}`,
-        color: isQuickExit ? "rgba(200,180,255,0.8)" : "rgba(252,165,165,0.85)",
-        fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>
-        {error}
-      </div>
-    );
-  }
-
-  if (!result) return null;
-
-  const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
-  const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
-  const showFirstPb = isNewPb && !showPbDelta;
-
-  // Stagger reward-screen stings so each lands individually (rank → PB →
-  // level-up → achievement). Each plays once when its callout mounts.
-  return (
-    <RewardContent
-      rank={rank}
-      xpEarned={xpEarned}
-      level={level}
-      leveledUp={leveledUp}
-      isNewPb={isNewPb}
-      showPbDelta={showPbDelta}
-      showFirstPb={showFirstPb}
-      prevBest={prevBest}
-      newAchievements={newAchievements}
-      score={score}
-    />
-  );
-}
-
-type RewardContentProps = {
-  rank: number | undefined;
-  xpEarned: number | undefined;
-  level: number | undefined;
-  leveledUp: boolean | undefined;
-  isNewPb: boolean | undefined;
-  showPbDelta: boolean | undefined;
-  showFirstPb: boolean | undefined;
-  prevBest: number | undefined;
-  newAchievements: { id: string; name: string; icon?: string; desc?: string }[];
-  score: number;
-};
-
-function RewardContent({
-  rank, xpEarned, level, leveledUp, isNewPb, showPbDelta, showFirstPb, prevBest, newAchievements, score,
-}: RewardContentProps) {
-  useEffect(() => { if (rank) playRankReveal(); }, [rank]);
-  useEffect(() => {
-    if (isNewPb) { const t = setTimeout(() => playSaveSuccess(), 250); return () => clearTimeout(t); }
-  }, [isNewPb]);
-  useEffect(() => {
-    if (leveledUp) { const t = setTimeout(() => playLevelUp(), 500); return () => clearTimeout(t); }
-  }, [leveledUp]);
-  useEffect(() => {
-    if (newAchievements.length > 0) { const t = setTimeout(() => playAchievementChime(), 900); return () => clearTimeout(t); }
-  }, [newAchievements.length]);
-
-  return (
-    <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-        {rank ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: "10px",
-            background: "rgba(251,191,36,0.08)",
-            border: "1px solid rgba(251,191,36,0.28)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#fbbf24", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: "2px" }}>
-              #{rank}
-            </div>
-          </div>
-        ) : <div />}
-        {typeof xpEarned === "number" ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: "10px",
-            background: "rgba(167,139,250,0.1)",
-            border: "1px solid rgba(167,139,250,0.3)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: "2px" }}>
-              +{xpEarned}
-            </div>
-          </div>
-        ) : <div />}
-      </div>
-
-      {showPbDelta && typeof prevBest === "number" && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
-          border: "1px solid rgba(6,182,212,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ NEW PERSONAL BEST ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", fontWeight: 800, marginTop: "3px" }}>
-            Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#86efac", fontWeight: 900 }}>
-              +{Math.max(0, score - prevBest)}
-            </span>
-          </div>
-        </div>
-      )}
-      {showFirstPb && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "rgba(6,182,212,0.1)",
-          border: "1px solid rgba(6,182,212,0.35)",
-          textAlign: "center",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ FIRST PERSONAL BEST ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px", fontWeight: 700, marginTop: "3px" }}>
-            Your score is now on the leaderboard
-          </div>
-        </div>
-      )}
-
-      {leveledUp && level && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "linear-gradient(90deg, rgba(251,191,36,0.15) 0%, rgba(232,121,249,0.15) 100%)",
-          border: "1px solid rgba(251,191,36,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(251,191,36,0.2)",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ LEVEL UP ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", fontWeight: 800, marginTop: "3px" }}>
-            You&apos;re now Level {level}
-          </div>
-        </div>
-      )}
-
-      {newAchievements.length > 0 && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "rgba(34,197,94,0.1)",
-          border: "1px solid rgba(34,197,94,0.35)",
-          animation: "bounce-scale-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both",
-        }}>
-          <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", textAlign: "center", marginBottom: "6px" }}>
-            ✦ NEW ACHIEVEMENT{newAchievements.length > 1 ? "S" : ""} ✦
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {newAchievements.map((raw, i) => {
-              // Defensive hydrate — see rhythm/page.tsx comment. Handles
-              // both the legacy string-only response and the new hydrated
-              // object shape without relying on the backend being fresh.
-              const a = hydrateAchievement(raw);
-              return (
-                <div key={a.id || i} style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  color: "rgba(255,255,255,0.9)", fontSize: "12px", fontWeight: 800,
-                }}>
-                  <span style={{ fontSize: "16px" }}>{a.icon}</span>
-                  <span>{a.name}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── GasAwareTxError ──────────────────────────────────────────────────────────
-// Finish-screen error banner. Two variants:
-//   • Plain (default): generic failure or wallet rejection. Single-line
-//     red message with a retry hint. Player decides what to do next.
-//   • Gas-aware: triggered when the upstream classified the error as
-//     insufficient funds. Rich orange card with one primary CTA
-//     (Telegram help) plus a tiny secondary inline link (Copy wallet ID).
-// Classification happens at the catch site, not here · so we don't
-// overclaim "this was gas" when it was actually a different failure.
-const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
-function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
-  const { address } = useAccount();
-  const [copied, setCopied] = useState(false);
-
-  if (!isGasError) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(239,68,68,0.1)",
-        border: "1px solid rgba(239,68,68,0.35)",
-        color: "#fca5a5",
-        fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
-        textAlign: "center",
-      }}>
-        {txError}
-        <div style={{
-          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
-          letterSpacing: "0.1em", marginTop: "4px",
-        }}>Tap PLAY AGAIN to try again</div>
-      </div>
-    );
-  }
-
-  const copyWallet = () => {
-    if (!address) return;
-    navigator.clipboard?.writeText(address)
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); })
-      .catch(() => {});
-  };
-
-  return (
-    <div style={{
-      marginTop: "16px",
-      padding: "12px clamp(12px, 3.5vw, 14px)",
-      borderRadius: "12px",
-      background: "linear-gradient(180deg, rgba(249,115,22,0.12) 0%, rgba(120,50,0,0.18) 100%)",
-      border: "1px solid rgba(249,115,22,0.45)",
-      boxShadow: "0 0 14px rgba(249,115,22,0.12)",
-      display: "flex", flexDirection: "column",
-      gap: "8px",
-      textAlign: "center",
-    }}>
-      {/* Title — pure signal, no sentence. Same pattern as Clash Royale's
-          "NOT ENOUGH GEMS" or Candy Crush's "OUT OF LIVES": one phrase,
-          title-case, centered, tight. The primary button says "GET HELP"
-          so the sentence explaining what to do is redundant. */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        gap: "8px",
-        color: "#fed7aa",
-        fontSize: "clamp(11px, 3vw, 12.5px)",
-        fontWeight: 900, letterSpacing: "0.18em",
-        textShadow: "0 0 10px rgba(249,115,22,0.5)",
-      }}>
-        <span style={{ fontSize: "14px" }}>⛽</span>
-        NEEDS A TOP UP TO SAVE
-      </div>
-
-      {/* Primary CTA — one button does the work a paragraph used to do */}
-      <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"
-        style={{
-          display: "block",
-          padding: "10px 14px", borderRadius: "10px",
-          background: "linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)",
-          color: "white",
-          fontSize: "clamp(11px, 2.9vw, 12px)",
-          fontWeight: 900, letterSpacing: "0.1em",
-          textDecoration: "none",
-          border: "1.5px solid rgba(255,255,255,0.4)",
-          boxShadow: "0 6px 14px rgba(6,182,212,0.4), inset 0 2px 6px rgba(255,255,255,0.25)",
-        }}>
-        💬 GET HELP IN TELEGRAM
-      </a>
-
-      {/* Secondary inline link — dashed underline, small, so the eye lands
-          on the button first and only finds this if they look for more. */}
-      <button
-        onClick={copyWallet}
-        style={{
-          background: "none", border: "none",
-          padding: 0,
-          color: copied ? "#86efac" : "rgba(200,170,255,0.7)",
-          fontSize: "clamp(10px, 2.5vw, 10.5px)",
-          fontWeight: 700, letterSpacing: "0.04em",
-          cursor: "pointer", fontFamily: "inherit",
-          textDecoration: copied ? "none" : "underline",
-          textDecorationStyle: "dashed",
-          textDecorationColor: "rgba(200,170,255,0.35)",
-          textUnderlineOffset: "3px",
-        }}>
-        {copied ? "✓ Copied" : "Copy wallet ID"}
-      </button>
-    </div>
-  );
-}
-
-// ─── Top players preview on the lobby ─────────────────────────────────────
-// Mirrors Rhythm's pattern with Simon's cyan accent. Reads the current-season
-// Simon leaderboard directly from the SUBGRAPH (Goldsky · on-chain Score
-// events). Season boundary fetched once from the backend; the rows come
-// from chain truth.
-const SIMON_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 
 function SimonTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
   // Cache-seeded initial state · prefetch from /games or /dashboard

@@ -1,5 +1,6 @@
 "use client";
 
+import { toast, startProblem } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import { ATTRIBUTION_SUFFIX } from "@/lib/attribution";
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -9,6 +10,12 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
+import RunSaveStatus from "@/components/RunSaveStatus";
+
+import GameResult, { FreePlayNote } from "@/components/GameResult";
+import { useFriendRoom, type FriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -40,6 +47,10 @@ import { useGasStatus } from "@/hooks/useGasStatus";
 import { claimGas } from "@/app/actions/gas";
 import { GASLESS_SKILL_GAMES } from "@/lib/gasless";
 import ArenaCrossPromo from "@/components/ArenaCrossPromo";
+import { recentAverage, recordRun } from "@/lib/skillStart";
+import SONG_FILE from "@/lib/rhythmSongs.json";
+import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
+import NextUp from "@/components/NextUp";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
 // go through server actions so the games-backend URL is never sent to the client.
@@ -105,6 +116,58 @@ const ENCORE_POINTS = 5;     // flat per encore tile — encore is for glory, no
 const HOLD_TICK_POINTS = 2;      // per 0.5s of the bar's length, paid on completion
 const HOLD_TICK_SEC = 0.5;
 const HOLD_RELEASE_GRACE = 0.15; // releasing within 150ms of the end still completes
+
+// ─── HEAT · the run speeds up as you play well, and drops back when you slip ──
+// Every tile still has to be hit at exactly the same moment (the server judges
+// tap time against the chart and never looks at how fast a tile fell), so this
+// changes how HARD the tiles are to read, not the song or the score.
+//   · Keep a combo going and the tiles fall faster, one step at a time.
+//   · Miss once and the combo breaks: you are back to the slow, easy fall.
+// So the game is as fast as you are good, and a mistake is forgiven with an
+// easier stretch instead of a wall. The backing band follows the same level:
+// it builds in as you heat up and falls silent the moment you miss.
+const HEAT_AT = [5, 10, 16, 24, 34];              // combo needed for heat 1..5
+const HEAT_FALL = [1, 0.9, 0.8, 0.72, 0.65, 0.58]; // fall-time multiplier per heat level
+const HEAT_SPEED = [1, 1.1, 1.25, 1.4, 1.55, 1.7]; // what the player is shown
+const HEAT_COLOR = ["#a78bfa", "#67e8f9", "#4ade80", "#fbbf24", "#fb923c", "#f43f5e"];
+const HEAT_MIN_TRAVEL = 0.95;                      // never faster than this: still readable
+const heatFor = (combo: number) => HEAT_AT.filter((c) => combo >= c).length;
+// WARM START: a player whose recent runs reached high heat does not begin from
+// the crawl. Their runs start a couple of steps below the heat they usually
+// reach, and a miss drops them back to THAT level, not to zero. Recent rough
+// runs bring it down again. New players always start at 0.
+const HEAT_MAX = HEAT_FALL.length - 1;
+const warmStartFor = (avgTopHeat: number | null) => (avgTopHeat == null ? 0 : Math.max(0, Math.min(3, Math.round(avgTopHeat) - 2)));
+
+// ─── MODES ───────────────────────────────────────────────────────────────────
+// RANKED is the game as it has always been: it counts on the leaderboard and is
+// replayed by the server. Everything else is a free practice variant that
+// changes the rules for fun and never leaves the device: nothing is signed,
+// nothing is sent, no gas is needed. That is what makes them safe to play with.
+// "room" is a friend-room round: the room picks the song, nothing is signed or
+// sent to the chain, and the taps go to the room, which replays them.
+type ModeId = "ranked" | "practice" | "speed" | "mirror" | "sudden" | "room";
+const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
+  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "practice", name: "Practice", tag: "FREE", blurb: "Same song, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
+  { id: "speed", name: "Max Speed", tag: "FREE", blurb: "Top speed from the first note. No warm-up, no mercy.", color: "#f43f5e" },
+  { id: "mirror", name: "Mirror", tag: "FREE", blurb: "Every lane is flipped. Your hands will argue with you.", color: "#c084fc" },
+  { id: "sudden", name: "Sudden Death", tag: "FREE", blurb: "One miss and the run is over. How far can you get?", color: "#fb923c" },
+];
+const modeById = (id: ModeId) => MODES.find((m) => m.id === id) ?? MODES[0];
+
+// A challenge from a friend arrives as a link: /games/rhythm?beat=640&song=ode&mode=ranked&by=Tunde
+type Challenge = { score: number; song: string; mode: ModeId; by: string };
+function readChallenge(): Challenge | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search);
+  const score = Number(q.get("beat"));
+  if (!Number.isFinite(score) || score <= 0 || score > 1_000_000) return null;
+  const mode = (q.get("mode") || "ranked") as ModeId;
+  const by = (q.get("by") || "A friend").replace(/[^\p{L}\p{N} _.@-]/gu, "").slice(0, 18) || "A friend";
+  return { score: Math.round(score), song: q.get("song") || DEFAULT_SONG_ID, mode: MODES.some((m) => m.id === mode) ? mode : "ranked", by };
+}
+const DEFAULT_SONG_ID = "turca";
 
 // ─── V2 splash icons — ambient background ─────────────────────────────────────
 const D = "/splash_screen_icons/dice.png";
@@ -205,36 +268,39 @@ type NoteDef = { id: number; lane: number; time: number; travel: number; freq: n
 const P_GS4 = 415.30, P_A4 = 440.00, P_B4 = 493.88, P_C5 = 523.25,
   P_D5 = 587.33, P_DS5 = 622.25, P_E5 = 659.25, P_F5 = 698.46;
 
-function buildChart(): NoteDef[] {
+// Songs come from lib/rhythmSongs.json, which the server holds an exact copy of
+// (it replays every run against the same chart). All songs share this function's
+// timing skeleton, so they have the same notes, holds and maximum score: only
+// the melody, and so the lanes, differ.
+type Song = { id: string; name: string; by: string; mood: string; lanes: Record<string, number>; T1: string[]; T2: string[]; T3: string[]; T4: string[]; outro: string };
+const SONGS = SONG_FILE.songs as unknown as Song[];
+const PITCH = SONG_FILE.pitches as Record<string, number>;
+const DEFAULT_SONG = SONG_FILE.default;
+const songById = (id: string) => SONGS.find((x) => x.id === id) ?? SONGS.find((x) => x.id === DEFAULT_SONG)!;
+// One song is "today's song" for everyone, changing at midnight UTC.
+const todaysSongId = (ids: string[]) => ids[Math.floor(Date.now() / 86_400_000) % ids.length];
+
+function buildChart(songId: string = DEFAULT_SONG): NoteDef[] {
+  const song = songById(songId);
   const notes: NoteDef[] = [];
   let id = 0;
   const push = (lane: number, time: number, travel: number, freq: number, hold?: number) =>
     notes.push({ id: id++, lane, time, travel, freq, ...(hold ? { hold } : {}) });
 
-  // Rondo alla Turca opening theme, simplified to one octave. Phrase
-  // entries are [pitch, holdSeconds?] — phrase-ending notes sustain,
-  // which is exactly how Mozart phrases it (the turn lands and RINGS).
-  //   T1: B A G# A → C(hold)      (5, THE famous opening turn)
-  //   T2: D C B C → E(hold)       (5, the turn sequenced up — the echo)
-  //   T3: F E D# E B A G# A       (8, the cascade run — no holds, pure taps)
-  //   T4: C B → A(long hold)      (3, landing home on the tonic)
-  //   Two passes, then T3 at eighth notes as the climax sprint — the
-  //   skill check where the ±80ms PERFECT window forms the leaderboard.
+  // Phrase entries are [pitch, holdSeconds?]: the last note of T1, T2 and T4
+  // sustains, the way the melody breathes. T3 is the run: pure taps.
   type TN = [number, number?];
-  const T1: TN[] = [[P_B4], [P_A4], [P_GS4], [P_A4], [P_C5, 1.0]];
-  const T2: TN[] = [[P_D5], [P_C5], [P_B4], [P_C5], [P_E5, 1.0]];
-  const T3: TN[] = [[P_F5], [P_E5], [P_DS5], [P_E5], [P_B4], [P_A4], [P_GS4], [P_A4]];
-  const T4: TN[] = [[P_C5], [P_B4], [P_A4, 1.5]];
+  const phrase = (names: string[], lastHold: number): TN[] =>
+    names.map((n, i) => (lastHold && i === names.length - 1 ? [PITCH[n], lastHold] : [PITCH[n]]));
+  const T1 = phrase(song.T1, 1.0);
+  const T2 = phrase(song.T2, 1.0);
+  const T3 = phrase(song.T3, 0);
+  const T4 = phrase(song.T4, 1.5);
 
-  // Lane map — low-left to high-right, two pitches per lane. The turn
-  // rocks between lanes 1 and 0; the cascade run sweeps 3 → 0 across
-  // the full width of the screen. Melody and hand motion agree.
-  const laneFor = (f: number): number => {
-    if (f === P_GS4 || f === P_A4) return 0;
-    if (f === P_B4 || f === P_C5) return 1;
-    if (f === P_D5 || f === P_DS5) return 2;
-    return 3; // P_E5 / P_F5
-  };
+  // Lane for a pitch, low-left to high-right, from the song's own table.
+  const byFreq = new Map<number, number>(Object.entries(song.lanes).map(([n, lane]) => [PITCH[n], lane]));
+  const laneFor = (f: number): number => byFreq.get(f) ?? 0;
+  const P_A4 = PITCH[song.outro]; // the song's home pitch, used by the outro
 
   // Section stamper — lays a phrase at `start` with the given `travel` and
   // `step` (seconds per note). Quarter notes on the passes, eighth-note
@@ -272,7 +338,7 @@ function buildChart(): NoteDef[] {
   // ─── OUTRO (36.0s → 43.5s): four held tonic A's at slowing intervals —
   //   long-press landings that close the run on the home note.
   const outro: number[] = [36.0, 38.0, 40.0, 42.5];
-  outro.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0));
+  outro.forEach(t => push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0)); // P_A4 = this song's home pitch
 
   return notes.sort((a, b) => a.time - b.time);
 }
@@ -284,11 +350,11 @@ function buildChart(): NoteDef[] {
 // Encore depth gets its own badge on the finish screen instead.
 const MAIN_NOTE_COUNT = 54; // buildChart() note count — keep in sync if the chart changes
 function gradeFor(accuracy: number) {
-  if (accuracy >= 0.95) return { letter: "S", color: "#fbbf24", desc: "PERFECTION" };
-  if (accuracy >= 0.85) return { letter: "A", color: "#e2e8f0", desc: "EXCELLENT" };
-  if (accuracy >= 0.70) return { letter: "B", color: "#67e8f9", desc: "GREAT" };
-  if (accuracy >= 0.50) return { letter: "C", color: "#22c55e", desc: "GOOD" };
-  return { letter: "D", color: "#f97316", desc: "KEEP GOING" };
+  if (accuracy >= 0.95) return { letter: "S", color: "#b45309", desc: "PERFECTION" };
+  if (accuracy >= 0.85) return { letter: "A", color: "#475569", desc: "EXCELLENT" };
+  if (accuracy >= 0.70) return { letter: "B", color: "#0e7490", desc: "GREAT" };
+  if (accuracy >= 0.50) return { letter: "C", color: "#15803d", desc: "GOOD" };
+  return { letter: "D", color: "#c2410c", desc: "KEEP GOING" };
 }
 
 // ─── Particle burst — spawned on every hit ───────────────────────────────────
@@ -652,6 +718,61 @@ export default function RhythmGamePage() {
   }, [audioSettings.hapticsOn]);
   const [countdown, setCountdown] = useState(3);
   const [score, setScore] = useState(0);
+  // Personal best + live pace against it (see lib/rhythmBest.ts)
+  const scoreLiveRef = useRef(0);
+  useEffect(() => { scoreLiveRef.current = score; }, [score]);
+  const paceRef = useRef<number[]>([]);
+  const bestRef = useRef<RhythmBest | null>(null);
+  const runCountedRef = useRef(false);
+  const [paceDelta, setPaceDelta] = useState<number | null>(null);
+  const [bestResult, setBestResult] = useState<{ prev: number | null; isNew: boolean } | null>(null);
+  useEffect(() => { bestRef.current = readRhythmBest(); }, []);
+  // Mode + an incoming friend challenge
+  const [mode, setMode] = useState<ModeId>("ranked");
+  const modeRef = useRef<ModeId>("ranked");
+  useEffect(() => { modeRef.current = mode; bestRef.current = readRhythmBest(mode); }, [mode]);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => { const c = readChallenge(); if (c) { setChallenge(c); setMode(c.mode); } }, []);
+  const [suddenOver, setSuddenOver] = useState(false);
+  // The song and mode a run is PLAYED with, pinned when the run is set up.
+  // Everything about the run (the chart, the rules, what is sent to the server)
+  // reads these, never the live lobby choice: the lobby stays tappable while the
+  // session ticket is fetched, and the song list can arrive from the server at
+  // any moment. Without the pin an honest run could be built on one song and
+  // submitted as another, and the server would score it as mostly misses.
+  const runSongRef = useRef<string>("turca");
+  const runModeRef = useRef<ModeId>("ranked");
+  const busyRef = useRef(false); // a run is being set up or played
+
+  // Song choice. Only the original is offered until the server confirms which
+  // songs it can score (GET /api/rhythm/songs): a newer game must never let a
+  // run be replayed against the wrong chart by an older server.
+  const [songIds, setSongIds] = useState<string[]>([DEFAULT_SONG]);
+  const [songId, setSongId] = useState<string>(DEFAULT_SONG);
+  const songIdRef = useRef<string>(DEFAULT_SONG);
+  useEffect(() => { songIdRef.current = songId; }, [songId]);
+  useEffect(() => {
+    let dead = false;
+    fetch(`${BACKEND_URL}/api/rhythm/songs`).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (dead || !d || !Array.isArray(d.songs)) return;
+      const ok = SONGS.map((x) => x.id).filter((id) => d.songs.includes(id));
+      if (ok.length < 2) return;
+      setSongIds(ok);
+      if (busyRef.current) return; // a run is already being set up or played: leave its song alone
+      const ch = readChallenge();
+      setSongId(ch && ok.includes(ch.song) ? ch.song : todaysSongId(ok)); // a friend's challenge picks their song; else today's
+    }).catch(() => { /* older server or offline: the original song only */ });
+    return () => { dead = true; };
+  }, []);
+  // HEAT (see the constants at the top of the file)
+  const heatRef = useRef(0);
+  const topHeatRef = useRef(0);
+  const [heat, setHeat] = useState(0);
+  const travelLockRef = useRef<Map<number, number>>(new Map()); // each tile's fall time, fixed when it appears
+  const beatIdxRef = useRef(-1);
+  const warmRef = useRef(0); // the heat this run starts from, and falls back to
+  const [warm, setWarm] = useState(0);
+  useEffect(() => { const w = warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); }, []);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [hits, setHits] = useState({ perfect: 0, good: 0, miss: 0 });
@@ -780,6 +901,7 @@ export default function RhythmGamePage() {
   // encore tiles into misses and re-trigger the prompt instantly).
   const savePausedAtRef = useRef(0);
   type SubmitResult = {
+  txHash?: string | null; // the transaction that recorded the score
     rank?: number;
     xpEarned?: number;
     xp?: number;
@@ -828,9 +950,22 @@ export default function RhythmGamePage() {
   const [gasHelpOpen, setGasHelpOpen] = useState(false);
   const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
+  // Friends in a room all play the same song at the same time.
+  const room = useFriendRoom("rhythm");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+  const roomRunRef = useRef(false);   // this run belongs to the room
+  const roomSentRef = useRef(false);  // its taps have been handed in
+
   // Reset game state
   const reset = useCallback(() => {
-    chartRef.current = buildChart();
+    runSongRef.current = songIdRef.current;
+    runModeRef.current = roomRunRef.current ? "room" : modeRef.current;
+    busyRef.current = true;
+    chartRef.current = buildChart(runSongRef.current);
+    if (runModeRef.current === "mirror") chartRef.current = chartRef.current.map((n) => ({ ...n, lane: LANES.length - 1 - n.lane }));
+    setSuddenOver(false);
     spawnedRef.current = new Set();
     missedRef.current = new Set();
     encoreMissesRef.current = 0;
@@ -861,6 +996,11 @@ export default function RhythmGamePage() {
     setFeverActive(false);
     setPerfectStreak(0);
     setScore(0); setCombo(0); setMaxCombo(0);
+    paceRef.current = [];
+    { const w = runModeRef.current === "speed" ? HEAT_MAX : warmStartFor(recentAverage("rhythm")); warmRef.current = w; setWarm(w); heatRef.current = w; topHeatRef.current = w; setHeat(w); }
+    travelLockRef.current = new Map(); beatIdxRef.current = -1;
+    setPaceDelta(null);
+    setBestResult(null);
     setHits({ perfect: 0, good: 0, miss: 0 });
     setTimeLeft(TRACK_DURATION);
     setBursts([]);
@@ -874,7 +1014,9 @@ export default function RhythmGamePage() {
   }, [juice]);
 
   // Countdown → playing
-  const startGame = async () => {
+  const startGame = async (roomSong?: unknown) => {
+    // a room round passes its song; a tap on Play passes a click event
+    const inRoom = typeof roomSong === "string" && SONGS.some((x) => x.id === roomSong);
     // Re-entry guard: bail if a session ticket is already being
     // requested. Without it, two quick clicks during the ~500ms ticket
     // round trip insert two game_sessions rows for one actual play.
@@ -882,7 +1024,7 @@ export default function RhythmGamePage() {
 
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Block a new run once a guest is out of free plays; offer sign-in.
-    if (isGuest && guestPlaysLeft("rhythm") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("rhythm") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -897,7 +1039,13 @@ export default function RhythmGamePage() {
     // Unminted players play the GUEST path: no gas gate (they submit
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
-    if (!GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
+    // Pin the mode now: every later check in this start reads the pinned value.
+    roomRunRef.current = inRoom; roomSentRef.current = false;
+    if (inRoom) { songIdRef.current = roomSong as string; setSongId(roomSong as string); }
+    runModeRef.current = inRoom ? "room" : modeRef.current;
+    const ranked = runModeRef.current === "ranked";
+    // Practice variants never touch the chain: no gas check, no session ticket.
+    if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
       // CELO in Telegram. If the drip lands (wallet under the fresh threshold,
       // faucet funded), the wallet now has gas so the score will save — proceed
@@ -925,7 +1073,7 @@ export default function RhythmGamePage() {
     // ═══ Anti-cheat: request a session ticket BEFORE the countdown ═══
     // No ticket = backend refuses to sign the score at submit time. If we
     // can't get one, surface a quiet error and don't enter the run.
-    if (address && !needsMint) {
+    if (ranked && address && !needsMint) {
       try {
         let res;
         if (isMiniPay) {
@@ -938,20 +1086,22 @@ export default function RhythmGamePage() {
           const token = await getAccessToken();
           if (!token) {
             setSubmitError("Sign in required to start a run.");
-            startingRef.current = false;
+            startingRef.current = false; busyRef.current = false;
             return;
           }
           res = await startGameAction(token, address, "rhythm");
         }
         if (!res.success) {
           setSubmitError(res.error || "Couldn't start session. Try again.");
-          startingRef.current = false;
+          toast(startProblem(res.error));
+          startingRef.current = false; busyRef.current = false;
           return;
         }
         sessionTokenRef.current = res.sessionToken;
       } catch {
         setSubmitError("Couldn't start session. Try again.");
-        startingRef.current = false;
+        toast(startProblem());
+        startingRef.current = false; busyRef.current = false;
         return;
       }
     } else if (inVatar) {
@@ -976,6 +1126,31 @@ export default function RhythmGamePage() {
     // until the next gameover surface.
     startingRef.current = false;
   };
+  // the host pressed start: play the room's song
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current || v.players[v.you]?.done) return;
+    const song = (v.deal as { songId?: string } | undefined)?.songId;
+    if (!song) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(song);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (!roomRunRef.current) return;
+    if (!room.inRoom || room.view?.status === "waiting") { roomRunRef.current = false; reset(); setPhase("idle"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
+  // friends see your score climb, about once a second
+  const roomTold = useRef(0);
+  useEffect(() => {
+    if (phase !== "playing" || runModeRef.current !== "room") return;
+    const now = Date.now();
+    if (now - roomTold.current < 1000) return;
+    roomTold.current = now; roomRef.current.progress(score);
+  }, [score, phase]);
 
   // ═══ Vatar embed · record the finished run ═══════════════════════════════
   // The embed player has no browser wallet, so the on-chain submit path (gated
@@ -998,7 +1173,7 @@ export default function RhythmGamePage() {
       if (!token) return;
       const vs = await getVatarSession();
       if (!vs) return;
-      await signVatarScore(vs, "rhythm", scoreToSave, token, taps).catch(() => {});
+      await signVatarScore(vs, "rhythm", scoreToSave, token, taps, runSongRef.current).catch(() => {}); // the song matters: the server replays the taps against it
     })();
   }, [phase, inVatar, score]);
 
@@ -1043,6 +1218,11 @@ export default function RhythmGamePage() {
   //                          Supabase, awards XP, unlocks achievements
   useEffect(() => {
     if (phase !== "finished") return;
+    if (runModeRef.current === "room") { // the room replays the taps and ranks everyone
+      if (!roomSentRef.current) { roomSentRef.current = true; void roomRef.current.finish({ tapLog: tapLogRef.current.slice() }); }
+      return;
+    }
+    if (runModeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
     // Unminted: nothing to submit — the finish screen shows the mint
@@ -1105,7 +1285,7 @@ export default function RhythmGamePage() {
       try {
         // ── STEP 1: voucher ──
         let sig:
-          | { success: true; gasless: true; txHash: string; gameType: number; score?: number }
+          | { success: true; gasless: true; txHash: string | null; queued?: boolean; gameType: number; score?: number }
           | { success: true; gasless?: false; signature: string; nonce: string; gameType: number; score?: number }
           | { success: false; error: string };
         let authToken: string | null = null;
@@ -1130,6 +1310,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
+            undefined, undefined, undefined, runSongRef.current,
           );
         } else {
           authToken = await getAccessToken();
@@ -1142,6 +1323,7 @@ export default function RhythmGamePage() {
             { game: "rhythm", score: scoreToSubmit },
             sessionToken,
             tapLogSnapshot,
+            undefined, undefined, undefined, runSongRef.current,
           );
         }
 
@@ -1240,7 +1422,7 @@ export default function RhythmGamePage() {
         // actually signed. Also surface it to the UI in case the local count
         // drifted (e.g. encore scoring on the server differs by a few points).
         let result;
-        const fullScoreData = { ...baseScoreData, score: officialScore, txHash };
+        const fullScoreData = { ...baseScoreData, score: officialScore, txHash, sessionToken: sessionTokenRef.current };
         if (isMiniPay) {
           // MiniPay path: no client signature (celopedia minipay-guide
           // §"No message signing"). submitScoreMiniPay accepts empty
@@ -1264,6 +1446,7 @@ export default function RhythmGamePage() {
             isNewPb: result.isNewPb,
             prevBest: result.prevBest,
             newAchievements: result.newAchievements || [],
+            txHash, // so the result screen can show whether the chain confirmed it
           });
           // Trigger the full-screen LEVEL UP celebration immediately
           // when the result lands. Slight delay so the finished-card
@@ -1633,6 +1816,12 @@ export default function RhythmGamePage() {
         if (sec !== lastTimerSecond) {
           lastTimerSecond = sec;
           setTimeLeft(Math.max(0, TRACK_DURATION - now));
+          // Race your own best: note the score at this second, and compare it
+          // with where the best run stood at the same moment.
+          const at = Math.max(0, Math.floor(now));
+          paceRef.current[at] = scoreLiveRef.current;
+          const b = bestRef.current;
+          if (b && typeof b.pace[at] === "number" && at >= 5) setPaceDelta(scoreLiveRef.current - b.pace[at]);
         }
       }
 
@@ -1700,9 +1889,57 @@ export default function RhythmGamePage() {
         }
       }
 
+      // The band you earn. Silent at heat 0. A kick joins on the beat at heat 1,
+      // off-beat hats at heat 2, a bass root on each bar at heat 4. It stops the
+      // instant a miss drops the heat, and that silence is the feedback.
+      if (phase === "playing") {
+        const idx = Math.floor(now / (BEAT / 2));
+        if (idx !== beatIdxRef.current) {
+          beatIdxRef.current = idx;
+          const h = heatRef.current;
+          const ctx = h > 0 ? getAudioCtx() : null;
+          const mg = gainsRef.current.music;
+          if (ctx && mg > 0) {
+            const t = ctx.currentTime + 0.005;
+            if (idx % 2 === 0) {
+              // kick: a short sine thump that drops in pitch
+              const o = ctx.createOscillator();
+              const g = ctx.createGain();
+              o.type = "sine";
+              o.frequency.setValueAtTime(140, t);
+              o.frequency.exponentialRampToValueAtTime(48, t + 0.11);
+              const v = (0.16 + h * 0.035) * mg;
+              g.gain.setValueAtTime(0.0001, t);
+              g.gain.exponentialRampToValueAtTime(v, t + 0.006);
+              g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+              o.connect(g); g.connect(ctx.destination);
+              o.start(t); o.stop(t + 0.22);
+              if (h >= 4 && idx % 8 === 0) scheduleBass(ctx, t, 110, 0.16); // bar root, A2
+            } else if (h >= 2) {
+              scheduleHihat(ctx, t, 0.05 + h * 0.012);
+            }
+          }
+        }
+      }
+
       // Spawn notes that are now visible (notes whose fall window has started)
       const visible: (NoteDef & { spawnedAt: number; holdState?: "held" | "dropped" })[] = [];
-      for (const n of chartRef.current) {
+      for (const src of chartRef.current) {
+        // HEAT: a tile's fall time is fixed the moment it appears, from the heat
+        // at that moment, so tiles already on screen never jump.
+        let tv = travelLockRef.current.get(src.id);
+        if (tv === undefined) {
+          let eff = phase === "playing" ? Math.max(HEAT_MIN_TRAVEL, src.travel * HEAT_FALL[heatRef.current]) : src.travel;
+          if (now < src.time - eff) continue;
+          // After a miss the fall slows, so a tile that was waiting for the faster
+          // speed is suddenly "late". Start it at the top now with the time it has
+          // left, instead of letting it appear part-way down the lane.
+          const left = src.time - now;
+          if (phase === "playing" && left < eff && left >= HEAT_MIN_TRAVEL * 0.8) eff = left;
+          travelLockRef.current.set(src.id, eff);
+          tv = eff;
+        }
+        const n = tv === src.travel ? src : { ...src, travel: tv };
         if (now >= n.time - n.travel && now <= n.time + (n.hold ?? 0) + GOOD_WINDOW + 0.3) {
           if (!spawnedRef.current.has(n.id)) spawnedRef.current.add(n.id);
           if (!missedRef.current.has(n.id)) {
@@ -1748,6 +1985,7 @@ export default function RhythmGamePage() {
             setFeverActive(false);
           }
           setHits(h => ({ ...h, miss: h.miss + 1 }));
+          if (runModeRef.current === "sudden" && phase === "playing") setSuddenOver(true); // one miss ends it
           setFeedback({ lane: n.lane, type: "miss", ts: performance.now() });
           // Floating "MISS" popup at the lane + light screen shake.
           // Encore misses shake harder because each one costs a life.
@@ -1764,7 +2002,8 @@ export default function RhythmGamePage() {
             encoreMissesRef.current++;
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
-              if (address && !needsMint) {
+              // Paying to save only makes sense for a run that will be submitted.
+              if (runModeRef.current === "ranked" && address && !needsMint) {
                 savePausedAtRef.current = performance.now(); // freeze the clock
                 setPhase("saving");
               } else {
@@ -1851,6 +2090,78 @@ export default function RhythmGamePage() {
     setPhase("finished");
   }, []);
 
+  // dev only: lets an automated test play the song (hit a lane at a chart time)
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as { __rhythm?: unknown }).__rhythm = {
+      now: () => (performance.now() - startRef.current) / 1000,
+      chart: () => chartRef.current.map((n) => ({ id: n.id, lane: n.lane, time: n.time, hold: n.hold ?? 0 })),
+      hit: hitLane, release: releaseLane, phase, build: (id: string) => buildChart(id), setMode, mode, runSong: () => runSongRef.current, runMode: () => runModeRef.current, setSongs: (ids: string[]) => { setSongIds(ids); }, pick: setSongId, heat: () => heatRef.current, warm: () => warmRef.current,
+      falls: () => [...travelLockRef.current.values()],
+    };
+  });
+
+  // Tell a returning player why the tiles are already moving quickly.
+  useEffect(() => {
+    if (phase === "playing" && warmRef.current > 0) juice.fireCallout({ text: "WARM START", sub: `×${HEAT_SPEED[warmRef.current]} · YOU EARNED IT`, color: HEAT_COLOR[warmRef.current] }, 900);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  // ─── HEAT follows the combo ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const next = Math.min(HEAT_MAX, warmRef.current + heatFor(combo));
+    const prev = heatRef.current;
+    if (next === prev) return;
+    heatRef.current = next;
+    setHeat(next);
+    if (next > prev) {
+      topHeatRef.current = Math.max(topHeatRef.current, next);
+      juice.fireCallout({ text: "SPEED UP!", sub: `×${HEAT_SPEED[next]} · KEEP THE COMBO`, color: HEAT_COLOR[next] }, 650);
+      haptic(18);
+    } else if (prev - next >= 2) {
+      juice.fireCallout({ text: next === 0 ? "BACK TO SLOW" : `BACK TO ×${HEAT_SPEED[next]}`, sub: "BUILD IT AGAIN", color: "#a78bfa" }, 600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [combo, phase]);
+
+  // Back in the lobby or on the result screen, nothing is in flight any more.
+  useEffect(() => { if (phase === "idle" || phase === "finished") busyRef.current = false; }, [phase]);
+
+  // Sudden Death: the first miss ends the run, the same way QUIT does.
+  useEffect(() => {
+    if (!suddenOver || phase !== "playing") return;
+    mainTrackStatsRef.current = { misses: hits.miss, goods: hits.good, perfects: hits.perfect };
+    juice.fireCallout({ text: "SUDDEN DEATH", sub: "ONE MISS. RUN OVER.", color: "#fb923c" }, 700);
+    setPhase("finished");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suddenOver]);
+
+  // ─── Personal best (device only, display only) ──────────────────────────────
+  // When a run ends, compare it with the stored best once, and keep it if it
+  // is higher. FinishedView reads `bestResult`.
+  useEffect(() => {
+    // A run can only be counted once it has actually been played: the flag is
+    // re-armed when play starts, not when PLAY AGAIN is tapped (at that moment
+    // the phase is still "finished" and the score has just been zeroed, which
+    // used to count an empty run and then skip the real one).
+    if (phase === "playing") { runCountedRef.current = false; return; }
+    if ((phase !== "finished" && phase !== "saving") || runCountedRef.current) return;
+    runCountedRef.current = true;
+    const prev = bestRef.current;
+    const ms = mainTrackStatsRef.current;
+    const acc = Math.min(1, (ms.perfects + ms.goods * 0.5) / MAIN_NOTE_COUNT);
+    const isNew = score > 0 && (!prev || score > prev.score);
+    if (isNew) {
+      const next: RhythmBest = { score, accuracy: acc, pace: fillPace(paceRef.current, TRACK_DURATION) };
+      saveRhythmBest(next, runModeRef.current);
+      bestRef.current = next;
+    }
+    setBestResult({ prev: prev ? prev.score : null, isNew });
+    // feed the skill-matched start: how hot this run got
+    if (score > 0 && (runModeRef.current === "ranked" || runModeRef.current === "practice")) recordRun("rhythm", topHeatRef.current);
+  }, [phase, score]);
+
   // ─── Render helpers ──────────────────────────────────────────────────────────
 
   // Grade + accuracy come from the MAIN-TRACK snapshot (taken at every exit
@@ -1869,7 +2180,10 @@ export default function RhythmGamePage() {
       position: "fixed", inset: 0,
       // Deep cosmic void — falling tiles read as bright lights against darkness,
       // matching the Simon chamber aesthetic for brand-wide visual consistency.
-      background: "radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
+      // A painted place to play in (a Lagos street-party stage / a retro arcade)
+      // under a dark wash, so the game on top stays the brightest thing on screen.
+      // The old plain gradient stays underneath as the colour while the image loads.
+      background: "linear-gradient(rgba(5,2,26,0.42), rgba(5,2,26,0.62)), url(/games/rhythm-stage.webp) center / cover no-repeat, radial-gradient(ellipse 65% 55% at 50% 50%, #1a0a5a 0%, #0c0430 35%, #05021a 70%, #010008 100%)",
       overflow: "hidden",
       fontFamily: "inherit",
       touchAction: "manipulation",
@@ -1895,9 +2209,19 @@ export default function RhythmGamePage() {
         pointerEvents: "none", zIndex: 1,
       }} />
 
+      <FriendsPlay room={room} gameName="Rhythm Rush" sharePath="/games/rhythm" atStart={phase === "idle"} progressWord="score" part="overlays" />
+
       {/* ═══ IDLE ═══ */}
       {phase === "idle" && (
         <IdleView
+          room={room}
+          songs={songIds.map(songById)}
+          songId={songId}
+          todayId={songIds.length > 1 ? todaysSongId(songIds) : null}
+          onPickSong={setSongId}
+          mode={mode}
+          onPickMode={setMode}
+          challenge={challenge}
           onStart={startGame}
           onExit={() => router.push("/games")}
           onLeaderboard={() => router.push("/games/rhythm/leaderboard")}
@@ -1943,6 +2267,9 @@ export default function RhythmGamePage() {
       {/* ═══ PLAYING + ENCORE (same view, different HUD treatment) ═══ */}
       {(phase === "playing" || phase === "encore") && (
         <PlayingView
+          paceDelta={phase === "playing" ? paceDelta : null}
+          target={challenge && phase === "playing" ? { by: challenge.by, left: challenge.score - score } : null}
+          heat={phase === "playing" ? heat : 0}
           score={score} combo={combo} timeLeft={timeLeft}
           bursts={bursts}
           comboToast={comboToast} flashLane={flashLane} feedback={feedback}
@@ -2002,11 +2329,23 @@ export default function RhythmGamePage() {
       )}
 
       {/* ═══ FINISHED ═══ */}
-      {phase === "finished" && (
+      {/* in a friend room the room's standings are the result screen */}
+      {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
           grade={grade}
           score={score} maxCombo={maxCombo} hits={hits}
           accuracy={Math.round(accuracy * 100)}
+          bestResult={bestResult}
+          practice={mode === "ranked" ? null : modeById(mode).name}
+          challenge={challenge}
+          onChallenge={() => {
+            const url = `${window.location.origin}/games/rhythm?beat=${score}&song=${runSongRef.current}&mode=${runModeRef.current}&by=${encodeURIComponent("A friend")}`;
+            const text = `I scored ${score.toLocaleString()} on ${songById(runSongRef.current).name} in Rhythm Rush. Beat it if you can 🔥`;
+            if (navigator.share) navigator.share({ title: "Rhythm Rush", text, url }).catch(() => {});
+            else window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, "_blank");
+          }}
+          topSpeed={HEAT_SPEED[topHeatRef.current]}
+          gradeGap={nextGradeGap(mainStats.perfects, mainStats.goods, MAIN_NOTE_COUNT)}
           encoreLoop={encoreLoop}
           onPlayAgain={startGame}
           // Exit returns to THIS game's lobby (idle phase) instead of
@@ -2066,7 +2405,10 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ room, songs, songId, todayId, onPickSong, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  room: FriendRoom;
+  songs: Song[]; songId: string; todayId: string | null; onPickSong: (id: string) => void;
+  mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
   onExit: () => void;
   onLeaderboard: () => void;
@@ -2083,102 +2425,32 @@ function IdleView({ onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup
   gasBanner?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: "32px", padding: "24px",
-    }}>
-      {/* Back X */}
-      <button onClick={onExit} style={{
-        position: "absolute", top: "18px", left: "18px",
-        width: "40px", height: "40px", borderRadius: "12px",
-        background: "#6b0000", paddingBottom: "4px",
-        border: "none", cursor: "pointer", fontFamily: "inherit",
-        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-      }}>
-        <div style={{
-          width: "100%", height: "36px", borderRadius: "10px 10px 8px 8px",
-          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-          border: "2px solid rgba(255,255,255,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </div>
-      </button>
-
-
-      <div style={{ textAlign: "center" }}>
-        <div style={{
-          fontSize: "12px", fontWeight: 900, letterSpacing: "0.4em",
-          color: "rgba(232,121,249,0.7)",
-          textShadow: "0 0 14px rgba(232,121,249,0.7)",
-        }}>GAME ARENA</div>
-        <div style={{
-          fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em",
-          color: "white", marginTop: "6px",
-          textShadow: "0 0 24px rgba(232,121,249,0.9), 0 4px 10px rgba(0,0,0,0.7)",
-          lineHeight: 1,
-        }}>RHYTHM<br />RUSH</div>
-      </div>
-
-      <div style={{
-        maxWidth: "360px", textAlign: "center",
-        color: "rgba(220,200,255,0.75)", fontSize: "13px", fontWeight: 700, lineHeight: 1.6,
-      }}>
-        Tap the notes as they hit the bottom.
-        Build combos for bigger multipliers.
-        <br />
-        <span style={{ color: "rgba(251,191,36,0.85)" }}>
-          Desktop: A S D F or ← ↓ ↑ →
-        </span>
-      </div>
-
-      {guest && <GuestPlayChip left={guestLeft} />}
-
-      {/* Signed in, no slime yet — honest twin of the guest chip. */}
-      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
-
-      {/* Gas posture pill · only renders for warn/block. Empty otherwise
-          so the lobby reads clean for the happy-path player. */}
-      {gasBanner}
-
-      {/* Top players preview · the leaderboard lives ON the play surface
-          where the eye actually goes, not in a corner icon nobody scans.
-          Showing who you're chasing is the START motivation. */}
-      <RhythmTopPlayersPreview onViewAll={onLeaderboard} />
-
-      {/* Juicy START button */}
-      <div role="button" tabIndex={0} onClick={onStart}
-        style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-        <div style={{
-          borderRadius: "18px", background: "#7c1d5a", paddingBottom: "6px",
-          boxShadow: "0 12px 28px -6px rgba(232,121,249,0.75), 0 0 40px rgba(232,121,249,0.3)",
-        }}>
-          <div style={{
-            borderRadius: "16px 16px 12px 12px",
-            background: "linear-gradient(160deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)",
-            padding: "18px 28px", textAlign: "center",
-            border: "2px solid rgba(255,255,255,0.5)",
-            position: "relative", overflow: "hidden",
-            boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-          }}>
-            <div style={{
-              position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-              borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-            }} />
-            <span style={{
-              position: "relative", zIndex: 1,
-              color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.18em",
-              textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-            }}>START</span>
+    <GameLobby
+      title="Rhythm Rush"
+      headline={<>Tap the beat.<br />Chain the combo.</>}
+      rules={<>Tap each note as it reaches the line. Combos multiply your score. <b>On a keyboard: A S D F or the arrow keys.</b></>}
+      cover="/games/covers/rhythm.jpg" focus="50% 40%"
+      onExit={onExit} onStart={onStart}
+      modes={MODES} mode={mode} onPickMode={onPickMode}
+      gameType={0} onLeaderboard={onLeaderboard}
+      guest={guest} guestLeft={guestLeft} needsSetup={needsSetup} onFinishSetup={onFinishSetup} gasBanner={gasBanner}
+      challenge={challenge ? <>{challenge.by} scored <b>{challenge.score.toLocaleString()}</b>. Beat it.</> : null}
+      /* Every song has the same notes and the same top score, so they all count on one leaderboard. */
+      extra={songs.length > 1 ? (
+        <div className="gl-songs">
+          <em>Choose your song</em>
+          <div>
+            {songs.map((sg) => (
+              <button key={sg.id} className={`gl-song${sg.id === songId ? " on" : ""}`} onClick={() => onPickSong(sg.id)} aria-pressed={sg.id === songId}>
+                {sg.id === todayId && <u>TODAY</u>}
+                <b>{sg.name}</b><span>{sg.by} · {sg.mood}</span>
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+      friends={<FriendsPlay room={room} gameName="Rhythm Rush" sharePath="/games/rhythm" atStart part="button" />}
+    />
   );
 }
 
@@ -2357,6 +2629,7 @@ function PetCenter({
 
 // ─── Playing: the actual game ─────────────────────────────────────────────────
 function PlayingView({
+  paceDelta, heat, target,
   score, combo, timeLeft, bursts,
   comboToast, flashLane, feedback,
   onTapLane, onReleaseLane, onQuit, startRef, canvasHandleRef,
@@ -2365,6 +2638,9 @@ function PlayingView({
   isEncore, encoreLives, encoreLoop,
   fever, perfectStreak, heldLanes,
 }: {
+  paceDelta: number | null; // live score minus where your best run stood at this second
+  heat: number; // 0..5, how fast the tiles are falling right now
+  target: { by: string; left: number } | null; // a friend's score being chased: points still needed
   score: number; combo: number; timeLeft: number;
   bursts: Burst[];
   comboToast: string | null; flashLane: number | null;
@@ -2390,6 +2666,7 @@ function PlayingView({
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column" }}>
+      <HeatStage heat={heat} />
       {/* ═══ FEVER VIGNETTE — the whole screen ignites gold for the 6
           doubled seconds. pointerEvents:none so lanes stay tappable. ═══ */}
       {fever && (
@@ -2480,8 +2757,47 @@ function PlayingView({
         padding: "0 16px 10px",
         display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px",
       }}>
-        <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
-        <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
+        <div style={{ position: "relative" }}>
+          <StatGem label="SCORE" value={String(score).padStart(4, "0")} color="#fbbf24" wall="#2a1800" />
+          {/* racing your own best: ahead in green, behind in red */}
+          {target ? (
+            <div style={{
+              position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+              padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+              fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", fontVariantNumeric: "tabular-nums",
+              color: target.left <= 0 ? "#052e16" : "#fff", background: target.left <= 0 ? "#4ade80" : "#ea580c", boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+            }}>{target.left <= 0 ? `AHEAD OF ${target.by.toUpperCase()}` : `${target.left} to beat ${target.by}`}</div>
+          ) : paceDelta !== null && (
+            <div style={{
+              position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+              padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+              fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em", fontVariantNumeric: "tabular-nums",
+              color: paceDelta >= 0 ? "#052e16" : "#fff",
+              background: paceDelta >= 0 ? "#4ade80" : "#ef4444",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+            }}>{paceDelta >= 0 ? `+${paceDelta}` : paceDelta} vs best</div>
+          )}
+        </div>
+<div style={{ position: "relative" }}>
+          <StatGem label="COMBO" value={combo > 0 ? `${combo}x` : "—"} color={combo >= 15 ? "#fbbf24" : combo >= 5 ? "#e879f9" : "#a78bfa"} wall="#1a0550" emphasize={combo >= 5} />
+          {/* how fast the tiles are falling right now: earned by the combo, lost on a miss */}
+          <div style={{
+            position: "absolute", left: "50%", bottom: -9, transform: "translateX(-50%)", zIndex: 2,
+            display: "flex", alignItems: "center", gap: 4, padding: "1px 7px", borderRadius: 999, whiteSpace: "nowrap", pointerEvents: "none",
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+            fontSize: 9.5, fontWeight: 900, letterSpacing: "0.04em",
+            color: heat > 0 ? "#0b0320" : "rgba(220,210,255,0.8)",
+            background: heat > 0 ? HEAT_COLOR[heat] : "rgba(30,16,70,0.95)",
+            border: heat > 0 ? "none" : "1px solid rgba(167,139,250,0.4)",
+            boxShadow: heat > 0 ? `0 0 10px ${HEAT_COLOR[heat]}aa, 0 2px 6px rgba(0,0,0,0.5)` : "0 2px 6px rgba(0,0,0,0.5)",
+            transition: "background 0.2s, box-shadow 0.2s",
+          }}>
+            <span>SPEED ×{HEAT_SPEED[heat]}</span>
+            <span style={{ display: "flex", gap: 2 }}>{[1, 2, 3, 4, 5].map((k) => <i key={k} style={{ width: 4, height: 4, borderRadius: 2, background: k <= heat ? "#0b0320" : "rgba(167,139,250,0.35)" }} />)}</span>
+          </div>
+        </div>
         {/* Third gem tells the run's current story: encore shows survival
             depth (LOOP N), main track shows fever state — burning ×2, or
             progress toward ignition (perfect streak / trigger). */}
@@ -2498,14 +2814,22 @@ function PlayingView({
       <PetCenter pet={pet} combo={combo} feedback={feedback} />
 
 
-      {/* ═══ PLAY FIELD (lanes + falling notes) ═══ */}
+      {/* ═══ PLAY FIELD (lanes + falling notes) ═══
+          Still a flat 2D field, but tilted back into the screen so it reads as a
+          highway running away from you: far tiles are small and slow, and they
+          grow and speed up as they reach the keys, like a real road does. The
+          tilt is one CSS transform on the whole field (the canvas inside draws
+          exactly as before, and hits are judged by time, not by position), so it
+          costs the phone almost nothing. The far end fades into the night. */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden", perspective: "780px", perspectiveOrigin: "50% 100%" }}>
       <div style={{
-        flex: 1,
-        position: "relative",
+        position: "absolute", left: 0, right: 0, bottom: 0, height: "185%",
+        transform: "rotateX(46deg)", transformOrigin: "50% 100%",
+        WebkitMaskImage: "linear-gradient(to top, #000 0%, #000 62%, transparent 96%)",
+        maskImage: "linear-gradient(to top, #000 0%, #000 62%, transparent 96%)",
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
         gap: "6px",
         padding: "0 10px 10px",
-        overflow: "hidden",
       }}>
         {LANES.map((theme, i) => (
           <Lane
@@ -2561,6 +2885,7 @@ function PlayingView({
           );
         })}
       </div>
+      </div>
 
       {/* ═══ TAP ZONES (4 juicy buttons at bottom) ═══
           The game's original candy keys. One invisible upgrade for hold
@@ -2610,6 +2935,54 @@ function PlayingView({
     </div>
   );
 }
+
+// ─── HeatStage — the scene behind the lanes, driven by how hot the run is ────
+// At heat 0 the stage is the calm night sky it always was. As the speed climbs
+// the scene comes alive with it: a glow in the heat's colour rises from the hit
+// line and pulses on the beat, light streaks rain down the screen faster and
+// thicker, and at the top levels the edges of the screen catch fire. A miss
+// drops the heat and the whole stage cools at once, so you SEE the reset.
+// Only transform and opacity are animated (cheap on phones), and it is memoised
+// so the score ticking over never rebuilds it.
+const STREAKS = Array.from({ length: 18 }, (_, i) => ({ x: (i * 53 + 7) % 100, w: 1 + (i % 3), delay: (i * 0.37) % 1.6, len: 60 + ((i * 29) % 80) }));
+const HeatStage = React.memo(function HeatStage({ heat }: { heat: number }) {
+  const c = HEAT_COLOR[heat];
+  const n = heat === 0 ? 0 : 3 + heat * 3;
+  const dur = 1.5 - heat * 0.19; // streaks fall faster as it heats up
+  return (
+    <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
+      <style>{`
+        @keyframes heat-pulse { 0%,100% { opacity: .55; transform: scale(1); } 12% { opacity: 1; transform: scale(1.06); } }
+        @keyframes heat-fall { from { transform: translate3d(0,-30vh,0); } to { transform: translate3d(0,130vh,0); } }
+        @keyframes heat-flame { 0%,100% { opacity: .55; transform: scaleY(1); } 50% { opacity: .95; transform: scaleY(1.08); } }
+        @media (prefers-reduced-motion: reduce) { .heat-anim { animation: none !important; } }
+      `}</style>
+      {/* glow rising from the hit line, in this level's colour, beating in time */}
+      <div className="heat-anim" style={{
+        position: "absolute", left: "-10%", right: "-10%", bottom: "-18%", height: "78%",
+        background: `radial-gradient(ellipse 60% 62% at 50% 100%, ${c}${heat >= 4 ? "66" : heat >= 2 ? "4d" : "33"} 0%, ${c}1a 45%, transparent 72%)`,
+        opacity: heat === 0 ? 0 : 1, transition: "opacity 0.35s",
+        animation: heat > 0 ? `heat-pulse ${BEAT}s ease-out infinite` : undefined, transformOrigin: "50% 100%",
+      }} />
+      {/* speed streaks */}
+      {STREAKS.slice(0, n).map((k, i) => (
+        <i key={i} className="heat-anim" style={{
+          position: "absolute", top: 0, left: `${k.x}%`, width: k.w, height: k.len, borderRadius: 2,
+          background: `linear-gradient(180deg, transparent, ${c}cc)`, opacity: 0.2 + heat * 0.09,
+          animation: `heat-fall ${dur + (i % 4) * 0.12}s linear ${-k.delay}s infinite`, willChange: "transform",
+        }} />
+      ))}
+      {/* the edges catch fire near the top */}
+      {heat >= 4 && [0, 1].map((side) => (
+        <div key={side} className="heat-anim" style={{
+          position: "absolute", top: "18%", bottom: 0, width: "16%", [side ? "right" : "left"]: 0,
+          background: `linear-gradient(${side ? 270 : 90}deg, ${heat >= 5 ? "#f43f5e" : "#fb923c"}59 0%, transparent 100%)`,
+          transformOrigin: "50% 100%", animation: `heat-flame ${0.42 + side * 0.07}s ease-in-out infinite`,
+        }} />
+      ))}
+    </div>
+  );
+});
 
 // ─── Stat gem (reused from profile pattern) ───────────────────────────────────
 function StatGem({ label, value, color, wall, emphasize }: { label: string; value: string; color: string; wall: string; emphasize?: boolean }) {
@@ -2787,11 +3160,20 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bestResult, gradeGap, topSpeed, practice, challenge, onChallenge,
   grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  // personal best on this device: what it was before this run, and whether this run beat it
+  bestResult: { prev: number | null; isNew: boolean } | null;
+  // how many more PERFECT hits the next grade up was away (null at grade S)
+  gradeGap: { letter: string; need: number } | null;
+  topSpeed: number; // fastest fall speed reached this run (×1 = never left slow)
+  practice: string | null; // name of the practice variant just played, null for a ranked run
+  challenge: Challenge | null; // a friend's score this run was chasing
+  onChallenge: () => void; // send this score to a friend to beat
   grade: ReturnType<typeof gradeFor>;
   score: number; maxCombo: number;
   hits: { perfect: number; good: number; miss: number };
@@ -2811,211 +3193,44 @@ function FinishedView({
   guest?: boolean;
   needsMint?: boolean;
 }) {
+  const saving = submitting || signingOnChain;
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(2,0,12,0.78)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      display: "flex", alignItems: "flex-end", justifyContent: "center",
-      animation: "rhythm-sheet-fade 0.28s ease both",
-    }}>
-      {/* Sheet · slides up from the bottom. Same iOS-spring curve as the
-          Events bottom sheet so the app feels one piece across surfaces. */}
-      <div style={{
-        width: "100%", maxWidth: "520px",
-        maxHeight: "92vh", overflowY: "auto",
-        borderRadius: "26px 26px 0 0",
-        background: "linear-gradient(180deg, rgba(20,8,52,0.98) 0%, rgba(8,2,28,0.99) 100%)",
-        border: "1px solid rgba(232,121,249,0.18)",
-        borderBottom: "none",
-        boxShadow: "0 -24px 60px -10px rgba(232,121,249,0.22), 0 -2px 0 rgba(255,255,255,0.04) inset",
-        paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
-        animation: "rhythm-sheet-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both",
-        position: "relative",
-      }}>
-        <style>{`
-          @keyframes rhythm-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes rhythm-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
-          @keyframes rhythm-grade-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-          @keyframes rhythm-score-rise { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        `}</style>
-
-        {/* Drag handle */}
-        <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
-        </div>
-
-        <div style={{ padding: "8px 22px 22px", textAlign: "center", position: "relative" }}>
-          {/* Faint confetti dots behind the grade · understated, not arcade */}
-          {[...Array(8)].map((_, i) => {
-            const angle = (i / 8) * Math.PI * 2;
-            return (
-              <span key={i} aria-hidden style={{
-                position: "absolute", top: "78px", left: "50%",
-                width: 4, height: 4, borderRadius: 999,
-                background: grade.color, opacity: 0.55,
-                filter: `drop-shadow(0 0 6px ${grade.color})`,
-                transform: `translate(${Math.cos(angle) * 96 - 2}px, ${Math.sin(angle) * 96 - 2}px)`,
-                animation: `pet-sparkle ${2.4 + i * 0.18}s ease-in-out ${i * 0.25}s infinite`,
-                pointerEvents: "none",
-              }} />
-            );
-          })}
-
-          {/* Eyebrow + grade letter */}
-          <div style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-            color: grade.color, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.24em",
-            textTransform: "uppercase",
-            opacity: 0.85, marginTop: 6,
-          }}>{grade.desc}</div>
-
-          <div style={{
-            position: "relative", zIndex: 1,
-            width: 116, height: 116, margin: "12px auto 0",
-            borderRadius: "50%",
-            padding: 2,
-            background: `conic-gradient(from 220deg, ${grade.color}, ${grade.color}55, ${grade.color})`,
-            boxShadow: `0 0 0 1px rgba(255,255,255,0.06), 0 0 38px ${grade.color}55`,
-            animation: "rhythm-grade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both",
-          }}>
-            <div style={{
-              width: "100%", height: "100%", borderRadius: "50%",
-              background: "linear-gradient(180deg, rgba(20,8,52,0.96) 0%, rgba(8,2,28,1) 100%)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <span style={{
-                fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-                fontSize: 72, fontWeight: 900,
-                color: "#fff",
-                textShadow: `0 0 14px ${grade.color}, 0 0 30px ${grade.color}aa, 0 2px 4px rgba(0,0,0,0.7)`,
-                WebkitTextStroke: `0.6px ${grade.color}`,
-                lineHeight: 1,
-              }}>{grade.letter}</span>
-            </div>
-          </div>
-
-          {/* Score */}
-          <div style={{
-            marginTop: 16,
-            animation: "rhythm-score-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both",
-          }}>
-            <div style={{
-              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-              color: "rgba(220,210,255,0.5)", fontSize: 10, fontWeight: 800, letterSpacing: "0.22em",
-            }}>SCORE</div>
-            <div style={{
-              fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-              color: "#fde68a",
-              fontSize: "clamp(36px, 9vw, 46px)", fontWeight: 900,
-              textShadow: "0 0 22px rgba(251,191,36,0.55), 0 2px 8px rgba(0,0,0,0.55)",
-              lineHeight: 1, marginTop: 4,
-              letterSpacing: "0.01em",
-            }}>{score.toLocaleString()}</div>
-            {/* Survival badge — how deep into the accelerating encore this
-                run made it. The depth flex ("LOOP 5") replaces the old
-                million-point flex the flat encore used to hand out. */}
-            {encoreLoop > 0 && (
-              <div style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                marginTop: 8, padding: "4px 12px", borderRadius: 999,
-                background: "rgba(249,115,22,0.12)",
-                border: "1px solid rgba(249,115,22,0.5)",
-                boxShadow: "0 0 14px rgba(249,115,22,0.25)",
-              }}>
-                <span style={{ fontSize: 11 }}>⚡</span>
-                <span style={{
-                  fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-                  color: "#fdba74", fontSize: 10.5, fontWeight: 900, letterSpacing: "0.16em",
-                }}>REACHED LOOP {encoreLoop}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Stats · refined chip row, 4 columns */}
-          <div style={{
-            marginTop: 18,
-            display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 7,
-          }}>
-            <StatChip label="PERFECT" value={hits.perfect} color="#fbbf24" />
-            <StatChip label="GOOD" value={hits.good} color="#e879f9" />
-            <StatChip label="MISS" value={hits.miss} color="#f43f5e" />
-            <StatChip label="MAX×" value={maxCombo} color="#22c55e" />
-          </div>
-
-          {/* Accuracy */}
-          <div style={{ marginTop: 14, textAlign: "left" }}>
-            <div style={{
-              fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-              display: "flex", justifyContent: "space-between", alignItems: "baseline",
-              marginBottom: 5,
-            }}>
-              <span style={{ color: "rgba(220,210,255,0.55)", fontSize: 9.5, fontWeight: 800, letterSpacing: "0.18em" }}>ACCURACY</span>
-              <span style={{ color: "#fde68a", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.04em" }}>{accuracy}%</span>
-            </div>
-            <div style={{
-              height: 6, borderRadius: 999,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.04)",
-              overflow: "hidden",
-            }}>
-              <div style={{
-                width: `${accuracy}%`, height: "100%", borderRadius: 999,
-                background: "linear-gradient(90deg, #a78bfa 0%, #e879f9 55%, #fbbf24 100%)",
-                boxShadow: "0 0 10px rgba(232,121,249,0.45)",
-                transition: "width 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
-              }} />
-            </div>
-          </div>
-
-          {/* Save surface, three ways:
-              · guest (no wallet)      → sign in to save
-              · connected, no GamePass → mint to save (conversion moment)
-              · full player            → normal reward/save panel */}
-          {guest ? (
-            <GuestScorePrompt nextPath="/games/rhythm" />
-          ) : needsMint ? (
-            <MintScorePrompt score={score} />
-          ) : (
-            <RewardPanel
-              submitting={submitting}
-              signingOnChain={signingOnChain}
-              result={submitResult}
-              error={submitError}
-              txError={txError}
-              score={score}
-            />
-          )}
-
-          {/* CTAs. While the score is still saving (wallet signature +
-              on-chain confirm), leaving would abort the save and the
-              player loses a run they earned. Humans reflexively tap the
-              game-over screen, so we LOCK the exits until the score is
-              safe: dim + non-interactive while saving, plus a plain-
-              language notice. Once saved (or failed), they unlock. */}
-          {(() => {
-            const saving = submitting || signingOnChain;
-            return (
-              <>
-                <div style={{ marginTop: 22, display: "flex", gap: 10, opacity: saving ? 0.45 : 1, pointerEvents: saving ? "none" : "auto", transition: "opacity 0.25s ease" }}>
-                  <SheetBtn label="PLAY AGAIN" variant="primary" onClick={onPlayAgain} />
-                  <SheetBtn label="EXIT" variant="ghost" onClick={onExit} />
-                </div>
-                {saving && (
-                  <div style={{ marginTop: 10, textAlign: "center", fontSize: 11.5, fontWeight: 700, color: "rgba(134,239,172,0.9)" }}>
-                    💾 Saving your score · hold on a sec
-                  </div>
-                )}
-                {/* MARKOV cross-promo is a navigation link · a tap-landmine
-                    on the most reflexive screen in the game. Only show it
-                    once the score is safely saved, never during the save
-                    window. This is the button the player flagged. */}
-                {!saving && <ArenaCrossPromo />}
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    </div>
+    <GameResult
+      eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
+      notes={<>
+        {challenge && score > 0 && (
+          <span className={score > challenge.score ? "good" : "warm"}>
+            {score > challenge.score ? `You beat ${challenge.by} by ${(score - challenge.score).toLocaleString()}!` : score === challenge.score ? `Level with ${challenge.by}. One more point takes it` : `${(challenge.score - score).toLocaleString()} short of ${challenge.by}. Go again`}
+          </span>
+        )}
+        {bestResult && score > 0 && (
+          <span className={bestResult.isNew ? "gold" : ""}>
+            {bestResult.isNew
+              ? (bestResult.prev == null ? "Your first best" : `New best! +${(score - bestResult.prev).toLocaleString()} on your old one`)
+              : `Your best ${bestResult.prev!.toLocaleString()} · ${(bestResult.prev! - score).toLocaleString()} short`}
+          </span>
+        )}
+        {gradeGap && <span>{gradeGap.need <= 8 ? "Only " : ""}<b>{gradeGap.need}</b> more PERFECT{gradeGap.need === 1 ? "" : "s"} to grade <b>{gradeGap.letter}</b></span>}
+      </>}
+      chips={(topSpeed > 1 || encoreLoop > 0) ? <>
+        {topSpeed > 1 && <span>Top speed ×{topSpeed}</span>}
+        {encoreLoop > 0 && <span>Reached loop {encoreLoop}</span>}
+      </> : undefined}
+      stats={[
+        { label: "Perfect", value: hits.perfect, tone: "#92400e" }, { label: "Good", value: hits.good, tone: "#a21caf" },
+        { label: "Miss", value: hits.miss, tone: "#be123c" }, { label: "Max combo", value: maxCombo, tone: "#15803d" },
+      ]}
+      meter={{ label: "Accuracy", pct: accuracy }}
+      saving={saving}
+      onPlayAgain={onPlayAgain} onExit={onExit}
+      challengeLabel={score > 0 ? `Challenge a friend to beat ${score.toLocaleString()}` : null} onChallenge={onChallenge}
+      status={practice
+        ? <FreePlayNote mode={practice} />
+        : guest ? <GuestScorePrompt nextPath="/games/rhythm" />
+        : needsMint ? <MintScorePrompt score={score} />
+        : <RunSaveStatus submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} />}
+      after={<><NextUp />{!saving && <ArenaCrossPromo />}</>}
+    />
   );
 }
 
@@ -3024,7 +3239,7 @@ function StatChip({ label, value, color }: { label: string; value: number; color
   return (
     <div style={{
       borderRadius: 11,
-      background: "rgba(255,255,255,0.03)",
+      background: "rgba(76,29,149,0.05)",
       border: `1px solid ${color}33`,
       padding: "9px 4px 7px",
       textAlign: "center",
@@ -3033,12 +3248,11 @@ function StatChip({ label, value, color }: { label: string; value: number; color
       <div style={{
         fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
         color, fontSize: 17, fontWeight: 900,
-        textShadow: `0 0 10px ${color}66`,
         lineHeight: 1,
       }}>{value}</div>
       <div style={{
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        color: "rgba(220,210,255,0.5)", fontSize: 8.5, fontWeight: 800,
+        color: "rgba(34,16,79,0.68)", fontSize: 8.5, fontWeight: 800,
         letterSpacing: "0.14em", marginTop: 4,
       }}>{label}</div>
     </div>
@@ -3055,7 +3269,7 @@ function SheetBtn({ label, variant, onClick }: { label: string; variant: "primar
       padding: "13px 10px",
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
       fontSize: 12.5, fontWeight: 900, letterSpacing: "0.14em",
-      color: "#fff",
+      color: "#22104f",
       background: primary
         ? "linear-gradient(180deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)"
         : "rgba(255,255,255,0.04)",
@@ -3068,295 +3282,16 @@ function SheetBtn({ label, variant, onClick }: { label: string; variant: "primar
   );
 }
 
-// ─── Reward panel — shown on the finish screen after submitting ──────────────
-// State machine:
-//   signingOnChain → "CONFIRM IN WALLET…" (wallet popup is open)
-//   submitting      → "SAVING SCORE…"       (off-chain save in flight)
-//   txError        → "TRANSACTION REJECTED" (user said no to the on-chain tx)
-//   error          → generic red error line (off-chain save failed)
-//   result         → rank + XP + level-up + new achievements
-function RewardPanel({
-  submitting, signingOnChain, result, error, txError, score,
-}: {
-  submitting: boolean;
-  signingOnChain: boolean;
-  result: FinishedSubmit | null;
-  error: string | null;
-  txError: string | null;
-  score: number;
-}) {
-  // Wallet popup is open — highest priority state
-  if (signingOnChain) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "12px",
-        borderRadius: "10px",
-        background: "rgba(251,191,36,0.1)",
-        border: "1px solid rgba(251,191,36,0.35)",
-        color: "#fbbf24",
-        fontSize: "11px", fontWeight: 900, letterSpacing: "0.16em",
-        textAlign: "center",
-        boxShadow: "0 0 16px rgba(251,191,36,0.2)",
-      }}>
-        ✦ CONFIRM IN YOUR WALLET ✦
-        <div style={{
-          color: "rgba(200,180,255,0.65)", fontSize: "9px", fontWeight: 700,
-          letterSpacing: "0.1em", marginTop: "4px",
-        }}>Signing records your score on-chain</div>
-      </div>
-    );
-  }
-
-  // Off-chain save in flight (after on-chain tx confirmed)
-  if (submitting) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(167,139,250,0.08)",
-        border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(200,180,255,0.7)",
-        fontSize: "11px", fontWeight: 900, letterSpacing: "0.14em",
-        textAlign: "center",
-      }}>
-        SAVING SCORE…
-      </div>
-    );
-  }
-
-  // Strict classification — only call it gas when the catch block tagged
-  // the message with "top up". User-rejected and other failures get the
-  // small red banner instead, with no misleading gas blame.
-  if (txError) {
-    const low = txError.toLowerCase();
-    const isGasError = low.includes("top up");
-    return <GasAwareTxError txError={txError} isGasError={isGasError} />;
-  }
-
-  if (error) {
-    // Quick-exit prefix → calm neutral chip, NOT red error.
-    // The handleGameOver guard sets submitError to "Quick exit. ..."
-    // for sub-5s 0-point runs so the player isn't told their score
-    // failed when there was no score in the first place.
-    const isQuickExit = error.toLowerCase().startsWith("quick exit");
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: isQuickExit ? "rgba(167,139,250,0.08)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${isQuickExit ? "rgba(167,139,250,0.25)" : "rgba(239,68,68,0.2)"}`,
-        color: isQuickExit ? "rgba(200,180,255,0.8)" : "rgba(252,165,165,0.85)",
-        fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>
-        {error}
-      </div>
-    );
-  }
-
-  if (!result) return null;
-
-  const { rank, xpEarned, level, leveledUp, isNewPb, prevBest, newAchievements = [] } = result;
-  const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
-  const showFirstPb = isNewPb && !showPbDelta;
-
-  return (
-    <RewardContent
-      rank={rank}
-      xpEarned={xpEarned}
-      level={level}
-      leveledUp={leveledUp}
-      isNewPb={isNewPb}
-      showPbDelta={showPbDelta}
-      showFirstPb={showFirstPb}
-      prevBest={prevBest}
-      newAchievements={newAchievements}
-      score={score}
-    />
-  );
-}
-
-// ─── RewardContent — separated so we can fire stings when callouts mount ────
-// Each callout has its own short useEffect that plays its specific chime the
-// first time the card renders. Order-sequenced with setTimeout so you hear
-// PB -> level up -> achievement as stacked events instead of one blurry mush.
-type RewardContentProps = {
-  rank: number | undefined;
-  xpEarned: number | undefined;
-  level: number | undefined;
-  leveledUp: boolean | undefined;
-  isNewPb: boolean | undefined;
-  showPbDelta: boolean | undefined;
-  showFirstPb: boolean | undefined;
-  prevBest: number | undefined;
-  newAchievements: { id: string; name: string; icon?: string; desc?: string }[];
-  score: number;
-};
-
-function RewardContent({
-  rank, xpEarned, level, leveledUp, isNewPb, showPbDelta, showFirstPb, prevBest, newAchievements, score,
-}: RewardContentProps) {
-  // Stagger the stings so each one is individually audible. Rank hits first
-  // (it's always there), PB second (if earned), level-up third, achievements
-  // last. Each has its own chime — layered, they read as a celebration build.
-  useEffect(() => {
-    if (rank) playRankReveal();
-  }, [rank]);
-  useEffect(() => {
-    if (isNewPb) {
-      const t = setTimeout(() => playSaveSuccess(), 250);
-      return () => clearTimeout(t);
-    }
-  }, [isNewPb]);
-  useEffect(() => {
-    if (leveledUp) {
-      const t = setTimeout(() => playLevelUp(), 500);
-      return () => clearTimeout(t);
-    }
-  }, [leveledUp]);
-  useEffect(() => {
-    if (newAchievements.length > 0) {
-      const t = setTimeout(() => playAchievementChime(), 900);
-      return () => clearTimeout(t);
-    }
-  }, [newAchievements.length]);
-
-  return (
-    <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-      {/* Rank + XP strip */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px",
-      }}>
-        {rank ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: "10px",
-            background: "rgba(251,191,36,0.08)",
-            border: "1px solid rgba(251,191,36,0.28)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#fbbf24", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(251,191,36,0.6)", marginTop: "2px" }}>
-              #{rank}
-            </div>
-          </div>
-        ) : <div />}
-        {typeof xpEarned === "number" ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: "10px",
-            background: "rgba(167,139,250,0.1)",
-            border: "1px solid rgba(167,139,250,0.3)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(200,180,255,0.6)", fontSize: "9px", fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#a78bfa", fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(167,139,250,0.7)", marginTop: "2px" }}>
-              +{xpEarned}
-            </div>
-          </div>
-        ) : <div />}
-      </div>
-
-      {/* Personal-best callout — beat your previous high score */}
-      {showPbDelta && typeof prevBest === "number" && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
-          border: "1px solid rgba(6,182,212,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ NEW PERSONAL BEST ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", fontWeight: 800, marginTop: "3px" }}>
-            Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#86efac", fontWeight: 900 }}>
-              +{Math.max(0, score - prevBest)}
-            </span>
-          </div>
-        </div>
-      )}
-      {showFirstPb && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "rgba(6,182,212,0.1)",
-          border: "1px solid rgba(6,182,212,0.35)",
-          textAlign: "center",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#67e8f9", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ FIRST PERSONAL BEST ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "11px", fontWeight: 700, marginTop: "3px" }}>
-            Your score is now on the leaderboard
-          </div>
-        </div>
-      )}
-
-      {/* Level-up callout */}
-      {leveledUp && level && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "linear-gradient(90deg, rgba(251,191,36,0.15) 0%, rgba(232,121,249,0.15) 100%)",
-          border: "1px solid rgba(251,191,36,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(251,191,36,0.2)",
-          animation: "bounce-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
-        }}>
-          <div style={{ color: "#fbbf24", fontSize: "12px", fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ LEVEL UP ★
-          </div>
-          <div style={{ color: "rgba(255,255,255,0.85)", fontSize: "13px", fontWeight: 800, marginTop: "3px" }}>
-            You&apos;re now Level {level}
-          </div>
-        </div>
-      )}
-
-      {/* New achievements */}
-      {newAchievements.length > 0 && (
-        <div style={{
-          padding: "10px 12px", borderRadius: "10px",
-          background: "rgba(34,197,94,0.1)",
-          border: "1px solid rgba(34,197,94,0.35)",
-          animation: "bounce-scale-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both",
-        }}>
-          <div style={{ color: "#86efac", fontSize: "10px", fontWeight: 900, letterSpacing: "0.18em", textAlign: "center", marginBottom: "6px" }}>
-            ✦ NEW ACHIEVEMENT{newAchievements.length > 1 ? "S" : ""} ✦
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {newAchievements.map((raw, i) => {
-              // Defensive hydrate — the live backend sometimes returns
-              // just the id string (legacy shape), which used to render
-              // as a bare trophy with no name. hydrateAchievement maps
-              // any id through the local ACHIEVEMENT_META catalog.
-              const a = hydrateAchievement(raw);
-              return (
-                <div key={a.id || i} style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  color: "rgba(255,255,255,0.9)", fontSize: "12px", fontWeight: 800,
-                }}>
-                  <span style={{ fontSize: "16px" }}>{a.icon}</span>
-                  <span>{a.name}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function MiniStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div style={{
       borderRadius: "10px",
-      background: "rgba(255,255,255,0.04)",
+      background: "rgba(76,29,149,0.05)",
       border: `1px solid ${color}44`,
       padding: "8px 4px", textAlign: "center",
     }}>
-      <div style={{ color, fontSize: "17px", fontWeight: 900, textShadow: `0 0 10px ${color}88` }}>{value}</div>
-      <div style={{ color: "rgba(200,180,255,0.5)", fontSize: "7px", fontWeight: 800, letterSpacing: "0.1em", marginTop: "2px" }}>{label}</div>
+      <div style={{ color, fontSize: "17px", fontWeight: 900 }}>{value}</div>
+      <div style={{ color: "rgba(34,16,79,0.68)", fontSize: "7px", fontWeight: 800, letterSpacing: "0.1em", marginTop: "2px" }}>{label}</div>
     </div>
   );
 }
@@ -3370,13 +3305,13 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ""; }}>
       <div style={{
         borderRadius: "14px", background: wall, paddingBottom: "5px",
-        boxShadow: "0 10px 22px -4px rgba(0,0,0,0.6)",
+        boxShadow: "0 10px 22px -4px rgba(76,29,149,0.22)",
       }}>
         <div style={{
           borderRadius: "12px 12px 10px 10px",
           background: face,
           padding: "12px 8px", textAlign: "center",
-          border: "2px solid rgba(255,255,255,0.45)",
+          border: "2px solid rgba(76,29,149,0.16)",
           boxShadow: "inset 0 6px 14px rgba(255,255,255,0.55), inset 0 -3px 6px rgba(0,0,0,0.3)",
           position: "relative", overflow: "hidden",
         }}>
@@ -3387,8 +3322,7 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
           }} />
           <span style={{
             position: "relative", zIndex: 1,
-            color: "white", fontSize: "13px", fontWeight: 900, letterSpacing: "0.14em",
-            textShadow: "0 1px 2px rgba(0,0,0,0.4)",
+            color: "#22104f", fontSize: "13px", fontWeight: 900, letterSpacing: "0.14em",
           }}>{label}</span>
         </div>
       </div>
@@ -3404,115 +3338,6 @@ function JuicyBtn({ label, wall, face, onClick }: { label: string; wall: string;
 //     inline link (Copy wallet ID). No jargon, no em dashes. Mirrors the
 //     Simon finish screen — both games share the recovery path.
 const TELEGRAM_URL = "https://t.me/+oY4inbBoglViNmE0";
-// Two visual variants:
-//   • Plain (default): generic failure or wallet rejection. Single-line
-//     red message with a retry hint. Player decides what to do next.
-//   • Gas-aware: triggered when the upstream classified the error as
-//     insufficient funds. Rich orange card with one primary CTA
-//     (Telegram help) plus a tiny secondary inline link (Copy wallet ID).
-// The classification is done at the catch site, not here · so we don't
-// overclaim "this was gas" when it was actually a different failure.
-function GasAwareTxError({ txError, isGasError }: { txError: string; isGasError: boolean }) {
-  const { address } = useAccount();
-  const [copied, setCopied] = useState(false);
-
-  if (!isGasError) {
-    return (
-      <div style={{
-        marginTop: "16px", padding: "10px 12px",
-        borderRadius: "10px",
-        background: "rgba(239,68,68,0.1)",
-        border: "1px solid rgba(239,68,68,0.35)",
-        color: "#fca5a5",
-        fontSize: "11px", fontWeight: 800, letterSpacing: "0.08em",
-        textAlign: "center",
-      }}>
-        {txError}
-        <div style={{
-          color: "rgba(252,165,165,0.65)", fontSize: "9px", fontWeight: 700,
-          letterSpacing: "0.1em", marginTop: "4px",
-        }}>Tap PLAY AGAIN to try again</div>
-      </div>
-    );
-  }
-
-  const copyWallet = () => {
-    if (!address) return;
-    navigator.clipboard?.writeText(address)
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); })
-      .catch(() => {});
-  };
-
-  return (
-    <div style={{
-      marginTop: "16px",
-      padding: "12px clamp(12px, 3.5vw, 14px)",
-      borderRadius: "12px",
-      background: "linear-gradient(180deg, rgba(249,115,22,0.12) 0%, rgba(120,50,0,0.18) 100%)",
-      border: "1px solid rgba(249,115,22,0.45)",
-      boxShadow: "0 0 14px rgba(249,115,22,0.12)",
-      display: "flex", flexDirection: "column",
-      gap: "8px",
-      textAlign: "center",
-    }}>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        gap: "8px",
-        color: "#fed7aa",
-        fontSize: "clamp(11px, 3vw, 12.5px)",
-        fontWeight: 900, letterSpacing: "0.18em",
-        textShadow: "0 0 10px rgba(249,115,22,0.5)",
-      }}>
-        <span style={{ fontSize: "14px" }}>⛽</span>
-        NEEDS A TOP UP TO SAVE
-      </div>
-
-      <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer"
-        style={{
-          display: "block",
-          padding: "10px 14px", borderRadius: "10px",
-          background: "linear-gradient(160deg, #67e8f9 0%, #06b6d4 50%, #0e7490 100%)",
-          color: "white",
-          fontSize: "clamp(11px, 2.9vw, 12px)",
-          fontWeight: 900, letterSpacing: "0.1em",
-          textDecoration: "none",
-          border: "1.5px solid rgba(255,255,255,0.4)",
-          boxShadow: "0 6px 14px rgba(6,182,212,0.4), inset 0 2px 6px rgba(255,255,255,0.25)",
-        }}>
-        💬 GET HELP IN TELEGRAM
-      </a>
-
-      <button
-        onClick={copyWallet}
-        style={{
-          background: "none", border: "none",
-          padding: 0,
-          color: copied ? "#86efac" : "rgba(200,170,255,0.7)",
-          fontSize: "clamp(10px, 2.5vw, 10.5px)",
-          fontWeight: 700, letterSpacing: "0.04em",
-          cursor: "pointer", fontFamily: "inherit",
-          textDecoration: copied ? "none" : "underline",
-          textDecorationStyle: "dashed",
-          textDecorationColor: "rgba(200,170,255,0.35)",
-          textUnderlineOffset: "3px",
-        }}>
-        {copied ? "✓ Copied" : "Copy wallet ID"}
-      </button>
-    </div>
-  );
-}
-
-// ─── Top players preview on the lobby ─────────────────────────────────────
-// Sits between the description and the START button. The lobby's job is to
-// recruit a tap; showing who you're chasing is the strongest recruiter top
-// game lobbies have (Clash Royale, Brawl Stars, Pokémon Unite all do this).
-//
-// Reads the current-season Rhythm leaderboard directly from the SUBGRAPH
-// (Goldsky · on-chain Score events). Season boundary fetched once from the
-// backend; the rows themselves come from chain truth. NOT all-time — the
-// lobby cares about the active competitive cycle.
-const RHYTHM_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
-
 function RhythmTopPlayersPreview({ onViewAll }: { onViewAll: () => void }) {
   // Seed from the shared cache so a warm cache renders the real data on
   // the first paint · no "Loading…" flash. The cache is populated by

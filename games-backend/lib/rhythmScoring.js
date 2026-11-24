@@ -37,29 +37,41 @@ const HOLD_TICK_POINTS = 2;      // per 0.5s of bar length, paid on completion
 const HOLD_TICK_SEC = 0.5;
 const HOLD_RELEASE_GRACE = 0.15;
 
-// Build the main-track chart. Deterministic — no seed needed since the chart
-// is the same every game. The encore is built dynamically by the client; we
-// reconstruct it from the tap log timing (see computeScore below).
-// Phrase entries are [pitch, holdSeconds?] — mirrors page.tsx exactly.
-function buildMainChart() {
+// Build the main-track chart for a song. Deterministic, no seed needed. The
+// encore is built dynamically by the client; we reconstruct it from the tap log
+// timing (see computeScore below).
+//
+// Songs live in rhythmSongs.json, which is an exact copy of the file the game
+// reads (frontend/lib/rhythmSongs.json). Every song shares one timing skeleton,
+// so note count, hold lengths and the maximum score are the same for all of
+// them: only the melody, and so the lanes, change. A request with no songId is
+// an older client and gets the original song, exactly as before.
+const SONGS = require('./rhythmSongs.json');
+const songById = (id) => SONGS.songs.find((s) => s.id === id) || null;
+const isKnownSong = (id) => !!songById(id);
+
+function buildMainChart(songId) {
+  const song = songById(songId) || songById(SONGS.default);
   const notes = [];
   let id = 0;
   const push = (lane, time, travel, freq, hold) =>
     notes.push({ id: id++, lane, time, travel, freq, ...(hold ? { hold } : {}) });
 
-  const T1 = [[P_B4], [P_A4], [P_GS4], [P_A4], [P_C5, 1.0]];
-  const T2 = [[P_D5], [P_C5], [P_B4], [P_C5], [P_E5, 1.0]];
-  const T3 = [[P_F5], [P_E5], [P_DS5], [P_E5], [P_B4], [P_A4], [P_GS4], [P_A4]];
-  const T4 = [[P_C5], [P_B4], [P_A4, 1.5]];
+  // phrase = pitch names; the last note of T1, T2 and T4 is held
+  const phrase = (names, lastHold) => names.map((n, i) => [n, lastHold && i === names.length - 1 ? lastHold : undefined]);
+  const T1 = phrase(song.T1, 1.0);
+  const T2 = phrase(song.T2, 1.0);
+  const T3 = phrase(song.T3, 0);
+  const T4 = phrase(song.T4, 1.5);
 
-  const stamp = (phrase, start, travel, step = BEAT) => {
-    phrase.forEach(([f, hold], i) => push(laneFor(f), start + i * step, travel, f, hold));
+  const stamp = (ph, start, travel, step = BEAT) => {
+    ph.forEach(([n, hold], i) => push(song.lanes[n], start + i * step, travel, SONGS.pitches[n], hold));
   };
-  const stampTapsOnly = (phrase, start, travel, step) => {
-    phrase.forEach(([f], i) => push(laneFor(f), start + i * step, travel, f));
+  const stampTapsOnly = (ph, start, travel, step) => {
+    ph.forEach(([n], i) => push(song.lanes[n], start + i * step, travel, SONGS.pitches[n]));
   };
 
-  // Explicit start times copied from page.tsx buildChart().
+  // The timing skeleton, shared by every song. Mirrors page.tsx buildChart().
   stamp(T1, 4.0,  TRAVEL_INTRO);
   stamp(T2, 7.5,  TRAVEL_INTRO);
   stamp(T3, 11.0, TRAVEL_VERSE);
@@ -70,9 +82,9 @@ function buildMainChart() {
   stamp(T4, 30.0, TRAVEL_DROP);
   stampTapsOnly(T3, 32.5, TRAVEL_DROP, BEAT / 2); // eighth-note climax sprint
 
-  // Outro — four held tonic A's (1.0s holds) at slowing intervals
+  // Outro: four held notes (1.0s holds) on the song's home pitch, at slowing intervals
   for (const t of [36.0, 38.0, 40.0, 42.5]) {
-    push(laneFor(P_A4), t, TRAVEL_BUILD, P_A4, 1.0);
+    push(song.lanes[song.outro], t, TRAVEL_BUILD, SONGS.pitches[song.outro], 1.0);
   }
 
   return notes.sort((a, b) => a.time - b.time);
@@ -191,8 +203,8 @@ const FEVER_DURATION = 6;
 const FEVER_MULT = 2;
 const ENCORE_POINTS = 5;
 
-function computeScore(tapLog, elapsedMs) {
-  const chart = buildMainChart();
+function computeScore(tapLog, elapsedMs, songId) {
+  const chart = buildMainChart(songId);
   let score = 0;
   let perfectStreak = 0;
   let feverUntil = 0;              // song-time expiry · 0 = off
@@ -306,6 +318,7 @@ module.exports = {
   GOOD_WINDOW,
   TRACK_DURATION,
   buildMainChart,
+  isKnownSong,
   physicsCheck,
   jitterCheck,
   computeScore,

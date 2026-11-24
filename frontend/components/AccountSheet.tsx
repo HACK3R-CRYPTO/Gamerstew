@@ -31,12 +31,12 @@ import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { useGasStatus } from "@/hooks/useGasStatus";
 
 const T = {
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
-  hairlineHi: "rgba(255,255,255,0.16)",
-  accent: "#a78bfa",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.7)",
+  inkSoft: "rgba(34,16,79,0.6)",
+  hairline: "rgba(76,29,149,0.14)",
+  hairlineHi: "rgba(76,29,149,0.24)",
+  accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -59,7 +59,9 @@ function fmtG(rawWei?: bigint) {
 
 export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
-  const { address } = useAccount();
+  const { address: realAddress } = useAccount();
+  // dev only: lets an automated check open the sheet for a test wallet without signing in
+  const address = realAddress ?? (process.env.NODE_ENV !== "production" && typeof window !== "undefined" ? (window as unknown as { __inboxWallet?: `0x${string}` }).__inboxWallet : undefined);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const [gasHelpOpen, setGasHelpOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -192,7 +194,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(2,0,12,0.92)",
+          background: "rgba(34,16,79,0.45)",
           backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
           display: "flex", flexDirection: "column",
           justifyContent: isDesktop ? "center" : "flex-end",
@@ -205,14 +207,14 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
           onClick={e => e.stopPropagation()}
           style={{
             width: "100%", maxWidth: 520,
-            background: "linear-gradient(180deg, rgba(20,8,52,0.98) 0%, rgba(8,2,28,0.99) 100%)",
+            background: "#fbf8ff",
             // Bottom-sheet on mobile (rounded top corners only), full card
             // on desktop (rounded all corners).
             borderRadius: isDesktop ? 22 : "26px 26px 0 0",
             border: `1px solid ${T.hairlineHi}`,
             borderBottom: isDesktop ? `1px solid ${T.hairlineHi}` : "none",
             boxShadow: isDesktop
-              ? `0 24px 60px -10px ${T.accent}55, 0 0 0 1px rgba(255,255,255,0.04)`
+              ? `0 24px 60px -10px ${T.accent}55, 0 0 0 1px rgba(76,29,149,0.14)`
               : `0 -24px 60px -10px ${T.accent}33`,
             padding: isDesktop
               ? "18px 18px 22px"
@@ -238,7 +240,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 0 4px" }}>
               <button onClick={onClose} aria-label="Close" style={{
                 width: 32, height: 32, borderRadius: 999, cursor: "pointer",
-                background: "rgba(255,255,255,0.05)",
+                background: "#fff",
                 border: `1px solid ${T.hairline}`,
                 color: T.inkDim,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -248,7 +250,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "center", padding: "2px 0 4px" }}>
-              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.18)" }} />
+              <div style={{ width: 44, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.22)" }} />
             </div>
           )}
 
@@ -269,7 +271,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                   position: "absolute", right: -3, bottom: -3,
                   width: 18, height: 18, borderRadius: 999,
                   background: "#22c55e",
-                  border: "1.5px solid #050010",
+                  border: "1.5px solid #fff",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   boxShadow: "0 1px 4px rgba(34,197,94,0.55)",
                 }}>
@@ -286,7 +288,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700 }}>
                 <span>LV {meta?.level ?? 1}</span>
                 <span>·</span>
-                <span style={{ color: "#bae6fd" }}>
+                <span style={{ color: "#0369a1" }}>
                   🔥 {meta && meta.streak > 0 ? `${meta.streak}-day` : "New"}
                 </span>
               </div>
@@ -300,9 +302,9 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5,
                 padding: "6px 10px", borderRadius: 999, cursor: "pointer",
-                background: copied ? "rgba(34,197,94,0.16)" : "rgba(255,255,255,0.05)",
-                border: `1px solid ${copied ? "rgba(134,239,172,0.5)" : T.hairline}`,
-                color: copied ? "#86efac" : T.inkDim,
+                background: copied ? "rgba(34,197,94,0.16)" : "#fff",
+                border: `1px solid ${copied ? "rgba(22,101,52,0.5)" : T.hairline}`,
+                color: copied ? "#166534" : T.inkDim,
                 fontFamily: T.body, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em",
               }}
             >
@@ -320,7 +322,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                 label="G$"
                 sub="Real GoodDollar money · send, receive, or spend in-game"
                 amount={fmtG(gBal as bigint | undefined)}
-                amountColor="#fde68a"
+                amountColor="#92400e"
                 onClick={() => setWalletSheetOpen(true)}
               />
               {/* CELO row · receive-only for now (no native send built yet).
@@ -337,7 +339,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                 // network-fee token with a neutral copy path.
                 const showLow = !GASLESS_SKILL_GAMES && (gasStatus === "warn" || gasStatus === "block");
                 const isBlock = !GASLESS_SKILL_GAMES && gasStatus === "block";
-                const dot = isBlock ? "#fb7185" : showLow ? "#fbbf24" : null;
+                const dot = isBlock ? "#e11d48" : showLow ? "#d97706" : null;
                 const subCopy = isBlock
                   ? "Out of gas · tap to top up in Telegram"
                   : showLow
@@ -353,7 +355,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                     label="CELO"
                     sub={subCopy}
                     amount={fmtCelo(celoBal?.value)}
-                    amountColor={isBlock ? "#fda4af" : showLow ? "#fbbf24" : T.ink}
+                    amountColor={isBlock ? "#be123c" : showLow ? "#b45309" : T.ink}
                     statusDot={dot}
                     onClick={showLow ? () => setGasHelpOpen(true) : copyAddress}
                   />
@@ -453,7 +455,7 @@ function TokenRow({
       style={{
         width: "100%", display: "flex", alignItems: "center", gap: 12,
         padding: "12px 14px", borderRadius: 14, cursor: "pointer",
-        background: "rgba(255,255,255,0.03)",
+        background: "#fff",
         border: `1px solid ${T.hairline}`,
         textAlign: "left",
       }}
@@ -461,7 +463,7 @@ function TokenRow({
       <div style={{
         position: "relative",
         width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-        background: "rgba(255,255,255,0.04)",
+        background: "#fff",
         border: `1px solid ${T.hairline}`,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
@@ -471,7 +473,7 @@ function TokenRow({
             position: "absolute", top: -3, right: -3,
             width: 10, height: 10, borderRadius: 999,
             background: statusDot,
-            border: "1.5px solid #0a0228",
+            border: "1.5px solid #fff",
             boxShadow: `0 0 8px ${statusDot}`,
           }} />
         )}
@@ -481,10 +483,10 @@ function TokenRow({
         <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontFamily: T.display, fontSize: 16, color: amountColor, lineHeight: 1, textShadow: amountColor === "#fde68a" ? "0 0 8px rgba(251,191,36,0.4)" : "none" }}>
+        <span style={{ fontFamily: T.display, fontSize: 16, color: amountColor, lineHeight: 1 }}>
           {amount}
         </span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(255,255,255,0.4)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(34,16,79,0.45)">
           <path d="M9 6l6 6-6 6" />
         </svg>
       </div>
@@ -503,15 +505,15 @@ function NavRow({
   // reads as an opportunity, not just another nav link.
   accent?: boolean;
 }) {
-  const A = "#22c55e";
+  const A = "#16a34a";
   return (
     <button
       onClick={onClick}
       style={{
         width: "100%", display: "flex", alignItems: "center", gap: 12,
         padding: "11px 14px", borderRadius: 14, cursor: "pointer",
-        background: accent ? "rgba(34,197,94,0.09)" : "rgba(255,255,255,0.03)",
-        border: `1px solid ${accent ? "rgba(34,197,94,0.35)" : T.hairline}`,
+        background: accent ? "#f0fdf4" : "#fff",
+        border: `1px solid ${accent ? "rgba(22,163,74,0.5)" : T.hairline}`,
         textAlign: "left",
       }}
     >
@@ -528,7 +530,7 @@ function NavRow({
         <div style={{ fontFamily: T.display, fontSize: 14, color: T.ink, lineHeight: 1.15 }}>{label}</div>
         <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkSoft, marginTop: 2, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
       </div>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(255,255,255,0.4)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(34,16,79,0.45)">
         <path d="M9 6l6 6-6 6" />
       </svg>
     </button>

@@ -71,7 +71,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
   // old loop rebuilt ~5 roundRect paths + 2 gradient allocations PER TILE
   // PER FRAME (≈64 ops/frame with 8 tiles). drawImage of a cached sprite
   // is one GPU blit — an order of magnitude cheaper.
-  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; sprites: HTMLCanvasElement[]; trails: HTMLCanvasElement[] } | null>(null);
+  const spritesRef = useRef<{ tileW: number; tileH: number; pad: number; depth: number; sprites: HTMLCanvasElement[]; trails: HTMLCanvasElement[] } | null>(null);
 
   // Candy shapes, one per lane — square / triangle / coin / star. Shape +
   // color double-codes the lanes (reads faster at speed, works for
@@ -84,7 +84,11 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
     // here is safe.
     const pad = neon ? 20 : 12; // room for the glow halo around the shape
     const sw = tileW + pad * 2;
-    const sh = tileH + pad * 2 + 4;
+    // Each tile is a solid block with real thickness, not a flat sticker: the
+    // side wall is extruded DEPTH pixels below the face. On the tilted highway
+    // that reads as a block standing on the road and coming toward you.
+    const depth = Math.max(6, Math.round(tileH * 0.3));
+    const sh = tileH + pad * 2 + 4 + depth;
 
     // Path helpers — all centered in the sprite box
     const tracePath = (c: CanvasRenderingContext2D, kind: number, cx: number, cy: number, w: number, h: number) => {
@@ -148,10 +152,29 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       }
       c.globalAlpha = 1;
 
-      // Drop wall (3D depth under the candy)
-      c.fillStyle = theme.wall;
-      tracePath(c, laneIdx, cx, cy + 3, shapeW, shapeH);
+      // Contact shadow on the road, so the block sits ON the highway
+      c.globalAlpha = 0.38;
+      c.fillStyle = "#000";
+      c.beginPath();
+      c.ellipse(cx, cy + shapeH * 0.42 + depth, shapeW * 0.56, Math.max(3, depth * 0.45), 0, 0, Math.PI * 2);
       c.fill();
+      c.globalAlpha = 1;
+
+      // Side wall: the shape extruded downward, darkest at the bottom
+      for (let d = depth; d >= 1; d--) {
+        c.fillStyle = theme.wall;
+        tracePath(c, laneIdx, cx, cy + d, shapeW, shapeH);
+        c.fill();
+      }
+      c.globalAlpha = 0.28; // a darker foot, a lighter band just under the face
+      c.fillStyle = "#000";
+      tracePath(c, laneIdx, cx, cy + depth, shapeW, shapeH);
+      c.fill();
+      c.globalAlpha = 0.22;
+      c.fillStyle = theme.accent;
+      tracePath(c, laneIdx, cx, cy + 2, shapeW, shapeH);
+      c.fill();
+      c.globalAlpha = 1;
 
       // Candy body — SOLID saturated accent with a white rim, exactly the
       // banner's look. (A soft radial gradient bleached the colors into
@@ -264,7 +287,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
       return off;
     });
 
-    spritesRef.current = { tileW, tileH, pad, sprites, trails };
+    spritesRef.current = { tileW, tileH, pad, depth, sprites, trails };
   };
 
   useEffect(() => {
@@ -342,7 +365,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
 
       const built = spritesRef.current;
       if (!built) return;
-      const { tileW, tileH, pad, sprites, trails } = built;
+      const { tileW, tileH, pad, depth, sprites, trails } = built;
       const laneCount = lanes.length;
       const laneW = w / laneCount;
 
@@ -495,7 +518,7 @@ const NoteCanvas = forwardRef<NoteCanvasHandle, Props>(function NoteCanvas({ lan
         // face, gloss and specular, so this single call replaces the old
         // ~8 draw operations.
         ctx.globalAlpha = alpha;
-        ctx.drawImage(sprites[n.lane], x - pad, y - pad, tileW + pad * 2, tileH + pad * 2 + 4);
+        ctx.drawImage(sprites[n.lane], x - pad, y - pad, tileW + pad * 2, tileH + pad * 2 + 4 + depth);
       }
 
       ctx.globalAlpha = 1;

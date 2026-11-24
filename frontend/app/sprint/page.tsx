@@ -14,10 +14,10 @@ import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 
 const T = {
-  bg: "linear-gradient(180deg, #2a0d6e 0%, #1a0552 40%, #0a0226 100%)",
-  ink: "#ffffff", inkDim: "rgba(220,210,255,0.7)", inkSoft: "rgba(220,210,255,0.45)",
-  surface: "rgba(40,18,100,0.5)", hairline: "rgba(255,255,255,0.08)",
-  gold: "#fde68a", green: "#34d399", cyan: "#22d3ee", accent: "#a78bfa",
+  bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
+  ink: "#22104f", inkDim: "rgba(34,16,79,0.8)", inkSoft: "rgba(34,16,79,0.66)",
+  surface: "#ffffff", hairline: "rgba(76,29,149,0.08)",
+  gold: "#b45309", green: "#047857", cyan: "#0e7490", accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
@@ -51,13 +51,13 @@ function Eyebrow({ children, tint }: { children: React.ReactNode; tint?: string 
 }
 
 const CONFETTI = [
-  { left: "10%", top: "22%", color: "#f9a8d4", size: 9, shape: "star", dur: 3.5, delay: 0.0 },
-  { left: "20%", top: "55%", color: "#fbbf24", size: 11, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "30%", top: "18%", color: "#22d3ee", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
-  { left: "46%", top: "10%", color: "#fde68a", size: 12, shape: "sparkle", dur: 4.0, delay: 0.8 },
-  { left: "62%", top: "20%", color: "#e879f9", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
-  { left: "74%", top: "50%", color: "#34d399", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "26%", color: "#c084fc", size: 11, shape: "note", dur: 4.1, delay: 0.7 },
+  { left: "10%", top: "22%", color: "#be185d", size: 9, shape: "star", dur: 3.5, delay: 0.0 },
+  { left: "20%", top: "55%", color: "#b45309", size: 11, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "30%", top: "18%", color: "#0e7490", size: 8, shape: "dot", dur: 3.0, delay: 1.0 },
+  { left: "46%", top: "10%", color: "#b45309", size: 12, shape: "sparkle", dur: 4.0, delay: 0.8 },
+  { left: "62%", top: "20%", color: "#a21caf", size: 9, shape: "star", dur: 3.2, delay: 0.3 },
+  { left: "74%", top: "50%", color: "#047857", size: 9, shape: "dot", dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "26%", color: "#7e22ce", size: 11, shape: "note", dur: 4.1, delay: 0.7 },
 ];
 function Confetti({ p }: { p: typeof CONFETTI[number] }) {
   const base = { position: "absolute" as const, left: p.left, top: p.top, width: p.size, height: p.size, animation: `icon-float ${p.dur}s ease-in-out ${p.delay}s infinite`, pointerEvents: "none" as const, filter: `drop-shadow(0 0 6px ${p.color})` };
@@ -71,8 +71,8 @@ function Confetti({ p }: { p: typeof CONFETTI[number] }) {
 // Character podium · the app's own board language (mirrors the Cup).
 function Podium({ rows, dollarOf }: { rows: Row[]; dollarOf: (g: number) => number }) {
   const P = [
-    { char: "/characters/char1.png", e: rows[0], color: "#fbbf24", w: 18, bottom: 38, left: 50, z: 3 },
-    { char: "/characters/char2.png", e: rows[1], color: "#e2e8f0", w: 16, bottom: 33, left: 32, z: 2 },
+    { char: "/characters/char1.png", e: rows[0], color: "#b45309", w: 18, bottom: 38, left: 50, z: 3 },
+    { char: "/characters/char2.png", e: rows[1], color: "#475569", w: 16, bottom: 33, left: 32, z: 2 },
     { char: "/characters/char3.png", e: rows[2], color: "#f97316", w: 16, bottom: 32, left: 67, z: 2 },
   ];
   return (
@@ -103,7 +103,7 @@ function Pill({ e, dollarOf, winners }: { e: Row; dollarOf: (g: number) => numbe
   const tint = e.you ? T.green : inMoney ? T.gold : T.accent;
   return (
     <div style={{ borderRadius: 999, padding: 2, background: `linear-gradient(135deg, ${tint} 0%, ${tint}55 100%)`, boxShadow: `0 0 10px ${tint}33, 0 5px 14px rgba(0,0,0,0.45)`, opacity: played ? 1 : 0.6 }}>
-      <div style={{ borderRadius: 999, background: e.you ? `linear-gradient(90deg, ${tint}2e 0%, rgba(20,10,50,0.92) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
+      <div style={{ borderRadius: 999, background: e.you ? `linear-gradient(90deg, ${tint}2e 0%, rgba(255,255,255,0.96) 100%)` : "linear-gradient(90deg, rgba(24,12,56,0.92) 0%, rgba(12,6,34,0.95) 100%)", padding: "8px 15px 8px 8px", display: "flex", alignItems: "center", gap: 11 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${tint}22`, border: `1px solid ${tint}66`, fontFamily: T.display, fontSize: 12.5, color: T.ink, flexShrink: 0 }}>{e.rank ?? "–"}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.you ? `You · ${e.name || short(e.wallet)}` : (e.name || short(e.wallet))}</div>
@@ -162,7 +162,7 @@ export default function SprintPage() {
     const q = address ? `?wallet=${address}` : "";
     const load = () => fetch(`/api/sprint${q}`, { cache: "no-store" }).then((r) => r.json()).then(setData).catch(() => {});
     load();
-    const t = setInterval(load, 20000);
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 20000) /* a tab nobody is looking at does not need fresh data */;
     return () => clearInterval(t);
   }, [address]);
 
@@ -272,7 +272,7 @@ export default function SprintPage() {
             <Eyebrow tint={T.green}>Sprint progress</Eyebrow>
             <span style={{ fontSize: 11, color: T.inkSoft }}>{countdown} left</span>
           </div>
-          <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+          <div style={{ height: 6, borderRadius: 999, background: "rgba(76,29,149,0.06)", overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${elapsedPct}%`, background: `linear-gradient(90deg,${T.green},${T.cyan})`, borderRadius: 999 }} />
           </div>
         </div>
@@ -285,7 +285,7 @@ export default function SprintPage() {
         <>
           <Card style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "20px 18px", background: `radial-gradient(120% 130% at 50% 0%, ${T.gold}1e, transparent 62%), ${T.surface}` }}>
             <div style={{ fontFamily: T.display, fontSize: 44, color: T.gold, fontVariantNumeric: "tabular-nums", textShadow: `0 0 28px ${T.gold}55`, lineHeight: 1 }}>{countdown}</div>
-            <div style={{ fontSize: 10, color: "rgba(253,230,138,0.7)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 7 }}>until the sprint opens</div>
+            <div style={{ fontSize: 10, color: "rgba(180,83,9,0.95)", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 7 }}>until the sprint opens</div>
             <div style={{ fontSize: 12.5, color: T.inkDim, lineHeight: 1.5, maxWidth: 360, margin: "11px auto 0" }}>You&apos;re one of {ev.rosterSize} invited. When it opens, your best scores across the 3 games start counting. Warm up now.</div>
           </Card>
 
@@ -294,7 +294,7 @@ export default function SprintPage() {
             <Eyebrow tint={T.accent}>Who&apos;s in the room</Eyebrow>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
               {data.board.map((r) => (
-                <span key={r.wallet} style={{ fontSize: 11.5, fontWeight: 700, color: r.you ? "#04121a" : T.ink, background: r.you ? T.green : "rgba(255,255,255,0.06)", border: `1px solid ${r.you ? T.green : T.hairline}`, borderRadius: 999, padding: "4px 11px" }}>
+                <span key={r.wallet} style={{ fontSize: 11.5, fontWeight: 700, color: r.you ? "#04121a" : T.ink, background: r.you ? T.green : "rgba(76,29,149,0.06)", border: `1px solid ${r.you ? T.green : T.hairline}`, borderRadius: 999, padding: "4px 11px" }}>
                   {r.you ? "You" : (r.name || short(r.wallet))}
                 </span>
               ))}

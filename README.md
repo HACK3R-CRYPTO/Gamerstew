@@ -1,8 +1,8 @@
 # GameArena
 
-> Quick skill games that make you sharper. Verified humans with no bots, an AI that learns how you play, and real GoodDollar (G$) you earn every day · on Celo Mainnet, all on-chain and auditable.
+> Quick skill games that make you sharper, in 2D and in a 3D Lagos street. Play alone or in a room with friends. Verified humans with no bots, an AI that learns how you play, every ranked score on-chain with no gas, and real GoodDollar (G$) you earn every day · on Celo Mainnet, also in MiniPay.
 
-[![GameArena](./frontend/public/hero.png)](https://gamearenahq.xyz)
+[![GameArena: home, Word Ladder, Street Strike, UP NEPA 3D and the weekly rankings](./docs/screenshots/overview.jpg)](https://gamearenahq.xyz)
 
 [![Live](https://img.shields.io/badge/Live-Celo%20Mainnet-fbcc5c?style=for-the-badge&logo=ethereum)](https://gamearenahq.xyz)
 [![Community](https://img.shields.io/badge/Telegram-gamearenaHQ-2ca5e0?style=for-the-badge&logo=telegram)](https://t.me/gamearenaHQ)
@@ -23,11 +23,35 @@ GameArena is a set of quick games that actually make you sharper. Each game trai
 - **Simon Memory** · trains your memory
 - **Stack Tower** · trains patience and precision
 - **Rhythm Rush** · trains focus and timing
+- **Word Ladder** · trains vocabulary and planning
+- **Street Strike** · 3D street bowling with a tyre and bottles
+- **UP NEPA 3D** · a walkable Lagos street: bring the light back, or charge everything before NEPA takes it
 - **Challenge AI** · go head-to-head with MARKOV, an AI that learns how you play
 
-Thirty seconds a game, but you feel yourself improve. Everyone playing is a real, verified person, so there are no bots. Play is free · sign in with Google to rank, verify once and earn G$ every single day. You climb leaderboards against actual people, and the value is a bonus, not the bait. Built mobile-first for MiniPay, so anyone with just a phone in Nigeria and across Africa can play.
+Most rounds take under a minute, and you feel yourself improve. Any game can be played with friends in a private room. Everyone playing is a real, verified person, so there are no bots. Play is free · sign in with Google to rank, verify once and earn G$ every single day. You climb leaderboards against actual people, and the value is a bonus, not the bait. Built mobile-first for MiniPay, so anyone with just a phone in Nigeria and across Africa can play.
 
 That's it. Come play: **[gamearenahq.xyz](https://gamearenahq.xyz)**
+
+---
+
+## What it looks like
+
+Screens captured from the app on 24 November 2026, at phone size.
+
+| Home | Rankings | Achievements |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/home.jpg" width="250" alt="Home: the game shelves and the weekly community challenge"> | <img src="docs/screenshots/ranks.jpg" width="250" alt="Rankings: this week's podium, each score with an on-chain tick"> | <img src="docs/screenshots/achievements.jpg" width="250" alt="Achievements grouped by game"> |
+| The games, and this week's shared G$ pool | A green tick opens that score's transaction | 23 achievements, grouped by game |
+
+| Stack Tower | Word Ladder | Simon Memory | Rhythm Rush |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/stack-lobby.jpg" width="190" alt="Stack Tower start screen"> | <img src="docs/screenshots/ladder-play.jpg" width="190" alt="Word Ladder in play"> | <img src="docs/screenshots/simon-lobby.jpg" width="190" alt="Simon Memory start screen"> | <img src="docs/screenshots/rhythm-lobby.jpg" width="190" alt="Rhythm Rush start screen with a song picker"> |
+
+| Street Strike | Street Strike, rolling | UP NEPA 3D · Restore the Light | UP NEPA 3D · Charge Rush |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/strike-lobby.jpg" width="190" alt="Street Strike setup: solo, versus CPU, two players, online, and three tyres"> | <img src="docs/screenshots/strike-play.jpg" width="190" alt="Street Strike: a tyre lined up on a Lagos street"> | <img src="docs/screenshots/upnepa-restore.jpg" width="190" alt="UP NEPA 3D Restore the Light"> | <img src="docs/screenshots/upnepa-charge.jpg" width="190" alt="UP NEPA 3D Charge Rush: carrying a fridge on the head to the sockets"> |
+
+<img src="docs/screenshots/upnepa-modes.jpg" alt="UP NEPA 3D mode screen: Restore the Light, Charge Rush and Free Roam">
 
 ---
 
@@ -51,6 +75,24 @@ GoodDollar's GoodBuilders Season 4 ran through Sept 2026, and GameArena beat eve
 - **2,000,000+ G$** paid to verified players across competitions · zero bots paid
 
 Every figure is on-chain and auditable — see [Public analytics](#public-analytics).
+
+---
+
+## Since Season 4
+
+What has been built since, all in this repository:
+
+- **Three new games.** Word Ladder, Street Strike (3D) and UP NEPA 3D, a walkable Lagos street with two modes and a free roam.
+- **Friend rooms in every skill game.** Up to four players, same round, same time, by a five-letter code. In server-checked games a signed-in player's room round is recorded on-chain.
+- **G$ entry with nothing held.** Rooms in server-checked games can be played for an entry. Each player signs a G$ permit; at the end each loser's entry goes straight to the winner. No escrow contract.
+- **Gasless ranked scores.** The backend checks a run and records it on-chain for the player. Result screens wait for the receipt and link to it.
+- **Boards from confirmed runs.** Weekly boards, rank and the activity feed read the backend's own record, each row linked to its transaction.
+- **A run cannot be lost.** If a phone drops off after its score reaches the chain, a job finishes the save.
+- **An inbox.** Notifications are kept on the server, read state follows the player across devices, and GameArena can post announcements.
+- **Missions and achievements for every game**, on each game's real score scale.
+- **One look.** The whole app moved to a single light lilac theme.
+
+Details: [docs/](docs/README.md).
 
 ---
 
@@ -85,14 +127,14 @@ flowchart TB
     P([Verified human players<br/>GoodDollar Identity SDK])
 
     subgraph LOOPS["Three game loops"]
-        SKILL[🎵 Solo skill games<br/>Rhythm Rush · Simon Memory<br/>+ more games shipping<br/>weekly + all-time ladders]
+        SKILL[🎵 Solo skill games<br/>Stack · Word Ladder · Simon · Rhythm<br/>Street Strike · UP NEPA 3D<br/>solo or in friend rooms]
         AGENTWAGER[🤖 Instant matches vs MARKOV<br/>best-of-5 RPS · free to play<br/>commit-reveal provably fair<br/>weekly ladder pays G$]
         SEASONS[🏆 Seasonal competitions<br/>team races · solo ladders · sponsor cups<br/>real G$ prize pools]
     end
 
     subgraph APP["App layer"]
         FE[Frontend · Next.js 16<br/>gamearenahq.xyz<br/>web + MiniPay webview]
-        BE[Games-backend · Express<br/>EIP-712 score vouchers · seasons · missions · push]
+        BE[Games-backend · Express<br/>score checking + gasless recording · rooms · missions · inbox]
         DB[(Supabase Postgres<br/>scores · seasons · habitats · agent state)]
     end
 
@@ -148,7 +190,7 @@ flowchart TB
 
 **🎵 Solo skill games**
 
-Rhythm Rush, Simon Memory, and Stack Tower today, with more games shipping into this slot. Plays submit EIP-712 score vouchers to the backend, which writes them to the activity ledger that powers weekly + all-time leaderboards.
+Stack Tower, Word Ladder, Simon Memory, Rhythm Rush, Street Strike and UP NEPA 3D. A finished run goes to the backend, which checks it (for most games by replaying the run itself) and records the score on-chain for the player, gasless. The backend's record of confirmed runs powers the weekly and all-time leaderboards.
 
 **🤖 Instant matches vs MARKOV**
 
@@ -174,7 +216,7 @@ Every action across all loops · games played, MARKOV wins, daily claims, referr
 
 | System | What it does |
 |---|---|
-| **App layer** | UX, score pipeline, seasons, missions, push notifications. Frontend on Vercel, backend on Railway, state in Supabase Postgres. |
+| **App layer** | UX, score pipeline, friend rooms, seasons, missions, an in-app inbox and push notifications. Frontend on Vercel, backend on Railway, state in Supabase Postgres. |
 | **Celo Mainnet contracts** | Hold the money · ArenaPlatform (A2A wagers), GamePass NFT (scores), HabitatRegistry + PerkShop (G$ sinks), G$ token, GoodCollective UBI pool. |
 | **MARKOV agent** | Autonomous opponent · no operator, no keeper. Markov-2 chain prediction + commit-reveal fairness. Instant Arena rounds run server-side for speed; the seed commitment makes every match replayable and verifiable. On-chain wager interface stays live for agent counterparties. |
 | **Off-chain surfaces** | Make agent activity legible · Moltbook posts (humans), A2A discovery (other agents), Goldsky subgraph (analytics). |
@@ -187,11 +229,14 @@ For MARKOV's internal four-layer architecture (Economic · Reputation · Discove
 
 ## Contents
 
+- [What it looks like](#what-it-looks-like)
+- [Since Season 4](#since-season-4)
 - [From the community](#from-the-community)
 - [Architecture](#architecture)
 - [How it works](#how-it-works)
   - [Verified humans only](#verified-humans-only)
   - [Solo games](#solo-games)
+  - [Play with friends](#play-with-friends)
   - [MARKOV · autonomous on-chain AI opponent](#markov--autonomous-on-chain-ai-opponent)
   - [Events and seasonal competitions](#events-and-seasonal-competitions)
   - [Player passport and referrals](#player-passport-and-referrals)
@@ -228,8 +273,19 @@ Every player completes a one-time face-scan via GoodDollar's Identity SDK. No bo
 | Rhythm Rush  | Tap in time with the beat             | Focus and timing        |
 | Simon Memory | Repeat the color sequence, going deeper each round | Memory and recall |
 | Stack Tower  | Drop each block at the perfect moment | Patience and precision  |
+| Word Ladder  | Change one letter at a time to reach the target word | Vocabulary and planning |
+| Street Strike | Roll a tyre down a Lagos street at the bottles (3D) | Aim and control |
+| UP NEPA 3D   | Walk a 3D Lagos street. *Restore the Light*: flip the breakers before time runs out. *Charge Rush*: carry devices to three sockets and collect before the cut | Routing and risk |
 
-Every score is recorded on-chain via the GamePass contract · the backend signs the verified result (EIP-712) and the player submits the transaction from their own wallet. Every on-chain score is tied to the player's address and verifiable by anyone.
+Every ranked score is recorded on-chain via the GamePass contract, each game under its own id. The backend checks the run, then submits the transaction itself, so the player pays no gas and signs nothing. If the daily gasless budget is used up, the backend signs the result (EIP-712) and the player submits it from their own wallet instead. Result screens wait for the transaction's receipt and link to it; leaderboard rows carry the same link.
+
+How far the backend can check a run depends on the game. Word Ladder, Simon Memory, Rhythm Rush and Street Strike are replayed on the server from the player's inputs (Street Strike runs every throw through the same physics the phone ran), so the score is the server's own. Stack Tower is bounded by its drop log. UP NEPA 3D ranks *Restore the Light* only, and that is plausibility-checked: the server's clock sets the time and bounds the rest. *Charge Rush* is not ranked; its best score stays on the device. See [games-backend/ANTICHEAT.md](games-backend/ANTICHEAT.md).
+
+### Play with friends
+
+Every skill game has private rooms for up to four players: one player opens a room, shares a five-letter code or a link, and everyone plays the same round at the same time and watches each other's progress. Rooms survive a server restart. A signed-in player's round in a server-checked game is recorded on-chain like a solo run.
+
+Rooms in server-checked games can be played for a G$ entry. No money is held anywhere: each player signs a G$ permit for the entry, and when the round ends each loser's entry goes straight from their wallet to the winner, less a fee. A tie, or a round nobody scores in, moves nothing. The older DuelEscrow contract is not used for this.
 
 ### MARKOV — autonomous AI opponent
 
@@ -276,7 +332,7 @@ GameArena runs periodic competitions with G$ prize pools sourced from the platfo
 - **Solo Ladders** — individual ranking competitions running alongside team events or standalone.
 - **Sponsor cups** — rare, larger-pool events (typically in USDC) funded by sponsor partners.
 - **Community-funded pots** — player-contributed prize pools, no platform money involved.
-- **Friend Duels** — head-to-head rooms on the `DuelEscrow` contract: stake G$ (winner takes the pot, a small cut to treasury) or run a free prize-pool room. 24h to beat the score, public or private (join code / allowlist). Available any time, not just during events.
+- **Friend rooms** — play any skill game with up to three friends at any time, free or for a G$ entry. See [Play with friends](#play-with-friends). These replaced the earlier Friend Duels, which held stakes in the `DuelEscrow` contract.
 
 Points accumulate across each event from every in-app action · games played, MARKOV wins, daily claims, habitat purchases, referrals, active days. Event cadence and structure are announced via the [Telegram community](https://t.me/gamearenaHQ).
 
@@ -284,7 +340,7 @@ Points accumulate across each event from every in-app action · games played, MA
 
 ### Player passport and referrals
 
-Every player gets a public passport at `gamearenahq.xyz/pass/{address}` (your username works too) · verification status read live on-chain (shows ✓ verified only if currently GoodDollar-whitelisted, otherwise a neutral GamePass badge), all-time rank, best scores, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
+Every player gets a public passport at `gamearenahq.xyz/pass/{address}` (your username works too) · verification status read live on-chain (shows ✓ verified only if currently GoodDollar-whitelisted, otherwise a neutral GamePass badge), all-time rank, best score in every game, season podium badges, their pet standing in its equipped habitat, and their lifetime UBI contribution. The page is server-rendered with a per-player OG card (the pet on its habitat scene, 1200×630), so a shared link previews as a personal trading card in any chat. Players can also save the card as a PNG straight from the page.
 
 Referrals ride on the passport. A player's referral code is their username (`?ref=ogazboiz` · a raw wallet still works), every share link carries it, and new players can type a code by hand during onboarding ("Got a referral code?" resolves live to `✓ referred by @name`). A referral counts the moment the referred player verifies and mints their GamePass. Your count shows on your profile and passport.
 
@@ -325,11 +381,11 @@ Every profile has a slime pet that evolves with player level · Egg → Baby →
 
 ### Daily missions
 
-Three fresh missions every 24 hours, deterministically picked per `(wallet, date)`. Category-balanced · one from each of count (show up and play), skill (score thresholds), and special (beat a PB, play different games). Games are score-based, so there are no "win" missions. Same missions all day, new set tomorrow. Claim awards a small XP reward directly.
+Three fresh missions every 24 hours, deterministically picked per `(wallet, date)`. Category-balanced · one from each of count (show up and play), skill (score thresholds), and special (beat a PB, play different games). Skill missions cover all six skill games, on each game's real score scale, and a test checks that every one of them can be reached. Games are score-based, so there are no "win" missions. Same missions all day, new set tomorrow. Claim awards a small XP reward directly.
 
 ### Milestone achievements
 
-A 13-achievement catalog covering first win, 3/7/30-day streaks, 5/25/100-game thresholds, and per-game score milestones. Profile shows `X / 13 UNLOCKED`. Schema reserves `nft_token_id` and `tx_hash` fields for future on-chain minting.
+A 23-achievement catalog covering first win, 3/7/30-day streaks, 5/25/100-game thresholds, and score milestones for every skill game. The profile groups them by game. Schema reserves `nft_token_id` and `tx_hash` fields for future on-chain minting.
 
 ### Play streak
 
@@ -346,7 +402,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | `GamePass.sol`       | [`0xBB044d6780...`](https://celoscan.io/address/0xBB044d6780885A4cDb7E6F40FCc92FF7b051DAdE)                              | Soulbound NFT · usernames + on-chain scores |
 | `PerkShop.sol`       | [`0xe451Ab2158...`](https://celoscan.io/address/0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5)                              | G$ perk sink · 20% UBI / 80% treasury    |
 | `HabitatRegistry.sol`| [`0x8888FEb43a...`](https://celoscan.io/address/0x8888FEb43ac1833c683D0474204aa55A55BD010F)                              | G$ habitat sink · 20% UBI / 80% treasury |
-| `DuelEscrow.sol`     | [`0x5dd223edb3...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557)                              | Friend Duels · staked G$ / prize-pool rooms |
+| `DuelEscrow.sol`     | [`0x5dd223edb3...`](https://celoscan.io/address/0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557)                              | The earlier Friend Duels. Not used by friend rooms; no new work builds on it |
 | `SoloWager.sol`      | [`0xc78A8A027e...`](https://celoscan.io/address/0xc78A8A027e07Ae5d52981f627bbac973a8d77eFb)                              | Solo G$ score wagers                     |
 | `ArenaPlatform.sol`  | [`0x5C0eafE7834...`](https://celoscan.io/address/0x5C0eafE7834Bd317D998A058A71092eEBc2DedeE)                              | MARKOV match escrow (A2A agent interface) |
 | GoodDollar G$        | [`0x62B8B11039...`](https://celoscan.io/address/0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A)                              | The in-game currency · earn + spend      |
@@ -367,6 +423,7 @@ Deployed on Celo Mainnet (chain id 42220).
 | Habitat unlock           | Paid cosmetic tiers (free tiers are level-gated) | Player → HabitatRegistry · 80% treasury / 20% UBI |
 | In-game perk             | Saves, retries, cosmetics, match tickets   | Player → PerkShop · 80% treasury / 20% UBI (gasless) |
 | Event prize pools        | Weekly Community Challenge, cups, seasons  | Platform pool → winners                              |
+| Friend-room entry        | Optional, in server-checked games          | Each loser → the winner directly by signed permit, less a fee to treasury. Nothing is held |
 | UBI share routing        | Player picks their GoodCollective in Settings | 20% splits attributed to the chosen collective    |
 
 Legacy wager era: on-chain 1v1 wagers paid the winner 98% of the pot with 2% routed to the GoodCollective UBI pool. That interface remains live on ArenaPlatform for A2A agent counterparties.
@@ -405,9 +462,11 @@ npm run dev
 In separate terminals:
 
 ```bash
-cd games-backend && npm install && node server.js   # http://localhost:3005
+cd games-backend && npm install && npm run dev      # http://localhost:3005 (builds the TypeScript modules first)
 cd agent && npm install && npm start                # MARKOV agent
 ```
+
+Use a development database and key for the backend, never the production ones: on start it sends real transactions and runs the scheduled jobs. `npm test` and `npm run smoke` check the backend without a database or a key.
 
 Required environment variables: Privy app id, Supabase URL + anon key, contract addresses (Celo Mainnet), validator private key for the backend. See each subdirectory's `.env.example`.
 
@@ -418,18 +477,18 @@ Required environment variables: Privy app id, Supabase URL + anon key, contract 
 ```
 GameArenaCelo-/
   contracts/        Solidity · GamePass, PerkShop, HabitatRegistry, DuelEscrow, SoloWager, ArenaPlatform, ERC-8004 registries
-  frontend/         Next.js 16 · games, wallet/MiniPay, duels, tug, passport, shop, agents
-  games-backend/    Express + Supabase · scores, seasons, faucet, tug + payouts, partner API, push
+  frontend/         Next.js 16 · 2D and 3D games, friend rooms, wallet/MiniPay, passport, shop, agents
+  games-backend/    Express + Supabase · score checking, boards, friend rooms, missions, inbox + push, seasons, partner API
   agent/            MARKOV agent · Markov-2 chains, hash-committed RNG, ERC-8004 #6386
   sdk/              Partner Game SDK · bring your own players onto GameArena boards
   scripts/          Deployment + utility scripts
-  subgraph/         Goldsky subgraph · on-chain reads (scores, players, habitats, perks)
+  subgraph/         Goldsky subgraph · on-chain reads (not indexing since 30 Oct 2026; the app reads the backend's records)
 ```
 
 Each subdirectory has its own README · open one for the deeper picture:
 
 - **[agent/README.md](agent/README.md)** · MARKOV's four-layer architecture (Economic · Reputation · Discovery · Social), on-chain anchors, configuration matrix, operational notes
-- **[games-backend/README.md](games-backend/README.md)** · Express routes, score-voucher pipeline, season + cup engine, push broadcast, Supabase schema
+- **[games-backend/README.md](games-backend/README.md)** · Express routes, the score path, friend rooms, season + cup engine, notifications, Supabase schema
 - **[frontend/README.md](frontend/README.md)** · Next.js 16 app, wallet integration, page structure
 - **[contracts/README.md](contracts/README.md)** · Solidity sources, Foundry setup, deployment
 - **[subgraph/README.md](subgraph/README.md)** · Goldsky subgraph for on-chain reads

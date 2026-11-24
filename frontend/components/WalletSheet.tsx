@@ -138,7 +138,7 @@ export function WalletSheet({
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(2,1,10,0.92)", backdropFilter: "blur(6px)",
+          background: "rgba(34,16,79,0.45)", backdropFilter: "blur(6px)",
           animation: "wsFade 180ms ease-out",
         }}
       />
@@ -153,14 +153,14 @@ export function WalletSheet({
       }}>
         <div style={{
           borderRadius: "20px",
-          background: "#003a00",
+          background: "#fff",
           paddingBottom: "5px",
-          boxShadow: "0 0 0 2px #15803d, 0 0 30px rgba(34,197,94,0.4), 0 -16px 40px rgba(0,0,0,0.6)",
+          boxShadow: "0 0 0 1px rgba(76,29,149,0.14), 0 -20px 50px -20px rgba(34,16,79,0.6)",
         }}>
           <div style={{
             borderRadius: "18px 18px 14px 14px",
-            background: "linear-gradient(180deg, #064e20 0%, #022010 100%)",
-            border: "2px solid rgba(134,239,172,0.3)",
+            background: "#fbf8ff",
+            border: "none",
             padding: "16px 18px 18px",
             position: "relative", overflow: "hidden",
             display: "flex", flexDirection: "column", gap: "14px",
@@ -168,7 +168,7 @@ export function WalletSheet({
             {/* Top gloss */}
             <div style={{
               position: "absolute", top: 0, left: 0, right: 0, height: "45%",
-              background: "linear-gradient(180deg, rgba(134,239,172,0.12) 0%, transparent 100%)",
+              background: "linear-gradient(180deg, #f0fdf4 0%, #fff 100%)",
               pointerEvents: "none",
             }} />
 
@@ -181,7 +181,7 @@ export function WalletSheet({
                 <BackButton onClick={() => setView("overview")} />
               ) : <div style={{ width: 28 }} />}
               <div style={{
-                color: "rgba(134,239,172,0.85)",
+                color: "#166534",
                 fontSize: "11px", fontWeight: 900, letterSpacing: "0.18em",
               }}>
                 {view === "overview" ? "WALLET" : view === "send" ? "SEND G$" : "RECEIVE"}
@@ -213,7 +213,7 @@ export function WalletSheet({
 
                 <div style={{
                   position: "relative", zIndex: 1,
-                  color: "rgba(134,239,172,0.45)",
+                  color: "#166534",
                   fontSize: "9.5px", fontWeight: 700,
                   letterSpacing: "0.06em",
                   textAlign: "center",
@@ -227,10 +227,10 @@ export function WalletSheet({
             {view === "send" && !txHash && (
               <>
                 <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ color: "rgba(134,239,172,0.65)", fontSize: "10px", fontWeight: 800, letterSpacing: "0.14em" }}>
+                  <span style={{ color: "#166534", fontSize: "10px", fontWeight: 800, letterSpacing: "0.14em" }}>
                     AVAILABLE
                   </span>
-                  <span style={{ color: "#86efac", fontSize: "14px", fontWeight: 900 }}>
+                  <span style={{ color: "#166534", fontSize: "14px", fontWeight: 900 }}>
                     {balanceDisplay} G$
                   </span>
                 </div>
@@ -272,9 +272,9 @@ export function WalletSheet({
                   <div style={{
                     position: "relative", zIndex: 1,
                     padding: "8px 12px", borderRadius: "10px",
-                    background: "rgba(239,68,68,0.12)",
+                    background: "#fff1f2",
                     border: "1px solid rgba(239,68,68,0.45)",
-                    color: "#fca5a5", fontSize: "11px", fontWeight: 700,
+                    color: "#be123c", fontSize: "11px", fontWeight: 700,
                   }}>{error}</div>
                 )}
 
@@ -299,13 +299,13 @@ export function WalletSheet({
                 }}>
                   <div style={{ fontSize: "36px", marginBottom: "8px" }}>✅</div>
                   <div style={{
-                    color: "#86efac", fontSize: "16px", fontWeight: 900,
+                    color: "#166534", fontSize: "16px", fontWeight: 900,
                     letterSpacing: "0.04em",
                   }}>
                     {amount} G$ sent
                   </div>
                   <div style={{
-                    color: "rgba(134,239,172,0.6)", fontSize: "11px",
+                    color: "#166534", fontSize: "11px",
                     marginTop: "4px", fontWeight: 700,
                   }}>
                     to {recipient.slice(0, 6)}…{recipient.slice(-4)}
@@ -318,7 +318,7 @@ export function WalletSheet({
                   rel="noopener noreferrer"
                   style={{
                     position: "relative", zIndex: 1, textAlign: "center",
-                    color: "rgba(134,239,172,0.7)", fontSize: "11px",
+                    color: "#166534", fontSize: "11px",
                     textDecoration: "underline", fontWeight: 700,
                   }}
                 >
@@ -351,16 +351,16 @@ export function WalletSheet({
                       height={240}
                       style={{
                         borderRadius: "14px",
-                        boxShadow: "0 0 18px rgba(134,239,172,0.4)",
-                        background: "#86efac",
+                        boxShadow: "0 0 0 1px rgba(76,29,149,0.14)",
+                        background: "#fff",
                       }}
                     />
                   ) : (
                     <div style={{
                       width: 240, height: 240, borderRadius: "14px",
-                      background: "rgba(134,239,172,0.08)",
+                      background: "#f0fdf4",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "rgba(134,239,172,0.5)", fontSize: "11px", fontWeight: 700,
+                      color: "#166534", fontSize: "11px", fontWeight: 700,
                     }}>generating QR…</div>
                   )}
                 </div>
@@ -368,10 +368,10 @@ export function WalletSheet({
                 <div style={{
                   position: "relative", zIndex: 1,
                   padding: "10px 14px", borderRadius: "12px",
-                  background: "rgba(0,0,0,0.35)",
-                  border: "1px solid rgba(134,239,172,0.2)",
+                  background: "#fff",
+                  border: "1px solid rgba(22,163,74,0.4)",
                   textAlign: "center",
-                  color: "rgba(229,231,235,0.92)",
+                  color: "#22104f",
                   fontFamily: "monospace",
                   fontSize: "12px", fontWeight: 700,
                   wordBreak: "break-all",
@@ -392,7 +392,7 @@ export function WalletSheet({
 
                 <div style={{
                   position: "relative", zIndex: 1,
-                  color: "rgba(134,239,172,0.55)",
+                  color: "#166534",
                   fontSize: "10px", fontWeight: 700,
                   letterSpacing: "0.04em",
                   textAlign: "center",
@@ -430,17 +430,17 @@ function BalanceCard({ balance, shortAddr, onCopyAddress, copied }: {
     <div style={{
       position: "relative", zIndex: 1,
       borderRadius: "14px",
-      background: "linear-gradient(180deg, rgba(134,239,172,0.16) 0%, rgba(34,197,94,0.06) 100%)",
-      border: "1.5px solid rgba(134,239,172,0.4)",
+      background: "linear-gradient(180deg, #f0fdf4 0%, #fff 100%)",
+      border: "1.5px solid rgba(22,163,74,0.4)",
       padding: "14px 16px",
       display: "flex", flexDirection: "column", gap: "8px",
     }}>
       <div style={{
-        color: "rgba(134,239,172,0.7)", fontSize: "10px",
+        color: "#166534", fontSize: "10px",
         fontWeight: 800, letterSpacing: "0.18em",
       }}>G$ BALANCE</div>
       <div style={{
-        color: "#86efac", fontSize: "30px", fontWeight: 900,
+        color: "#166534", fontSize: "30px", fontWeight: 900,
         lineHeight: 1, textShadow: "0 0 16px rgba(134,239,172,0.55)",
       }}>{balance}</div>
       <div style={{
@@ -448,16 +448,16 @@ function BalanceCard({ balance, shortAddr, onCopyAddress, copied }: {
         marginTop: "4px",
       }}>
         <span style={{
-          color: "rgba(229,231,235,0.85)",
+          color: "#22104f",
           fontFamily: "monospace", fontSize: "12px", fontWeight: 700,
         }}>{shortAddr}</span>
         <button
           onClick={onCopyAddress}
           style={{
             padding: "5px 11px", borderRadius: "999px",
-            background: "rgba(134,239,172,0.12)",
-            border: "1px solid rgba(134,239,172,0.4)",
-            color: copied ? "#86efac" : "rgba(229,231,235,0.92)",
+            background: "#f0fdf4",
+            border: "1px solid rgba(22,163,74,0.4)",
+            color: copied ? "#166534" : "#22104f",
             fontSize: "10px", fontWeight: 900, letterSpacing: "0.08em",
             cursor: "pointer",
           }}
@@ -523,7 +523,7 @@ function SheetField({ label, children }: { label: string; children: React.ReactN
       display: "flex", flexDirection: "column", gap: "6px",
     }}>
       <div style={{
-        color: "rgba(134,239,172,0.7)", fontSize: "10px",
+        color: "#166534", fontSize: "10px",
         fontWeight: 800, letterSpacing: "0.14em",
       }}>{label}</div>
       {children}
@@ -535,9 +535,9 @@ function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button onClick={onClick} aria-label="Back" style={{
       width: 28, height: 28, borderRadius: "999px",
-      background: "rgba(134,239,172,0.12)",
-      border: "1px solid rgba(134,239,172,0.3)",
-      color: "#86efac", fontSize: "14px", fontWeight: 900,
+      background: "#f0fdf4",
+      border: "1px solid rgba(22,163,74,0.4)",
+      color: "#166534", fontSize: "14px", fontWeight: 900,
       cursor: "pointer", lineHeight: 1,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>←</button>
@@ -548,9 +548,9 @@ function CloseButton({ onClick }: { onClick: () => void }) {
   return (
     <button onClick={onClick} aria-label="Close" style={{
       width: 28, height: 28, borderRadius: "999px",
-      background: "rgba(255,255,255,0.08)",
-      border: "1px solid rgba(255,255,255,0.18)",
-      color: "rgba(229,231,235,0.85)", fontSize: "13px", fontWeight: 900,
+      background: "#fff",
+      border: "1px solid rgba(76,29,149,0.2)",
+      color: "#22104f", fontSize: "13px", fontWeight: 900,
       cursor: "pointer", lineHeight: 1,
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>✕</button>
@@ -561,9 +561,9 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "10px 14px",
   borderRadius: "12px",
-  background: "rgba(0,0,0,0.4)",
-  border: "1.5px solid rgba(134,239,172,0.25)",
-  color: "white",
+  background: "#fff",
+  border: "1.5px solid rgba(22,163,74,0.4)",
+  color: "#22104f",
   fontSize: "13px",
   fontWeight: 700,
   fontFamily: "inherit",
@@ -573,9 +573,9 @@ const inputStyle: React.CSSProperties = {
 const maxBtnStyle: React.CSSProperties = {
   padding: "0 14px",
   borderRadius: "12px",
-  background: "rgba(251,191,36,0.15)",
+  background: "#fffbeb",
   border: "1.5px solid rgba(251,191,36,0.5)",
-  color: "#fbbf24",
+  color: "#92400e",
   fontSize: "11px",
   fontWeight: 900,
   letterSpacing: "0.1em",
@@ -583,7 +583,7 @@ const maxBtnStyle: React.CSSProperties = {
 };
 
 const errorTextStyle: React.CSSProperties = {
-  color: "#fca5a5",
+  color: "#be123c",
   fontSize: "10px",
   fontWeight: 700,
   marginTop: "2px",

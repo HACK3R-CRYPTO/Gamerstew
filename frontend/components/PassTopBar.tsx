@@ -20,15 +20,15 @@ export default function PassTopBar() {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
       <button
         onClick={back}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer", color: "rgba(220,210,255,0.7)", fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11.5, fontWeight: 700 }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 13px", borderRadius: 999, background: "#fff", border: "1px solid rgba(76,29,149,0.16)", cursor: "pointer", color: "#22104f", fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 13, fontWeight: 700 }}
       >
         ‹ Back
       </button>
       <button
         onClick={() => router.push("/")}
-        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 15, color: "#fff", letterSpacing: "0.04em", textShadow: "0 0 16px rgba(167,139,250,0.6)" }}
+        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: "#22104f" }}
       >
-        🎮 GAME ARENA
+        GameArena
       </button>
     </div>
   );

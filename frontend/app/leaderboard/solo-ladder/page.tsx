@@ -244,7 +244,7 @@ export default function SoloLadderPage() {
     void fetchLb();
     // Bumped from 10s → 30s. Combined with the 20s edge cache, this caps
     // Supabase egress on this endpoint to ~1 origin hit per ~30s globally.
-    const i = setInterval(fetchLb, 30000);
+    const i = setInterval(() => { if (!document.hidden) void fetchLb(); }, 30000) /* a tab nobody is looking at does not need fresh data */;
     return () => clearInterval(i);
   }, [fetchLb]);
 
@@ -263,7 +263,7 @@ export default function SoloLadderPage() {
     void fetchMe();
     // Bumped from 30s → 60s. Combined with the 15s edge cache, this is
     // ~4× fewer origin hits per player per minute.
-    const i = setInterval(fetchMe, 60000);
+    const i = setInterval(() => { if (!document.hidden) void fetchMe(); }, 60000) /* a tab nobody is looking at does not need fresh data */;
     return () => { cancelled = true; clearInterval(i); };
   }, [address]);
 

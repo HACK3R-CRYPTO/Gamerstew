@@ -64,6 +64,9 @@ export type PassportData = {
   bestSimon: number;
   bestStack: number;
   bestChallenge: number;        // gameType 3 · Challenge AI (MARKOV)
+  bestLadder: number;           // gameType 5 · Word Ladder
+  bestStrike: number;           // gameType 6 · Street Strike
+  bestNepa3d: number;           // gameType 7 · UP NEPA 3D
   rank: number | null;         // all-time combined rank (subgraph)
   badges: { gold: number; silver: number; bronze: number };
   pet: { id: string; name: string; src: string };
@@ -136,6 +139,10 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
           { address: GD_IDENTITY, abi: GD_IDENTITY_ABI, functionName: "getWhitelistedRoot", args: [addr] },
           { ...gamePass, functionName: "bestScore", args: [addr, 2] },
           { ...gamePass, functionName: "bestScore", args: [addr, 3] },
+          // the newer games: every one a player can rank in belongs on their passport
+          { ...gamePass, functionName: "bestScore", args: [addr, 5] },
+          { ...gamePass, functionName: "bestScore", args: [addr, 6] },
+          { ...gamePass, functionName: "bestScore", args: [addr, 7] },
         ],
       })
       .catch(() => null),
@@ -159,6 +166,8 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
   const verified = !!root && root.toLowerCase() !== ZERO_ADDR;
   const onChainStack = chain?.[7]?.status === "success" ? Number(chain[7].result) : 0;
   const bestChallenge = chain?.[8]?.status === "success" ? Number(chain[8].result) : 0;
+  const best = (i: number) => (chain?.[i]?.status === "success" ? Number(chain[i].result) : 0);
+  const bestLadder = best(9), bestStrike = best(10), bestNepa3d = best(11);
 
   // A passport only exists for real players: minted pass OR any recorded play.
   if (!minted && gamesPlayed === 0 && !user) return null;
@@ -198,6 +207,7 @@ export async function getPassport(addressRaw: string): Promise<PassportData | nu
     bestSimon: standing?.bestSimon ?? bestSimon,
     bestStack: standing?.bestStack ?? onChainStack,
     bestChallenge,
+    bestLadder, bestStrike, bestNepa3d,
     rank: standing?.rank ?? null,
     badges,
     pet: petForLevel(level),

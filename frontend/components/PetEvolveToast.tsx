@@ -70,7 +70,7 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 2100,
-        background: "rgba(2,0,12,0.88)",
+        background: "rgba(246,241,255,0.96)",
         backdropFilter: "blur(12px)",
         overflow: "hidden",
         cursor: "pointer", userSelect: "none",
@@ -134,10 +134,10 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
       }}>
         {/* Eyebrow ribbon */}
         <div style={{
-          color: "#fbbf24",
+          color: "#b45309",
           fontSize: "clamp(11px, 3.2vw, 14px)",
           fontWeight: 900, letterSpacing: "0.42em",
-          textShadow: `0 0 16px rgba(251,191,36,0.9), 0 0 32px ${pet.color}66`,
+          textShadow: "none",
           animation: "fadeIn 0.4s ease 0.1s both",
         }}>
           ✦ EVOLUTION ✦
@@ -164,10 +164,10 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
         }}>
           {nameLetters.map((ch, i) => (
             <span key={i} style={{
-              color: ch === " " ? "transparent" : "white",
+              color: ch === " " ? "transparent" : "#22104f",
               fontSize: "clamp(20px, 6.5vw, 34px)",
               fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1,
-              textShadow: `0 0 14px ${pet.color}, 0 0 28px ${pet.color}aa, 0 4px 8px rgba(0,0,0,0.8)`,
+              textShadow: `0 3px 0 ${pet.color}66`,
               WebkitTextStroke: ch === " " ? "0" : `1.5px ${pet.color}`,
               transform: "translateY(-30px) scale(0.4)",
               opacity: 0,
@@ -182,12 +182,12 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
         <div style={{
           padding: "clamp(7px, 2vw, 10px) clamp(16px, 4.5vw, 26px)",
           borderRadius: "999px",
-          background: `linear-gradient(180deg, ${pet.color}66 0%, ${pet.color}22 100%)`,
+          background: "#fff",
           border: `1.5px solid ${pet.color}`,
-          color: "white",
+          color: "#22104f",
           fontSize: "clamp(10px, 2.8vw, 12px)",
           fontWeight: 900, letterSpacing: "0.24em",
-          textShadow: `0 0 10px ${pet.color}`,
+          textShadow: "none",
           boxShadow: `0 0 20px ${pet.color}55, inset 0 1px 0 rgba(255,255,255,0.2)`,
           animation: `fadeIn 0.4s ease ${700 + nameLetters.length * 55 + 200}ms both`,
         }}>
@@ -227,16 +227,16 @@ export default function PetEvolveToast({ pet, newLevel, onClose }: Props) {
         pointerEvents: "none",
       }}>
         <div style={{
-          color: "rgba(254,215,170,0.85)",
+          color: "#92400e",
           fontSize: "clamp(12px, 3.4vw, 15px)",
           fontWeight: 800, letterSpacing: "0.08em",
-          textShadow: "0 2px 6px rgba(0,0,0,0.7)",
+          textShadow: "none",
         }}>
           Your pet evolved at level {newLevel}
         </div>
         <div style={{
           marginTop: "8px",
-          color: "rgba(200,180,255,0.55)",
+          color: "rgba(34,16,79,0.62)",
           fontSize: "clamp(9px, 2.6vw, 11px)",
           fontWeight: 700, letterSpacing: "0.18em",
           animation: "lvup-cta-pulse 1.4s ease-in-out infinite 2.6s",

@@ -13,33 +13,39 @@
 // The subgraph is the source of truth for live on-chain scores. The
 // backend only provides season boundaries + sealed past records.
 
+import { txUrl } from "@/lib/subgraph";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
-import { fetchLeaderboard, type LeaderboardEntry } from "@/lib/subgraph";
+import { fetchLeaderboard, type LeaderboardEntry, type GameTypeId } from "@/lib/subgraph";
 import { useVatarAddress, useVatarName } from "@/lib/vatar";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
 const PAGE_SIZE = 16;
 
 const T = {
-  ink: "#ffffff",
-  inkDim: "rgba(220,210,255,0.7)",
-  inkSoft: "rgba(220,210,255,0.45)",
-  hairline: "rgba(255,255,255,0.08)",
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.8)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  hairline: "rgba(76,29,149,0.14)",
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
 };
 
 type Tab = "live" | "past";
-type GameKind = "rhythm" | "simon" | "stack";
+type GameKind = "rhythm" | "simon" | "stack" | "nepa" | "ladder" | "strike" | "nepa3d";
 
 // gameType ID mirrors GamePass.sol uint8 + backend's GAME_TYPE map.
 // Add a row here when a new game lands · everything else flows from it.
-const GAME_TYPE_ID: Record<GameKind, 0 | 1 | 2> = { rhythm: 0, simon: 1, stack: 2 };
+// (3 is Challenge AI, which has its own ladder; nepa is 4.)
+const GAME_TYPE_ID: Record<GameKind, GameTypeId> = { rhythm: 0, simon: 1, stack: 2, nepa: 4, ladder: 5, strike: 6, nepa3d: 7 };
 const GAME_HREF: Record<GameKind, string> = {
   rhythm: "/games/rhythm",
   simon: "/games/simon",
   stack: "/games/stack",
+  nepa: "/games/nepa",
+  ladder: "/games/ladder",
+  strike: "/bowling",
+  nepa3d: "/world",
 };
 // Friendly title used in the past-season detail sheet header. One row per
 // game · add a new game and the sheet picks it up.
@@ -47,13 +53,21 @@ const GAME_LABEL: Record<GameKind, string> = {
   rhythm: "Rhythm Rush",
   simon: "Simon Memory",
   stack: "Stack Tower",
+  nepa: "NEPA: Up Light",
+  ladder: "Word Ladder",
+  strike: "Street Strike",
+  nepa3d: "UP NEPA 3D",
 };
 // Per-game accent for the detail sheet · matches each lobby's signature
 // color so the sheet visually belongs to the game the player came from.
 const GAME_ACCENT: Record<GameKind, string> = {
-  rhythm: "#e879f9",
+  rhythm: "#a21caf",
   simon: "#06b6d4",
-  stack: "#fb923c",
+  stack: "#9a3412",
+  nepa: "#92400e",
+  ladder: "#166534",
+  strike: "#7e22ce",
+  nepa3d: "#92400e",
 };
 
 // Entry shape matches both the subgraph's LeaderboardEntry and the
@@ -92,16 +106,16 @@ function dateRange(startTs: number, endTs: number): string {
 
 // ─── confetti + podium · matches the previous leaderboard style 1:1 ──────
 const CONFETTI = [
-  { left: "8%",  top: "25%", color: "#f9a8d4", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
-  { left: "15%", top: "60%", color: "#fbbf24", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
-  { left: "22%", top: "20%", color: "#22d3ee", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#fb923c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
-  { left: "38%", top: "15%", color: "#e879f9", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#fde68a", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
-  { left: "58%", top: "18%", color: "#60a5fa", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
-  { left: "68%", top: "50%", color: "#f472b6", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
-  { left: "78%", top: "28%", color: "#34d399", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
-  { left: "86%", top: "55%", color: "#c084fc", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
+  { left: "8%",  top: "25%", color: "#be185d", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
+  { left: "15%", top: "60%", color: "#92400e", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "22%", top: "20%", color: "#0e7490", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
+  { left: "30%", top: "45%", color: "#9a3412", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "38%", top: "15%", color: "#a21caf", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
+  { left: "48%", top: "35%", color: "#92400e", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
+  { left: "58%", top: "18%", color: "#1d4ed8", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
+  { left: "68%", top: "50%", color: "#be185d", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
+  { left: "78%", top: "28%", color: "#047857", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
+  { left: "86%", top: "55%", color: "#7e22ce", size: 12, shape: "note",     dur: 4.1, delay: 0.7 },
 ];
 
 function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
@@ -124,15 +138,15 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 
 function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#fbbf24", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#e2e8f0", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
-    { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#92400e", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3, labelLeft: 50 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#334155", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2, labelLeft: 22 },
+    { char: "/characters/char3.png", entry: podium[2], color: "#9a3412", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2, labelLeft: 78 },
   ];
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: 620, aspectRatio: "3 / 2", margin: "0 auto" }}>
       <img src="/characters/podium.png" alt="podium" style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
-        objectFit: "contain", filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))", zIndex: 1,
+        objectFit: "contain", filter: "drop-shadow(0 20px 30px rgba(76,29,149,0.35))", zIndex: 1,
       }} />
       {CONFETTI.map((p, i) => <ConfettiParticle key={i} p={p} />)}
       {placements.map(pl => (
@@ -143,7 +157,7 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
         }}>
           <img src={pl.char} alt={`rank ${pl.rank}`} style={{
             width: "100%", height: "auto", objectFit: "contain",
-            filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)`,
+            filter: `drop-shadow(0 4px 8px rgba(76,29,149,0.22)) drop-shadow(0 0 14px ${pl.color}55)`,
           }} />
         </div>
       ))}
@@ -151,18 +165,17 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
         const charHeightPct = pl.widthPct * 2.25;
         const labelBottom = pl.bottomPct + charHeightPct + 1;
         return (
+          pl.entry ? (
           <div key={`label-${pl.rank}`} style={{
-            position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`,
-            transform: "translateX(-50%)", textAlign: "center", zIndex: 4,
-            pointerEvents: "none", whiteSpace: "nowrap",
+            position: "absolute", left: `${pl.labelLeft}%`, bottom: `${labelBottom + (pl.rank === 1 ? 9 : 0)}%`,
+            transform: "translateX(-50%)", textAlign: "center", zIndex: pl.rank === 1 ? 5 : 4, pointerEvents: "none", whiteSpace: "nowrap",
+            padding: "4px 10px 5px", borderRadius: 12, background: "#fff", boxShadow: "0 0 0 1px rgba(76,29,149,0.14), 0 8px 14px -8px rgba(76,29,149,0.6)",
+            maxWidth: "30%", overflow: "hidden",
           }}>
-            <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
-              {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
-            </div>
-            <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>
-              {pl.entry ? pl.entry.score.toLocaleString() : 0}
-            </div>
+            <div style={{ color: "#22104f", fontFamily: T.body, fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{fmtName(pl.entry.player, pl.entry.username)}</div>
+            <div style={{ color: pl.color, fontFamily: T.body, fontSize: 13, fontWeight: 900, fontVariantNumeric: "tabular-nums", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, pointerEvents: "auto" }}>{pl.entry.score.toLocaleString()}<OnChain hash={pl.entry.txHash} small /></div>
           </div>
+          ) : null
         );
       })}
     </div>
@@ -173,30 +186,30 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
 function PlayerRow({ entry, rank, isMe, accent, meName }: { entry: Entry; rank: number; isMe: boolean; accent: string; meName?: string }) {
   return (
     <div style={{
-      borderRadius: 999, padding: 2.5,
-      background: `linear-gradient(135deg, ${accent} 0%, ${accent}77 100%)`,
-      boxShadow: `0 0 14px ${accent}66, 0 0 28px ${accent}33, 0 8px 18px rgba(0,0,0,0.6)`,
+      display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 10, padding: "10px 12px 10px 10px", borderRadius: 16,
+      background: isMe ? "#f3ecff" : "#fff", boxShadow: isMe ? `0 0 0 1.5px ${accent}` : "0 0 0 1px rgba(76,29,149,0.12)",
     }}>
-      <div style={{
-        borderRadius: 999,
-        background: isMe
-          ? `linear-gradient(90deg, ${accent}26 0%, rgba(20,10,50,0.9) 100%)`
-          : "linear-gradient(90deg, rgba(20,10,50,0.92) 0%, rgba(10,5,30,0.95) 100%)",
-        padding: "8px 14px 8px 10px",
-        display: "flex", alignItems: "center", gap: 10,
-      }}>
-        <span style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          width: 28, height: 28, borderRadius: 999,
-          background: `${accent}1f`, border: `1px solid ${accent}66`,
-          fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 13, color: T.ink, letterSpacing: "0.02em",
-        }}>#{rank}</span>
-        <span style={{ flex: 1, fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {isMe ? `You · ${meName?.trim() || fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}
-        </span>
-        <span style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{entry.score.toLocaleString()}</span>
-      </div>
+      <span style={{ width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#ede9fe", color: "#4c1d95", fontFamily: T.body, fontSize: 12, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{rank}</span>
+      <span style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {isMe && meName?.trim() ? meName.trim() : fmtName(entry.player, entry.username)}{isMe && <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, background: accent, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.06em" }}>YOU</span>}
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: T.body, fontSize: 15, fontWeight: 900, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{entry.score.toLocaleString()}</span>
+        <OnChain hash={entry.txHash} />
+      </span>
     </div>
+  );
+}
+
+// A small tick that opens the transaction which recorded a score. It is the
+// proof a score is real: anyone can follow it and see the number on the chain.
+function OnChain({ hash, small }: { hash?: string; small?: boolean }) {
+  if (!hash) return null;
+  const d = small ? 16 : 22;
+  return (
+    <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" title="See this score on the chain" aria-label="See this score on the chain"
+      onClick={(e) => e.stopPropagation()}
+      style={{ flex: "none", width: d, height: d, borderRadius: 999, display: "grid", placeItems: "center", background: "#dcfce7", color: "#166534", fontSize: small ? 10 : 12, fontWeight: 900, textDecoration: "none", border: "1px solid rgba(22,163,74,0.45)" }}>✓</a>
   );
 }
 
@@ -209,7 +222,7 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
   const winner = entries[0];
   const myFinish = address ? entries.findIndex(e => e.player.toLowerCase() === address.toLowerCase()) + 1 : 0;
   const placedTop3 = myFinish > 0 && myFinish <= 3;
-  const myMedalColor = myFinish === 1 ? "#fbbf24" : myFinish === 2 ? "#e2e8f0" : myFinish === 3 ? "#f97316" : null;
+  const myMedalColor = myFinish === 1 ? "#92400e" : myFinish === 2 ? "#334155" : myFinish === 3 ? "#9a3412" : null;
   const myMedal = myFinish === 1 ? "🥇" : myFinish === 2 ? "🥈" : myFinish === 3 ? "🥉" : null;
   return (
     <button
@@ -221,19 +234,19 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
         cursor: "pointer",
         fontFamily: "inherit",
         borderRadius: 14,
-        background: "rgba(20,10,50,0.6)",
-        border: placedTop3 ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(167,139,250,0.18)",
+        background: "rgba(255,255,255,0.96)",
+        border: placedTop3 ? `1.5px solid ${myMedalColor}88` : "1px solid rgba(76,29,149,0.14)",
         boxShadow: placedTop3
-          ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(0,0,0,0.5)`
-          : "0 6px 14px rgba(0,0,0,0.5)",
+          ? `0 0 12px ${myMedalColor}33, 0 6px 14px rgba(76,29,149,0.25)`
+          : "0 6px 14px rgba(76,29,149,0.22)",
         padding: "12px 14px",
       }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ color: "#fff", fontSize: 13, fontWeight: 900, letterSpacing: "0.06em" }}>SEASON {season.season}</div>
+        <div style={{ color: "#22104f", fontSize: 13, fontWeight: 900, letterSpacing: "0.06em" }}>SEASON {season.season}</div>
         {myMedal && (
           <div style={{ padding: "2px 8px", borderRadius: 999, background: `${myMedalColor}1a`, border: `1px solid ${myMedalColor}66` }}>
             <span style={{ fontSize: 10 }}>{myMedal}</span>
-            <span style={{ color: myMedalColor!, fontSize: 9, fontWeight: 900, marginLeft: 4 }}>YOU</span>
+            <span style={{ color: myMedalColor!, fontSize: 11, fontWeight: 900, marginLeft: 4 }}>YOU</span>
           </div>
         )}
       </div>
@@ -241,26 +254,26 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: "6px 8px", borderRadius: 8,
-          background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
+          background: "#fffbeb", border: "1px solid #fcd34d",
           marginBottom: 8,
         }}>
           <span style={{ fontSize: 13 }}>🏆</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: "rgba(254,215,170,0.65)", fontSize: 8, fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
-            <div style={{ color: "#fff", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ color: "#92400e", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em" }}>WINNER</div>
+            <div style={{ color: "#22104f", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {fmtName(winner.player, winner.username)}
             </div>
           </div>
-          <div style={{ color: "#fbbf24", fontSize: 13, fontWeight: 900 }}>{winner.score.toLocaleString()}</div>
+          <div style={{ color: "#92400e", fontSize: 13, fontWeight: 900 }}>{winner.score.toLocaleString()}</div>
         </div>
       ) : (
-        <div style={{ color: "rgba(200,180,255,0.4)", fontSize: 10, textAlign: "center", padding: "12px 0" }}>
+        <div style={{ color: "rgba(34,16,79,0.6)", fontSize: 11.5, textAlign: "center", padding: "12px 0" }}>
           No scores
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(200,180,255,0.55)", fontSize: 9, fontWeight: 700 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "rgba(34,16,79,0.62)", fontSize: 11, fontWeight: 700 }}>
         <span>👥 {season.totalPlayers || entries.length} player{(season.totalPlayers || entries.length) !== 1 ? "s" : ""}</span>
-        <span style={{ color: "rgba(167,139,250,0.7)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em" }}>
+        <span style={{ color: "rgba(109,40,217,0.95)", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em" }}>
           {dateRange(season.startTs, season.endTs)}
         </span>
       </div>
@@ -270,8 +283,8 @@ function SeasonChampionCard({ season, gameKind, address, onClick }: { season: Pa
       <div style={{
         marginTop: 8, paddingTop: 8,
         borderTop: "1px dashed rgba(167,139,250,0.18)",
-        color: "rgba(167,139,250,0.85)",
-        fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em",
+        color: "rgba(109,40,217,1)",
+        fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
         display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
       }}>
         VIEW STANDINGS
@@ -326,7 +339,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
   // and clipping the list hides the player's finish without telling
   // them their score was tracked.
   const medalFor = (rank: number) => rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
-  const medalColor = (rank: number) => rank === 1 ? "#fbbf24" : rank === 2 ? "#e2e8f0" : rank === 3 ? "#f97316" : null;
+  const medalColor = (rank: number) => rank === 1 ? "#92400e" : rank === 2 ? "#334155" : rank === 3 ? "#9a3412" : null;
 
   return createPortal(
     <>
@@ -338,7 +351,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
         onClick={onClose}
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(2,0,12,0.86)",
+          background: "rgba(34,16,79,0.5)",
           backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
           display: "flex", alignItems: "flex-end", justifyContent: "center",
           animation: "psd-fade 0.22s ease both",
@@ -352,9 +365,9 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
           style={{
             width: "100%", maxWidth: 540, maxHeight: "88vh",
             borderRadius: "24px 24px 0 0",
-            background: "linear-gradient(180deg, rgba(30,12,80,0.98) 0%, rgba(12,4,40,0.99) 60%, rgba(7,2,26,1) 100%)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0.96) 100%)",
             border: `1px solid ${accent}33`, borderBottom: "none",
-            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
+            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(76,29,149,0.22)`,
             display: "flex", flexDirection: "column", overflow: "hidden",
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
             animation: "psd-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both",
@@ -362,7 +375,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
         >
           {/* Drag handle · the gestural close affordance */}
           <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px", flexShrink: 0 }}>
-            <span style={{ width: 38, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.22)" }} />
+            <span style={{ width: 38, height: 4, borderRadius: 999, background: "rgba(76,29,149,0.22)" }} />
           </div>
 
           {/* Header · season + game + sealed date + close */}
@@ -376,14 +389,14 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
               <div style={{ color: accent, fontSize: 16, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.body }}>
                 SEASON {season.season} · {label.toUpperCase()}
               </div>
-              <div style={{ color: T.inkSoft, fontSize: 10.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>
+              <div style={{ color: T.inkSoft, fontSize: 11.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>
                 ENDED {new Date(season.endTs * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {season.totalPlayers || entries.length} PLAYER{(season.totalPlayers || entries.length) !== 1 ? "S" : ""}
               </div>
             </div>
             <button onClick={onClose} aria-label="Close" style={{
               width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
-              color: "rgba(255,255,255,0.7)", fontSize: 15, cursor: "pointer",
+              background: "#fff", border: "1px solid rgba(76,29,149,0.16)",
+              color: "#22104f", fontSize: 15, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>✕</button>
           </div>
@@ -413,7 +426,7 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
                           ? `${accent}1a`
                           : mColor
                             ? `${mColor}10`
-                            : "rgba(255,255,255,0.03)",
+                            : "#fff",
                         border: isMe
                           ? `1.5px solid ${accent}88`
                           : mColor
@@ -429,14 +442,14 @@ function PastSeasonDetailSheet({ season, gameKind, address, onClose }: {
                         </span>
                         <span style={{
                           flex: 1, minWidth: 0,
-                          color: "#fff", fontFamily: T.body, fontSize: 12, fontWeight: 700,
+                          color: "#22104f", fontFamily: T.body, fontSize: 12, fontWeight: 700,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {fmtName(e.player, e.username)}
-                          {isMe && <span style={{ marginLeft: 6, color: accent, fontSize: 10, fontWeight: 900, letterSpacing: "0.1em" }}>· YOU</span>}
+                          {isMe && <span style={{ marginLeft: 6, color: accent, fontSize: 11.5, fontWeight: 900, letterSpacing: "0.1em" }}>· YOU</span>}
                         </span>
                         <span style={{
-                          color: mColor || "#fff",
+                          color: mColor || "#22104f",
                           fontFamily: T.body, fontSize: 13, fontWeight: 900,
                           textShadow: mColor ? `0 0 8px ${mColor}55` : "none",
                         }}>
@@ -520,11 +533,11 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
       {/* Tab switcher */}
       <div style={{
         display: "inline-flex", padding: 4, gap: 4, borderRadius: 999,
-        background: "rgba(0,0,0,0.35)", border: `1px solid ${T.hairline}`,
+        background: "#fff", border: `1px solid ${T.hairline}`,
         alignSelf: "flex-start",
       }}>
         {([
-          { id: "live", label: meta ? `Season ${meta.currentSeason}` : "This season" },
+          { id: "live", label: "This week" },
           { id: "past", label: "Past seasons" },
         ] as Array<{ id: Tab; label: string }>).map(t => {
           const active = tab === t.id;
@@ -533,10 +546,10 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
               padding: "8px 16px", borderRadius: 999, border: "none", cursor: "pointer",
               background: active ? accent : "transparent",
               color: active ? "#fff" : T.inkDim,
-              fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.06em",
-              boxShadow: active ? `0 0 14px ${accent}66` : "none",
+              fontFamily: T.body, fontSize: 13, fontWeight: 800,
+              boxShadow: "none",
               transition: "all 0.15s",
-            }}>{t.label.toUpperCase()}</button>
+            }}>{t.label}</button>
           );
         })}
       </div>
@@ -544,41 +557,41 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
       {/* LIVE — current season: podium + pill rows + pagination */}
       {tab === "live" && (
         <>
-          {loadErr && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Couldn&apos;t load standings.</div>}
-          {!loadErr && (!meta || liveEntries === null) && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading this season…</div>}
+          {loadErr && <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, padding: "12px 4px" }}>Could not load the standings. Check your connection and reload.</div>}
+          {!loadErr && (!meta || liveEntries === null) && <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, padding: "12px 4px" }}>Loading this season…</div>}
 
           {meta && liveEntries !== null && (
             <>
               {/* Season header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 2px" }}>
-                <span style={{ fontFamily: T.body, fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: T.inkDim }}>SEASON {meta.currentSeason} · LIVE</span>
-                <span style={{ fontFamily: T.body, fontSize: 10.5, color: accent, fontWeight: 800, letterSpacing: "0.08em" }}>{timeLeftLabel(meta.currentEndsAt)}</span>
+                <span style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 800, color: T.inkDim }}>Season {meta.currentSeason} · {liveEntries.length} {liveEntries.length === 1 ? "player" : "players"}</span>
+                <span style={{ fontFamily: T.body, fontSize: 12.5, color: accent, fontWeight: 800 }}>{timeLeftLabel(meta.currentEndsAt)}</span>
               </div>
 
               {/* Personal-status chip · single slot, two states */}
               {selfAddr && myLive && (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${accent}1f, rgba(0,0,0,0.25))`, border: `1px solid ${accent}55` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "#fff", border: `1.5px solid ${accent}` }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: T.ink, lineHeight: 1, letterSpacing: "0.01em" }}>You&apos;re #{myLive.rank}</div>
-                    <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Best this season: {myLive.score.toLocaleString()}</div>
+                    <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, marginTop: 3 }}>Best this season: {myLive.score.toLocaleString()}</div>
                   </div>
                   {myPage >= 0 && myPage !== page && (
                     <button onClick={() => setPage(myPage)} style={{
                       padding: "7px 14px", borderRadius: 999,
                       background: `linear-gradient(180deg, #c084fc 0%, ${accent} 100%)`,
-                      border: "none", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em",
+                      border: "none", color: "#22104f", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.1em",
                       cursor: "pointer", boxShadow: `0 0 12px ${accent}55`,
                     }}>JUMP TO MY ROW</button>
                   )}
                 </div>
               )}
               {selfAddr && liveEntries && !myLive && (
-                <a href={GAME_HREF[gameKind]} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px dashed ${accent}55`, textDecoration: "none" }}>
+                <a href={GAME_HREF[gameKind]} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(255,255,255,0.7)", border: `1px dashed ${accent}88`, textDecoration: "none" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif', fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked this season</div>
-                    <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Score this season to claim a spot</div>
+                    <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, marginTop: 3 }}>Score this season to claim a spot</div>
                   </div>
-                  <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${accent} 100%)`, color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${accent}55` }}>PLAY ›</span>
+                  <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${accent} 100%)`, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${accent}55` }}>PLAY ›</span>
                 </a>
               )}
 
@@ -596,27 +609,31 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
                 </div>
               )}
 
+              {liveEntries.some((e) => e.txHash) && (
+                <div style={{ fontFamily: T.body, fontSize: 12.5, color: T.inkDim, textAlign: "center" }}>Tap a green tick to see that score on the chain.</div>
+              )}
+
               {liveEntries.length === 0 && (
-                <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, textAlign: "center", padding: "12px 0" }}>No scores this season yet — be first on the board.</div>
+                <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, textAlign: "center", padding: "12px 0" }}>No scores this week yet. Be first on the board.</div>
               )}
 
               {totalPages > 1 && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 4 }}>
                   <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{
                     padding: "8px 14px", borderRadius: 999,
-                    background: page === 0 ? "rgba(255,255,255,0.04)" : `${accent}2e`,
-                    border: `1.5px solid ${page === 0 ? "rgba(255,255,255,0.12)" : accent + "80"}`,
-                    color: page === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
-                    fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em",
+                    background: "#fff",
+                    border: `1px solid ${page === 0 ? "rgba(76,29,149,0.12)" : accent}`,
+                    color: page === 0 ? "rgba(34,16,79,0.5)" : accent,
+                    fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
                     cursor: page === 0 ? "not-allowed" : "pointer", fontFamily: T.body,
                   }}>‹ PREV</button>
                   <span style={{ color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>PAGE {page + 1} / {totalPages}</span>
                   <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1} style={{
                     padding: "8px 14px", borderRadius: 999,
-                    background: page === totalPages - 1 ? "rgba(255,255,255,0.04)" : `${accent}2e`,
-                    border: `1.5px solid ${page === totalPages - 1 ? "rgba(255,255,255,0.12)" : accent + "80"}`,
-                    color: page === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)",
-                    fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em",
+                    background: "#fff",
+                    border: `1px solid ${page === totalPages - 1 ? "rgba(76,29,149,0.12)" : accent}`,
+                    color: page === totalPages - 1 ? "rgba(34,16,79,0.35)" : accent,
+                    fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
                     cursor: page === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body,
                   }}>NEXT ›</button>
                 </div>
@@ -629,16 +646,15 @@ export default function SkillLeaderboardTabs({ gameKind, accent }: { gameKind: G
       {/* PAST — champion cards grid, one per sealed season */}
       {tab === "past" && (
         <>
-          {loadErr && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Couldn&apos;t load past seasons.</div>}
-          {!loadErr && !meta && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>Loading past seasons…</div>}
-          {meta && meta.past.length === 0 && <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px" }}>No past seasons sealed yet.</div>}
+          {loadErr && <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, padding: "12px 4px" }}>Couldn&apos;t load past seasons.</div>}
+          {!loadErr && !meta && <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, padding: "12px 4px" }}>Loading past seasons…</div>}
+          {meta && meta.past.length === 0 && <div style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, padding: "12px 4px" }}>No past seasons sealed yet.</div>}
           {meta && meta.past.length > 0 && (
             <>
               <div style={{
-                fontSize: 10, fontWeight: 900, letterSpacing: "0.2em",
-                color: "rgba(200,180,255,0.8)", textAlign: "center",
-                textShadow: "0 0 14px rgba(160,100,255,0.8)", marginBottom: 4,
-              }}>── COMPLETED SEASONS ──</div>
+                fontSize: 11.5, fontWeight: 900, letterSpacing: "0.2em",
+                color: T.inkDim, marginBottom: 2,
+              }}>COMPLETED SEASONS</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
                 {meta.past.map(s => (
                   <SeasonChampionCard

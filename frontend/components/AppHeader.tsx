@@ -16,7 +16,7 @@ import NotificationsSheet, { useUnreadNotificationsCount } from "@/components/No
 import { useGasStatus } from "@/hooks/useGasStatus";
 import { isEmbedded, getVatarPlayer, type VatarPlayer } from "@/lib/vatar";
 
-const T = {
+const DARK = {
   ink: "#ffffff",
   inkDim: "rgba(220,210,255,0.7)",
   inkSoft: "rgba(220,210,255,0.45)",
@@ -24,6 +24,24 @@ const T = {
   accent: "#a78bfa",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
+  band: "rgba(6,1,24,0.78)",
+  chip: "rgba(255,255,255,0.05)",
+  gold: "#fde68a",
+  streak: "#bae6fd",
+  shadow: "0 8px 20px -16px rgba(0,0,0,0.6)",
+};
+const LIGHT: typeof DARK = {
+  ...DARK,
+  ink: "#22104f",
+  inkDim: "rgba(34,16,79,0.68)",
+  inkSoft: "rgba(34,16,79,0.66)",
+  hairline: "rgba(76,29,149,0.14)",
+  accent: "#6d28d9",
+  band: "rgba(243,238,255,0.86)",
+  chip: "rgba(109,40,217,0.07)",
+  gold: "#92400e",
+  streak: "#0369a1",
+  shadow: "0 8px 20px -16px rgba(76,29,149,0.5)",
 };
 
 const BoltIcon = ({ size = 13 }: { size?: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg>;
@@ -52,7 +70,8 @@ function fmtG(rawWei?: bigint) {
   return String(whole);
 }
 
-export default function AppHeader() {
+export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" } = {}) {
+  const T = tone === "light" ? LIGHT : DARK;
   const router = useRouter();
   const { authenticated, logout } = usePrivy();
   const { address } = useAccount();
@@ -66,6 +85,8 @@ export default function AppHeader() {
   // Replaces the previous "tap chip → /profile" routing, which made the
   // chip a dead-end for the daily action (send G$) that actually matters.
   const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  // dev only: /dashboard?__sheet opens the account sheet, so its look can be checked without signing in
+  useEffect(() => { if (process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).has("__sheet")) setAccountSheetOpen(true); }, []);
   const unreadCount = useUnreadNotificationsCount(address);
   // Gas-low signal on the dual-token chip. Same source of truth as the
   // lobby gate + AccountSheet status pill · pulses on the CELO icon so a
@@ -204,13 +225,13 @@ export default function AppHeader() {
       // modern game lobby uses (Discord, Riot launcher, Apple Arcade).
       position: "sticky", top: 0, zIndex: 50,
       width: "100%",
-      background: "rgba(6,1,24,0.78)",
+      background: T.band,
       backdropFilter: "blur(16px) saturate(160%)",
       WebkitBackdropFilter: "blur(16px) saturate(160%)",
       borderBottom: `1px solid ${T.hairline}`,
       // Soft shadow that only registers once you scroll under it — gives
       // the band depth without weight at rest.
-      boxShadow: "0 8px 20px -16px rgba(0,0,0,0.6)",
+      boxShadow: T.shadow,
     }}>
       <div style={{
         maxWidth: innerMax, margin: "0 auto",
@@ -274,7 +295,7 @@ export default function AppHeader() {
               <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, letterSpacing: "0.06em", fontWeight: 700 }}>LV {meta?.level ?? 1}</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
                 <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
-                <span style={{ fontFamily: T.body, fontSize: 10, color: "#bae6fd", fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
+                <span style={{ fontFamily: T.body, fontSize: 10, color: T.streak, fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
             </div>
           ) : identityResolving ? (
@@ -297,7 +318,7 @@ export default function AppHeader() {
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
               <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>{showVatar ? "Lagos Life" : "Playing free · no sign-up"}</span>
+              <span className="ah-guest-sub" style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{showVatar ? "Lagos Life" : "Playing free"}<style>{`@media (max-width: 420px) { .ah-guest-sub { display: none; } }`}</style></span>
             </div>
           )}
         </div>
@@ -305,7 +326,7 @@ export default function AppHeader() {
         {/* Mute · always visible */}
         <button onClick={toggleMute} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
           position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-          background: muted ? "rgba(244,63,94,0.12)" : "rgba(255,255,255,0.05)",
+          background: muted ? "rgba(244,63,94,0.12)" : T.chip,
           border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
           color: muted ? "#fda4af" : T.inkDim,
@@ -326,7 +347,7 @@ export default function AppHeader() {
             push the button. */}
         <button onClick={() => { playClick(); setNotifOpen(true); }} aria-label="Notifications" title="Notifications" style={{
           position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-          background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+          background: T.chip, border: `1px solid ${T.hairline}`,
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", color: T.inkDim,
         }}>
@@ -358,7 +379,7 @@ export default function AppHeader() {
           <button onClick={() => { playClick(); setAccountSheetOpen(true); }} aria-label="Open account" title="Account · wallet, profile, settings" style={{
             display: "flex", alignItems: "stretch",
             padding: 0, borderRadius: 12, cursor: "pointer", flexShrink: 0,
-            background: "rgba(255,255,255,0.04)",
+            background: T.chip,
             border: `1px solid ${T.hairline}`,
             height: 38,
           }}>
@@ -391,7 +412,7 @@ export default function AppHeader() {
             <span style={{ width: 1, background: T.hairline }} />
             <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 11px 0 9px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))" }} title="G$ · game token">
               <img src="/tokens/g-dollar.svg" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
-              <span style={{ fontFamily: T.display, fontSize: 12.5, color: "#fde68a", lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
+              <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.gold, lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
             </span>
           </button>
         ) : identityResolving ? (
@@ -417,7 +438,7 @@ export default function AppHeader() {
               title="Switch account" aria-label="Switch account"
               style={{
                 width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-                background: "rgba(255,255,255,0.05)", border: `1px solid ${T.hairline}`,
+                background: T.chip, border: `1px solid ${T.hairline}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: T.inkDim,
               }}>
@@ -429,7 +450,7 @@ export default function AppHeader() {
         ) : embedded ? (
           <span style={{ width: 38, height: 38, flexShrink: 0 }} />
         ) : (
-          <button onClick={() => router.push("/home")} style={{
+          <button onClick={() => router.push("/home?signin=1")} style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "9px 16px", borderRadius: 999, cursor: "pointer", flexShrink: 0,
             background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,

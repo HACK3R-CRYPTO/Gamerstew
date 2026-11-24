@@ -122,3 +122,58 @@ Physics parity is subtle (see Trap 2). Never flip enforcement on day one.
 - Do not read `/api/submit-score`'s speed-hack block as protection: it is
   unreachable (`requireSecret` makes `isInternalCall` always true), and has
   never run.
+
+
+## 2026-11-24: Stack moved past shadow mode, partly
+
+Stack now signs the LOWER of the client's score and the sum of the run's own
+drop log (`[stack:enforced]` in the logs; a drop log is required). This closes
+"send any number". It was switched on with one shadow line as evidence, at the
+owner's request, so it is built to fail soft:
+
+- nothing is refused for a mismatch, a score is only ever cut, never raised;
+- a fault in the sum signs the client's score;
+- `SCORE_ENFORCE=none` switches it off with no deploy (default is `stack`).
+
+Watch for `MISMATCH` lines. One on an honest run means the sum is wrong for that
+case: switch it off and fix the port.
+
+Still open: a forged drop log that adds up correctly is accepted (the humanness
+check only flags). Simon is still in shadow mode and must stay there until its
+`[simon:shadow]` lines show the seeded pattern matches real play.
+
+
+## 2026-11-24: Simon enforced, with a new check
+
+The first Simon shadow replay (`computeSimonScore`) disagreed with honest play in
+two ways, found by reading the game, so it was never enforced:
+it timed the speed bonus from the end of the run where the game fixes it when the
+last round is cleared, and it stopped at the first wrong tap where a bought retry
+lets the run continue.
+
+`verifySimonRun` replaces it for enforcement. It checks taps against the ticket's
+pattern (retries allowed), drops rounds that cannot fit in the time the SERVER
+measured, bounds the speed bonus by the earliest possible clear, and returns the
+most an honest run could score. The service signs min(client, that). Log tag
+`[simon:enforced]`; same fail-soft rules and the same `SCORE_ENFORCE` switch as
+stack (default `stack,simon`; `SCORE_ENFORCE=stack` turns only simon off).
+
+Limit: the pattern is derived from the ticket the client holds, so a cheat can
+produce perfect taps. What they cannot fake is time: about 56 rounds is the most
+that fits in one session, and N rounds need a known minimum time.
+
+## 2026-11-24: where each game stands
+
+| Game | Check | Is the score the server's own? |
+|---|---|---|
+| Rhythm Rush | Tap log replayed against the song | Yes |
+| Word Ladder | Server deals the puzzles, replays the moves | Yes |
+| Simon Memory | Taps replayed against the dealt pattern, score cut to what they support | Yes |
+| Stack Tower | Bounded by the drop log, humanness check | Bounded, not replayed |
+| Street Strike (solo) | Every throw replayed through the same physics | Yes |
+| Street Strike (its own rooms) | A legal card that only grows; the phones do the physics | No |
+| UP NEPA 3D, Restore the Light | Server's clock, impossible finishes refused, skill points bounded | Plausibility-checked |
+| UP NEPA 3D, Charge Rush | Not submitted; best score stays on the device | Not ranked |
+
+Friend rooms treat ladder, simon and rhythm as verified: only those can carry a G$ entry, and only their room rounds are recorded on-chain. Charge Rush gained upgrades and rush jobs on this date. That is safe only because it is not ranked: if it ever is, the server will need to know about them.
+

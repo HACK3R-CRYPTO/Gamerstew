@@ -1,5 +1,15 @@
 # Duel Rooms & Challenges — Full Spec (design locked)
 
+> **Update, 24 November 2026: superseded for new work.** Friend Duels are still
+> deployed, but they are no longer promoted in the app and nothing new is built
+> on `DuelEscrow`. An outside review and our own reading found problems in the
+> contract: a tie pays the room's creator, the join code is visible in calldata,
+> one validator key resolves every room, and it has not been audited. Playing
+> with friends is now **friend rooms** (`games-backend/src/modules/rooms`), and
+> a G$ entry there uses signed G$ permits with no money held. See
+> `games-backend/README.md`, "Friend rooms". At the time of writing the contract
+> still holds 300 G$ across 5 unfilled rooms; `refundUnfilled(id)` returns it.
+>
 > **Status: SHIPPED (Friend Duels live).** The core — on-chain escrow, create/join,
 > allowlist, trustless refunds, resolution, and the hub — is deployed and live.
 > This doc is now a spec-vs-reality record; per-item implementation status is

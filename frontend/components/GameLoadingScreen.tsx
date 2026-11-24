@@ -25,106 +25,32 @@ type GameLoadingScreenProps = {
   glow: string;                     // accent color for the spinner + drop-shadow
 };
 
-export function GameLoadingScreen({ title, art, bg, glow }: GameLoadingScreenProps) {
+export function GameLoadingScreen({ title, art }: GameLoadingScreenProps) {
+  // `bg` and `glow` are still accepted, and ignored: every loader now wears the
+  // app's one look instead of a different dark gradient per game.
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-label={`Loading ${title}`}
-      style={{
-        position: "fixed", inset: 0, zIndex: 9999,
-        background: bg,
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        gap: 28, padding: "40px 24px",
-        animation: "gameLoad-fade 0.18s ease both",
-      }}
-    >
+    <div className="gload" role="status" aria-live="polite" aria-label={`Loading ${title}`}>
+      <div className="gload-art">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {typeof art === "string" ? <img src={art} alt="" /> : <div style={{ width: "100%", height: "100%" }}>{art}</div>}
+      </div>
+      <div className="gload-title">{title}</div>
+      <div className="gload-dots" aria-hidden><i /><i /><i /></div>
+      <div className="gload-word">Loading</div>
       <style>{`
-        @keyframes gameLoad-fade { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes gameLoad-float {
-          0%, 100% { transform: translateY(0) scale(1); }
-          50% { transform: translateY(-8px) scale(1.02); }
-        }
-        @keyframes gameLoad-pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
-          40% { opacity: 1; transform: scale(1.15); }
-        }
+        .gload { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 40px 24px; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; animation: gloadIn .18s ease both; }
+        @keyframes gloadIn { from { opacity: 0; } }
+        .gload-art { width: clamp(150px, 40vw, 210px); aspect-ratio: 1; padding: 14px; border-radius: 34px; background: #fff; box-shadow: 0 0 0 1px rgba(76,29,149,0.14), 0 30px 44px -28px rgba(76,29,149,0.8); transform: rotate(-3deg); animation: gloadFloat 2.6s ease-in-out infinite; }
+        .gload-art img { width: 100%; height: 100%; object-fit: cover; border-radius: 22px; }
+        @keyframes gloadFloat { 50% { transform: rotate(-3deg) translateY(-8px); } }
+        .gload-title { font-family: "Melon Pop", "Fredoka", system-ui, sans-serif; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; text-align: center; }
+        .gload-dots { display: flex; gap: 9px; }
+        .gload-dots i { width: 10px; height: 10px; border-radius: 999px; background: #6d28d9; animation: gloadPulse 1.2s ease-in-out infinite; }
+        .gload-dots i:nth-child(2) { animation-delay: .18s; } .gload-dots i:nth-child(3) { animation-delay: .36s; }
+        @keyframes gloadPulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); } 40% { opacity: 1; transform: scale(1.15); } }
+        .gload-word { font-size: 13px; font-weight: 700; color: rgba(34,16,79,0.66); }
+        @media (prefers-reduced-motion: reduce) { .gload-art, .gload-dots i { animation: none; } }
       `}</style>
-
-      {/* Decorative ambient halo behind the art · sits behind the float so
-          the glow appears anchored while the art breathes above it. */}
-      <div style={{
-        position: "absolute",
-        width: "min(420px, 80vw)",
-        height: "min(420px, 80vw)",
-        borderRadius: "50%",
-        background: `radial-gradient(circle at 50% 50%, ${glow}3a 0%, transparent 65%)`,
-        filter: "blur(20px)",
-        pointerEvents: "none",
-      }} />
-
-      {/* Game art · PNG OR JSX. drop-shadow uses the game's glow color so
-          rhythm's pink, simon's cyan, and stack's amber each get their own
-          lit-from-behind effect — same identity each game owns on its card. */}
-      <div style={{
-        position: "relative",
-        width: "clamp(160px, 42vw, 220px)",
-        height: "clamp(160px, 42vw, 220px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        filter: `drop-shadow(0 14px 40px ${glow}aa) drop-shadow(0 0 60px ${glow}66)`,
-        animation: "gameLoad-float 2.6s ease-in-out infinite",
-      }}>
-        {typeof art === "string" ? (
-          <img
-            src={art}
-            alt=""
-            style={{ width: "100%", height: "100%", objectFit: "contain" }}
-          />
-        ) : (
-          <div style={{ width: "100%", height: "100%" }}>{art}</div>
-        )}
-      </div>
-
-      {/* Title · same Melon Pop display font the lobby uses, so the loader
-          reads as a continuation of the game's identity, not a separate
-          system screen. */}
-      <div style={{
-        fontFamily: '"Melon Pop", "Fredoka", system-ui, sans-serif',
-        fontSize: "clamp(26px, 7vw, 38px)",
-        fontWeight: 900,
-        color: "#fff",
-        letterSpacing: "0.04em",
-        textAlign: "center",
-        lineHeight: 1.1,
-        textShadow: `0 0 24px ${glow}aa, 0 4px 10px rgba(0,0,0,0.7)`,
-      }}>
-        {title}
-      </div>
-
-      {/* Three-dot pulse · staggered so it reads as motion, not a freeze.
-          Color matches the game's glow so even the loader stays on brand. */}
-      <div style={{ display: "flex", gap: 10, marginTop: 2 }} aria-hidden>
-        {[0, 1, 2].map(i => (
-          <div key={i} style={{
-            width: 10, height: 10, borderRadius: 999,
-            background: glow,
-            boxShadow: `0 0 12px ${glow}, 0 0 24px ${glow}aa`,
-            animation: `gameLoad-pulse 1.2s ease-in-out ${i * 0.18}s infinite`,
-          }} />
-        ))}
-      </div>
-
-      {/* Subtle eyebrow · sets expectation that something is happening
-          without competing with the title for attention. */}
-      <div style={{
-        fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-        fontSize: 11, color: "rgba(255,255,255,0.55)",
-        fontWeight: 800, letterSpacing: "0.32em",
-        textTransform: "uppercase",
-      }}>
-        Loading
-      </div>
     </div>
   );
 }

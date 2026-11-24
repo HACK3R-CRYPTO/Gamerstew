@@ -133,6 +133,8 @@ export async function GET() {
   }));
 
   return NextResponse.json({ seasons }, {
-    headers: { "Cache-Control": "public, max-age=30" },
+    // Sealed seasons do not change. Keep the answer at the edge for an hour so a
+    // visit does not pull every season's standings out of the database again.
+    headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
   });
 }
