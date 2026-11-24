@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { encodeFunctionData } from "viem";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import { fetchPlayerAllTimeCombinedStats } from "@/lib/subgraph";
 import { HABITATS as HABITAT_TIERS, type HabitatTier } from "@/lib/habitats";
@@ -32,7 +33,9 @@ const T = {
 };
 
 // ─── primitives ─────────────────────────────────────────────────────────
-function Pill({ children, color, soft = true }: { children: React.ReactNode; color: string; soft?: boolean }) {
+function Pill({ children, color, soft = true, onPhoto = false }: { children: React.ReactNode; color: string; soft?: boolean; onPhoto?: boolean }) {
+  // on a picture, a solid white chip with dark text reads on any habitat
+  if (onPhoto) return <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 10px", borderRadius: 999, fontWeight: 700, fontSize: 12, background: "rgba(255,255,255,0.94)", color: "#22104f", whiteSpace: "nowrap" }}>{children}</span>;
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4,
@@ -147,59 +150,63 @@ type Stats = {
   streak: number; playedToday: boolean;
   gamesPlayed: number; gamesThisWeek: number;
   bestScore: number; bestRhythm: number; bestSimon: number;
+  bests: Record<string, number>; // best on the contract, per game key
   // Rank across the all-time combined leaderboard (Rhythm + Simon).
   // rank=null while loading or if the player has no recorded score yet.
   rank: number | null; totalPlayers: number;
 };
 
-// Local catalog · only used as a fallback if the games-backend
-// /api/achievements endpoint is unreachable. Each entry pairs the unlock
-// rule with a player-facing description so the cards don't render with
-// cryptic short codes like "FC" or "MM 5".
-const ACHIEVEMENTS: Array<{ id: string; icon: string; name: string; color: string; unlock: (s: Stats) => boolean }> = [
-  { id: "first_win",  icon: "🥇", name: "First Win",         color: "#b45309", unlock: s => s.gamesPlayed >= 1 },
-  { id: "streak_3",   icon: "🔥", name: "3-Day Streak",      color: "#f97316", unlock: s => s.streak >= 3 },
-  { id: "streak_7",   icon: "🔥", name: "Week Warrior",      color: "#f97316", unlock: s => s.streak >= 7 },
-  { id: "streak_30",  icon: "🔥", name: "Month Master",      color: "#f97316", unlock: s => s.streak >= 30 },
-  { id: "games_5",    icon: "🎮", name: "Getting Started",   color: "#6d28d9", unlock: s => s.gamesPlayed >= 5 },
-  { id: "games_25",   icon: "🎮", name: "Regular",           color: "#6d28d9", unlock: s => s.gamesPlayed >= 25 },
-  { id: "games_100",  icon: "💎", name: "Veteran",           color: "#0e7490", unlock: s => s.gamesPlayed >= 100 },
-  // Rhythm Rush scoring goes deep — top players post 400k+. The old
-  // 300/500/700 unlocked everything on every casual attempt. New scale:
-  // Apprentice 60k → Master 200k → Legend 400k. Geometric 2× steps so
-  // the gap between tiers feels like a real climb. Daily missions sit
-  // BELOW this curve (30k / 80k) so they're achievable each session.
-  { id: "rhythm_300", icon: "🥁", name: "Drum Apprentice",   color: "#c026d3", unlock: s => s.bestRhythm >= 60_000 },
-  { id: "rhythm_500", icon: "🥁", name: "Rhythm Master",     color: "#c026d3", unlock: s => s.bestRhythm >= 200_000 },
-  { id: "rhythm_700", icon: "👑", name: "Rhythm Legend",     color: "#b45309", unlock: s => s.bestRhythm >= 400_000 },
-  { id: "simon_5",    icon: "🧠", name: "Memory Apprentice", color: "#06b6d4", unlock: s => s.bestSimon >= 5 },
-  { id: "simon_10",   icon: "🧠", name: "Memory Master",     color: "#06b6d4", unlock: s => s.bestSimon >= 10 },
-  { id: "rhythm_fc",  icon: "✨", name: "Full Combo",        color: "#b45309", unlock: () => false },
-  { id: "champion",   icon: "🏆", name: "Champion",          color: "#b45309", unlock: s => s.rank !== null && s.rank <= 10 },
+const ZERO = "0x0000000000000000000000000000000000000000";
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const; // the standard Multicall3, same address on Celo
+const MULTICALL3_ABI = [{ type: "function", name: "aggregate3", stateMutability: "view", inputs: [{ name: "calls", type: "tuple[]", components: [{ name: "target", type: "address" }, { name: "allowFailure", type: "bool" }, { name: "callData", type: "bytes" }] }], outputs: [{ name: "returnData", type: "tuple[]", components: [{ name: "success", type: "bool" }, { name: "returnData", type: "bytes" }] }] }] as const;
+
+// The games a player can rank in, in the order the app lists them, with the
+// number each one is stored under on the GamePass contract.
+const GAMES: { key: string; id: number; name: string; icon: string }[] = [
+  { key: "stack", id: 2, name: "Stack Tower", icon: "🧱" },
+  { key: "ladder", id: 5, name: "Word Ladder", icon: "🔤" },
+  { key: "simon", id: 1, name: "Simon Memory", icon: "🧠" },
+  { key: "rhythm", id: 0, name: "Rhythm Rush", icon: "🎵" },
+  { key: "strike", id: 6, name: "Street Strike", icon: "🛞" },
+  { key: "nepa3d", id: 7, name: "UP NEPA 3D", icon: "💡" },
+  { key: "challenge", id: 3, name: "Challenge AI", icon: "🤖" },
 ];
 
-// Player-facing description for each achievement. Lives next to the rules
-// (not in the catalog row) because the strings deserve to wrap a bit more
-// than a single-line short code.
-function descFor(id: string): string {
-  switch (id) {
-    case "first_win":  return "Play your very first run.";
-    case "streak_3":   return "Play 3 days in a row.";
-    case "streak_7":   return "Keep your streak alive for a week.";
-    case "streak_30":  return "Show up every day for a month.";
-    case "games_5":    return "Finish 5 games total.";
-    case "games_25":   return "Finish 25 games total.";
-    case "games_100":  return "Finish 100 games total.";
-    case "rhythm_300": return "Score 60,000+ on Rhythm Rush.";
-    case "rhythm_500": return "Score 200,000+ on Rhythm Rush.";
-    case "rhythm_700": return "Score 400,000+ on Rhythm Rush.";
-    case "simon_5":    return "Reach round 5 on Simon Memory.";
-    case "simon_10":   return "Reach round 10 on Simon Memory.";
-    case "rhythm_fc":  return "Hit every note in one run — no misses.";
-    case "champion":   return "Crack the all-time top 10.";
-    default:           return "";
-  }
+// Which group an achievement belongs to, read from its id ("ladder_60" → Word Ladder).
+function groupOf(id: string): string {
+  const g = GAMES.find((x) => id.startsWith(x.key + "_"));
+  return g ? g.name : "Playing";
 }
+
+// The same list the server sends, kept here for the moment the server cannot be
+// reached. Everything shows locked except what this page can work out itself,
+// so it never claims a badge the server has not given.
+const ACHIEVEMENTS: Array<{ id: string; icon: string; name: string; desc: string; unlock: (s: Stats) => boolean }> = [
+  { id: "first_win", icon: "🥇", name: "First Win", desc: "Win your first game", unlock: () => false },
+  { id: "streak_3", icon: "🔥", name: "3-Day Streak", desc: "Play 3 days in a row", unlock: (s) => s.streak >= 3 },
+  { id: "streak_7", icon: "🔥", name: "Week Warrior", desc: "Play 7 days in a row", unlock: (s) => s.streak >= 7 },
+  { id: "streak_30", icon: "🔥", name: "Month Master", desc: "Play 30 days in a row", unlock: (s) => s.streak >= 30 },
+  { id: "games_5", icon: "🎮", name: "Getting Started", desc: "Play 5 games total", unlock: (s) => s.gamesPlayed >= 5 },
+  { id: "games_25", icon: "🎮", name: "Regular Player", desc: "Play 25 games total", unlock: (s) => s.gamesPlayed >= 25 },
+  { id: "games_100", icon: "💎", name: "Veteran", desc: "Play 100 games total", unlock: (s) => s.gamesPlayed >= 100 },
+  { id: "stack_50", icon: "🧱", name: "Block Builder", desc: "Score 50+ in Stack Tower", unlock: (s) => s.bests.stack >= 50 },
+  { id: "stack_150", icon: "🏗️", name: "Tower Master", desc: "Score 150+ in Stack Tower", unlock: (s) => s.bests.stack >= 150 },
+  { id: "stack_300", icon: "🏙️", name: "Sky Architect", desc: "Score 300+ in Stack Tower", unlock: (s) => s.bests.stack >= 300 },
+  { id: "ladder_60", icon: "🔤", name: "Word Climber", desc: "Score 60+ in Word Ladder", unlock: (s) => s.bests.ladder >= 60 },
+  { id: "ladder_90", icon: "📚", name: "Wordsmith", desc: "Score 90+ in Word Ladder", unlock: (s) => s.bests.ladder >= 90 },
+  { id: "simon_5", icon: "🧠", name: "Memory Apprentice", desc: "Reach round 5 in Simon Memory", unlock: (s) => s.bests.simon >= 60 },
+  { id: "simon_10", icon: "🧠", name: "Memory Master", desc: "Reach round 10 in Simon Memory", unlock: (s) => s.bests.simon >= 120 },
+  { id: "simon_15", icon: "👑", name: "Memory Legend", desc: "Reach round 15 in Simon Memory", unlock: (s) => s.bests.simon >= 180 },
+  // Rhythm bests on the contract are from an older, far larger scoring scale, so they are not trusted here
+  { id: "rhythm_300", icon: "🥁", name: "Drum Apprentice", desc: "Score 400+ in Rhythm Rush", unlock: () => false },
+  { id: "rhythm_500", icon: "🥁", name: "Rhythm Master", desc: "Score 700+ in Rhythm Rush", unlock: () => false },
+  { id: "rhythm_700", icon: "👑", name: "Rhythm Legend", desc: "Score 1,000+ in Rhythm Rush", unlock: () => false },
+  { id: "rhythm_fc", icon: "✨", name: "Full Combo", desc: "Clear the rhythm chart without missing a note", unlock: () => false },
+  { id: "rhythm_ap", icon: "🌟", name: "All Perfect", desc: "Every hit perfect, no goods, no misses", unlock: () => false },
+  { id: "strike_80", icon: "🛞", name: "Street Bowler", desc: "Score 80+ in Street Strike", unlock: (s) => s.bests.strike >= 80 },
+  { id: "strike_120", icon: "🎳", name: "Tyre Legend", desc: "Score 120+ in Street Strike", unlock: (s) => s.bests.strike >= 120 },
+  { id: "nepa3d_street", icon: "💡", name: "UP NEPA!", desc: "Light the whole street in UP NEPA 3D", unlock: (s) => s.bests.nepa3d >= 400 },
+];
 
 // Subgraph fetch for the global player count. Inlined so the profile owns
 // its own data without depending on /home's helper.
@@ -229,11 +236,22 @@ const KEYFRAMES = `
   }
 `;
 
+
 // ─── page ───────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const router = useRouter();
-  const { authenticated } = usePrivy();
-  const { address } = useAccount();
+  const { authenticated: realAuth } = usePrivy();
+  const { address: realAddress } = useAccount();
+  // Local development only: /profile?as=0x… shows the page as that wallet, so
+  // the signed-in layout can be looked at without a wallet. Never on a deployed build.
+  const [devAs, setDevAs] = useState<`0x${string}` | undefined>(undefined);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const v = new URLSearchParams(window.location.search).get("as") || "";
+    if (/^0x[0-9a-fA-F]{40}$/.test(v)) setDevAs(v as `0x${string}`);
+  }, []);
+  const address = devAs ?? realAddress;
+  const authenticated = realAuth || !!devAs;
 
   // Referral scoreboard · verified-referee count for the passport banner.
   const [refCount, setRefCount] = useState<number | null>(null);
@@ -277,6 +295,12 @@ export default function ProfilePage() {
       { address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`, abi: GAME_PASS_ABI, functionName: "bestScore",   args: [address, 0] as const },
       { address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`, abi: GAME_PASS_ABI, functionName: "bestScore",   args: [address, 1] as const },
     ] : [],
+    query: { enabled: !!address && hasMinted === true, refetchInterval: 30_000 },
+  });
+  // The best on the contract for every game, in GAMES order, read in one call.
+  const { data: chainBests } = useReadContract({
+    address: MULTICALL3, abi: MULTICALL3_ABI, functionName: "aggregate3",
+    args: [GAMES.map((g) => ({ target: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`, allowFailure: true, callData: encodeFunctionData({ abi: GAME_PASS_ABI, functionName: "bestScore", args: [(address ?? ZERO) as `0x${string}`, g.id] }) }))],
     query: { enabled: !!address && hasMinted === true, refetchInterval: 30_000 },
   });
   // MiniPay path · injected wallet identity, no Privy login required.
@@ -376,6 +400,8 @@ export default function ProfilePage() {
     const gamesPlayed = chainCounters?.[0]?.status === "success" ? Number(chainCounters[0].result as bigint) : 0;
     const bestRhythm  = chainCounters?.[1]?.status === "success" ? Number(chainCounters[1].result as bigint) : 0;
     const bestSimon   = chainCounters?.[2]?.status === "success" ? Number(chainCounters[2].result as bigint) : 0;
+    const bests: Record<string, number> = {};
+    GAMES.forEach((g, i) => { const r = (chainBests as readonly { success: boolean; returnData: `0x${string}` }[] | undefined)?.[i]; bests[g.key] = r?.success && r.returnData.length >= 66 ? Number(BigInt(r.returnData)) : 0; });
     // Backend-authoritative level + XP. Fall back to LV 1 while the
     // fetch is in flight — no more divide-by-100 garbage.
     const lv = backendMeta
@@ -393,11 +419,11 @@ export default function ProfilePage() {
       playedToday: backendMeta?.playedToday ?? false,
       gamesPlayed,
       gamesThisWeek: backendMeta?.gamesThisWeek ?? 0,
-      bestScore: Math.max(bestRhythm, bestSimon),
-      bestRhythm, bestSimon,
+      bestScore: Math.max(0, ...Object.values(bests)),
+      bestRhythm, bestSimon, bests,
       rank: standing.rank, totalPlayers: standing.totalPlayers,
     });
-  }, [connected, address, chainUsername, chainCounters, backendMeta, standing]);
+  }, [connected, address, chainUsername, chainCounters, chainBests, backendMeta, standing]);
 
   // Always route Connect/Sign-in taps to /home so the Privy modal opens
   // from the home page surface (with onboarding overlay) instead of as
@@ -495,24 +521,24 @@ export default function ProfilePage() {
               display: "flex", flexDirection: "column", justifyContent: "center",
               textAlign: isDesktop ? "left" : "center",
             }}>
-              <div style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, lineHeight: 1, letterSpacing: "-0.005em", textShadow: "0 2px 14px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.6)" }}>{s.petName}</div>
+              <div style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: "#fff", lineHeight: 1, letterSpacing: "-0.005em", textShadow: "0 2px 14px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.6)" }}>{s.petName}</div>
               <div style={{ display: "flex", gap: 6, justifyContent: isDesktop ? "flex-start" : "center", flexWrap: "wrap", marginTop: 9 }}>
-                <Pill color={stage.tierColor}>{stage.tierLabel}</Pill>
-                <Pill color={T.accent} soft>{stage.label}</Pill>
-                <Pill color={equippedHabitat.bg.accent} soft>{equippedHabitat.name}</Pill>
+                <Pill color={stage.tierColor} onPhoto>{stage.tierLabel}</Pill>
+                <Pill color={T.accent} onPhoto>{stage.label}</Pill>
+                <Pill color={equippedHabitat.bg.accent} onPhoto>{equippedHabitat.name}</Pill>
               </div>
-              <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 9, textShadow: "0 1px 8px rgba(0,0,0,0.75)" }}>
+              <div style={{ fontFamily: T.body, fontSize: 13, color: "rgba(255,255,255,0.92)", marginTop: 9, textShadow: "0 1px 8px rgba(0,0,0,0.75)" }}>
                 {stage.nextAt < 999
-                  ? <>Next evolution at <strong style={{ color: T.accent }}>LV {stage.nextAt}</strong></>
+                  ? <>Next evolution at <strong style={{ color: "#fff" }}>LV {stage.nextAt}</strong></>
                   : <>Max evolution unlocked 👑</>}
               </div>
               <div style={{ marginTop: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 10, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.08em", textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 12, color: "rgba(255,255,255,0.92)", fontWeight: 700, textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>
                   <span>LV {s.level} · {s.xp}/{s.xpNext} XP</span>
                   <span>{s.xpPct}%</span>
                 </div>
                 <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.48)", overflow: "hidden", marginTop: 5 }}>
-                  <div style={{ width: `${s.xpPct}%`, height: "100%", background: `linear-gradient(90deg, ${T.accent}, ${T.accent}99)`, boxShadow: `0 0 8px ${T.accent}` }} />
+                  <div style={{ width: `${s.xpPct}%`, height: "100%", background: "linear-gradient(90deg, #c4b5fd, #a78bfa)" }} />
                 </div>
               </div>
             </div>
@@ -601,7 +627,7 @@ export default function ProfilePage() {
             {[
               { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#c2410c" : "#0369a1", icon: "🔥" },
               { label: "Games played", value: s.gamesPlayed, sub: `+${s.gamesThisWeek} this week`, color: T.accent, icon: "🎮" },
-              { label: "Best score", value: s.bestScore, sub: s.bestRhythm >= s.bestSimon ? "Rhythm Rush" : "Simon Memory", color: "#c026d3", icon: "🥁" },
+              { label: "Badges", value: backendAchievements.length ? `${backendAchievements.filter((a) => a.unlocked).length}/${backendAchievements.length}` : "–", sub: "Achievements earned", color: "#b45309", icon: "🏅" },
               // All-time combined rank. Sub-label turns the raw number
               // into a status story ("Top 8%") — more motivating than
               // the position alone, especially as the player base grows.
@@ -813,74 +839,60 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* MILESTONE ACHIEVEMENTS · descriptive cards with full name +
-            explanatory text. Data comes from /api/achievements/{address};
-            falls back to the local catalog if the backend is unreachable
-            so the section never goes blank. */}
+        {/* BEST SCORES · one row per game, straight from the contract */}
+        {s && (
+          <div>
+            <SectionLabel>Best scores</SectionLabel>
+            <div style={{ borderRadius: 18, background: "#fff", border: `1px solid ${T.hairline}`, padding: "4px 14px" }}>
+              {GAMES.map((g, i) => (
+                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderTop: i ? `1px solid ${T.hairline}` : "none" }}>
+                  <span style={{ fontSize: 20, width: 28, textAlign: "center" }}>{g.icon}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontFamily: T.body, fontSize: 14.5, fontWeight: 700, color: T.ink }}>{g.name}</span>
+                  <span style={{ fontFamily: T.display, fontSize: 17, color: s.bests[g.key] > 0 ? "#b45309" : T.inkSoft }}>{s.bests[g.key] > 0 ? s.bests[g.key].toLocaleString() : "–"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ACHIEVEMENTS · the server's list, grouped by game. The local list is
+            only used when the server cannot be reached. */}
         {s && (() => {
           const list: { id: string; icon: string; name: string; desc: string; unlocked: boolean }[] =
             backendAchievements.length > 0
               ? backendAchievements.map(a => ({ id: a.id, icon: a.icon, name: a.name, desc: a.desc, unlocked: a.unlocked }))
-              : ACHIEVEMENTS.map(a => ({ id: a.id, icon: a.icon, name: a.name, desc: descFor(a.id), unlocked: a.unlock(s) }));
-          const unlocked = list.filter(a => a.unlocked).length;
-          const ACH_COLOR = "#b45309";
+              : ACHIEVEMENTS.map(a => ({ id: a.id, icon: a.icon, name: a.name, desc: a.desc, unlocked: a.unlock(s) }));
+          const order = ["Playing", ...GAMES.map((g) => g.name)];
+          const groups = order.map((name) => ({ name, items: list.filter((a) => groupOf(a.id) === name) })).filter((g) => g.items.length);
+          const GOLD = "#b45309";
           return (
             <div>
               <SectionLabel action={
-                <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, letterSpacing: "0.1em", fontWeight: 700 }}>{unlocked}/{list.length} UNLOCKED</span>
-              }>Milestone achievements</SectionLabel>
-              <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(2, 1fr)" : "repeat(1, 1fr)", gap: 10 }}>
-                {list.map(a => (
-                  <div key={a.id} style={{
-                    borderRadius: 16, padding: "12px 12px",
-                    background: a.unlocked
-                      ? `linear-gradient(180deg, ${ACH_COLOR}1a 0%, rgba(255,255,255,0.96) 100%)`
-                      : "rgba(255,255,255,0.96)",
-                    border: `1px solid ${a.unlocked ? ACH_COLOR + "55" : T.hairline}`,
-                    boxShadow: a.unlocked ? `0 0 14px ${ACH_COLOR}22` : "none",
-                    display: "flex", gap: 11, alignItems: "center",
-                    opacity: a.unlocked ? 1 : 0.6,
-                    position: "relative", overflow: "hidden",
-                  }}>
-                    {a.unlocked && (
-                      <div style={{
-                        position: "absolute", top: 0, left: 0, right: 0, height: "40%",
-                        background: `linear-gradient(180deg, ${ACH_COLOR}11 0%, transparent 100%)`,
-                        pointerEvents: "none",
-                      }} />
-                    )}
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                      background: a.unlocked
-                        ? `radial-gradient(circle at 35% 30%, ${ACH_COLOR}cc, ${ACH_COLOR}55)`
-                        : "rgba(76,29,149,0.04)",
-                      border: `1px solid ${a.unlocked ? ACH_COLOR + "aa" : T.hairline}`,
-                      boxShadow: a.unlocked ? `0 0 10px ${ACH_COLOR}55` : "none",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 20, position: "relative", zIndex: 1,
-                      filter: a.unlocked ? "none" : "grayscale(1)",
-                    }}>{a.icon}</div>
-                    <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
-                      <div style={{
-                        fontFamily: T.display,
-                        color: a.unlocked ? T.ink : "rgba(255,255,255,0.5)",
-                        fontSize: 13.5, lineHeight: 1.15, letterSpacing: "-0.005em",
-                        textShadow: a.unlocked ? `0 0 8px ${ACH_COLOR}66` : "none",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>{a.name}</div>
-                      <div style={{
-                        fontFamily: T.body,
-                        color: a.unlocked ? T.inkDim : T.inkSoft,
-                        fontSize: 11, fontWeight: 600, marginTop: 3, lineHeight: 1.35,
-                      }}>{a.desc}</div>
+                <span style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, fontWeight: 700 }}>{list.filter(a => a.unlocked).length} of {list.length} earned</span>
+              }>Achievements</SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {groups.map((g) => (
+                  <div key={g.name}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "0 2px 6px" }}>
+                      <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink }}>{g.name}</span>
+                      <span style={{ fontFamily: T.body, fontSize: 12, fontWeight: 700, color: T.inkDim }}>{g.items.filter((a) => a.unlocked).length}/{g.items.length}</span>
                     </div>
-                    {a.unlocked ? (
-                      <svg style={{ flexShrink: 0, position: "relative", zIndex: 1 }} width="14" height="14" viewBox="0 0 24 24" fill={ACH_COLOR}><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                    ) : (
-                      <div style={{ flexShrink: 0, position: "relative", zIndex: 1, color: T.inkSoft }}>
-                        <Icon name="lock" size={13} color="currentColor" />
-                      </div>
-                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(2, 1fr)" : "1fr", gap: 8 }}>
+                      {g.items.map((a) => (
+                        <div key={a.id} style={{ display: "flex", gap: 11, alignItems: "center", borderRadius: 16, padding: "11px 12px", background: a.unlocked ? "#fff7ed" : "#fff", border: `1px solid ${a.unlocked ? "rgba(180,83,9,0.35)" : T.hairline}` }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: a.unlocked ? "#fed7aa" : "#f3effc", filter: a.unlocked ? "none" : "grayscale(1)", opacity: a.unlocked ? 1 : 0.7 }}>{a.icon}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: T.display, fontSize: 14.5, lineHeight: 1.2, color: T.ink }}>{a.name}</div>
+                            <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 600, marginTop: 2, lineHeight: 1.35, color: T.inkDim }}>{a.desc}</div>
+                          </div>
+                          {a.unlocked ? (
+                            <svg style={{ flexShrink: 0 }} width="18" height="18" viewBox="0 0 24 24" fill={GOLD} aria-label="Earned"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                          ) : (
+                            <div style={{ flexShrink: 0, color: T.inkSoft }} aria-label="Locked"><Icon name="lock" size={14} color="currentColor" /></div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
