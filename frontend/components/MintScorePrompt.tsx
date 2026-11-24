@@ -20,7 +20,7 @@ export default function MintScorePrompt({
   eyebrow = "Score not saved yet",
   headline,
   sub = "One tap. Gas is on us.",
-  cta = "GET FREE PASS & SAVE",
+  cta = "Get your free pass and save",
 }: {
   score?: number;
   eyebrow?: string;
@@ -33,7 +33,7 @@ export default function MintScorePrompt({
     <div style={{
       marginTop: 18,
       borderRadius: 16,
-      background: "linear-gradient(180deg, rgba(134,239,172,0.08) 0%, rgba(251,191,36,0.05) 100%)",
+      background: "rgba(255,255,255,0.8)",
       border: "1px solid rgba(134,239,172,0.3)",
       padding: "14px 14px 12px",
       textAlign: "left",
@@ -83,11 +83,11 @@ export default function MintScorePrompt({
           marginTop: 12, width: "100%", cursor: "pointer",
           borderRadius: 12, padding: "11px 12px",
           fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',
-          fontSize: 12.5, fontWeight: 900, letterSpacing: "0.1em",
-          color: "#04160a",
-          background: "linear-gradient(180deg, #6ee76e 0%, #22c55e 55%, #15803d 100%)",
-          border: "1px solid rgba(255,255,255,0.45)",
-          boxShadow: "0 10px 22px -6px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.5)",
+          fontSize: 14.5, fontWeight: 800,
+          color: "#fff",
+          background: "linear-gradient(180deg, #7c3aed, #6d28d9)",
+          border: "none",
+          boxShadow: "0 4px 0 #4c1d95",
         }}
       >
         {cta}
