@@ -30,6 +30,8 @@ import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import GameLobby from "@/components/GameLobby";
+import RunSaveStatus from "@/components/RunSaveStatus";
+
 import GameResult, { FreePlayNote } from "@/components/GameResult";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsPlay from "@/components/FriendsPlay";
@@ -1283,7 +1285,7 @@ export default function StackTowerPage() {
               ? <FreePlayNote mode={modeById(mode).name} />
               : !authed ? <GuestScorePrompt nextPath="/games/stack" />
               : needsMint ? <MintScorePrompt score={score} />
-              : <StackRewardPanel submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} onTopUp={() => setGasHelpOpen(true)} />}
+              : <RunSaveStatus submitting={submitting} signingOnChain={signingOnChain} result={submitResult} error={submitError} txError={txError} score={score} onTopUp={() => setGasHelpOpen(true)} />}
             after={<>
               {submitResult && <button onClick={() => router.push("/games/stack/leaderboard")} style={{ padding: "10px 0", border: "none", background: "none", color: "#6d28d9", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>See the leaderboard ›</button>}
               <NextUp />
@@ -1328,190 +1330,6 @@ export default function StackTowerPage() {
 
       {/* Guest free-play limit · sign-in gate once the free runs are used. */}
       <GuestLimitPrompt open={guestLimitOpen} onClose={() => setGuestLimitOpen(false)} game="Stack Tower" />
-    </div>
-  );
-}
-
-// ─── Stack reward panel · slim variant of simon's RewardPanel ────────────────
-// Shows the submit-state machine inside the finished sheet:
-//   signingOnChain → "CONFIRM IN YOUR WALLET"
-//   submitting     → "SAVING SCORE…"
-//   txError/error  → small banner with retry copy
-//   result         → rank + xp grid · achievements unlocked
-function StackRewardPanel({
-  submitting, signingOnChain, result, error, txError, score, onTopUp,
-}: {
-  submitting: boolean;
-  signingOnChain: boolean;
-  result: {
-    rank?: number;
-    xpEarned?: number;
-    level?: number;
-    leveledUp?: boolean;
-    isNewPb?: boolean;
-    prevBest?: number;
-    newAchievements?: { id: string; name: string; icon?: string; desc?: string }[];
-  } | null;
-  error: string | null;
-  txError: string | null;
-  score: number;
-  // Tappable hook on the "needs a top up" txError banner · opens
-  // GasHelpSheet so the rescue isn't just an error message, it's a
-  // single tap to the community top-up path.
-  onTopUp?: () => void;
-}) {
-  if (signingOnChain) {
-    return (
-      <div style={{
-        marginTop: 14, padding: 12, borderRadius: 10,
-        background: "rgba(251,191,36,0.1)",
-        border: "1px solid rgba(251,191,36,0.35)",
-        color: "#92400e", fontSize: 11, fontWeight: 900, letterSpacing: "0.16em",
-        textAlign: "center", boxShadow: "0 0 16px rgba(251,191,36,0.2)",
-      }}>
-        ✦ CONFIRM IN YOUR WALLET ✦
-        <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", marginTop: 4 }}>
-          Signing records your score on-chain
-        </div>
-      </div>
-    );
-  }
-  if (submitting) {
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: "rgba(167,139,250,0.08)",
-        border: "1px solid rgba(167,139,250,0.2)",
-        color: "rgba(34,16,79,0.68)",
-        fontSize: 11, fontWeight: 900, letterSpacing: "0.14em",
-        textAlign: "center",
-      }}>SAVING SCORE…</div>
-    );
-  }
-  if (txError) {
-    const low = txError.toLowerCase();
-    const isGasError = low.includes("top up");
-    // Gas errors get the tappable rescue path · the run is already lost
-    // but the player learns where to fix it for next time without having
-    // to hunt for the community door themselves. Classification is done
-    // upstream at the catch site, not here · so we don't overclaim "this
-    // was gas" when it was actually a different failure.
-    if (isGasError && onTopUp) {
-      return (
-        <button
-          onClick={onTopUp}
-          style={{
-            width: "100%",
-            marginTop: 14, padding: "12px 14px", borderRadius: 10,
-            background: "rgba(251,146,60,0.12)",
-            border: "1px solid rgba(251,146,60,0.45)",
-            color: "#9a3412",
-            cursor: "pointer", fontFamily: "inherit",
-            display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⛽</span>
-          <span style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.06em", lineHeight: 1.2 }}>Score not saved · needs a top up</div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#22104f", lineHeight: 1.35, marginTop: 3 }}>Tap to ask for gas in Telegram</div>
-          </span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
-      );
-    }
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: isGasError ? "rgba(251,146,60,0.1)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${isGasError ? "rgba(251,146,60,0.32)" : "rgba(239,68,68,0.2)"}`,
-        color: isGasError ? "#9a3412" : "#22104f",
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>{txError}</div>
-    );
-  }
-  if (error) {
-    return (
-      <div style={{
-        marginTop: 14, padding: "10px 12px", borderRadius: 10,
-        background: "rgba(239,68,68,0.08)",
-        border: "1px solid rgba(239,68,68,0.2)",
-        color: "#22104f",
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-        textAlign: "center", lineHeight: 1.45,
-      }}>{error}</div>
-    );
-  }
-  if (!result) return null;
-
-  const { rank, xpEarned, isNewPb, prevBest, newAchievements = [] } = result;
-  const showPbDelta = isNewPb && typeof prevBest === "number" && prevBest > 0;
-  return (
-    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {rank ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: 10,
-            background: "rgba(251,191,36,0.08)",
-            border: "1px solid rgba(251,191,36,0.28)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>RANK</div>
-            <div style={{ color: "#92400e", fontSize: 22, fontWeight: 900, marginTop: 2 }}>
-              #{rank}
-            </div>
-          </div>
-        ) : <div />}
-        {typeof xpEarned === "number" ? (
-          <div style={{
-            padding: "10px 8px", borderRadius: 10,
-            background: "rgba(167,139,250,0.1)",
-            border: "1px solid rgba(167,139,250,0.3)",
-            textAlign: "center",
-          }}>
-            <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 9, fontWeight: 800, letterSpacing: "0.16em" }}>XP GAINED</div>
-            <div style={{ color: "#6d28d9", fontSize: 22, fontWeight: 900, marginTop: 2 }}>
-              +{xpEarned}
-            </div>
-          </div>
-        ) : <div />}
-      </div>
-
-      {showPbDelta && typeof prevBest === "number" && (
-        <div style={{
-          padding: "10px 12px", borderRadius: 10,
-          background: "linear-gradient(90deg, rgba(6,182,212,0.15) 0%, rgba(34,197,94,0.15) 100%)",
-          border: "1px solid rgba(6,182,212,0.4)",
-          textAlign: "center",
-          boxShadow: "0 0 20px rgba(6,182,212,0.25)",
-        }}>
-          <div style={{ color: "#0e7490", fontSize: 12, fontWeight: 900, letterSpacing: "0.2em" }}>
-            ★ NEW PERSONAL BEST ★
-          </div>
-          <div style={{ color: "#22104f", fontSize: 12, fontWeight: 800, marginTop: 3 }}>
-            Beat your previous {prevBest} by{" "}
-            <span style={{ color: "#166534", fontWeight: 900 }}>+{Math.max(0, score - prevBest)}</span>
-          </div>
-        </div>
-      )}
-
-      {newAchievements.length > 0 && newAchievements.map(a => (
-        <div key={a.id} style={{
-          padding: "10px 12px", borderRadius: 10,
-          background: "rgba(251,191,36,0.08)",
-          border: "1px solid rgba(251,191,36,0.32)",
-          display: "flex", alignItems: "center", gap: 10,
-        }}>
-          <div style={{ fontSize: 22 }}>{a.icon || "🏆"}</div>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ color: "#92400e", fontSize: 11, fontWeight: 900, letterSpacing: "0.12em" }}>UNLOCKED</div>
-            <div style={{ color: "#22104f", fontSize: 12, fontWeight: 800 }}>{a.name}</div>
-            {a.desc && <div style={{ color: "rgba(34,16,79,0.68)", fontSize: 10, fontWeight: 700 }}>{a.desc}</div>}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
