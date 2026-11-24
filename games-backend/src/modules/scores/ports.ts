@@ -67,6 +67,8 @@ export interface ScoreDeps {
   replay: Replay;
   /** game name → on-chain game type, e.g. { rhythm: 0, simon: 1 } */
   gameTypes: Record<string, number>;
+  /** Is the server's own score enforced for this game? Off when not given. */
+  enforce?: (game: string) => boolean;
   now?: () => number;
   randomHex?: (bytes: number) => string;
   logger?: Logger;

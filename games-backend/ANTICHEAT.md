@@ -122,3 +122,22 @@ Physics parity is subtle (see Trap 2). Never flip enforcement on day one.
 - Do not read `/api/submit-score`'s speed-hack block as protection: it is
   unreachable (`requireSecret` makes `isInternalCall` always true), and has
   never run.
+
+
+## 2026-11-24: Stack moved past shadow mode, partly
+
+Stack now signs the LOWER of the client's score and the sum of the run's own
+drop log (`[stack:enforced]` in the logs; a drop log is required). This closes
+"send any number". It was switched on with one shadow line as evidence, at the
+owner's request, so it is built to fail soft:
+
+- nothing is refused for a mismatch, a score is only ever cut, never raised;
+- a fault in the sum signs the client's score;
+- `SCORE_ENFORCE=none` switches it off with no deploy (default is `stack`).
+
+Watch for `MISMATCH` lines. One on an honest run means the sum is wrong for that
+case: switch it off and fix the port.
+
+Still open: a forged drop log that adds up correctly is accepted (the humanness
+check only flags). Simon is still in shadow mode and must stay there until its
+`[simon:shadow]` lines show the seeded pattern matches real play.

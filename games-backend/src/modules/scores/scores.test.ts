@@ -444,3 +444,41 @@ test('nepa3d: the score is computed from checked numbers, and an impossible run 
   assert.strictEqual(x.status, 403);
   assert.deepStrictEqual(bad.calls.order, []);
 });
+
+// ── Stack, enforced: the signed score is never more than the drop log adds up to ──
+test('stack enforced: an inflated claim is cut to the log, an honest one is untouched, a missing log is refused', async () => {
+  const mk = (over: Parameters<typeof world>[0] = {}) => { const w = world({ session: { game: 'stack' }, gasless: true, ...over }); w.deps.enforce = (g) => g === 'stack'; return { ...w, svc: createScoreService(w.deps) }; };
+  // the fake replay says this log is worth 40
+  const inflated = mk();
+  const a = await inflated.svc.signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 9_999, dropLog: [{}] });
+  assert.strictEqual(a.status, 200); assert.strictEqual(a.body.score, 40);
+  assert.deepStrictEqual(inflated.calls.submitted, [{ player: P, gameType: 2, score: 40 }]);
+  assert.ok(inflated.calls.logs.some((l) => l.includes('[stack:enforced]') && l.includes('MISMATCH') && l.includes('signed=40')));
+
+  const honest = mk();
+  const b = await honest.svc.signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 40, dropLog: [{}] });
+  assert.strictEqual(b.body.score, 40);
+  assert.ok(!honest.calls.logs.some((l) => l.includes('MISMATCH')));
+
+  // the log adds up to MORE than the player saw: never raise a score
+  const lower = mk();
+  const c = await lower.svc.signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 25, dropLog: [{}] });
+  assert.strictEqual(c.body.score, 25);
+
+  const noLog = mk();
+  const d = await noLog.svc.signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 40 });
+  assert.strictEqual(d.status, 400); assert.deepStrictEqual(noLog.calls.order, []);
+});
+
+test('stack enforcement is off unless switched on, and a fault in the sum never costs the run', async () => {
+  const off = world({ session: { game: 'stack' }, gasless: true });
+  const a = await off.svc.signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 9_999, dropLog: [{}] });
+  assert.strictEqual(a.body.score, 9_999);
+  assert.ok(off.calls.logs.some((l) => l.includes('[stack:shadow]')));
+
+  const broken = world({ session: { game: 'stack' }, gasless: true });
+  broken.deps.enforce = () => true;
+  broken.deps.replay.stack.computeScore = () => { throw new Error('sum exploded'); };
+  const b = await createScoreService(broken.deps).signScore({ playerAddress: P, game: 'stack', sessionToken: 'tok', score: 77, dropLog: [{}] });
+  assert.strictEqual(b.status, 200); assert.strictEqual(b.body.score, 77);
+});

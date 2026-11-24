@@ -81,6 +81,7 @@ export function createScoreService(deps: ScoreDeps) {
 
     // ── the score ───────────────────────────────────────────────────────────
     let serverScore: number;
+    const stackEnforced = game === 'stack' && (deps.enforce?.('stack') ?? false);
     if (game === 'rhythm') {
       if (!Array.isArray(tapLog)) return reply(400, { error: 'Missing tapLog (required for rhythm)' });
 
@@ -139,10 +140,31 @@ export function createScoreService(deps: ScoreDeps) {
       if (!isClientScore(score)) return reply(400, { error: `Score out of range (max ${MAX_CLIENT_SCORE})` });
       serverScore = score;
 
+      // STACK, ENFORCED (unless switched off with SCORE_ENFORCE): the score must be
+      // backed by the run's own drop log. The server adds the log up and signs
+      // the LOWER of the two numbers, so a claim the log does not support is cut
+      // to what the log shows, and a score is never raised above what the player
+      // saw. Nothing is refused for a mismatch: if the server's sum is ever wrong
+      // for an honest run, that player loses points, not the whole run, and the
+      // MISMATCH line below is how we find out.
+      if (stackEnforced) {
+        if (!Array.isArray(dropLog)) return reply(400, { error: 'Missing drop log (required for stack)' });
+        try {
+          const sum = deps.replay.stack.computeScore(dropLog);
+          const human = deps.replay.stack.humanness(dropLog);
+          const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
+          if (sum.score < score) serverScore = sum.score;
+          logger.log(`[stack:enforced] player=${who} dropLog=${dropLog.length} serverScore=${sum.score} clientScore=${score} delta=${sum.score - score} signed=${serverScore}${sum.score !== score ? ' MISMATCH' : ''} (drops=${sum.drops} perfects=${sum.perfects} maxCombo=${sum.maxCombo}) rate=${human.stats.dropsPerSec ?? 0}/s ${flag}`);
+        } catch (e) {
+          // a fault in our own sum must not cost a player their run
+          logger.warn(`[stack:enforced] sum threw, signing the client score · player=${who}:`, msg(e));
+        }
+      }
+
       // SHADOW MODE: replay, log the comparison, change nothing. A failure in a
       // shadow replay must never cost a player their run.
       try {
-        if (game === 'stack' && Array.isArray(dropLog)) {
+        if (game === 'stack' && Array.isArray(dropLog) && !stackEnforced) {
           const shadow = deps.replay.stack.computeScore(dropLog);
           const human = deps.replay.stack.humanness(dropLog);
           const flag = human.human ? 'human' : `FLAG(${human.reasons.join('; ')})`;
