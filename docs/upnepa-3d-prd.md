@@ -4,6 +4,8 @@
 >
 > Status: IN BUILD on branch `nepa-up-light`, route `/world`. Two modes playable, keke driving MVP in, asset-reconstruction pipeline proven (textured okada+rider shipped). NOT deployed. Launching into GameArena as "coming soon" (tile PR #329). Separate product from the 2D [Up Light](./nepa-up-light-prd.md) reaction game (gameType 4).
 >
+> **Update, 24 November 2026.** Deployed on the preview of branch `nepa-up-light`; not on the main site until that branch is merged. Since the status above: one palette for the whole street; friend rooms for both modes; scores recorded on-chain as game id 7. Charge Rush was rebuilt as "three sockets" (walk into a device, carry it to the charging table, it charges while the light is on, collect before the cut), and now has Blender-built devices (`frontend/tools/blender/build_devices.py`), a head-carry, a signed charging point, money-at-risk, a pick-one upgrade in every blackout and neighbour rush jobs. The sections below describe the original plan and are kept as written.
+>
 > Author: GameArena (ogazboiz / @AkpoloOgaga) · Updated 2026-10-13
 
 ---

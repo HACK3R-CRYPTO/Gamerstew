@@ -10,7 +10,7 @@ Built with Next.js 16 (App Router), React 19, wagmi v3, viem v2, and Privy for a
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 (or pass `-p 3001`).
 
 A running games-backend (default `http://localhost:3005`) is required for score signing, submission, leaderboards, and the Challenge AI arena. See the env vars below.
 
@@ -38,55 +38,71 @@ Session handling is explicit, not automatic. There is no background auto-logout.
 
 ## Routes
 
-Pages live under `app/`. Key routes:
+Pages live under `app/`. The ones players reach from the app:
 
-- `/` and `/home` · landing and the main logged-in home hub
-- `/connect` · login and wallet connection
-- `/games` · game lobby (the solo game cards plus the Challenge AI card)
-- `/games/rhythm` · Rhythm Rush
-- `/games/simon` · Simon Memory
-- `/games/stack` · Stack Tower
-- `/games/challenge-ai` · Challenge AI (MARKOV) Instant Arena · YOU / YOUR AI lobby switch: play MARKOV yourself, or send your deployed GoodAgents agent in and watch the match live (SSE stage with win dots, read meter, staged clashes)
-- `/agents` · agent home: owners see their deployed agent (identity, daily match usage, send-in CTA); newcomers get the embedded GoodAgents deploy widget (onboard mode, face verification first, rethemed to GameArena tokens)
-- `/pass/[address]` · public player passport (username or 0x in the URL) · rank, scores, badges, pet + habitat, lifetime UBI, per-player OG card, share/save with `?ref=` referral codes
-- `/games/survivor` · Slime Survivor, an experimental in-progress route hidden from the lobby but reachable by direct link
-- `/games/<game>/leaderboard` · per-game leaderboards
-- `/leaderboard` · the events hub, with LIVE / PAST / ALL-TIME tabs (3-Week Cup, current and past weekly seasons, community challenge, MARKOV Climb, Team Wars + Solo Ladder, and the cross-game all-time combined ladder from the subgraph)
-- `/leaderboard/solo-ladder` and `/leaderboard/cup` · the solo ladder and the 3-Week Cup standings
-- `/duel` · Friend Duels: the Rooms hub for creating and joining on-chain G$ challenge rooms and prize pools (DuelEscrow)
-- `/duel/create` and `/duel/[id]` · create a room, and a single room's lobby/scoreboard
-- `/tug` · Tug of War, a verified-humans team event (two sides pull one rope over a week, per-player bounty slots, recruiter pools). This event has now ended
-- `/impact` · the G$ economy page: live players/games/UBI from the subgraph, framed as demo-day epochs
-- `/dashboard` · player stats
-- `/profile` · profile, pet, habitats
-- `/mint` · mint the GamePass (username NFT)
-- `/verify` · GoodDollar citizenship verification
-- `/vote` · walkthrough for casting a verified community vote on Flow State
-- `/shop` · shop
-- `/settings` · settings (includes the GoodCollective picker)
-- `/sprint` · an invite-only private sprint room
-- `/creator-contest` · a referral leaderboard for the creator/thread contest window
-- `/pitch`, `/privacy`, `/terms` · static content
+- `/` · the opening splash; it goes to `/dashboard` after about a second
+- `/dashboard` · the home hub: the 3D and 2D game shelves, daily missions, the weekly community challenge, live activity
+- `/home` · sign-in
+- `/games/stack`, `/games/ladder`, `/games/simon`, `/games/rhythm` · Stack Tower, Word Ladder, Simon Memory, Rhythm Rush
+- `/bowling` · Street Strike (3D, react-three-fiber + Rapier)
+- `/world` · UP NEPA 3D (3D, react-three-fiber): Restore the Light, Charge Rush and Free Roam
+- `/games/challenge-ai` · Challenge AI (MARKOV) Instant Arena, with a YOU / YOUR AI switch
+- `/agents` · deploy and watch your own GoodAgents agent
+- `/leaderboard` · Ranks: this week per game, events, past seasons, all-time
+- `/games/<game>/leaderboard`, `/bowling/leaderboard`, `/world/leaderboard` · per-game boards
+- `/profile` · pet, habitats, best scores for every game, achievements grouped by game
+- `/pass/[address]` · the public passport (username or 0x): rank, best score in every game, badges, pet, lifetime UBI, share and referral
+- `/shop` · perks and cosmetics paid in G$
+- `/settings`, `/verify`, `/mint`, `/connect`, `/privacy`, `/terms`
+
+Older or special-purpose routes that still exist:
+
+- `/duel`, `/duel/create`, `/duel/[id]` · Friend Duels on the `DuelEscrow` contract. Superseded by friend rooms (below); not promoted in the app. The contract has known issues, see `docs/` and the main README
+- `/games/nepa` · the first, 2D UP NEPA. No longer linked from home
+- `/games/survivor` · Slime Survivor, an unfinished experiment reachable by direct link
+- `/games` · the earlier games lobby
+- `/tug` · Tug of War, a team event that ended on 30 September 2026
+- `/sprint` (invite-only), `/creator-contest`, `/vote`, `/impact`, `/pitch`, `/leaderboard/cup`, `/leaderboard/solo-ladder` · event and campaign pages
+- `/animtest` · animation diagnostics for a problem device
+- `/dev-preview` · development only (not found in a production build): a place to look at pop-ups that normally need a level-up to appear
 
 Server actions live in `app/actions/` (`game.ts`, `arena.ts`, `missions.ts`, `perks.ts`, `gas.ts`, `habitat.ts`, `push.ts`, `goodagents.ts` for the partner API bridge, `collective.ts` for the GoodCollective choice). Route handlers live in `app/api/` (season, markov-climb, pvp-leaderboard, match-outcome, cup, duel, tug, payouts, impact-stats, verified-stats, achievements, badges, user, sprint, push, referrals, a2a for MARKOV's agent-to-agent surface, and `ref/resolve` + `ref/count` for username referral codes).
 
 ## The games
 
-Solo games (three): Rhythm Rush, Simon Memory, Stack Tower. Each is a single canvas game loop driven by `requestAnimationFrame`, with React handling only HUD and screens. All three are free to play without a wallet, and all three submit scores on-chain (GamePass `recordScoreWithBackendSig`, `gameType` 0/1/2) to their own ranked weekly leaderboards once you sign in. Each game has server-side score validation (`computeStackScore`/humanness checks for Stack, replay/jitter checks for Rhythm).
+Six skill games plus Challenge AI. All are free to play without a wallet. No game starts by itself: each opens on a start screen and waits for the player.
 
-Slime Survivor (`app/games/survivor`) is an experimental fourth solo game. The route and its game code work by direct link, but the card is commented out of the games lobby, so it is effectively hidden from players for now.
+| Game | Route | On-chain id | How the score is checked |
+|---|---|---|---|
+| Rhythm Rush | `/games/rhythm` | 0 | The server replays the tap log against the song |
+| Simon Memory | `/games/simon` | 1 | The server replays the taps against the pattern it dealt |
+| Stack Tower | `/games/stack` | 2 | Bounded by the drop log and a humanness check |
+| Challenge AI | `/games/challenge-ai` | 3 | Played on the server, commit-reveal |
+| Word Ladder | `/games/ladder` | 5 | The server dealt the puzzles and replays the moves |
+| Street Strike | `/bowling` | 6 | Plausibility checks on the rolls |
+| UP NEPA 3D | `/world` | 7 | The phone's account of the round |
 
-Challenge AI is MARKOV, the "Instant Arena". It is free, best-of-5 rounds, first to 3 wins. MARKOV plays Rock-Paper-Scissors only (the old Coin Flip mode is retired). It runs entirely through server actions in `app/actions/arena.ts` against the backend `/api/arena/*` endpoints, using a commit-reveal scheme for fairness: the match starts with a `commitHash`, each throw returns the round outcome and MARKOV's read on the player, and the final payload reveals the seed and the model. MARKOV also has a rank-aware voice (`hooks/useMarkovVoice.ts`): it speaks its taunts aloud at the moments that matter, opening on a line tuned to the player's rank and tier, reacting to reads and streaks and sudden death, and closing on the match line. There is a daily match limit with an optional G$ refill, including a gasless EIP-2612 permit path so a player with zero CELO can still buy more. MARKOV carries an on-chain ERC-8004 agent identity (agent #6386).
+(Id 4 is the retired 2D UP NEPA.) The 2D games share `components/GameLobby.tsx` (start screen), `components/GameResult.tsx` (result screen) and `components/RunSaveStatus.tsx` + `components/TxStatus.tsx`, which wait for the transaction's receipt and say confirming, confirmed or failed.
 
-The `/games/challenge-ai` lobby has two modes on one segmented switch: YOU (you throw the moves yourself) and YOUR AI (you send in the agent you deployed on `/agents` and watch the match play out live over an SSE stage with win dots, a read meter, and staged clashes).
+The 3D games lazy-load three.js so it only downloads on their routes. `/world` picks a quality tier per device (`app/world/quality.ts`); `?q=low|mid|high` forces one. Its Charge-mode props are small GLB files built by `tools/blender/build_devices.py`, run with Blender from the terminal.
 
-## Friend Duels
+Challenge AI is MARKOV, the "Instant Arena": free, best-of-5 Rock-Paper-Scissors, first to 3. It runs through server actions in `app/actions/arena.ts` with a commit-reveal scheme for fairness.
 
-`/duel` is the Rooms hub for on-chain challenge rooms. A player creates a room (`/duel/create`) with a game, a stake or a seeded prize, a capacity, and a deadline; others join and play; the winner takes the pot. The money layer is the `DuelEscrow` contract (`lib/duel.ts`): reads come from a fast backend mirror that filters private rooms, and writes go straight to the contract from the player's wallet, with an EIP-2612 permit path that skips the separate approve. Rooms can be public or private (join by code or allowlist), and a seeded, zero-stake room reads as a prize pool.
+## Friend rooms
 
-## Tug of War
+Every skill game has a "Play with friends" button (`components/FriendsPlay.tsx`, `components/FriendsSheet.tsx`, `hooks/useFriendRoom.ts`). One player opens a room and shares the code or link; up to four play the same round at once. The phone asks the server for the room about once a second, so there is no socket to drop.
 
-`/tug` was a week-long verified-humans team event: two sides pull one rope, and every verified human a player recruits onto their side pulls for them. It layered a per-player bounty (first-come guaranteed G$ slots, kept even if your side loses), a daily winnable tick so the trailing side always has something live to fight for, and recruiter prize pools. Standings come from the backend (`app/api/tug`). The event has now ended and its G$ prize pool was paid out on-chain; the UI (`app/tug`, `components/TugRope.tsx`, `TugRules.tsx`, `TugTeaser.tsx`) hides itself once the window closes.
+The browser talks to `app/api/rooms/[...path]/route.ts`, which talks to the backend with the internal secret. That route also decides which wallet a seat plays as: it checks the Privy sign-in against the claimed wallet (`lib/server/roomWallet.ts`) and ignores any wallet sent in the request body. A signed-in player's round in a server-checked game is recorded on-chain, and the standings show the transaction.
+
+Rooms in server-checked games can be played for a G$ entry when the backend allows it. The player signs a G$ permit (`hooks/useRoomPermit.ts`); nothing is held, and each loser's entry goes straight to the winner at the end.
+
+## Notifications
+
+The bell opens an inbox kept on the server (`components/NotificationsSheet.tsx`): read state follows the player across devices, items can be deleted, and announcements from GameArena have their own tab. Web push is optional and separate.
+
+## Look
+
+One theme, Lilac: a light lavender page, deep purple ink (`#22104f`), a purple primary button, Melon Pop for display text. Screens are inline-styled; there is no component library.
 
 ## The public Passport
 
@@ -102,16 +118,17 @@ The verified badge is computed on-chain at render time: `getWhitelistedRoot` on 
 
 The `/shop` sells in-game perks paid in G$ through the `PERK_SHOP` contract: saves and retries, Challenge AI match tickets, and cosmetics. Buys support a gasless EIP-2612 permit path (`app/actions/perks.ts`, `lib/perks.ts`) so a player with zero CELO signs once and a relayer submits. Cosmetics are owned forever on-chain: Crystal Blocks (a Stack Tower skin) and Neon Trail (a Rhythm Rush skin) apply in-game, gated by an equip toggle whose state syncs to the backend keyed by wallet, so an owned skin can be turned on or off across devices.
 
-## Score submission (voucher flow)
+## Score submission
 
-Solo scores are bound on-chain through an EIP-712 voucher so the leaderboard cannot be faked:
+1. `startGame` issues a single-use session ticket when the player taps play. Privy users are checked with their access token; MiniPay users pass their address.
+2. `signScore` sends the run (tap log, moves, drops) to the backend, which works out the score it will accept and records it on-chain itself, gasless. The reply carries the transaction hash. If the gasless budget is used up it returns a signed EIP-712 voucher instead, and the player's wallet calls `recordScoreWithBackendSig`.
+3. `submitScore` saves the result (activity, XP, missions, achievements) and returns rank, streak and personal best. A run is saved once; if the phone never makes this call, a backend job finishes the save from the recorded transaction.
 
-1. `startGame` issues a single-use server session token when the player taps play. Privy users authenticate with their access token; MiniPay users pass just their address.
-2. `signScore` returns a signed `BackendApproval` voucher (`signature`, `nonce`, `gameType`). For Rhythm, the client sends its full tap log and the server replays it to compute the canonical score, so the client never claims a raw number.
-3. The player's wallet calls `recordScoreWithBackendSig` on the GamePass contract, passing the voucher.
-4. `submitScore` records the result off-chain (Supabase via the backend), awards XP, updates missions, and returns rank, streak, personal-best, and any new achievements.
+Every action has a `...MiniPay` variant without the Privy token. All server actions reach the backend through a helper that attaches `INTERNAL_SECRET`, so that secret and `BACKEND_URL` never reach the browser.
 
-Every action has a `...MiniPay` variant that drops the Privy JWT and client-signature checks, since MiniPay forbids those signatures and the on-chain tx already binds the score to the wallet. All server actions proxy the backend through a helper that attaches `INTERNAL_SECRET`, so that secret and `BACKEND_URL` never reach the browser. The voucher signing types are in `app/actions/game.ts`.
+## Local development against live data
+
+`.env.local` can point `NEXT_PUBLIC_BACKEND_URL` at `/api/dev-live`, a development-only route that passes GET requests through to the live backend. It lets pages be looked at with real data without running a backend. It is read-only and does not exist in a production build.
 
 ## Vote flow
 
@@ -127,15 +144,16 @@ Addresses and ABIs are in `lib/contracts.ts` (and `lib/abis/`). Celo mainnet:
 - `SOLO_WAGER` · optional G$ ranked entry for solo runs
 - `HABITAT_REGISTRY` · habitats
 - `PERK_SHOP` · in-game perks paid in G$ (saves, retries, cosmetics, Challenge AI match tickets); gasless buys via EIP-2612 permit
-- `DUEL_ESCROW` · on-chain money layer for Friend Duel rooms and prize pools (`lib/duel.ts`)
+- `DUEL_ESCROW` · money layer of the older Friend Duels (`lib/duel.ts`). Not used by friend rooms
 - `ERC8004_REGISTRY` / `ERC8004_REPUTATION` · MARKOV's on-chain agent identity (agent #6386) and reputation
 
 ## Layout
 
 - `app/` · routes, server actions, API route handlers
 - `components/` · shared UI (headers, nav, sheets, onboarding, toasts, game-specific canvases)
-- `lib/` · contracts, wagmi config, subgraph reads, achievements, pets, habitats, share cards, duel escrow, passport assembly, GoodCollectives, referral, helpers
-- `hooks/` · MiniPay, auth gating, gas status, audio, habitats, push notifications
+- `lib/` · contracts, wagmi config, board and subgraph reads, achievements, pets, habitats, share cards, duel escrow, passport assembly, GoodCollectives, referral, helpers
+- `hooks/` · MiniPay, auth gating, gas status, audio, habitats, push notifications, friend rooms
+- `tools/blender/` · scripts that build 3D props
 - `contexts/` · `SelfVerificationContext` for GoodDollar verification state
 
 ## Note on Next.js

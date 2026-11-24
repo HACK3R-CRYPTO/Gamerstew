@@ -161,3 +161,17 @@ stack (default `stack,simon`; `SCORE_ENFORCE=stack` turns only simon off).
 Limit: the pattern is derived from the ticket the client holds, so a cheat can
 produce perfect taps. What they cannot fake is time: about 56 rounds is the most
 that fits in one session, and N rounds need a known minimum time.
+
+## 2026-11-24: where each game stands
+
+| Game | Check | Is the score the server's own? |
+|---|---|---|
+| Rhythm Rush | Tap log replayed against the song | Yes |
+| Word Ladder | Server deals the puzzles, replays the moves | Yes |
+| Simon Memory | Taps replayed against the dealt pattern, score cut to what they support | Yes |
+| Stack Tower | Bounded by the drop log, humanness check | Bounded, not replayed |
+| Street Strike | Plausibility checks on the rolls | No |
+| UP NEPA 3D | Bounds only | No |
+
+Only the first three can carry a G$ entry in a friend room, and only their room rounds are recorded on-chain. Charge Rush in UP NEPA 3D gained upgrades and rush jobs on this date; they raise what an honest round can score, and nothing on the server knows about them.
+
