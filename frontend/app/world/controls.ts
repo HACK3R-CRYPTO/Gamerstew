@@ -59,6 +59,11 @@ export interface WorldControls {
   /** Walking-speed multiplier (1 = normal). The Charge director lowers it while
    *  you carry something heavy; Player multiplies its move speed by it. */
   speedMul: number;
+  /** Which way the player faces (radians about Y) and how fast they are moving
+   *  (m/s). Player.tsx writes both; a carried device reads them to sit in the
+   *  hands and bob with the stride. */
+  playerYaw: number;
+  playerSpeed: number;
   /** Set true by a director on a successful hit; Player plays the flip/plug
    *  gesture once, then consumes (clears) it. */
   gesture: boolean;
@@ -121,6 +126,8 @@ export const worldControls: WorldControls = {
   shake: 0,
   guide: { x: 0, z: 0, active: false },
   speedMul: 1,
+  playerYaw: 0,
+  playerSpeed: 0,
   gesture: false,
   zap: false,
   gestureFace: { x: 0, z: 0 },

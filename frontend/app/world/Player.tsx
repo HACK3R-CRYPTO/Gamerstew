@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
+import { DEVICES, hands } from "./game";
 import { worldControls } from "./controls";
 import { resolveObstacles } from "./obstacles";
 
@@ -284,7 +285,11 @@ export default function Player() {
     // Planted while operating a breaker/device, or while down in a hit/shock
     // reaction — don't glide off the spot.
     if (gesturing.current || reacting.current) vel.current.set(0, 0, 0);
+    // local development only: a test can place the player (window.__warp = [x, z, yaw])
+    if (process.env.NODE_ENV === "development") { const w = (window as unknown as { __warp?: number[] | null }).__warp; if (w) { g.position.x = w[0]; g.position.z = w[1]; heading.current = w[2] ?? 0; g.rotation.y = heading.current; vel.current.set(0, 0, 0); } }
     const speed = vel.current.length();
+    worldControls.playerSpeed = speed;
+    worldControls.playerYaw = g.rotation.y;
     if (speed < 0.03) vel.current.set(0, 0, 0);
 
     if (speed > 0.001) {
@@ -512,6 +517,49 @@ export default function Player() {
       worldControls.shake *= Math.exp(-9 * dt);
       if (worldControls.shake < 0.002) worldControls.shake = 0;
     }
+  });
+
+
+  // ── Carrying: the arms take the load ────────────────────────────────────────
+  // The run and idle clips swing the arms freely, which made a carried device
+  // float beside a player who was not holding it. While something is in your
+  // hands the upper arms and forearms are aimed instead: out in front for the
+  // light things, up beside the head for the heavy ones. It runs after the
+  // animation has posed the body this frame, and is blended in and out, so the
+  // legs, the hips and the bounce of the stride are untouched.
+  const arms = useMemo(() => {
+    const find = (n: string) => { let b: THREE.Object3D | null = null; scene.traverse((o) => { if (!b && (o as THREE.Bone).isBone && o.name.endsWith(n) && !o.name.endsWith("Fore" + n)) b = o; /* the loader may drop the ":" from "mixamorig:LeftArm" */ }); return b as THREE.Object3D | null; };
+    return { lu: find("LeftArm"), lf: find("LeftForeArm"), ru: find("RightArm"), rf: find("RightForeArm") };
+  }, [scene]);
+  const carryW = useRef(0);
+  const carryKind = useRef(0); // 1 = in front, 2 = on the head
+  const tmp = useMemo(() => ({ q: new THREE.Quaternion(), pq: new THREE.Quaternion(), gq: new THREE.Quaternion(), v: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) }), []);
+  useFrame((_, rawDt) => {
+    const g = group.current;
+    if (!g || !arms.lu || !arms.lf || !arms.ru || !arms.rf) return;
+    const held = hands.idx >= 0 ? DEVICES[hands.idx].id : "";
+    const kind = held ? 2 : 0; // everything is carried on the head: it is where the camera can see it
+    if (kind) carryKind.current = kind;
+    carryW.current += ((kind ? 1 : 0) - carryW.current) * (1 - Math.exp(-Math.min(rawDt, 0.1) * 12));
+    const w = carryW.current;
+    if (w < 0.01) return;
+    // directions are in the character's own space (x: its left, y: up, z: ahead)
+    const POSE = carryKind.current === 2
+      ? { u: [0.5, 0.82, 0.12], f: [-0.42, 0.9, 0.05] }
+      : { u: [0.22, -0.62, 0.55], f: [-0.3, 0.12, 0.95] };
+    g.getWorldQuaternion(tmp.gq);
+    const aim = (bone: THREE.Object3D, d: number[], side: number) => {
+      bone.parent!.updateWorldMatrix(true, false);
+      bone.parent!.getWorldQuaternion(tmp.pq);
+      tmp.v.set(d[0] * side, d[1], d[2]).normalize().applyQuaternion(tmp.gq);
+      // a Mixamo bone points along its own +Y: turn +Y onto the direction, then
+      // express that in the parent's space
+      tmp.q.setFromUnitVectors(tmp.up, tmp.v).premultiply(tmp.pq.invert());
+      bone.quaternion.slerp(tmp.q, w);
+    };
+    aim(arms.lu, POSE.u, 1); aim(arms.lf, POSE.f, 1);
+    aim(arms.ru, POSE.u, -1); aim(arms.rf, POSE.f, -1);
+    if (process.env.NODE_ENV === "development") { arms.lf.updateWorldMatrix(true, false); (window as unknown as { __armDbg?: unknown }).__armDbg = { w: +w.toFixed(2), shoulderY: +arms.lu.getWorldPosition(tmp.v).y.toFixed(2), elbowY: +arms.lf.getWorldPosition(tmp.v).y.toFixed(2) }; }
   });
 
   return (
