@@ -81,7 +81,7 @@ async function internalFetch(path: string, body: unknown) {
 
 // Game type IDs · mirror games-backend/server.js GAME_TYPE map and the
 // uint8 gameType the GamePass contract emits. Stack Tower = 2.
-export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa' | 'ladder';
+export type GameId = 'rhythm' | 'simon' | 'stack' | 'nepa' | 'ladder' | 'strike';
 export type ScoreData = {
   game:     GameId;
   score:    number;

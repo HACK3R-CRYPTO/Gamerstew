@@ -22,7 +22,25 @@ import Link from "next/link";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, MeshReflectorMaterial } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
-import { Physics, RigidBody, CuboidCollider, CylinderCollider, BallCollider, type RapierRigidBody } from "@react-three/rapier";
+import RAPIER from "@dimforge/rapier3d-compat";
+import { simulate, cleanThrow, STEP as SIM_STEP, type SimResult } from "./sim";
+import { useRankedRun } from "@/hooks/useRankedRun";
+
+// What is on screen is a PLAYBACK of the lane simulation (./sim.ts), not live
+// physics. The simulation decides the roll in one go; these puppets are moved
+// through its recorded steps. The server runs the same simulation on the same
+// throw, so the bottles the player watched fall are the bottles it counts.
+class Puppet {
+  p = new THREE.Vector3();
+  q = new THREE.Quaternion();
+  v = new THREE.Vector3(); // metres a second, from the last two steps
+  w = new THREE.Vector3(); // turn speed in x; only its size is used
+  translation() { return this.p; }
+  rotation() { return this.q; }
+  linvel() { return this.v; }
+  angvel() { return this.w; }
+}
+type RapierRigidBody = Puppet;
 import * as THREE from "three";
 import { GA, WORLD, flat } from "../world/theme";
 import Sky, { type SkyHandle } from "../world/Sky";
@@ -133,25 +151,23 @@ function Bottle({ i, api }: { i: number; api: React.MutableRefObject<(RapierRigi
   const glass = glassMat(GLASS[i % GLASS.length]);
   const label = useMemo(() => flat(LABELS[(i * 3) % LABELS.length], { roughness: 0.8 }), [i]);
   const cap = useMemo(() => flat(GA.gold, { roughness: 0.4, metalness: 0.5 }), []);
+  const g = useRef<THREE.Group>(null);
+  const pup = useMemo(() => { const u = new Puppet(); u.p.set(HOME[i][0], 0.002, HOME[i][1]); return u; }, [i]);
+  useEffect(() => {
+    api.current[i] = pup;
+    return () => { if (api.current[i] === pup) api.current[i] = null; };
+  }, [api, i, pup]);
+  useFrame(() => {
+    if (!g.current) return;
+    g.current.position.copy(pup.p);
+    g.current.quaternion.copy(pup.q);
+  });
   return (
-    <RigidBody
-      ref={(rb) => {
-        api.current[i] = rb;
-      }}
-      position={[HOME[i][0], 0.002, HOME[i][1]]}
-      colliders={false}
-      friction={0.55}
-      restitution={0.25}
-      linearDamping={0.12}
-      angularDamping={0.35}
-      ccd
-    >
-      <CylinderCollider args={[0.105, 0.06]} position={[0, 0.105, 0]} mass={0.75} />
-      <CylinderCollider args={[0.062, 0.026]} position={[0, 0.272, 0]} mass={0.12} />
+    <group ref={g} position={[HOME[i][0], 0.002, HOME[i][1]]}>
       <mesh geometry={geo.body} material={glass} castShadow />
       <mesh geometry={geo.label} material={label} />
       <mesh geometry={geo.cap} material={cap} />
-    </RigidBody>
+    </group>
   );
 }
 
@@ -582,30 +598,13 @@ function Street({ lowPerf }: { lowPerf: boolean }) {
 }
 
 // Static colliders: road strip, sunken gutters, kerbs, the pit behind the bottles.
-function Colliders() {
-  const half = LANE_W / 2;
-  const zc = -(LANE_LEN / 2) - 2;
-  const hl = (LANE_LEN + 14) / 2;
-  return (
-    <RigidBody type="fixed" colliders={false} friction={0.6} restitution={0.05}>
-      <CuboidCollider args={[half, 0.1, hl]} position={[0, -0.1, zc]} />
-      {[-1, 1].map((s) => (
-        <group key={s}>
-          <CuboidCollider args={[GUTTER_W / 2, 0.05, hl]} position={[s * (half + GUTTER_W / 2), -GUTTER_DROP - 0.05, zc]} friction={0.9} />
-          <CuboidCollider args={[0.17, 0.4, hl]} position={[s * (half + GUTTER_W + 0.17), 0.1, zc]} />
-        </group>
-      ))}
-      <CuboidCollider args={[half + GUTTER_W + 2, 1.1, 0.15]} position={[0, 0.9, DECK_END - 1.7]} restitution={0.2} />
-      <CuboidCollider args={[half + GUTTER_W + 2, 1.1, 0.15]} position={[0, 0.9, 4.5]} />
-    </RigidBody>
-  );
-}
-
-// ── Game brain (inside <Physics>) ────────────────────────────────────────────
+// ── Game brain ────────────────────────────────────────────
 interface Api {
   throwIt: (t: Throw) => void;
   aimX: (x: number) => void;
 }
+const qA = new THREE.Quaternion();
+const qB = new THREE.Quaternion();
 function Brain({
   phase,
   standing,
@@ -614,7 +613,8 @@ function Brain({
   onPhase,
   rackKey,
   tyre,
-  setSlow,
+  setSlow: setSlowProp,
+  onThrow,
 }: {
   tyre: (typeof TYRES)[number];
   phase: Phase;
@@ -624,8 +624,20 @@ function Brain({
   onPhase: (p: Phase) => void;
   rackKey: number;
   setSlow: (on: boolean) => void;
+  /** every throw as it is released, so a ranked game can be replayed by the server */
+  onThrow?: (t: { tyre: string; x: number; angle: number; speed: number; spin: number }) => void;
 }) {
-  const ball = useRef<RapierRigidBody | null>(null);
+  const ball = useRef<RapierRigidBody | null>(new Puppet());
+  // the roll being played back, and how far through it we are
+  const play = useRef<{ res: SimResult; frames: Float32Array; n: number; t: number } | null>(null);
+  const engineReady = useRef(false);
+  useEffect(() => { let on = true; void RAPIER.init().then(() => { if (on) engineReady.current = true; }); return () => { on = false; }; }, []);
+  const standingRef = useRef(standing);
+  standingRef.current = standing;
+  const slowMo = useRef(false);
+  const setSlow = (on: boolean) => { slowMo.current = on; setSlowProp(on); };
+  const onThrowRef = useRef(onThrow);
+  onThrowRef.current = onThrow;
   const bottles = useRef<(RapierRigidBody | null)[]>([]);
   // per-bottle sound memory: last velocity (to spot an impact), turn since the last roll knock, cooldown
   const voice = useRef(Array.from({ length: 10 }, () => ({ x: 0, y: 0, z: 0, has: false, turn: 0, cool: 0 })));
@@ -661,15 +673,15 @@ function Brain({
       },
       throwIt: (th) => {
         const b = ball.current;
-        if (!b || phaseRef.current !== "aim") return;
-        hookMul.current = tyreRef.current.hook;
-        const x = THREE.MathUtils.clamp(th.x, -(LANE_W / 2 - tyreRef.current.r - 0.02), LANE_W / 2 - tyreRef.current.r - 0.02);
-        const a = THREE.MathUtils.clamp(th.angle, -0.1, 0.1);
-        const sp = THREE.MathUtils.clamp(th.speed, SPEED_MIN, SPEED_MAX);
-        spin.current = THREE.MathUtils.clamp(th.spin, -20, 20);
-        b.setTranslation({ x, y: tyreRef.current.r + 0.01, z: START_Z }, true);
-        b.setLinvel({ x: Math.sin(a) * sp, y: 0, z: -Math.cos(a) * sp }, true);
-        b.setAngvel({ x: -sp / tyreRef.current.r, y: 0, z: 0 }, true);
+        if (!b || phaseRef.current !== "aim" || !engineReady.current) return;
+        // Decide the whole roll now, then play it back. The throw is tidied to the
+        // exact numbers the server will be sent.
+        const clean = cleanThrow(tyreRef.current.id, th);
+        const res = simulate(RAPIER, { tyre: tyreRef.current.id, throw: clean, standing: standingRef.current }, { record: true });
+        play.current = { res, frames: res.frames!, n: res.steps, t: 0 };
+        onThrowRef.current?.({ tyre: tyreRef.current.id, ...clean });
+        spin.current = clean.spin;
+        b.p.set(clean.x, tyreRef.current.r + 0.01, START_Z);
         t.current = 0;
         settle.current = 0;
         wentGutter.current = false;
@@ -685,10 +697,10 @@ function Brain({
     standing.forEach((up, i) => {
       const rb = bottles.current[i];
       if (!up || !rb) return;
-      rb.setTranslation({ x: HOME[i][0], y: 0.002, z: HOME[i][1] }, true);
-      rb.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
-      rb.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      rb.p.set(HOME[i][0], 0.002, HOME[i][1]);
+      rb.q.identity();
+      rb.v.set(0, 0, 0);
+      rb.w.set(0, 0, 0);
     });
   }, [standing]);
   useEffect(() => {
@@ -702,6 +714,24 @@ function Brain({
     const dt = Math.min(rawDt, 0.05);
     const b = ball.current;
     if (!b) return;
+    // move every puppet to where the simulation had it at this moment
+    const pl = play.current;
+    if (pl && (phaseRef.current === "rolling" || phaseRef.current === "settling")) {
+      pl.t += dt * (slowMo.current ? 0.25 : 1);
+      const at = Math.min(pl.t / SIM_STEP, pl.n - 1);
+      const i0 = Math.floor(at), i1 = Math.min(i0 + 1, pl.n - 1), f = at - i0;
+      for (let k = 0; k <= PINS; k++) {
+        const u = k === 0 ? b : bottles.current[k - 1];
+        if (!u) continue;
+        const a = i0 * 77 + k * 7, c = i1 * 77 + k * 7, F = pl.frames;
+        if (F[a + 1] < -40) continue; // a bottle that was not on the road for this roll
+        u.p.set(F[a] + (F[c] - F[a]) * f, F[a + 1] + (F[c + 1] - F[a + 1]) * f, F[a + 2] + (F[c + 2] - F[a + 2]) * f);
+        qA.set(F[a + 3], F[a + 4], F[a + 5], F[a + 6]); qB.set(F[c + 3], F[c + 4], F[c + 5], F[c + 6]);
+        u.q.slerpQuaternions(qA, qB, f);
+        u.v.set((F[c] - F[a]) / SIM_STEP, (F[c + 1] - F[a + 1]) / SIM_STEP, (F[c + 2] - F[a + 2]) / SIM_STEP);
+        u.w.set(qA.angleTo(qB) / SIM_STEP, 0, 0);
+      }
+    }
     const p = b.translation();
     const v = b.linvel();
     const ph = phaseRef.current;
@@ -711,9 +741,9 @@ function Brain({
       // keep the tyre inside the lane even after switching to a bigger one
       const lim = LANE_W / 2 - tyreRef.current.r - 0.02;
       aim.current = THREE.MathUtils.clamp(aim.current, -lim, lim);
-      b.setTranslation({ x: aim.current, y: tyreRef.current.r + 0.01, z: START_Z }, true);
-      b.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      b.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      b.p.set(aim.current, tyreRef.current.r + 0.01, START_Z);
+      b.v.set(0, 0, 0);
+      b.w.set(0, 0, 0);
       setRumble(0);
       for (const m of voice.current) m.has = false;
     } else {
@@ -722,11 +752,6 @@ function Brain({
       if (!onRoad && p.z > -LANE_LEN + 0.6 && !wentGutter.current) {
         wentGutter.current = true;
         thud();
-      }
-      // the hook: nothing early, building over the far half
-      if (ph === "rolling" && onRoad && p.z < -LANE_LEN * 0.4 && p.z > -LANE_LEN - 0.4) {
-        const zone = Math.min(1, (-p.z - LANE_LEN * 0.4) / (LANE_LEN * 0.45));
-        b.applyImpulse({ x: spin.current * HOOK * hookMul.current * zone * tyreRef.current.mass * dt, y: 0, z: 0 }, true);
       }
       // rumble only while the tyre is rolling down the road: silent once it is through the bottles
       setRumble(ph === "rolling" && onRoad && p.z > -LANE_LEN - 0.2 ? Math.hypot(v.x, v.z) : 0);
@@ -760,32 +785,11 @@ function Brain({
       const past = p.z < -LANE_LEN - 0.3;
       const dead = Math.hypot(v.x, v.z) < 0.35 && t.current > 1.2;
       if (ph === "rolling" && (past || dead || t.current > 9)) go("settling");
-      if (ph === "settling") {
-        settle.current += dt;
-        let moving = false;
-        for (let i = 0; i < PINS; i++) {
-          // only bottles still in play: a removed bottle's handle is dead, and
-          // asking the physics engine about it crashes the step
-          const rb = standing[i] ? bottles.current[i] : null;
-          if (!rb) continue;
-          const lv = rb.linvel();
-          const av = rb.angvel();
-          if (Math.hypot(lv.x, lv.y, lv.z) > 0.25 || Math.hypot(av.x, av.y, av.z) > 1.2) moving = true;
-        }
-        if ((settle.current > 1.4 && !moving) || settle.current > 4.2) {
-          const down = standing.map((up, i) => {
-            if (!up) return false;
-            const rb = bottles.current[i];
-            if (!rb) return false;
-            const q = rb.rotation();
-            const upY = 1 - 2 * (q.x * q.x + q.z * q.z);
-            const pos = rb.translation();
-            return upY < 0.8 || pos.y < -0.06 || Math.hypot(pos.x - HOME[i][0], pos.z - HOME[i][1]) > 0.55;
-          });
-          setRumble(0);
-          phaseRef.current = "counted"; // report once
-          onResult(down, wentGutter.current && !down.some(Boolean));
-        }
+      if ((ph === "rolling" || ph === "settling") && pl && pl.t >= pl.n * SIM_STEP) {
+        setRumble(0);
+        phaseRef.current = "counted"; // report once
+        play.current = null;
+        onResult(pl.res.down, pl.res.gutter);
       }
     }
 
@@ -835,20 +839,6 @@ function Brain({
 
   return (
     <>
-      <RigidBody
-        key={tyre.id}
-        ref={ball}
-        position={[0, tyre.r + 0.01, START_Z]}
-        colliders={false}
-        friction={0.45}
-        restitution={0.12}
-        linearDamping={0.04}
-        angularDamping={0.25}
-        ccd
-        canSleep={false}
-      >
-        <BallCollider args={[tyre.r]} mass={tyre.mass} />
-      </RigidBody>
       <Tyre ball={ball} paint={tyre.paint} id={tyre.id} r={tyre.r} />
       <group key={rackKey}>
         {standing.map((up, i) => (up ? <Bottle key={i} i={i} api={bottles} /> : null))}
@@ -1182,6 +1172,15 @@ function Scenery({ children }: { children: ReactNode }) {
 
 // ── Page shell: canvas + HUD + input ─────────────────────────────────────────
 export default function Game() {
+  // Ranked solo games: the throws go to the server, which replays them through
+  // the same simulation and records the score on-chain (hooks/useRankedRun.ts).
+  const ranked = useRankedRun("strike");
+  const rankedRef = useRef(ranked);
+  rankedRef.current = ranked;
+  const throwLog = useRef<{ tyre: string; x: number; angle: number; speed: number; spin: number }[]>([]);
+  const gameT0 = useRef(0);
+  const [rankedGame, setRankedGame] = useState(false);
+  const onThrow = useCallback((t: { tyre: string; x: number; angle: number; speed: number; spin: number }) => { throwLog.current.push(t); }, []);
   // Who is playing. One list of rolls per seat; `turn` is the seat on the line.
   const [mode, setMode] = useState<Mode>("solo");
   const [level, setLevel] = useState(1); // CPU: 0 easy, 1 medium, 2 hard
@@ -1297,6 +1296,10 @@ export default function Game() {
     if (live && sess.current) net.roll(sess.current, nextRolls).then(setRoom).catch(() => { /* the next poll sends it again */ });
     if (allDone) {
       setPhase("over");
+      if (process.env.NODE_ENV !== "production") (window as unknown as { __strikeProbe?: (x: unknown) => void }).__strikeProbe?.({ mode: modeRef.current, total: score(allRef.current[0], FRAMES).total, throws: throwLog.current.slice() });
+      if (modeRef.current === "solo" && rankedRef.current.hasTicket()) {
+        void rankedRef.current.finish({ score: score(allRef.current[0], FRAMES).total, gameTime: Date.now() - gameT0.current, proof: { strikeThrows: throwLog.current.slice() } });
+      }
       // your best is your own score: seat 0, and never in pass-the-phone
       if (modeRef.current !== "pass") try {
         const mine = score(allRef.current[live ? seat : 0], FRAMES).total;
@@ -1331,6 +1334,12 @@ export default function Game() {
   }, []);
 
   const restart = (m: Mode = modeRef.current) => {
+    throwLog.current = [];
+    gameT0.current = Date.now();
+    setRankedGame(false);
+    // a solo game by a signed-in player is ranked; the ticket is opened in the
+    // background so the first throw is never held up
+    if (m === "solo" && rankedRef.current.canRank) void rankedRef.current.start().then((o) => { if (o.success) { gameT0.current = Date.now(); setRankedGame(true); } }).catch(() => { /* play unranked */ });
     modeRef.current = m;
     setMode(m);
     allRef.current = seatsFor(m).map(() => []);
@@ -1582,10 +1591,7 @@ export default function Game() {
           <Billboards lowPerf={isMobile} />
         </Scenery>
         <Suspense fallback={null}>
-          <Physics gravity={[0, -9.81, 0]} timeStep={slow ? 1 / 240 : 1 / 60}>
-            <Colliders />
-            <Brain phase={phase} standing={standing} apiRef={apiRef} onResult={onResult} onPhase={setPhase} rackKey={rackKey} tyre={tyre} setSlow={setSlowOnce} />
-          </Physics>
+          <Brain phase={phase} standing={standing} apiRef={apiRef} onResult={onResult} onPhase={setPhase} rackKey={rackKey} tyre={tyre} setSlow={setSlowOnce} onThrow={onThrow} />
           <Confetti />
         </Suspense>
         {!isMobile && (
@@ -1793,6 +1799,16 @@ export default function Game() {
               </>
             ) : (
               <>
+            {mode === "solo" && (
+              <div role="status" style={{ margin: "0 0 10px", fontFamily: BODY, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(244,241,234,0.78)" }}>
+                {!rankedGame ? (ranked.canRank ? null : "Sign in to rank your score.")
+                  : ranked.status === "checking" ? "Checking your throws…"
+                  : ranked.status === "wallet" ? "Confirm in your wallet to save…"
+                  : ranked.status === "saving" ? "Saving to the leaderboard…"
+                  : ranked.status === "saved" ? <>Saved on-chain{ranked.result?.rank ? ` · rank #${ranked.result.rank}` : ""}{ranked.result?.xpEarned ? ` · +${ranked.result.xpEarned} XP` : ""}{ranked.result?.txHash ? <> · <a href={`https://celoscan.io/tx/${ranked.result.txHash}`} target="_blank" rel="noreferrer" style={{ color: "#ffd56b" }}>view</a></> : null}</>
+                  : ranked.status === "error" ? ranked.error : null}
+              </div>
+            )}
             <button onClick={() => restart()} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d, 0 12px 24px -8px rgba(34,197,94,0.6)" }}>Play again</button>
             <button onClick={() => { restart(); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#fff", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)" }}>Change mode</button>
               </>
