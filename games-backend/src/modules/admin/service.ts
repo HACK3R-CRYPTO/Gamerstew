@@ -125,6 +125,7 @@ export function createAdmin(deps: AdminDeps) {
         case 'retention': return call('admin_retention', { weeks: Math.max(1, Math.min(26, Number(q.weeks) || 8)) });
         case 'verification': return call('admin_verification', {});
         case 'traffic': return call('admin_traffic', { from_day: r.from, to_day: r.to });
+        case 'money': return call('admin_money', { from_day: r.from, to_day: r.to });
         case 'payouts': { const p = await store.payouts(lim, off, isWallet(str(q.wallet)) ? str(q.wallet).toLowerCase() : null); return ok({ data: p.rows, total: p.total }); }
         case 'admins': return ok({ data: (await store.admins()).map(({ pass_hash: _p, ...a }) => a) });
         case 'actions': return ok({ data: await store.actions(lim) });

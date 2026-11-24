@@ -2,7 +2,7 @@
 
 > One place to see GameArena's users, players, games, verification, rewards and on-chain activity, with history, built only on real data.
 >
-> Status: FIRST VERSION BUILT on branch `nepa-up-light` (25 November 2026). Sign-in, roles, ten pages, history rebuilt from launch, stored verification, a payout ledger, first-party visit tracking and CSV export are done and were run end to end on a local database with sample data. NOT yet run against the production database: the migration has to be applied first. Not built: our own index of chain events (section 3, step 4). Author: GameArena · Updated 2026-11-25
+> Status: FIRST VERSION BUILT on branch `nepa-up-light` (25 November 2026). Sign-in, roles, ten pages, history rebuilt from launch, stored verification, a payout ledger, first-party visit tracking and CSV export are done and were run end to end on a local database with sample data. NOT yet run against the production database: the migration has to be applied first. Purchases are read from the chain (section 7). Not built: an index of the other contract events (GamePass mints, transfers). Author: GameArena · Updated 2026-11-25
 
 ---
 
@@ -134,6 +134,7 @@ A first useful dashboard (overview, users, players, games, activity feed, with h
 | Session cookie, server-side API helper | `frontend/lib/server/adminSession.ts`, `frontend/lib/server/adminApi.ts` |
 | Pages | `frontend/app/admin/` (`login`, and under `(in)`: overview, users, one player, games, traffic, verification, rewards, onchain, activity, reports, admins) |
 | Visit tracking | `frontend/lib/track.ts`, `frontend/components/Track.tsx`, `frontend/app/api/t/route.ts` |
+| Purchases read from the chain | `games-backend/src/modules/admin/chain.ts`, wired in `legacy/notifications.js` (job `chainPurchases`) |
 
 ### 6.1 Turning it on
 
@@ -164,4 +165,15 @@ A first useful dashboard (overview, users, players, games, activity feed, with h
 - The On-chain page counts what our backend sent or stored. It does not read contract events from the chain yet.
 - Verification success rate is not measurable from our side (section 2, row 5).
 - "Sum of days" columns in Reports count a person once per day they were active.
+
+## 7. Money
+
+What players spend, what GameArena keeps, and what goes back out.
+
+- **Source.** The PerkShop and HabitatRegistry contracts emit an event for every purchase with the exact split. Read on-chain on 25 November 2026, both send 80% to the treasury and 20% to the UBI pool, and the treasury is the server wallet `0xc1cFA63135eA2fB5AB795cF10e4c79F4DD03c3f6`. The amounts come from each event, so a change to the split is followed automatically.
+- **Reader.** `chainPurchases` runs every minute and reads 40 ranges of 5,000 blocks (the public Celo node's limit) from block 65,552,895, where the HabitatRegistry was deployed. That is about 3,600 ranges, roughly an hour and a half for the first catch-up, then it keeps pace. The cursor moves in the same database call that stores a range, a failed range is retried smaller, it stays five blocks behind the head, and it logs loudly if it stalls. `CHAIN_INDEX=false` switches it off.
+- **Checked against the real chain** (read-only): the first 400,000 blocks after the PerkShop's deployment held 61 purchases, 2,098 G$ paid, exactly 80% kept.
+- **Page.** `/admin/money`: kept, spent, sent to UBI, prizes paid, kept minus prizes, per day, by item, biggest spenders, latest purchases with their transactions.
+
+Not counted yet: the fee on friend-room entries, the gas the server pays for players, prizes paid in USDC, and income outside these two contracts.
 

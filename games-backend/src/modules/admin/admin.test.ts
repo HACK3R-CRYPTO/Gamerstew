@@ -85,3 +85,26 @@ test('the verification sweep records what the chain says, and a chain error is "
   assert.deepEqual(out, { checked: 2, newly: 1 });
   assert.deepEqual(w.calls.filter(([n]) => n === 'admin_set_verified').map(([, a]) => a.is_verified), [true, false]);
 });
+
+import { createPurchaseIndexer, CONFIRMATIONS, MAX_SPAN, type Purchase } from './chain';
+
+test('the purchase reader walks forward in ranges, stores each with its cursor, and never skips a range that failed', async () => {
+  const saved: { upto: number; n: number }[] = []; const asked: [number, number][] = []; let cursor: number | null = null; let failOnce = true; let storeDown = false;
+  const at = (block: number) => ({ tx_hash: '0x' + block.toString(16).padStart(64, '0'), log_index: 0, block, kind: 'perk' as const, wallet: '0x' + 'a'.repeat(40), item: 6, total: '50', ubi: '10', treasury: '40' });
+  const idx = createPurchaseIndexer({
+    startBlock: 1000,
+    reader: { head: async () => 20_000 + CONFIRMATIONS, blockTime: async (b) => 1_700_000_000 + b,
+      purchases: async (from, to) => { asked.push([from, to]); if (from === 6000 && failOnce) { failOnce = false; throw new Error('query exceeds range'); } return [1500, 7200, 19_999].filter((b) => b >= from && b <= to).map(at); } },
+    store: { cursor: async () => cursor, save: async (upto, batch: Purchase[]) => { if (storeDown) return false; saved.push({ upto, n: batch.length }); cursor = upto; assert.ok(batch.every((p) => p.at === 1_700_000_000 + p.block)); return true; } },
+  });
+  const a = await idx.run(10);
+  assert.deepEqual(asked.slice(0, 2), [[1000, 5999], [6000, 10_999]]); assert.equal(MAX_SPAN, 5000);
+  assert.equal(a.ranges, 1); assert.equal(cursor, 5999, 'the failed range was not stepped over'); assert.match(a.error!, /exceeds range/);
+  const b = await idx.run(10);
+  assert.equal(asked[2]![0], 6000, 'it starts again exactly where it failed'); assert.equal(asked[2]![1], 6000 + 2500 - 1, 'with half the range');
+  assert.equal(cursor, 20_000, 'and reads to a few blocks short of the head'); assert.equal(b.behind, 0);
+  assert.equal(saved.reduce((s, x) => s + x.n, 0), 3, 'every purchase stored exactly once');
+  assert.equal((await idx.run(10)).ranges, 0, 'nothing new: nothing read');
+  cursor = 100; storeDown = true; const c = await idx.run(3);
+  assert.equal(c.error, 'could_not_store'); assert.equal(cursor, 100, 'if the database refuses, the cursor stays put');
+});

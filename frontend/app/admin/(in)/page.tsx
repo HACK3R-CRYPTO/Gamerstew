@@ -23,6 +23,7 @@ export default async function Overview({ searchParams }: { searchParams: SP }) {
         <Stat label="Visitors today" value={num(d.visitors_day)} sub={d.visits_tracked_from ? `${num(d.visitors_week)} this week · ${num(d.visitors_month)} this month` : "Counting starts when this ships"} />
         <Stat label="Games played" value={num(d.runs_completed)} sub={`${num(d.runs_started)} started`} />
         <Stat label="Score transactions" value={num(d.score_transactions)} sub={`${num(d.tx_failed)} failed`} tone={Number(d.tx_failed) > 0 ? "warn" : undefined} />
+        <Stat label="GameArena kept" value={`${num(sum(m.get("revenue_g")))} G$`} sub={`from ${num(sum(m.get("spent_g")))} G$ spent in ${r.days} days`} tone="good" />
         <Stat label="Rewards paid" value={`${num(d.payouts_g)} G$`} sub={`${num(d.payouts)} payouts recorded · ${num(d.payouts_pending)} pending`} />
       </Grid>
       {!d.visits_tracked_from && <NotYet what="Visits" why="visitor counts begin on the day this dashboard goes live. Nothing recorded them before, so earlier days cannot be filled in." />}

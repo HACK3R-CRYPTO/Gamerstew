@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "GameArena Admin", robots: { index: f
 
 const NAV: [string, string, "analyst" | "super_admin"][] = [
   ["/admin", "Overview", "analyst"], ["/admin/users", "Users & players", "analyst"], ["/admin/games", "Games", "analyst"], ["/admin/traffic", "Visits", "analyst"],
-  ["/admin/verification", "Verification", "analyst"], ["/admin/rewards", "Rewards", "analyst"], ["/admin/onchain", "On-chain", "analyst"],
+  ["/admin/verification", "Verification", "analyst"], ["/admin/money", "Money", "analyst"], ["/admin/rewards", "Rewards", "analyst"], ["/admin/onchain", "On-chain", "analyst"],
   ["/admin/activity", "Activity", "analyst"], ["/admin/reports", "Reports", "analyst"], ["/admin/admins", "Admins", "super_admin"],
 ];
 const ROLE = { analyst: "Analyst", admin: "Admin", super_admin: "Super Admin" } as const;

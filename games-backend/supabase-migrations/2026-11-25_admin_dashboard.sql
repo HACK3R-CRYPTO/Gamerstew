@@ -243,6 +243,8 @@ begin
   perform admin_refresh_first_seen();
   perform admin_rollup_day(((now() at time zone 'UTC')::date - 1));
   perform admin_rollup_day((now() at time zone 'UTC')::date);
+  -- money is stored by its own function (defined further down), once it exists
+  begin perform admin_rollup_money_all(); exception when undefined_function or undefined_table then null; end;
 end $$;
 
 -- ── reads ────────────────────────────────────────────────────────────────────
@@ -455,3 +457,91 @@ begin
   return n;
 end $$;
 
+
+-- ── money: every purchase, read from the chain ───────────────────────────────
+-- The PerkShop and HabitatRegistry contracts emit an event for each purchase
+-- with the exact split: how much the player paid, how much went to the UBI
+-- pool, how much GameArena's treasury kept. The backend reads those events in
+-- order and stores them here. `chain_cursor` is how far it has read.
+create table if not exists purchases (
+  tx_hash   text not null,
+  log_index integer not null,
+  block     bigint not null,
+  at        timestamptz not null,
+  kind      text not null check (kind in ('perk', 'habitat')),
+  wallet    text not null,
+  item      integer not null,          -- perk id, or habitat tier
+  total     numeric not null,          -- what the player paid, in G$
+  ubi       numeric not null,          -- the share sent to the UBI pool
+  treasury  numeric not null,          -- the share GameArena kept
+  primary key (tx_hash, log_index)
+);
+create index if not exists purchases_at on purchases (at desc);
+create index if not exists purchases_wallet on purchases (wallet, at desc);
+create table if not exists chain_cursor (
+  name       text primary key,
+  block      bigint not null,
+  updated_at timestamptz not null default now()
+);
+alter table purchases enable row level security;
+alter table chain_cursor enable row level security;
+
+create or replace function admin_chain_cursor(cursor_name text) returns bigint language sql stable as $$
+  select block from chain_cursor where name = cursor_name;
+$$;
+
+-- Store a batch of purchases and move the cursor, together: either both happen
+-- or neither does, so a block range is never half recorded.
+create or replace function admin_save_purchases(cursor_name text, upto bigint, batch jsonb) returns integer language plpgsql as $$
+declare n integer;
+begin
+  insert into purchases (tx_hash, log_index, block, at, kind, wallet, item, total, ubi, treasury)
+  select lower(x->>'tx_hash'), (x->>'log_index')::int, (x->>'block')::bigint, to_timestamp((x->>'at')::bigint), x->>'kind', lower(x->>'wallet'),
+         (x->>'item')::int, (x->>'total')::numeric, (x->>'ubi')::numeric, (x->>'treasury')::numeric
+  from jsonb_array_elements(batch) x
+  on conflict (tx_hash, log_index) do nothing;
+  get diagnostics n = row_count;
+  insert into chain_cursor (name, block, updated_at) values (cursor_name, upto, now())
+  on conflict (name) do update set block = greatest(chain_cursor.block, excluded.block), updated_at = now();
+  return n;
+end $$;
+
+-- one day's money, stored with the day's other numbers
+create or replace function admin_rollup_money(d date) returns void language plpgsql as $$
+declare t0 timestamptz := d::timestamp at time zone 'UTC'; t1 timestamptz := (d + 1)::timestamp at time zone 'UTC'; r record;
+begin
+  select count(*) as n, count(distinct wallet) as buyers, coalesce(sum(total), 0) as spent, coalesce(sum(treasury), 0) as kept, coalesce(sum(ubi), 0) as ubi,
+         coalesce(sum(treasury) filter (where kind = 'perk'), 0) as perk, coalesce(sum(treasury) filter (where kind = 'habitat'), 0) as habitat
+    into r from purchases where at >= t0 and at < t1;
+  perform admin_put(d, 'purchases', r.n); perform admin_put(d, 'buyers', r.buyers);
+  perform admin_put(d, 'spent_g', r.spent); perform admin_put(d, 'revenue_g', r.kept); perform admin_put(d, 'ubi_g', r.ubi);
+  perform admin_put(d, 'revenue_perk_g', r.perk); perform admin_put(d, 'revenue_habitat_g', r.habitat);
+end $$;
+
+-- money is rebuilt for every day that has a purchase, plus today and yesterday
+create or replace function admin_rollup_money_all() returns integer language plpgsql as $$
+declare d date; n integer := 0;
+begin
+  for d in select distinct (at at time zone 'UTC')::date from purchases
+           union select (now() at time zone 'UTC')::date union select (now() at time zone 'UTC')::date - 1 loop
+    perform admin_rollup_money(d); n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+create or replace function admin_money(from_day date, to_day date) returns jsonb language sql stable as $$
+  with p as (select * from purchases where at >= from_day::timestamp at time zone 'UTC' and at < (to_day + 1)::timestamp at time zone 'UTC'),
+       paid as (select coalesce(sum(amount) filter (where token = 'G$' and status in ('sent', 'confirmed')), 0) as g from payouts
+                where coalesce(paid_at, created_at) >= from_day::timestamp at time zone 'UTC' and coalesce(paid_at, created_at) < (to_day + 1)::timestamp at time zone 'UTC')
+  select jsonb_build_object(
+    'period', (select jsonb_build_object('purchases', count(*), 'buyers', count(distinct wallet), 'spent', coalesce(sum(total), 0), 'kept', coalesce(sum(treasury), 0), 'ubi', coalesce(sum(ubi), 0)) from p),
+    'all_time', (select jsonb_build_object('purchases', count(*), 'buyers', count(distinct wallet), 'spent', coalesce(sum(total), 0), 'kept', coalesce(sum(treasury), 0), 'ubi', coalesce(sum(ubi), 0), 'first', min(at)) from purchases),
+    'prizes_paid', (select g from paid),
+    'prizes_paid_all_time', (select coalesce(sum(amount) filter (where token = 'G$' and status in ('sent', 'confirmed')), 0) from payouts),
+    'by_item', (select coalesce(jsonb_agg(x), '[]'::jsonb) from (select kind, item, count(*) as n, count(distinct wallet) as buyers, sum(total) as spent, sum(treasury) as kept from p group by kind, item order by sum(treasury) desc) x),
+    'top_spenders', (select coalesce(jsonb_agg(x), '[]'::jsonb) from (select wallet, count(*) as n, sum(total) as spent, sum(treasury) as kept from p group by wallet order by sum(total) desc limit 15) x),
+    'recent', (select coalesce(jsonb_agg(x), '[]'::jsonb) from (select at, kind, item, wallet, total, treasury, ubi, tx_hash from p order by at desc limit 40) x),
+    'read_to_block', (select block from chain_cursor where name = 'purchases'),
+    'read_at', (select updated_at from chain_cursor where name = 'purchases')
+  );
+$$;

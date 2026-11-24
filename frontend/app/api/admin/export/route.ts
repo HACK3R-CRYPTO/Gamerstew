@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     for (const x of r.data ?? []) { const d = byDay.get(x.day) ?? { day: x.day }; d[x.metric] = x.value; byDay.set(x.day, d); }
     rows = [...byDay.values()];
   } else {
+    if (kind === "purchases") { const r = await adminRead<{ recent: Record<string, unknown>[] }>("money", { from, to, days: 90 }); if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status }); return new NextResponse(csv(r.data?.recent ?? []), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="gamearena-purchases.csv"`, "cache-control": "no-store" } }); }
     const what = kind === "games" ? "games" : kind === "players" ? "players" : kind === "payouts" ? "payouts" : kind === "top" ? "top" : kind === "feed" ? "feed" : null;
     if (!what) return NextResponse.json({ error: "unknown" }, { status: 400 });
     const r = await adminRead<Record<string, unknown>[]>(what, { from, to, days: 90, limit: 300 });
