@@ -287,7 +287,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
               <span style={{ width: 5, height: 5, borderRadius: 999, background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-              <span style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em" }}>Playing free · no sign-up</span>
+              <span className="ah-guest-sub" style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>Playing free<style>{`@media (max-width: 420px) { .ah-guest-sub { display: none; } }`}</style></span>
             </div>
           )}
         </div>

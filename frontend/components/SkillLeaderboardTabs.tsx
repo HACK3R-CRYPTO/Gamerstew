@@ -136,9 +136,9 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 
 function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#92400e", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#334155", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
-    { char: "/characters/char3.png", entry: podium[2], color: "#9a3412", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#92400e", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3, labelLeft: 50 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#334155", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2, labelLeft: 22 },
+    { char: "/characters/char3.png", entry: podium[2], color: "#9a3412", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2, labelLeft: 78 },
   ];
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: 620, aspectRatio: "3 / 2", margin: "0 auto" }}>
@@ -165,10 +165,10 @@ function StagePodium({ podium }: { podium: (Entry | undefined)[] }) {
         return (
           pl.entry ? (
           <div key={`label-${pl.rank}`} style={{
-            position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom + (pl.rank === 1 ? 6 : 0)}%`,
+            position: "absolute", left: `${pl.labelLeft}%`, bottom: `${labelBottom + (pl.rank === 1 ? 9 : 0)}%`,
             transform: "translateX(-50%)", textAlign: "center", zIndex: pl.rank === 1 ? 5 : 4, pointerEvents: "none", whiteSpace: "nowrap",
             padding: "4px 10px 5px", borderRadius: 12, background: "#fff", boxShadow: "0 0 0 1px rgba(76,29,149,0.14), 0 8px 14px -8px rgba(76,29,149,0.6)",
-            maxWidth: "31%", overflow: "hidden",
+            maxWidth: "30%", overflow: "hidden",
           }}>
             <div style={{ color: "#22104f", fontFamily: T.body, fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>{fmtName(pl.entry.player, pl.entry.username)}</div>
             <div style={{ color: pl.color, fontFamily: T.body, fontSize: 13, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{pl.entry.score.toLocaleString()}</div>

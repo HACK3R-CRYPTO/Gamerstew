@@ -52,4 +52,33 @@ const stackRules: GameRules = {
   },
 };
 
-export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules };
+const rhythmLib = require('../../../lib/rhythmScoring') as {
+  physicsCheck(tapLog: unknown[], elapsedMs: number): { ok: boolean; reason?: string };
+  computeScore(tapLog: unknown[], elapsedMs: number, songId: string | null): { score: number; hits: unknown[] };
+  jitterCheck(hits: unknown[]): { ok: boolean; reason?: string };
+};
+const rhythmSongs = (require('../../../lib/rhythmSongs.json') as { songs: { id: string }[] }).songs.map((x) => x.id);
+/** The song a room's round is played on: the seed picks it, so everyone gets the same one. */
+export const rhythmSongFor = (seed: string): string => rhythmSongs[(parseInt(seed.slice(0, 8), 16) || 0) % rhythmSongs.length]!;
+
+/** Rhythm Rush: the seed picks one song for the whole room. The server replays
+ *  the taps against that song's notes, exactly as it does for a ranked run, so
+ *  the score is the server's and the phone's number is never used. */
+const rhythmRules: GameRules = {
+  verified: true,
+  deal: (seed) => ({ songId: rhythmSongFor(seed) }),
+  maxProgress: 1_000_000, // the score so far
+  async score(seed, proof, elapsedMs) {
+    const taps = (proof as { tapLog?: unknown } | null)?.tapLog;
+    if (!Array.isArray(taps)) return { ok: false, error: 'No taps sent' };
+    if (taps.length > 20000) return { ok: false, error: 'Too many taps' };
+    if (taps.length === 0) return { ok: true, score: 0 }; // sat the round out: last place, not an error
+    const physics = rhythmLib.physicsCheck(taps, elapsedMs);
+    if (!physics.ok) return { ok: false, error: 'That run could not be checked' };
+    const run = rhythmLib.computeScore(taps, elapsedMs, rhythmSongFor(seed));
+    if (!rhythmLib.jitterCheck(run.hits).ok) return { ok: false, error: 'That run could not be checked' };
+    return { ok: true, score: Math.max(0, Math.round(run.score)) };
+  },
+};
+
+export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules, rhythm: rhythmRules };

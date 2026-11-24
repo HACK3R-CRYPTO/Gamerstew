@@ -147,7 +147,10 @@ export default function GameLobby<M extends string>({
         .gl-top-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .gl-top-row b { font-variant-numeric: tabular-nums; }
         .gl-top-empty { padding: 6px 0 4px; font-size: 13px; color: var(--dim); }
         .gl-top-all { display: block; width: 100%; padding: 10px 0 6px; border: none; background: none; font-size: 13px; font-weight: 800; color: var(--brand) !important; text-align: center; }
+        .gl-panel .fp-btn { width: 100%; }
         .gl-wide { display: none; }
+        /* short phones: Play must stay on the first screen */
+        @media (max-height: 620px) and (max-width: 899px) { .gl-art { width: min(100%, 150px); transform: none; margin: 0; } .gl h1 { font-size: 24px; } .gl-rules { display: none; } .gl-songs > em { display: none; } .gl-song { padding: 7px 10px; } .gl-song span { display: none; } }
         @media (max-height: 720px) and (max-width: 899px) { .gl-art { width: min(100%, 230px); margin: 2px 0 4px; } .gl-main { gap: 10px; } .gl-play { padding: 14px 0 16px; } }
         @media (min-width: 900px) {
           .gl-top { padding: 18px 28px 0; }

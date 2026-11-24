@@ -11,6 +11,8 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
 import GameLobby from "@/components/GameLobby";
+import { useFriendRoom, type FriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -43,7 +45,6 @@ import ArenaCrossPromo from "@/components/ArenaCrossPromo";
 import { recentAverage, recordRun } from "@/lib/skillStart";
 import SONG_FILE from "@/lib/rhythmSongs.json";
 import { readRhythmBest, saveRhythmBest, fillPace, nextGradeGap, type RhythmBest } from "@/lib/rhythmBest";
-import DuelEntry from "@/components/DuelEntry";
 import NextUp from "@/components/NextUp";
 
 // Only used for browser-safe READ endpoints (user level lookup). Write paths
@@ -138,7 +139,9 @@ const warmStartFor = (avgTopHeat: number | null) => (avgTopHeat == null ? 0 : Ma
 // replayed by the server. Everything else is a free practice variant that
 // changes the rules for fun and never leaves the device: nothing is signed,
 // nothing is sent, no gas is needed. That is what makes them safe to play with.
-type ModeId = "ranked" | "practice" | "speed" | "mirror" | "sudden";
+// "room" is a friend-room round: the room picks the song, nothing is signed or
+// sent to the chain, and the taps go to the room, which replays them.
+type ModeId = "ranked" | "practice" | "speed" | "mirror" | "sudden" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
   { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same song, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
@@ -938,10 +941,18 @@ export default function RhythmGamePage() {
   const [gasHelpOpen, setGasHelpOpen] = useState(false);
   const { status: gasStatus, approxSavesLeft } = useGasStatus();
 
+  // Friends in a room all play the same song at the same time.
+  const room = useFriendRoom("rhythm");
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const roomRound = useRef(0);
+  const roomRunRef = useRef(false);   // this run belongs to the room
+  const roomSentRef = useRef(false);  // its taps have been handed in
+
   // Reset game state
   const reset = useCallback(() => {
     runSongRef.current = songIdRef.current;
-    runModeRef.current = modeRef.current;
+    runModeRef.current = roomRunRef.current ? "room" : modeRef.current;
     busyRef.current = true;
     chartRef.current = buildChart(runSongRef.current);
     if (runModeRef.current === "mirror") chartRef.current = chartRef.current.map((n) => ({ ...n, lane: LANES.length - 1 - n.lane }));
@@ -994,7 +1005,9 @@ export default function RhythmGamePage() {
   }, [juice]);
 
   // Countdown → playing
-  const startGame = async () => {
+  const startGame = async (roomSong?: unknown) => {
+    // a room round passes its song; a tap on Play passes a click event
+    const inRoom = typeof roomSong === "string" && SONGS.some((x) => x.id === roomSong);
     // Re-entry guard: bail if a session ticket is already being
     // requested. Without it, two quick clicks during the ~500ms ticket
     // round trip insert two game_sessions rows for one actual play.
@@ -1002,7 +1015,7 @@ export default function RhythmGamePage() {
 
     // ═══ Guest free-play gate ════════════════════════════════════════════
     // Block a new run once a guest is out of free plays; offer sign-in.
-    if (isGuest && guestPlaysLeft("rhythm") <= 0) {
+    if (!inRoom && isGuest && guestPlaysLeft("rhythm") <= 0) {
       setGuestLimitOpen(true);
       return;
     }
@@ -1018,7 +1031,9 @@ export default function RhythmGamePage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     // Pin the mode now: every later check in this start reads the pinned value.
-    runModeRef.current = modeRef.current;
+    roomRunRef.current = inRoom; roomSentRef.current = false;
+    if (inRoom) { songIdRef.current = roomSong as string; setSongId(roomSong as string); }
+    runModeRef.current = inRoom ? "room" : modeRef.current;
     const ranked = runModeRef.current === "ranked";
     // Practice variants never touch the chain: no gas check, no session ticket.
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
@@ -1090,6 +1105,31 @@ export default function RhythmGamePage() {
     // until the next gameover surface.
     startingRef.current = false;
   };
+  // the host pressed start: play the room's song
+  useEffect(() => {
+    const v = room.view;
+    if (!v || v.status !== "playing" || v.round === roomRound.current || v.players[v.you]?.done) return;
+    const song = (v.deal as { songId?: string } | undefined)?.songId;
+    if (!song) return;
+    roomRound.current = v.round;
+    startingRef.current = false;
+    void startGame(song);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.view]);
+  // leaving the room, or a rematch being called, returns to the start screen
+  useEffect(() => {
+    if (!roomRunRef.current) return;
+    if (!room.inRoom || room.view?.status === "waiting") { roomRunRef.current = false; reset(); setPhase("idle"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.inRoom, room.view?.status]);
+  // friends see your score climb, about once a second
+  const roomTold = useRef(0);
+  useEffect(() => {
+    if (phase !== "playing" || runModeRef.current !== "room") return;
+    const now = Date.now();
+    if (now - roomTold.current < 1000) return;
+    roomTold.current = now; roomRef.current.progress(score);
+  }, [score, phase]);
   useEffect(() => {
     if (phase !== "countdown") return;
     if (countdown <= 0) {
@@ -1131,6 +1171,10 @@ export default function RhythmGamePage() {
   //                          Supabase, awards XP, unlocks achievements
   useEffect(() => {
     if (phase !== "finished") return;
+    if (runModeRef.current === "room") { // the room replays the taps and ranks everyone
+      if (!roomSentRef.current) { roomSentRef.current = true; void roomRef.current.finish({ tapLog: tapLogRef.current.slice() }); }
+      return;
+    }
     if (runModeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
     // A saved run submits normally — using a save counts on the weekly board.
@@ -2117,9 +2161,12 @@ export default function RhythmGamePage() {
         pointerEvents: "none", zIndex: 1,
       }} />
 
+      <FriendsPlay room={room} gameName="Rhythm Rush" sharePath="/games/rhythm" atStart={phase === "idle"} progressWord="score" part="overlays" />
+
       {/* ═══ IDLE ═══ */}
       {phase === "idle" && (
         <IdleView
+          room={room}
           songs={songIds.map(songById)}
           songId={songId}
           todayId={songIds.length > 1 ? todaysSongId(songIds) : null}
@@ -2309,7 +2356,8 @@ export default function RhythmGamePage() {
 }
 
 // ─── Idle: "GET READY" splash before game starts ──────────────────────────────
-function IdleView({ songs, songId, todayId, onPickSong, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+function IdleView({ room, songs, songId, todayId, onPickSong, mode, onPickMode, challenge, onStart, onExit, onLeaderboard, guest, guestLeft, needsSetup, onFinishSetup, gasBanner }: {
+  room: FriendRoom;
   songs: Song[]; songId: string; todayId: string | null; onPickSong: (id: string) => void;
   mode: ModeId; onPickMode: (m: ModeId) => void; challenge: Challenge | null;
   onStart: () => void;
@@ -2352,7 +2400,7 @@ function IdleView({ songs, songId, todayId, onPickSong, mode, onPickMode, challe
           </div>
         </div>
       ) : null}
-      friends={<DuelEntry game="rhythm" />}
+      friends={<FriendsPlay room={room} gameName="Rhythm Rush" sharePath="/games/rhythm" atStart part="button" />}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRoomService, isFail, AWAY_MS, ROUND_MAX_MS, MAX_PLAYERS, type GameRules, type RoomView, type Seat } from './service';
-import { ROOM_GAMES } from './games';
+import { ROOM_GAMES, rhythmSongFor } from './games';
 import * as ladder from '../ladder/rules';
 import { VALID } from '../ladder/data';
 
@@ -162,4 +162,41 @@ test('Stack room: the score is the drop log added up, never more than claimed, a
   assert.equal(ok<RoomView>(await svc.finish(host.code, guest.token, { dropLog: drops, score: 1 })).players[1]!.score, 1);
   const none = createRoomService(ROOM_GAMES); const h = ok<Seat>(none.create('stack', 'A')); ok<Seat>(none.join(h.code, 'B')); none.start(h.code, h.token);
   assert.ok(isFail(await none.finish(h.code, h.token, { score: 500 })));
+});
+
+test('Rhythm room: one song for everyone, and the server replays the taps; a claimed score is ignored', async () => {
+  const rhythm = require('../../../lib/rhythmScoring');
+  const clock = { t: 5_000_000 }; let n = 0;
+  const svc = createRoomService(ROOM_GAMES, { now: () => clock.t, randomHex: (b) => (++n * 7919).toString(16).padStart(b * 2, '0') });
+  const host = ok<Seat>(svc.create('rhythm', 'Ada')); const guest = ok<Seat>(svc.join(host.code, 'Bo')); const third = ok<Seat>(svc.join(host.code, 'Cy'));
+  const v = ok<RoomView>(svc.start(host.code, host.token));
+  const songId = (v.deal as { songId: string }).songId;
+  assert.ok(rhythm.isKnownSong(songId));
+  assert.equal((ok<RoomView>(svc.get(host.code, guest.token)).deal as { songId: string }).songId, songId);
+  // a person's timing: 8 to 78 ms off, unevenly; holds let go on time
+  const chart: { lane: number; time: number; hold?: number }[] = rhythm.buildMainChart(songId);
+  const taps: { lane: number; time: number; up?: 1 }[] = [];
+  chart.forEach((note, i) => { const t = note.time + 0.008 + ((i * 37 + 11) % 71) / 1000; taps.push({ lane: note.lane, time: t }); if (note.hold) taps.push({ lane: note.lane, time: t + note.hold, up: 1 }); });
+  taps.sort((a, b) => a.time - b.time);
+  const elapsed = Math.ceil((rhythm.TRACK_DURATION + 6) * 1000);
+  clock.t += elapsed;
+  const want = rhythm.computeScore(taps, elapsed, songId).score;
+  assert.ok(want > 500, `an honest full run scores well (${want})`);
+  const honest = ok<RoomView>(await svc.finish(host.code, host.token, { tapLog: taps }));
+  assert.equal(honest.players[0]!.score, Math.round(want));
+  const half = taps.slice(0, Math.floor(taps.length / 2));
+  const greedy = ok<RoomView>(await svc.finish(host.code, guest.token, { tapLog: half, score: 9_999_999 }));
+  assert.equal(greedy.players[1]!.score, Math.round(rhythm.computeScore(half, elapsed, songId).score));
+  assert.ok(greedy.players[1]!.score! < honest.players[0]!.score!);
+  const sat = ok<RoomView>(await svc.finish(host.code, third.token, { tapLog: [] }));
+  assert.equal(sat.players[2]!.score, 0);
+  assert.equal(sat.status, 'over');
+  assert.equal(ROOM_GAMES.rhythm!.verified, true);
+  assert.ok(svc.games().includes('rhythm'));
+});
+
+test('Rhythm room: the seed picks the song, and different seeds reach different songs', () => {
+  const picks = new Set(Array.from({ length: 40 }, (_, i) => rhythmSongFor((i * 2654435761 >>> 0).toString(16).padStart(8, '0') + '0'.repeat(24))));
+  assert.ok(picks.size >= 3);
+  assert.equal(rhythmSongFor('zz'), rhythmSongFor('')); // a seed that is not hex still lands on a real song
 });
