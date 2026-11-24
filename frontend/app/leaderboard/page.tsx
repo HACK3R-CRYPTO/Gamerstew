@@ -8,7 +8,7 @@
 //                 · Community Challenge (api/weekly-challenge)
 //                 · MARKOV Climb (api/markov-climb)
 //
-// PAST tab    → ── COMPLETED EVENTS ── (newest first, all three types
+// PAST tab    → COMPLETED EVENTS (newest first, all three types
 //                                       interleaved by sealed-at date):
 //                 · Past Seasons     (api/season/past) — Team Wars + Solo Ladder
 //                 · Past Cups        (api/competition/past) — 3-Week competitions
@@ -25,6 +25,7 @@ import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import EventTeaser from "@/components/EventTeaser";
 import TugTeaser from "@/components/TugTeaser";
+import SkillLeaderboardTabs from "@/components/SkillLeaderboardTabs";
 import Link from "next/link";
 import { fetchAllTimeLeaderboard, fetchPlayerAllTimeCombinedStats, type AllTimeEntry } from "@/lib/subgraph";
 import { AgentBadge } from "@/components/AgentBadge";
@@ -37,7 +38,7 @@ const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   surface: "#ffffff",
   hairline: "rgba(76,29,149,0.14)",
   accent: "#6d28d9",
@@ -116,7 +117,17 @@ type MarkovClimbData = {
   leaderboard?: Array<{ rank: number; wallet: string; username: string; matches: number; qualified?: boolean }>;
 };
 
-type Tab = "live" | "past" | "all-time";
+type Tab = "week" | "live" | "past" | "all-time";
+// the games with a weekly board, in the order the home page lists them
+const BOARD_GAMES = [
+  { kind: "stack", name: "Stack Tower" },
+  { kind: "ladder", name: "Word Ladder" },
+  { kind: "simon", name: "Simon Memory" },
+  { kind: "rhythm", name: "Rhythm Rush" },
+  { kind: "strike", name: "Street Strike" },
+  { kind: "nepa3d", name: "UP NEPA 3D" },
+] as const;
+type BoardGame = (typeof BOARD_GAMES)[number]["kind"];
 
 // ─── helpers ────────────────────────────────────────────────────────────
 function fmtCountdown(endsAt: number): string {
@@ -201,8 +212,8 @@ function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => v
         background: "rgba(255,255,255,0.96)",
         border: ev.myMedal ? `1.5px solid ${ev.myMedal.color}88` : "1px solid rgba(167,139,250,0.28)",
         boxShadow: ev.myMedal
-          ? `0 0 12px ${ev.myMedal.color}33, 0 6px 14px rgba(0,0,0,0.5)`
-          : "0 6px 14px rgba(0,0,0,0.5)",
+          ? `0 0 12px ${ev.myMedal.color}33, 0 6px 14px rgba(76,29,149,0.22)`
+          : "0 6px 14px rgba(76,29,149,0.22)",
         padding: "12px 14px",
         cursor: "pointer", userSelect: "none",
         transition: "transform 0.15s, border-color 0.15s",
@@ -215,7 +226,7 @@ function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => v
         {ev.myMedal && (
           <div style={{ padding: "2px 8px", borderRadius: 999, background: `${ev.myMedal.color}1a`, border: `1px solid ${ev.myMedal.color}66` }}>
             <span style={{ fontSize: 10 }}>{ev.myMedal.medal}</span>
-            <span style={{ color: ev.myMedal.color, fontSize: 9, fontWeight: 900, marginLeft: 4 }}>YOU</span>
+            <span style={{ color: ev.myMedal.color, fontSize: 11, fontWeight: 900, marginLeft: 4 }}>YOU</span>
           </div>
         )}
       </div>
@@ -228,13 +239,13 @@ function PastEventCard({ ev, onClick }: { ev: UnifiedPastEvent; onClick: () => v
         }}>
           <span style={{ fontSize: 13 }}>{row.icon ?? (i === 0 ? "🏆" : i === 1 ? "🥇" : "🎁")}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: row.tint, fontSize: 8, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.75 }}>{row.label}</div>
-            <div style={{ color: "#fff", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
+            <div style={{ color: row.tint, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.75 }}>{row.label}</div>
+            <div style={{ color: "#22104f", fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
           </div>
           <div style={{ color: row.tint, fontSize: 12, fontWeight: 900 }}>{row.value}</div>
         </div>
       ))}
-      <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700 }}>{ev.dateRange}</div>
+      <div style={{ color: "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700 }}>{ev.dateRange}</div>
     </div>
   );
 }
@@ -273,7 +284,7 @@ function LiveEventCard({ icon, color, tag, title, sub, progress, rightAction, on
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 5, height: 5, borderRadius: 999, background: "#f43f5e", boxShadow: "0 0 6px #f43f5e" }} />
-            <span style={{ fontFamily: T.body, fontSize: 8.5, color, fontWeight: 800, letterSpacing: "0.12em" }}>{tag}</span>
+            <span style={{ fontFamily: T.body, fontSize: 11.5, color, fontWeight: 800, letterSpacing: "0.12em" }}>{tag}</span>
           </div>
           <div style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, marginTop: 2 }}>{title}</div>
         </div>
@@ -281,7 +292,7 @@ function LiveEventCard({ icon, color, tag, title, sub, progress, rightAction, on
       </div>
       <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkDim, lineHeight: 1.4 }}>{sub}</div>
       {progress && progress.total > 0 && (
-        <div style={{ height: 5, borderRadius: 999, background: "rgba(0,0,0,0.45)", overflow: "hidden" }}>
+        <div style={{ height: 5, borderRadius: 999, background: "rgba(76,29,149,0.14)", overflow: "hidden" }}>
           <div style={{ width: `${Math.min(100, (progress.value / progress.total) * 100)}%`, height: "100%", background: `linear-gradient(90deg, ${color}99, ${color})`, boxShadow: `0 0 8px ${color}` }} />
         </div>
       )}
@@ -320,9 +331,9 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "rgba(244,63,94,0.16)", border: "1px solid rgba(244,63,94,0.5)" }}>
               <span style={{ width: 6, height: 6, borderRadius: 999, background: "#f43f5e", boxShadow: "0 0 8px #f43f5e" }} />
-              <span style={{ fontFamily: T.body, fontSize: 9, color: "#be123c", fontWeight: 800, letterSpacing: "0.1em" }}>LIVE</span>
+              <span style={{ fontFamily: T.body, fontSize: 11, color: "#be123c", fontWeight: 800, letterSpacing: "0.1em" }}>LIVE</span>
             </span>
-            <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, fontFamily: T.body, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em", background: "#fbbf241f", color: "#b45309", border: "1px solid #fbbf2455" }}>
+            <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, fontFamily: T.body, fontWeight: 700, fontSize: 11.5, letterSpacing: "0.04em", background: "#fbbf241f", color: "#92400e", border: "1px solid #fbbf2455" }}>
               3-WEEK CUP{isFinal ? " · FINAL WEEK" : ` · WEEK ${comp.currentWeek}`}
             </span>
           </div>
@@ -336,22 +347,22 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
         <div style={{ display: "flex", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, lineHeight: 1 }}>{myRank > 0 ? `#${myRank}` : "—"}</span>
-            <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your rank</span>
+            <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your rank</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ fontFamily: T.display, fontSize: 28, color: T.ink, lineHeight: 1 }}>{myPoints.toLocaleString()}</span>
-            <span style={{ fontFamily: T.body, fontSize: 9.5, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your pts</span>
+            <span style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700 }}>Your pts</span>
           </div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
         {[
-          { r: "1st", p: `$${comp.prizes.first}`, c: "#b45309" },
-          { r: "2nd", p: `$${comp.prizes.second}`, c: "#475569" },
+          { r: "1st", p: `$${comp.prizes.first}`, c: "#92400e" },
+          { r: "2nd", p: `$${comp.prizes.second}`, c: "#334155" },
           { r: "3rd", p: `$${comp.prizes.third}`,  c: "#cd7f32" },
         ].map(x => (
           <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "8px 6px", borderRadius: 12, background: "rgba(0,0,0,0.25)", border: `1px solid ${x.c}44` }}>
-            <div style={{ fontFamily: T.body, fontSize: 9, color: x.c, fontWeight: 800, letterSpacing: "0.1em" }}>{x.r}</div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: x.c, fontWeight: 800, letterSpacing: "0.1em" }}>{x.r}</div>
             <div style={{ fontFamily: T.display, fontSize: 17, color: T.ink, marginTop: 2 }}>{x.p}</div>
           </div>
         ))}
@@ -363,11 +374,11 @@ function CupFeatureCard({ comp, isDesktop, address, onClick }: { comp: Competiti
 // ─── confetti + StagePodium + PlayerRow for ALL-TIME tab ────────────────
 const CONFETTI = [
   { left: "8%",  top: "25%", color: "#be185d", size: 10, shape: "star",     dur: 3.5, delay: 0.0 },
-  { left: "15%", top: "60%", color: "#b45309", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
+  { left: "15%", top: "60%", color: "#92400e", size: 12, shape: "triangle", dur: 4.2, delay: 0.5 },
   { left: "22%", top: "20%", color: "#0e7490", size: 8,  shape: "dot",      dur: 3.0, delay: 1.0 },
-  { left: "30%", top: "45%", color: "#c2410c", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
+  { left: "30%", top: "45%", color: "#9a3412", size: 11, shape: "note",     dur: 4.8, delay: 1.5 },
   { left: "38%", top: "15%", color: "#a21caf", size: 9,  shape: "star",     dur: 3.2, delay: 0.3 },
-  { left: "48%", top: "35%", color: "#b45309", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
+  { left: "48%", top: "35%", color: "#92400e", size: 13, shape: "sparkle",  dur: 4.0, delay: 0.8 },
   { left: "58%", top: "18%", color: "#1d4ed8", size: 10, shape: "triangle", dur: 3.6, delay: 1.3 },
   { left: "68%", top: "50%", color: "#be185d", size: 11, shape: "star",     dur: 4.5, delay: 0.2 },
   { left: "78%", top: "28%", color: "#047857", size: 9,  shape: "dot",      dur: 3.3, delay: 1.1 },
@@ -383,47 +394,51 @@ function ConfettiParticle({ p }: { p: typeof CONFETTI[number] }) {
 }
 function StagePodium({ podium, agentSet }: { podium: (AllTimeEntry | undefined)[]; agentSet: Set<string> }) {
   const placements = [
-    { char: "/characters/char1.png", entry: podium[0], color: "#b45309", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
-    { char: "/characters/char2.png", entry: podium[1], color: "#475569", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
-    { char: "/characters/char3.png", entry: podium[2], color: "#f97316", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
+    { char: "/characters/char1.png", entry: podium[0], color: "#92400e", rank: 1, widthPct: 18, bottomPct: 38, leftPct: 50, z: 3 },
+    { char: "/characters/char2.png", entry: podium[1], color: "#334155", rank: 2, widthPct: 16, bottomPct: 33, leftPct: 32, z: 2 },
+    { char: "/characters/char3.png", entry: podium[2], color: "#9a3412", rank: 3, widthPct: 16, bottomPct: 32, leftPct: 67, z: 2 },
   ];
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: 620, aspectRatio: "3 / 2", margin: "0 auto" }}>
-      <img src="/characters/podium.png" alt="podium" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.6))", zIndex: 1 }} />
+      <img src="/characters/podium.png" alt="podium" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", filter: "drop-shadow(0 20px 40px rgba(76,29,149,0.22))", zIndex: 1 }} />
       {CONFETTI.map((p, i) => <ConfettiParticle key={i} p={p} />)}
       {placements.map(pl => (
         <div key={pl.rank} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${pl.bottomPct}%`, transform: "translateX(-50%)", width: `${pl.widthPct}%`, zIndex: pl.z, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <img src={pl.char} alt={`rank ${pl.rank}`} style={{ width: "100%", height: "auto", objectFit: "contain", filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.5)) drop-shadow(0 0 14px ${pl.color}55)` }} />
+          <img src={pl.char} alt={`rank ${pl.rank}`} style={{ width: "100%", height: "auto", objectFit: "contain", filter: `drop-shadow(0 4px 8px rgba(76,29,149,0.22)) drop-shadow(0 0 14px ${pl.color}55)` }} />
         </div>
       ))}
       {placements.map(pl => {
         const charHeightPct = pl.widthPct * 2.25;
         const labelBottom = pl.bottomPct + charHeightPct + 1;
         return (
-          <div key={`label-${pl.rank}`} style={{ position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom}%`, transform: "translateX(-50%)", textAlign: "center", zIndex: 4, pointerEvents: "none", whiteSpace: "nowrap" }}>
-            <div style={{ color: "white", fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textShadow: `0 0 10px ${pl.color}dd, 0 2px 4px rgba(0,0,0,0.8)` }}>
-              {pl.entry ? fmtName(pl.entry.player, pl.entry.username) : "—"}
-              {pl.entry && agentSet.has(pl.entry.player.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ color: "#0e7490", marginLeft: 4, textShadow: "0 0 8px #0e7490" }}>🤖</span>}
+          pl.entry ? (
+          <div key={`label-${pl.rank}`} style={{
+            position: "absolute", left: `${pl.leftPct}%`, bottom: `${labelBottom + (pl.rank === 1 ? 6 : 0)}%`,
+            transform: "translateX(-50%)", textAlign: "center", zIndex: pl.rank === 1 ? 5 : 4, pointerEvents: "none", whiteSpace: "nowrap",
+            padding: "4px 10px 5px", borderRadius: 12, background: "#fff", boxShadow: "0 0 0 1px rgba(76,29,149,0.14), 0 8px 14px -8px rgba(76,29,149,0.6)",
+            maxWidth: "31%", overflow: "hidden",
+          }}>
+            <div style={{ color: "#22104f", fontFamily: T.body, fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {fmtName(pl.entry.player, pl.entry.username)}{agentSet.has(pl.entry.player.toLowerCase()) && <span title="Autonomous agent (GoodAgents)" style={{ marginLeft: 4 }}>🤖</span>}
             </div>
-            <div style={{ color: pl.color, fontSize: 13, fontWeight: 900, textShadow: `0 0 14px ${pl.color}, 0 2px 4px rgba(0,0,0,0.8)`, marginTop: 2 }}>{pl.entry ? pl.entry.score.toLocaleString() : 0}</div>
+            <div style={{ color: pl.color, fontFamily: T.body, fontSize: 13, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{pl.entry.score.toLocaleString()}</div>
           </div>
+          ) : null
         );
       })}
     </div>
   );
 }
 function PlayerRow({ entry, rank, isMe, isAgent }: { entry: AllTimeEntry; rank: number; isMe: boolean; isAgent?: boolean }) {
-  const color = T.accent;
   return (
-    <div style={{ borderRadius: 999, padding: 2.5, background: `linear-gradient(135deg, ${color} 0%, ${color}77 100%)`, boxShadow: `0 0 14px ${color}66, 0 0 28px ${color}33, 0 8px 18px rgba(0,0,0,0.6)` }}>
-      <div style={{ borderRadius: 999, background: isMe ? `linear-gradient(90deg, ${color}26 0%, rgba(255,255,255,0.96) 100%)` : "linear-gradient(90deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 100%)", padding: "8px 14px 8px 10px", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 999, background: `${color}1f`, border: `1px solid ${color}66`, fontFamily: T.display, fontSize: 13, color: T.ink, letterSpacing: "0.02em" }}>#{rank}</span>
-        <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontFamily: T.body, fontSize: 13, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? `You · ${fmtName(entry.player, entry.username)}` : fmtName(entry.player, entry.username)}</span>
-          {isAgent && <AgentBadge />}
-        </span>
-        <span style={{ fontFamily: T.display, fontSize: 15, color: T.ink, letterSpacing: "0.02em" }}>{entry.score.toLocaleString()}</span>
-      </div>
+    <div style={{ display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 10, padding: "10px 14px 10px 10px", borderRadius: 16, background: isMe ? "#f3ecff" : "#fff", boxShadow: isMe ? `0 0 0 1.5px ${T.accent}` : "0 0 0 1px rgba(76,29,149,0.12)" }}>
+      <span style={{ width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", background: "#ede9fe", color: "#4c1d95", fontFamily: T.body, fontSize: 12, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>{rank}</span>
+      <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtName(entry.player, entry.username)}</span>
+        {isMe && <span style={{ padding: "2px 7px", borderRadius: 999, background: T.accent, color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.06em" }}>YOU</span>}
+        {isAgent && <AgentBadge />}
+      </span>
+      <span style={{ fontFamily: T.body, fontSize: 15, fontWeight: 900, color: T.ink, fontVariantNumeric: "tabular-nums" }}>{entry.score.toLocaleString()}</span>
     </div>
   );
 }
@@ -432,7 +447,8 @@ function PlayerRow({ entry, rank, isMe, isAgent }: { entry: AllTimeEntry; rank: 
 export default function EventsPage() {
   const { address } = useAccount();
   const [isDesktop, setIsDesktop] = useState(false);
-  const [tab, setTab] = useState<Tab>("live");
+  const [tab, setTab] = useState<Tab>("week");
+  const [boardGame, setBoardGame] = useState<BoardGame>("stack");
 
   const [meta, setMeta] = useState<SeasonsMeta | null>(null);
   const [comp, setComp] = useState<CompetitionData | null>(null);
@@ -563,9 +579,9 @@ export default function EventsPage() {
       const teamWinner = s.standings.teams[0];
       const soloWinner = s.standings.soloTop10[0];
       const closing = s.prize_winners?.closing_surprise;
-      const teamColor = teamWinner?.team === "alpha" ? "#c2410c" : teamWinner?.team === "nova" ? "#0e7490" : teamWinner?.team === "pulse" ? "#6d28d9" : "#b45309";
+      const teamColor = teamWinner?.team === "alpha" ? "#9a3412" : teamWinner?.team === "nova" ? "#0e7490" : teamWinner?.team === "pulse" ? "#6d28d9" : "#92400e";
       const myFinish = address ? s.standings.soloTop10.findIndex(p => p.wallet?.toLowerCase() === address.toLowerCase()) + 1 : 0;
-      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#92400e", medal: "🥇" } : myFinish === 2 ? { color: "#334155", medal: "🥈" } : myFinish === 3 ? { color: "#9a3412", medal: "🥉" } : undefined;
       const start = safeDate(s.starts_at);
       const end = safeDate(s.ends_at);
       out.push({
@@ -575,8 +591,8 @@ export default function EventsPage() {
         title: `SEASON ${s.season_id} · TEAM WARS`,
         dateRange: fmtDateRange(start, end),
         primary: teamWinner ? { label: "TEAM WINNER", name: teamWinner.team.toUpperCase(), value: String(teamWinner.counted ?? 0), tint: teamColor, icon: "🏆" } : null,
-        secondary: soloWinner ? { label: "SOLO #1", name: soloWinner.username || (soloWinner.wallet ? fmtName(soloWinner.wallet) : "anon"), value: String(soloWinner.points), tint: "#b45309", icon: "🥇" } : undefined,
-        tertiary: closing ? { label: "CLOSING SURPRISE", name: closing.username || fmtName(closing.wallet), value: `$${closing.amount_usdc ?? 10}`, tint: "#15803d", icon: "🎁" } : undefined,
+        secondary: soloWinner ? { label: "SOLO #1", name: soloWinner.username || (soloWinner.wallet ? fmtName(soloWinner.wallet) : "anon"), value: String(soloWinner.points), tint: "#92400e", icon: "🥇" } : undefined,
+        tertiary: closing ? { label: "CLOSING SURPRISE", name: closing.username || fmtName(closing.wallet), value: `$${closing.amount_usdc ?? 10}`, tint: "#166534", icon: "🎁" } : undefined,
         myMedal,
         accent: "#6d28d9",
         raw: { type: "season", data: s },
@@ -585,7 +601,7 @@ export default function EventsPage() {
     (pastCups ?? []).forEach(c => {
       const winner = c.winners?.[0];
       const myFinish = address ? (c.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#92400e", medal: "🥇" } : myFinish === 2 ? { color: "#334155", medal: "🥈" } : myFinish === 3 ? { color: "#9a3412", medal: "🥉" } : undefined;
       const start = safeDate(c.starts_at);
       const end = safeDate(c.ends_at);
       out.push({
@@ -594,16 +610,16 @@ export default function EventsPage() {
         sortTs: end ? end.getTime() : 0,
         title: c.name?.toUpperCase() || "3-WEEK CUP",
         dateRange: fmtDateRange(start, end),
-        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.total} pts`, tint: "#b45309" } : null,
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.total} pts`, tint: "#92400e" } : null,
         myMedal,
-        accent: "#b45309",
+        accent: "#92400e",
         raw: { type: "cup", data: c },
       });
     });
     (pastChallenges ?? []).forEach(ch => {
       const winner = ch.winners?.[0];
       const myFinish = address ? (ch.winners.find(w => w.wallet.toLowerCase() === address.toLowerCase())?.rank ?? 0) : 0;
-      const myMedal = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedal = myFinish === 1 ? { color: "#92400e", medal: "🥇" } : myFinish === 2 ? { color: "#334155", medal: "🥈" } : myFinish === 3 ? { color: "#9a3412", medal: "🥉" } : undefined;
       const start = safeDate(ch.starts_at);
       const end = safeDate(ch.ends_at);
       out.push({
@@ -612,9 +628,9 @@ export default function EventsPage() {
         sortTs: end ? end.getTime() : 0,
         title: ch.name?.toUpperCase() || "WEEKLY CHALLENGE",
         dateRange: fmtDateRange(start, end),
-        primary: winner ? { label: "TOP GRINDER", name: fmtName(winner.wallet, winner.username), value: `${winner.plays} plays`, tint: "#15803d" } : null,
+        primary: winner ? { label: "TOP GRINDER", name: fmtName(winner.wallet, winner.username), value: `${winner.plays} plays`, tint: "#166534" } : null,
         myMedal,
-        accent: "#15803d",
+        accent: "#166534",
         raw: { type: "challenge", data: ch },
       });
     });
@@ -633,16 +649,16 @@ export default function EventsPage() {
       const endsAt = safeDate(climb.event.endsAt);
       const startsAt = safeDate(climb.event.startsAt);
       const myFinish = address ? (lb.findIndex(e => e.wallet.toLowerCase() === address.toLowerCase()) + 1) : 0;
-      const myMedalClimb = myFinish === 1 ? { color: "#b45309", medal: "🥇" } : myFinish === 2 ? { color: "#475569", medal: "🥈" } : myFinish === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedalClimb = myFinish === 1 ? { color: "#92400e", medal: "🥇" } : myFinish === 2 ? { color: "#334155", medal: "🥈" } : myFinish === 3 ? { color: "#9a3412", medal: "🥉" } : undefined;
       out.push({
         key: `climb-${climb.event.id ?? "1"}`,
         kind: "climb",
         sortTs: endsAt ? endsAt.getTime() : 0,
         title: `${(climb.event.name || "MARKOV CLIMB").toUpperCase()} · SEALED`,
         dateRange: fmtDateRange(startsAt, endsAt),
-        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.matches} matches`, tint: "#b45309", icon: "🥇" } : null,
-        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.matches} matches`, tint: "#475569", icon: "🥈" } : undefined,
-        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.matches} matches`, tint: "#f97316", icon: "🥉" } : undefined,
+        primary: winner ? { label: "WINNER", name: fmtName(winner.wallet, winner.username), value: `${winner.matches} matches`, tint: "#92400e", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.matches} matches`, tint: "#334155", icon: "🥈" } : undefined,
+        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.matches} matches`, tint: "#9a3412", icon: "🥉" } : undefined,
         myMedal: myMedalClimb,
         accent: "#6d28d9",
         raw: { type: "climb", data: climb },
@@ -659,18 +675,18 @@ export default function EventsPage() {
       const endsAt = safeDate(cup.endsAt);
       const startsAt = safeDate(cup.startsAt);
       const myPr = address ? (cup.human.find(h => h.wallet.toLowerCase() === address.toLowerCase())?.prizeRank ?? 0) : 0;
-      const myMedalCup = myPr === 1 ? { color: "#b45309", medal: "🥇" } : myPr === 2 ? { color: "#475569", medal: "🥈" } : myPr === 3 ? { color: "#f97316", medal: "🥉" } : undefined;
+      const myMedalCup = myPr === 1 ? { color: "#92400e", medal: "🥇" } : myPr === 2 ? { color: "#334155", medal: "🥈" } : myPr === 3 ? { color: "#9a3412", medal: "🥉" } : undefined;
       out.push({
         key: "arena-cup-sealed",
         kind: "cup",
         sortTs: endsAt ? endsAt.getTime() : 0,
         title: "ARENA CUP · SEALED",
         dateRange: fmtDateRange(startsAt, endsAt),
-        primary: champ ? { label: "CHAMPION", name: fmtName(champ.wallet, champ.username), value: `${champ.cupPoints} pts`, tint: "#b45309", icon: "🥇" } : null,
-        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.cupPoints} pts`, tint: "#475569", icon: "🥈" } : undefined,
-        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.cupPoints} pts`, tint: "#f97316", icon: "🥉" } : undefined,
+        primary: champ ? { label: "CHAMPION", name: fmtName(champ.wallet, champ.username), value: `${champ.cupPoints} pts`, tint: "#92400e", icon: "🥇" } : null,
+        secondary: second ? { label: "2ND", name: fmtName(second.wallet, second.username), value: `${second.cupPoints} pts`, tint: "#334155", icon: "🥈" } : undefined,
+        tertiary: third ? { label: "3RD", name: fmtName(third.wallet, third.username), value: `${third.cupPoints} pts`, tint: "#9a3412", icon: "🥉" } : undefined,
         myMedal: myMedalCup,
-        accent: "#b45309",
+        accent: "#92400e",
         href: "/leaderboard/cup",
       });
     }
@@ -693,8 +709,8 @@ export default function EventsPage() {
         title: "TUG OF WAR · SEALED",
         dateRange: fmtDateRange(startsAt, endsAt),
         primary: { label: "WINNING SIDE", name: tie ? "Tie" : winnerBlue ? "Blue team" : "Red team", value: `${winScore.toLocaleString()} pts`, tint: winnerBlue ? "#1d4ed8" : "#b91c1c", icon: "🏆" },
-        secondary: r1 ? { label: "TOP RECRUITER", name: `@${r1.name}`, value: `${r1.recruits} recruits`, tint: "#b45309", icon: "🥇" } : undefined,
-        tertiary: r2 ? { label: "2ND RECRUITER", name: `@${r2.name}`, value: `${r2.recruits} recruits`, tint: "#475569", icon: "🥈" } : undefined,
+        secondary: r1 ? { label: "TOP RECRUITER", name: `@${r1.name}`, value: `${r1.recruits} recruits`, tint: "#92400e", icon: "🥇" } : undefined,
+        tertiary: r2 ? { label: "2ND RECRUITER", name: `@${r2.name}`, value: `${r2.recruits} recruits`, tint: "#334155", icon: "🥈" } : undefined,
         accent: "#a21caf",
         href: "/tug",
       });
@@ -722,8 +738,9 @@ export default function EventsPage() {
       <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         <div>
-          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>EVENTS</div>
-          <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Live &amp; past events</h2>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>RANKS</div>
+          <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Rankings</h2>
+          <p style={{ fontFamily: T.body, fontSize: 14, color: T.inkDim, margin: "6px 0 0", lineHeight: 1.45 }}>See who is on top this week, game by game.</p>
         </div>
 
         {/* Private Sprint · only rendered when the backend confirms this wallet
@@ -733,7 +750,7 @@ export default function EventsPage() {
             <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, padding: "16px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
               background: "linear-gradient(115deg, rgba(16,109,87,0.55) 0%, rgba(255,255,255,0.96) 60%, rgba(20,8,52,0.9) 100%)", border: "1px solid rgba(52,211,153,0.4)" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: T.body, fontSize: 9.5, fontWeight: 900, letterSpacing: "0.16em", color: "#047857", textTransform: "uppercase" }}>Private Sprint · Invite only</div>
+                <div style={{ fontFamily: T.body, fontSize: 11, fontWeight: 900, letterSpacing: "0.16em", color: "#047857", textTransform: "uppercase" }}>Private Sprint · Invite only</div>
                 <div style={{ fontFamily: T.display, fontSize: isDesktop ? 22 : 19, color: T.ink, marginTop: 4 }}>You're in — open the room</div>
                 <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, marginTop: 3 }}>$50 in G$ · top 10 · 5 days. See the live board and your rank.</div>
               </div>
@@ -743,24 +760,43 @@ export default function EventsPage() {
         )}
 
         {/* LIVE / PAST / ALL-TIME tab switcher */}
-        <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px solid ${T.hairline}`, alignSelf: "flex-start" }}>
+        <div style={{ display: "inline-flex", gap: 2, padding: 4, borderRadius: 999, background: "#fff", border: `1px solid ${T.hairline}`, alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>
           {([
-            { id: "live" as Tab, label: "LIVE" },
-            { id: "past" as Tab, label: "PAST" },
-            { id: "all-time" as Tab, label: "ALL-TIME" },
+            { id: "week" as Tab, label: "This week" },
+            { id: "live" as Tab, label: "Events" },
+            { id: "past" as Tab, label: "Past" },
+            { id: "all-time" as Tab, label: "All-time" },
           ]).map(opt => {
             const active = tab === opt.id;
             return (
               <button key={opt.id} onClick={() => setTab(opt.id)} style={{
-                padding: "8px 18px", borderRadius: 10, cursor: "pointer",
+                padding: "9px 15px", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap",
                 background: active ? T.accent : "transparent", border: "none",
-                color: active ? "#fff" : T.inkSoft,
-                fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em",
-                boxShadow: active ? `0 6px 14px -4px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.3)` : "none",
+                color: active ? "#fff" : T.inkDim,
+                fontFamily: T.body, fontSize: 13.5, fontWeight: 800,
               }}>{opt.label}</button>
             );
           })}
         </div>
+
+        {/* THIS WEEK · pick a game, see its board */}
+        {tab === "week" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 760 }}>
+            <div role="radiogroup" aria-label="Game" style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", padding: 2, margin: "0 -2px", flexWrap: isDesktop ? "wrap" : "nowrap" }}>
+              {BOARD_GAMES.map((g) => {
+                const on = g.kind === boardGame;
+                return (
+                  <button key={g.kind} role="radio" aria-checked={on} onClick={() => setBoardGame(g.kind)} style={{
+                    flex: "none", padding: "9px 14px", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap",
+                    background: on ? T.ink : "rgba(255,255,255,0.75)", color: on ? "#fff" : T.inkDim,
+                    border: `1px solid ${on ? T.ink : T.hairline}`, fontFamily: T.body, fontSize: 13.5, fontWeight: 800,
+                  }}>{g.name}</button>
+                );
+              })}
+            </div>
+            <SkillLeaderboardTabs key={boardGame} gameKind={boardGame} accent={T.accent} />
+          </div>
+        )}
 
         {/* LIVE */}
         {tab === "live" && (
@@ -787,14 +823,14 @@ export default function EventsPage() {
                 color={T.accent}
                 tag={`SEASON ${meta.currentSeason} · ACTIVE`}
                 title={`Season ends in ${fmtCountdown(meta.currentEndsAt)}`}
-                sub="Open Rhythm or Simon to see the season's per-game standings"
+                sub="Each game has its own board. Open This week to see them."
               />
             )}
 
             {community && community.target > 0 && !community.hit && (
               <LiveEventCard
                 icon="🌍"
-                color="#15803d"
+                color="#166534"
                 tag={`COMMUNITY · ${community.daysLeft}D LEFT`}
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
                 sub={`Earn ${(community.perGameG ?? 0).toLocaleString()} G$ every game, up to ${(community.capPerPlayer * (community.perGameG ?? 0)).toLocaleString()} G$${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You've earned ${community.myProjectedG.toLocaleString()} G$` : ` · Play to earn`}`}
@@ -805,7 +841,7 @@ export default function EventsPage() {
             {community && community.hit && (
               <LiveEventCard
                 icon="🎉"
-                color="#15803d"
+                color="#166534"
                 tag="COMMUNITY · MILESTONE HIT"
                 title={`${community.progress.toLocaleString()} / ${community.target.toLocaleString()} games played`}
                 sub={`Pool unlocked · ${(community.perGameG ?? 0).toLocaleString()} G$ per game${community.myProjectedG != null && community.myProjectedG > 0 ? ` · You earned ${community.myProjectedG.toLocaleString()} G$` : ` · ${community.playersIn} players in`}`}
@@ -817,7 +853,7 @@ export default function EventsPage() {
             {climb && climb.event && climb.event.phase === "live" && (
               <LiveEventCard
                 icon="🤖"
-                color="#15803d"
+                color="#166534"
                 tag="MARKOV CLIMB"
                 title={`${fmtCountdown(new Date(climb.event.endsAt).getTime() / 1000)} · ${climb.event.minMatchesToQualify ?? 30}+ matches qualifies`}
                 sub={climb.event.prizes?.first ? `Top 3 take $${climb.event.prizes.first.usdc ?? 0} USDC + ${(climb.event.prizes.first.g_dollar ?? 0).toLocaleString()} G$` : "Top 3 take the climb pool"}
@@ -835,10 +871,10 @@ export default function EventsPage() {
         {tab === "past" && (
           <>
             <div style={{
-              fontSize: 10, fontWeight: 900, letterSpacing: "0.2em",
-              color: "rgba(254,215,170,0.85)", textAlign: "center",
-              textShadow: "0 0 14px rgba(251,191,36,0.6)", marginBottom: 4,
-            }}>── COMPLETED EVENTS ──</div>
+              fontSize: 11.5, fontWeight: 900, letterSpacing: "0.2em",
+              color: "rgba(34,16,79,0.66)",
+marginBottom: 4,
+            }}>COMPLETED EVENTS</div>
             {pastLoading && (
               <div style={{ fontFamily: T.body, fontSize: 12, color: T.inkSoft, padding: "12px 4px", textAlign: "center" }}>Loading past events…</div>
             )}
@@ -861,10 +897,10 @@ export default function EventsPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: `linear-gradient(90deg, ${T.accent}1f, rgba(0,0,0,0.25))`, border: `1px solid ${T.accent}55` }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>You&apos;re #{myAllRank.rank}</div>
-                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Combined best: {myAllRank.peak.toLocaleString()}</div>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, marginTop: 2 }}>Combined best: {myAllRank.peak.toLocaleString()}</div>
                 </div>
                 {myAllPage >= 0 && myAllPage !== allPage && (
-                  <button onClick={() => setAllPage(myAllPage)} style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, border: "none", color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", cursor: "pointer", boxShadow: `0 0 12px ${T.accent}55` }}>JUMP TO MY ROW</button>
+                  <button onClick={() => setAllPage(myAllPage)} style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, border: "none", color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.1em", cursor: "pointer", boxShadow: `0 0 12px ${T.accent}55` }}>JUMP TO MY ROW</button>
                 )}
               </div>
             )}
@@ -872,9 +908,9 @@ export default function EventsPage() {
               <a href="/games" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, background: "rgba(76,29,149,0.04)", border: `1px dashed ${T.accent}55`, textDecoration: "none" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: T.display, fontSize: 16, color: T.ink, letterSpacing: "0.01em" }}>Not ranked yet</div>
-                  <div style={{ fontFamily: T.body, fontSize: 10.5, color: T.inkDim, marginTop: 2 }}>Play a game to claim a spot on the board</div>
+                  <div style={{ fontFamily: T.body, fontSize: 11.5, color: T.inkDim, marginTop: 2 }}>Play a game to claim a spot on the board</div>
                 </div>
-                <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, color: "#fff", fontSize: 10, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${T.accent}55` }}>PLAY ›</span>
+                <span style={{ padding: "7px 14px", borderRadius: 999, background: `linear-gradient(180deg, #c084fc 0%, ${T.accent} 100%)`, color: "#fff", fontSize: 11.5, fontWeight: 900, letterSpacing: "0.1em", boxShadow: `0 0 12px ${T.accent}55` }}>PLAY ›</span>
               </a>
             )}
 
@@ -894,9 +930,9 @@ export default function EventsPage() {
 
             {totalPages > 1 && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 4 }}>
-                <button onClick={() => setAllPage(p => Math.max(0, p - 1))} disabled={allPage === 0} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === 0 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === 0 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === 0 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === 0 ? "not-allowed" : "pointer", fontFamily: T.body }}>‹ PREV</button>
+                <button onClick={() => setAllPage(p => Math.max(0, p - 1))} disabled={allPage === 0} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === 0 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === 0 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === 0 ? "rgba(34,16,79,0.5)" : "#6d28d9", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === 0 ? "not-allowed" : "pointer", fontFamily: T.body }}>‹ PREV</button>
                 <span style={{ color: T.inkDim, fontFamily: T.body, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>PAGE {allPage + 1} / {totalPages}</span>
-                <button onClick={() => setAllPage(p => Math.min(totalPages - 1, p + 1))} disabled={allPage === totalPages - 1} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === totalPages - 1 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === totalPages - 1 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === totalPages - 1 ? "rgba(200,180,255,0.35)" : "rgba(230,220,255,0.95)", fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body }}>NEXT ›</button>
+                <button onClick={() => setAllPage(p => Math.min(totalPages - 1, p + 1))} disabled={allPage === totalPages - 1} style={{ padding: "8px 14px", borderRadius: 999, background: allPage === totalPages - 1 ? "rgba(76,29,149,0.04)" : `${T.accent}2e`, border: `1.5px solid ${allPage === totalPages - 1 ? "rgba(76,29,149,0.12)" : T.accent + "80"}`, color: allPage === totalPages - 1 ? "rgba(34,16,79,0.35)" : "#6d28d9", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em", cursor: allPage === totalPages - 1 ? "not-allowed" : "pointer", fontFamily: T.body }}>NEXT ›</button>
               </div>
             )}
           </>
@@ -931,7 +967,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
   // framing; PAST variants show the sealed end date.
   let name = "";
   let subline = "";
-  let accent = "#b45309";
+  let accent = "#92400e";
   if (sel.type === "season") {
     name = `SEASON ${sel.data.season_id} · TEAM WARS`;
     subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
@@ -939,7 +975,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
   } else if (sel.type === "cup" || sel.type === "challenge") {
     name = sel.data.name?.toUpperCase() || (sel.type === "cup" ? "3-WEEK CUP" : "WEEKLY CHALLENGE");
     subline = `ENDED ${new Date(sel.data.ends_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-    accent = sel.type === "cup" ? "#b45309" : "#15803d";
+    accent = sel.type === "cup" ? "#92400e" : "#166534";
   } else if (sel.type === "climb") {
     // Closed MARKOV Climb · same body component as the live variant, just
     // dressed as a past event in the header (SEALED label + end date).
@@ -950,16 +986,16 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
   } else if (sel.type === "live-cup") {
     name = `3-WEEK CUP · WEEK ${sel.data.currentWeek}${sel.data.weeksLeft === 1 ? " · FINAL" : ""}`;
     subline = `LIVE · ${fmtCountdown(sel.data.compEnd)}`;
-    accent = "#b45309";
+    accent = "#92400e";
   } else if (sel.type === "live-community") {
     name = "COMMUNITY CHALLENGE";
     subline = sel.data.hit ? "LIVE · MILESTONE HIT" : `LIVE · ${sel.data.daysLeft}d LEFT`;
-    accent = "#15803d";
+    accent = "#166534";
   } else if (sel.type === "live-climb") {
     const ev = sel.data.event;
     name = "MARKOV CLIMB · LIVE";
     subline = ev ? `LIVE · ${fmtCountdown(Math.floor(new Date(ev.endsAt).getTime() / 1000))}` : "LIVE";
-    accent = "#15803d";
+    accent = "#166534";
   }
 
   // Light haptic-feeling spring on enter via cubic-bezier(0.16, 1, 0.3, 1) —
@@ -990,7 +1026,7 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
             background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.96) 60%, rgba(255,255,255,0.96) 100%)",
             border: `1px solid ${accent}33`,
             borderBottom: "none",
-            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(0,0,0,0.7)`,
+            boxShadow: `0 0 60px ${accent}26, 0 -16px 50px rgba(76,29,149,0.22)`,
             display: "flex", flexDirection: "column", overflow: "hidden",
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
             animation: "ev-sheet-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both",
@@ -1010,12 +1046,12 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: accent, fontSize: 16, fontWeight: 900, letterSpacing: "0.06em", fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
-              <div style={{ color: T.inkSoft, fontSize: 10.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>{subline}</div>
+              <div style={{ color: T.inkSoft, fontSize: 11.5, fontWeight: 700, marginTop: 2, fontFamily: T.body, letterSpacing: "0.04em" }}>{subline}</div>
             </div>
             <button onClick={onClose} aria-label="Close" style={{
               width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
               background: "rgba(76,29,149,0.06)", border: "1px solid rgba(76,29,149,0.12)",
-              color: "rgba(255,255,255,0.7)", fontSize: 15, cursor: "pointer",
+              color: "#22104f", fontSize: 15, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>✕</button>
           </div>
@@ -1041,16 +1077,16 @@ function EventDetailSheet({ sel, onClose, address }: { sel: SelectedEvent; onClo
 function ChallengeOrCupBody({ sel, address }: { sel: Extract<SelectedEvent, { type: "cup" | "challenge" }>; address?: string }) {
   const isChallenge = sel.type === "challenge";
   const winners = sel.data.winners ?? [];
-  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
+  const rankColor = (r: number) => r === 1 ? "#92400e" : r === 2 ? "#334155" : r === 3 ? "#9a3412" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
 
   return (
     <>
-      <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>
+      <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>
         FINAL STANDINGS · {winners.length} {isChallenge ? "QUALIFIER" : "FINALIST"}{winners.length !== 1 ? "S" : ""}
       </div>
       {winners.length === 0 ? (
-        <div style={{ padding: 20, textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: 11, fontWeight: 700 }}>No results recorded</div>
+        <div style={{ padding: 20, textAlign: "center", color: "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700 }}>No results recorded</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           {winners.map(w => {
@@ -1074,10 +1110,10 @@ function ChallengeOrCupBody({ sel, address }: { sel: Extract<SelectedEvent, { ty
                   <div style={{ color: isMe ? rc : "#fff", fontSize: 13, fontWeight: isMe ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: T.body }}>
                     {isMe ? "YOU" : (w.username || fmtName(w.wallet))}
                   </div>
-                  {sub && <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 2 }}>{sub}</div>}
-                  <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>RANK #{w.rank} · ${prize} USDC</div>
+                  {sub && <div style={{ color: "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700, marginTop: 2 }}>{sub}</div>}
+                  <div style={{ color: "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700, marginTop: 1 }}>RANK #{w.rank} · ${prize} USDC</div>
                 </div>
-                <div style={{ color: rc, fontSize: 14, fontWeight: 900, textShadow: `0 0 8px ${rc}88`, flexShrink: 0, fontFamily: T.display }}>{score}</div>
+                <div style={{ color: rc, fontSize: 14, fontWeight: 900, flexShrink: 0, fontFamily: T.display }}>{score}</div>
               </div>
             );
           })}
@@ -1091,8 +1127,8 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
   const teams = data.standings.teams ?? [];
   const solo = data.standings.soloTop10 ?? [];
   const closing = data.prize_winners?.closing_surprise;
-  const teamColor = (team: string) => team === "alpha" ? "#c2410c" : team === "nova" ? "#0e7490" : team === "pulse" ? "#6d28d9" : "#b45309";
-  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
+  const teamColor = (team: string) => team === "alpha" ? "#9a3412" : team === "nova" ? "#0e7490" : team === "pulse" ? "#6d28d9" : "#92400e";
+  const rankColor = (r: number) => r === 1 ? "#92400e" : r === 2 ? "#334155" : r === 3 ? "#9a3412" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
 
   return (
@@ -1100,14 +1136,14 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
       {/* Team standings */}
       {teams.length > 0 && (
         <div>
-          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>TEAM STANDINGS</div>
+          <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>TEAM STANDINGS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {teams.map((t, i) => {
               const tc = teamColor(t.team);
               return (
                 <div key={t.team} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: `${tc}14`, border: `1px solid ${tc}44` }}>
                   <span style={{ width: 22, textAlign: "center", fontSize: 13, fontWeight: 900, color: tc, fontFamily: T.display }}>#{i + 1}</span>
-                  <span style={{ flex: 1, color: "#fff", fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", fontFamily: T.body }}>{t.team.toUpperCase()}</span>
+                  <span style={{ flex: 1, color: "#22104f", fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", fontFamily: T.body }}>{t.team.toUpperCase()}</span>
                   <span style={{ color: tc, fontSize: 13, fontWeight: 900, fontFamily: T.display }}>{t.counted}</span>
                 </div>
               );
@@ -1119,7 +1155,7 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
       {/* Solo top 10 */}
       {solo.length > 0 && (
         <div>
-          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>SOLO TOP {Math.min(10, solo.length)}</div>
+          <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 8, fontFamily: T.body }}>SOLO TOP {Math.min(10, solo.length)}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {solo.slice(0, 10).map(p => {
               const isMe = !!address && p.wallet?.toLowerCase() === address.toLowerCase();
@@ -1136,7 +1172,7 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
                   <span style={{ flex: 1, color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {isMe ? "YOU" : (p.username || (p.wallet ? fmtName(p.wallet) : "anon"))}
                   </span>
-                  <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display, textShadow: `0 0 6px ${rc}66` }}>{p.points}</span>
+                  <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display }}>{p.points}</span>
                 </div>
               );
             })}
@@ -1149,10 +1185,10 @@ function SeasonBody({ data, address }: { data: PastSeasonV1; address?: string })
         <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 18 }}>🎁</span>
           <div style={{ flex: 1 }}>
-            <div style={{ color: "#15803d", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>CLOSING SURPRISE</div>
-            <div style={{ color: "#fff", fontSize: 12, fontWeight: 800, marginTop: 2, fontFamily: T.body }}>{closing.username || fmtName(closing.wallet)}</div>
+            <div style={{ color: "#166534", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>CLOSING SURPRISE</div>
+            <div style={{ color: "#22104f", fontSize: 12, fontWeight: 800, marginTop: 2, fontFamily: T.body }}>{closing.username || fmtName(closing.wallet)}</div>
           </div>
-          <div style={{ color: "#15803d", fontSize: 13, fontWeight: 900, fontFamily: T.display }}>${closing.amount_usdc ?? 10}</div>
+          <div style={{ color: "#166534", fontSize: 13, fontWeight: 900, fontFamily: T.display }}>${closing.amount_usdc ?? 10}</div>
         </div>
       )}
     </div>
@@ -1165,20 +1201,20 @@ function LiveCupBody({ data, address }: { data: CompetitionData; address?: strin
   const top = data.rankings.slice(0, 25);
   const myIdx = address ? data.rankings.findIndex(r => r.wallet.toLowerCase() === address.toLowerCase()) : -1;
   const myRank = myIdx >= 0 ? myIdx + 1 : 0;
-  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#6d28d9";
+  const rankColor = (r: number) => r === 1 ? "#92400e" : r === 2 ? "#334155" : r === 3 ? "#9a3412" : "#6d28d9";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🏅";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Prize ladder reminder */}
       <div style={{ display: "flex", gap: 8 }}>
         {[
-          { r: "1st", p: `$${data.prizes.first}`, c: "#b45309" },
-          { r: "2nd", p: `$${data.prizes.second}`, c: "#475569" },
+          { r: "1st", p: `$${data.prizes.first}`, c: "#92400e" },
+          { r: "2nd", p: `$${data.prizes.second}`, c: "#334155" },
           { r: "3rd", p: `$${data.prizes.third}`,  c: "#cd7f32" },
         ].map(x => (
-          <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "6px 4px", borderRadius: 10, background: "rgba(0,0,0,0.3)", border: `1px solid ${x.c}33` }}>
-            <div style={{ color: x.c, fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{x.r}</div>
-            <div style={{ color: "#fff", fontSize: 14, fontWeight: 900, marginTop: 2, fontFamily: T.display }}>{x.p}</div>
+          <div key={x.r} style={{ flex: 1, textAlign: "center", padding: "6px 4px", borderRadius: 10, background: "#fff", border: `1px solid ${x.c}33` }}>
+            <div style={{ color: x.c, fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{x.r}</div>
+            <div style={{ color: "#22104f", fontSize: 14, fontWeight: 900, marginTop: 2, fontFamily: T.display }}>{x.p}</div>
           </div>
         ))}
       </div>
@@ -1189,7 +1225,7 @@ function LiveCupBody({ data, address }: { data: CompetitionData; address?: strin
         </div>
       )}
       <div>
-        <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CURRENT STANDINGS · TOP {top.length}</div>
+        <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CURRENT STANDINGS · TOP {top.length}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {top.map((r, i) => {
             const isMe = !!address && r.wallet.toLowerCase() === address.toLowerCase();
@@ -1199,9 +1235,9 @@ function LiveCupBody({ data, address }: { data: CompetitionData; address?: strin
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{rankMedal(i + 1)}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : (r.username || fmtName(r.wallet))}</div>
-                  <div style={{ color: "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>🥁 {r.totalRhythm} · 🧠 {r.totalSimon}</div>
+                  <div style={{ color: "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700, marginTop: 1 }}>🥁 {r.totalRhythm} · 🧠 {r.totalSimon}</div>
                 </div>
-                <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display, textShadow: `0 0 6px ${rc}66` }}>{r.total}</span>
+                <span style={{ color: rc, fontSize: 13, fontWeight: 900, fontFamily: T.display }}>{r.total}</span>
               </div>
             );
           })}
@@ -1221,16 +1257,16 @@ function LiveCommunityBody({ data, address }: { data: WeeklyChallengeData; addre
       {/* Headline progress */}
       <div style={{ padding: "12px 14px", borderRadius: 14, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.4)" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <span style={{ color: "#15803d", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>COMMUNITY GOAL</span>
-          <span style={{ color: data.hit ? "#15803d" : "rgba(21,128,61,0.95)", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{data.hit ? "MILESTONE HIT 🎉" : `${data.daysLeft}D LEFT`}</span>
+          <span style={{ color: "#166534", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>COMMUNITY GOAL</span>
+          <span style={{ color: data.hit ? "#166534" : "rgba(21,128,61,0.95)", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.1em", fontFamily: T.body }}>{data.hit ? "MILESTONE HIT 🎉" : `${data.daysLeft}D LEFT`}</span>
         </div>
-        <div style={{ fontFamily: T.display, fontSize: 22, color: "#fff", marginTop: 4 }}>
+        <div style={{ fontFamily: T.display, fontSize: 22, color: "#22104f", marginTop: 4 }}>
           {data.progress.toLocaleString()} <span style={{ color: "rgba(21,128,61,0.85)", fontSize: 14 }}>/ {data.target.toLocaleString()}</span>
         </div>
-        <div style={{ height: 6, borderRadius: 999, background: "rgba(0,0,0,0.4)", overflow: "hidden", marginTop: 8 }}>
+        <div style={{ height: 6, borderRadius: 999, background: "rgba(76,29,149,0.14)", overflow: "hidden", marginTop: 8 }}>
           <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #16a34a, #86efac)", boxShadow: "0 0 8px #22c55e" }} />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontFamily: T.body, fontSize: 10.5, color: "rgba(220,230,220,0.85)", fontWeight: 700 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontFamily: T.body, fontSize: 11.5, color: "rgba(34,16,79,0.7)", fontWeight: 700 }}>
           <span>🎁 {data.rewardG.toLocaleString()} G$ split{data.ubiG ? ` · ${data.ubiG} G$ to GoodDollar` : ""}</span>
           <span>👥 {data.playersIn} qualifying</span>
         </div>
@@ -1247,11 +1283,11 @@ function LiveCommunityBody({ data, address }: { data: WeeklyChallengeData; addre
       {/* Contributors list */}
       {contributors.length > 0 && (
         <div>
-          <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>TOP CONTRIBUTORS · {contributors.length}</div>
+          <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>TOP CONTRIBUTORS · {contributors.length}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {contributors.slice(0, 25).map((c, i) => {
               const isMe = !!address && c.wallet.toLowerCase() === address.toLowerCase();
-              const rc = i === 0 ? "#b45309" : i === 1 ? "#475569" : i === 2 ? "#f97316" : "#15803d";
+              const rc = i === 0 ? "#92400e" : i === 1 ? "#334155" : i === 2 ? "#9a3412" : "#166534";
               const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "🌍";
               return (
                 <div key={c.wallet + i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, background: isMe ? `${rc}18` : i < 3 ? `${rc}0d` : "rgba(76,29,149,0.03)", border: isMe ? `1.5px solid ${rc}77` : `1px solid ${i < 3 ? rc + "33" : "rgba(76,29,149,0.07)"}` }}>
@@ -1273,25 +1309,25 @@ function LiveClimbBody({ data, address }: { data: MarkovClimbData; address?: str
   const ev = data.event;
   const board = data.leaderboard ?? [];
   const minQ = ev?.minMatchesToQualify ?? 30;
-  const rankColor = (r: number) => r === 1 ? "#b45309" : r === 2 ? "#475569" : r === 3 ? "#f97316" : "#15803d";
+  const rankColor = (r: number) => r === 1 ? "#92400e" : r === 2 ? "#334155" : r === 3 ? "#9a3412" : "#166534";
   const rankMedal = (r: number) => r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "🤖";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {ev?.prizes?.first && (
         <div style={{ padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg, rgba(34,197,94,0.18) 0%, rgba(22,101,52,0.4) 100%)", border: "1px solid rgba(34,197,94,0.4)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <span style={{ color: "#15803d", fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>1ST PRIZE</span>
-            <span style={{ color: "rgba(21,128,61,0.95)", fontSize: 10, fontWeight: 700, fontFamily: T.body }}>{minQ}+ matches qualifies</span>
+            <span style={{ color: "#166534", fontSize: 11.5, fontWeight: 800, letterSpacing: "0.14em", fontFamily: T.body }}>1ST PRIZE</span>
+            <span style={{ color: "rgba(21,128,61,0.95)", fontSize: 11.5, fontWeight: 700, fontFamily: T.body }}>{minQ}+ matches qualifies</span>
           </div>
-          <div style={{ fontFamily: T.display, fontSize: 18, color: "#fff", marginTop: 4 }}>
+          <div style={{ fontFamily: T.display, fontSize: 18, color: "#22104f", marginTop: 4 }}>
             ${ev.prizes.first.usdc ?? 0} USDC + {(ev.prizes.first.g_dollar ?? 0).toLocaleString()} G$
           </div>
         </div>
       )}
       <div>
-        <div style={{ color: "rgba(254,215,170,0.6)", fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CLIMB STANDINGS · {board.length}</div>
+        <div style={{ color: "#92400e", fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", marginBottom: 6, fontFamily: T.body }}>CLIMB STANDINGS · {board.length}</div>
         {board.length === 0 ? (
-          <div style={{ padding: 20, textAlign: "center", color: "rgba(200,180,255,0.4)", fontSize: 11 }}>No challengers yet — be first.</div>
+          <div style={{ padding: 20, textAlign: "center", color: "rgba(34,16,79,0.64)", fontSize: 11 }}>No challengers yet — be first.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {board.slice(0, 25).map(r => {
@@ -1303,11 +1339,11 @@ function LiveClimbBody({ data, address }: { data: MarkovClimbData; address?: str
                   <span style={{ fontSize: 14, flexShrink: 0 }}>{rankMedal(r.rank)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: isMe ? rc : "#fff", fontSize: 12, fontWeight: isMe ? 900 : 700, fontFamily: T.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMe ? "YOU" : r.username}</div>
-                    <div style={{ color: remaining === 0 ? "#15803d" : "rgba(200,180,255,0.5)", fontSize: 9, fontWeight: 700, marginTop: 1 }}>{remaining === 0 ? "QUALIFIED" : `${remaining} more to qualify`}</div>
+                    <div style={{ color: remaining === 0 ? "#166534" : "rgba(34,16,79,0.64)", fontSize: 11, fontWeight: 700, marginTop: 1 }}>{remaining === 0 ? "QUALIFIED" : `${remaining} more to qualify`}</div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                     <span style={{ color: rc, fontSize: 14, fontWeight: 900, fontFamily: T.display }}>{r.matches}</span>
-                    <span style={{ color: "rgba(200,180,255,0.45)", fontSize: 8, fontWeight: 700, letterSpacing: "0.08em" }}>MATCHES</span>
+                    <span style={{ color: "rgba(34,16,79,0.64)", fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em" }}>MATCHES</span>
                   </div>
                 </div>
               );

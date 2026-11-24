@@ -23,6 +23,7 @@ const ITEMS = [
 ] as const;
 
 function activeIndex(pathname: string): number {
+  if (/\/leaderboard(\/|$)/.test(pathname)) return 1; // a game's board is a ranking, not home
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/games")) return 0;
   if (pathname.startsWith("/leaderboard") || pathname.startsWith("/events") || pathname.startsWith("/duel")) return 1;
   if (pathname.startsWith("/shop")) return 2;

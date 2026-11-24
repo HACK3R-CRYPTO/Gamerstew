@@ -28,7 +28,7 @@ export default function GameLeaderboardPage({ gameKind, game, back, title, blurb
           ‹ Back to {game}
         </button>
         <div>
-          <div style={{ fontSize: 11, color: "rgba(34,16,79,0.5)", fontWeight: 700, letterSpacing: "0.16em" }}>{game.toUpperCase()} · LEADERBOARD</div>
+          <div style={{ fontSize: 11, color: "rgba(34,16,79,0.66)", fontWeight: 700, letterSpacing: "0.16em" }}>{game.toUpperCase()} · LEADERBOARD</div>
           <h2 style={{ fontFamily: DISPLAY, fontWeight: 400, fontSize: wide ? 32 : 24, margin: "4px 0 0" }}>{title}</h2>
           <p style={{ fontSize: 13, color: "rgba(34,16,79,0.68)", margin: "6px 0 0", lineHeight: 1.5 }}>{blurb}</p>
         </div>

@@ -29,6 +29,7 @@ import { useAuthStatus } from "@/hooks/useRequireAuth";
 import { PET_STAGES, petForLevel } from "@/lib/pets";
 import { useGameJuice, JuiceOverlay } from "@/hooks/useGameJuice";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import LevelUpToast from "@/components/LevelUpToast";
@@ -1182,128 +1183,23 @@ export default function StackTowerPage() {
             leaderboard preview, START. No decorative preview tower or stray
             "YOUR BEST" line · the leaderboard preview shows where you stand. */}
       {phase === "idle" && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 10,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 32, padding: 24, textAlign: "center",
-        }}>
-          <button onClick={() => router.push("/games")} aria-label="Back" style={{
-            position: "absolute", top: 18, left: 18, width: 40, height: 40,
-            borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "inherit",
-            background: "#6b0000", paddingBottom: 4,
-            boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-          }}>
-            <div style={{
-              width: "100%", height: 36, borderRadius: "10px 10px 8px 8px",
-              background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-              border: "2px solid rgba(255,255,255,0.45)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </div>
-          </button>
-
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.4em", color: "rgba(34,211,238,0.7)", textShadow: "0 0 14px rgba(34,211,238,0.7)" }}>GAME ARENA</div>
-            <div style={{ fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em", color: "white", marginTop: 6, lineHeight: 1, textShadow: "0 0 24px rgba(34,211,238,0.9), 0 4px 10px rgba(0,0,0,0.7)" }}>
-              STACK<br />TOWER
-            </div>
-          </div>
-
-          <div style={{
-            maxWidth: 360, textAlign: "center",
-            color: "rgba(220,200,255,0.75)", fontSize: 13, fontWeight: 700, lineHeight: 1.6,
-          }}>
-            Tap to drop the block.
-            Overhang gets sliced off.
-            <br />
-            <span style={{ color: "rgba(251,191,36,0.85)" }}>
-              Perfect alignment keeps full width and builds combos
-            </span>
-          </div>
-
-          {!authed && !authPending && <GuestPlayChip left={guestLeft} />}
-
-          {/* Signed in, no slime yet — honest twin of the guest chip. */}
-          {needsMint && <SetupPlayChip onFinishSetup={() => router.push("/home?ob=1")} />}
-
-          {/* Gas posture pill · only renders for warn/block buckets.
-              Tappable in both states · routes to GasHelpSheet so the player
-              has a single path to the top-up flow. Safe/MiniPay/guest all
-              render null so the lobby stays clean for the happy path.
-              Suppressed for unminted players — "out of gas" is the wrong
-              diagnosis when the real blocker is unfinished setup. */}
-          {!needsMint && (
-            <LowGasBanner
-              status={gasStatus}
-              approxSavesLeft={approxSavesLeft}
-              onOpenHelp={() => setGasHelpOpen(true)}
-            />
-          )}
-
-          <StackTopPlayersPreview onViewAll={() => router.push("/games/stack/leaderboard")} />
-
-          {/* A friend sent a tower to beat */}
-          {challenge && (
-            <div style={{ width: "100%", maxWidth: 360, padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
-              <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
-              <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} stacked <span style={{ color: "#fde68a" }}>{challenge.blocks} blocks</span>. Build higher.</div>
-            </div>
-          )}
-
-          {/* Choose how to play. Ranked counts; the rest are free variants. */}
-          <div style={{ width: "100%", maxWidth: 360 }}>
-            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
-              {MODES.map((m) => {
-                const on = m.id === mode;
-                return (
-                  <button key={m.id} onClick={(e) => { e.stopPropagation(); setMode(m.id); }} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
-                    flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
-                    background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
-                    boxShadow: on ? `0 0 14px ${m.color}66` : "none",
-                  }}>
-                    <span style={{ fontSize: 12.5 }}>{m.name}</span>
-                    <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
-          </div>
-          {/* Play a friend for a stake, in this game. */}
-          <DuelEntry game="stack" />
-
-          <div role="button" tabIndex={0} onClick={startGame}
-            style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-            <div style={{
-              borderRadius: 18, background: "#083a6b", paddingBottom: 6,
-              boxShadow: "0 12px 28px -6px rgba(34,211,238,0.75), 0 0 40px rgba(34,211,238,0.3)",
-            }}>
-              <div style={{
-                borderRadius: "16px 16px 12px 12px",
-                background: "linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)",
-                padding: "18px 28px", textAlign: "center",
-                border: "2px solid rgba(255,255,255,0.5)",
-                position: "relative", overflow: "hidden",
-                boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-              }}>
-                <div style={{
-                  position: "absolute", top: 2, left: "4%", right: "4%", height: "48%",
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-                  borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-                }} />
-                <span style={{
-                  position: "relative", zIndex: 1,
-                  color: "white", fontSize: 20, fontWeight: 900, letterSpacing: "0.18em",
-                  textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-                }}>STACK IT</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <GameLobby
+          title="Stack Tower"
+          headline={<>Drop the block.<br />Stack it clean.</>}
+          rules={<>Tap to drop. Anything hanging over the edge gets sliced off. <b>A perfect drop keeps the full width</b> and builds a combo.</>}
+          cover="/games/covers/stack.jpg" focus="50% 60%"
+          onExit={() => router.push("/dashboard")}
+          onStart={startGame}
+          modes={MODES} mode={mode} onPickMode={setMode}
+          gameType={2} scoreWord="Tallest towers"
+          onLeaderboard={() => router.push("/games/stack/leaderboard")}
+          guest={!authed && !authPending} guestLeft={guestLeft}
+          needsSetup={needsMint} onFinishSetup={() => router.push("/home?ob=1")}
+          /* out of gas is the wrong message for a player who has not finished setup */
+          gasBanner={needsMint ? null : <LowGasBanner status={gasStatus} approxSavesLeft={approxSavesLeft} onOpenHelp={() => setGasHelpOpen(true)} />}
+          challenge={challenge ? <>{challenge.by} stacked <b>{challenge.blocks} blocks</b>. Build higher.</> : null}
+          friends={<DuelEntry game="stack" />}
+        />
       )}
 
       {/* FINISHED */}

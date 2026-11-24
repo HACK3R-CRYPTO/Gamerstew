@@ -10,6 +10,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -2327,161 +2328,32 @@ function IdleView({ songs, songId, todayId, onPickSong, mode, onPickMode, challe
   gasBanner?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "safe center",
-      // The lobby now also holds modes, a song picker and sometimes a challenge
-      // banner, so it tightens up on short phones and scrolls if it must.
-      gap: "clamp(12px, 2.2vh, 32px)", padding: "20px 24px", overflowY: "auto", overscrollBehavior: "contain",
-    }}>
-      {/* Back X */}
-      <button onClick={onExit} style={{
-        position: "absolute", top: "18px", left: "18px",
-        width: "40px", height: "40px", borderRadius: "12px",
-        background: "#6b0000", paddingBottom: "4px",
-        border: "none", cursor: "pointer", fontFamily: "inherit",
-        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-      }}>
-        <div style={{
-          width: "100%", height: "36px", borderRadius: "10px 10px 8px 8px",
-          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-          border: "2px solid rgba(255,255,255,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </div>
-      </button>
-
-
-      <div style={{ textAlign: "center" }}>
-        <div style={{
-          fontSize: "12px", fontWeight: 900, letterSpacing: "0.4em",
-          color: "rgba(232,121,249,0.7)",
-          textShadow: "0 0 14px rgba(232,121,249,0.7)",
-        }}>GAME ARENA</div>
-        <div style={{
-          fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em",
-          color: "white", marginTop: "6px",
-          textShadow: "0 0 24px rgba(232,121,249,0.9), 0 4px 10px rgba(0,0,0,0.7)",
-          lineHeight: 1,
-        }}>RHYTHM<br />RUSH</div>
-      </div>
-
-      <div style={{
-        maxWidth: "360px", textAlign: "center",
-        color: "rgba(220,200,255,0.75)", fontSize: "13px", fontWeight: 700, lineHeight: 1.6,
-      }}>
-        Tap the notes as they hit the bottom.
-        Build combos for bigger multipliers.
-        <br />
-        <span style={{ color: "rgba(251,191,36,0.85)" }}>
-          Desktop: A S D F or ← ↓ ↑ →
-        </span>
-      </div>
-
-      {guest && <GuestPlayChip left={guestLeft} />}
-
-      {/* Signed in, no slime yet — honest twin of the guest chip. */}
-      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
-
-      {/* Gas posture pill · only renders for warn/block. Empty otherwise
-          so the lobby reads clean for the happy-path player. */}
-      {gasBanner}
-
-      {/* Top players preview · the leaderboard lives ON the play surface
-          where the eye actually goes, not in a corner icon nobody scans.
-          Showing who you're chasing is the START motivation. */}
-      <RhythmTopPlayersPreview onViewAll={onLeaderboard} />
-
-      {/* A friend sent a score to beat */}
-      {challenge && (
-        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
-          <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
-          <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} scored <span style={{ color: "#fde68a" }}>{challenge.score.toLocaleString()}</span>. Beat it.</div>
-        </div>
-      )}
-
-      {/* Choose how to play. Ranked counts; the rest are free variants. */}
-      <div style={{ width: "100%", maxWidth: 360, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
-          {MODES.map((m) => {
-            const on = m.id === mode;
-            return (
-              <button key={m.id} onClick={() => onPickMode(m.id)} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
-                flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
-                background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
-                boxShadow: on ? `0 0 14px ${m.color}66` : "none",
-              }}>
-                <span style={{ fontSize: 12.5 }}>{m.name}</span>
-                <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
+    <GameLobby
+      title="Rhythm Rush"
+      headline={<>Tap the beat.<br />Chain the combo.</>}
+      rules={<>Tap each note as it reaches the line. Combos multiply your score. <b>On a keyboard: A S D F or the arrow keys.</b></>}
+      cover="/games/covers/rhythm.jpg" focus="50% 40%"
+      onExit={onExit} onStart={onStart}
+      modes={MODES} mode={mode} onPickMode={onPickMode}
+      gameType={0} onLeaderboard={onLeaderboard}
+      guest={guest} guestLeft={guestLeft} needsSetup={needsSetup} onFinishSetup={onFinishSetup} gasBanner={gasBanner}
+      challenge={challenge ? <>{challenge.by} scored <b>{challenge.score.toLocaleString()}</b>. Beat it.</> : null}
+      /* Every song has the same notes and the same top score, so they all count on one leaderboard. */
+      extra={songs.length > 1 ? (
+        <div className="gl-songs">
+          <em>Choose your song</em>
+          <div>
+            {songs.map((sg) => (
+              <button key={sg.id} className={`gl-song${sg.id === songId ? " on" : ""}`} onClick={() => onPickSong(sg.id)} aria-pressed={sg.id === songId}>
+                {sg.id === todayId && <u>TODAY</u>}
+                <b>{sg.name}</b><span>{sg.by} · {sg.mood}</span>
               </button>
-            );
-          })}
-        </div>
-        <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
-      </div>
-      {/* Play a friend for a stake, in this game. */}
-      <DuelEntry game="rhythm" />
-
-      {/* Pick a song. Every song has the same notes and the same top score, so
-          they all count on one leaderboard; today's is marked for everyone. */}
-      {songs.length > 1 && (
-        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "0 4px" }}>
-          <div style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "rgba(220,200,255,0.6)", textAlign: "center", marginBottom: 7 }}>CHOOSE YOUR SONG</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {songs.map((sg) => {
-              const on = sg.id === songId;
-              return (
-                <button key={sg.id} onClick={() => onPickSong(sg.id)} aria-pressed={on} style={{
-                  position: "relative", padding: "9px 10px 8px", borderRadius: 14, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-                  background: on ? "linear-gradient(180deg, rgba(232,121,249,0.32), rgba(124,29,158,0.4))" : "rgba(20,8,50,0.72)",
-                  border: `1.5px solid ${on ? "#f0abfc" : "rgba(167,139,250,0.3)"}`,
-                  boxShadow: on ? "0 0 16px rgba(232,121,249,0.45)" : "none", color: "#fff",
-                }}>
-                  {sg.id === todayId && (
-                    <span style={{ position: "absolute", top: -7, right: 8, padding: "1px 7px", borderRadius: 999, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8.5, fontWeight: 900, letterSpacing: "0.12em", color: "#231005", background: "linear-gradient(180deg, #fde68a, #fbbf24)" }}>TODAY</span>
-                  )}
-                  <div style={{ fontSize: 13, lineHeight: 1.1 }}>{sg.name}</div>
-                  <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 10, fontWeight: 700, color: "rgba(220,200,255,0.65)", marginTop: 2 }}>{sg.by} · {sg.mood}</div>
-                </button>
-              );
-            })}
+            ))}
           </div>
         </div>
-      )}
-
-      {/* Juicy START button */}
-      <div role="button" tabIndex={0} onClick={onStart}
-        style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-        <div style={{
-          borderRadius: "18px", background: "#7c1d5a", paddingBottom: "6px",
-          boxShadow: "0 12px 28px -6px rgba(232,121,249,0.75), 0 0 40px rgba(232,121,249,0.3)",
-        }}>
-          <div style={{
-            borderRadius: "16px 16px 12px 12px",
-            background: "linear-gradient(160deg, #f5a3ef 0%, #e879f9 50%, #c026d3 100%)",
-            padding: "18px 28px", textAlign: "center",
-            border: "2px solid rgba(255,255,255,0.5)",
-            position: "relative", overflow: "hidden",
-            boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-          }}>
-            <div style={{
-              position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-              borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-            }} />
-            <span style={{
-              position: "relative", zIndex: 1,
-              color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.18em",
-              textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-            }}>START</span>
-          </div>
-        </div>
-      </div>
-    </div>
+      ) : null}
+      friends={<DuelEntry game="rhythm" />}
+    />
   );
 }
 

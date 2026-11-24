@@ -20,7 +20,7 @@ const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   hairline: "rgba(76,29,149,0.14)",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
   body: 'ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif',

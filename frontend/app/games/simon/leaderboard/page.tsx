@@ -13,7 +13,7 @@ const T = {
   bg: "linear-gradient(180deg, #f3eeff 0%, #e6dcff 100%)",
   ink: "#22104f",
   inkDim: "rgba(34,16,79,0.68)",
-  inkSoft: "rgba(34,16,79,0.5)",
+  inkSoft: "rgba(34,16,79,0.66)",
   hairline: "rgba(76,29,149,0.14)",
   accent: "#6d28d9",
   display: '"Melon Pop", "Fredoka", system-ui, sans-serif',
@@ -45,7 +45,7 @@ export default function SimonLeaderboardPage() {
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>SIMON MEMORY · LEADERBOARD</div>
           <h2 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 24, color: T.ink, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Deepest memory</h2>
           <p style={{ fontFamily: T.body, fontSize: 12, color: T.inkDim, margin: "6px 0 0", lineHeight: 1.5 }}>
-            This week&apos;s standings + past seasons recap. All-time lives on the Events page.
+            This week&apos;s standings and past seasons.
           </p>
         </div>
 

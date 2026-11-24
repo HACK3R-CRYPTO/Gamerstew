@@ -13,6 +13,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useAuthStatus } from "@/hooks/useRequireAuth";
 import GuestScorePrompt, { GuestPlayChip, SetupPlayChip } from "@/components/GuestScorePrompt";
+import GameLobby from "@/components/GameLobby";
 import GuestLimitPrompt from "@/components/GuestLimitPrompt";
 import { guestPlaysLeft, bumpGuestPlayed } from "@/lib/guestLimit";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
@@ -1278,131 +1279,18 @@ function IdleView({ room, mode, onPickMode, challenge, onStart, onExit, onLeader
   gasBanner?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      position: "absolute", inset: 0, zIndex: 10,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "safe center",
-      // modes and a challenge banner live here too: tighten on short phones, scroll if it must
-      gap: "clamp(12px, 2.2vh, 32px)", padding: "24px", overflowY: "auto", overscrollBehavior: "contain",
-    }}>
-      {/* Back X */}
-      <button onClick={onExit} style={{
-        position: "absolute", top: "18px", left: "18px",
-        width: "40px", height: "40px", borderRadius: "12px",
-        background: "#6b0000", paddingBottom: "4px",
-        border: "none", cursor: "pointer", fontFamily: "inherit",
-        boxShadow: "0 8px 16px -4px rgba(200,0,0,0.55)",
-      }}>
-        <div style={{
-          width: "100%", height: "36px", borderRadius: "10px 10px 8px 8px",
-          background: "linear-gradient(160deg, #ff6060 0%, #ee1111 50%, #b00000 100%)",
-          border: "2px solid rgba(255,255,255,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "inset 0 4px 8px rgba(255,255,255,0.55)",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </div>
-      </button>
-
-
-      <div style={{ textAlign: "center" }}>
-        <div style={{
-          fontSize: "12px", fontWeight: 900, letterSpacing: "0.4em",
-          color: "rgba(232,121,249,0.7)",
-          textShadow: "0 0 14px rgba(232,121,249,0.7)",
-        }}>GAME ARENA</div>
-        <div style={{
-          fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, letterSpacing: "0.04em",
-          color: "white", marginTop: "6px",
-          textShadow: "0 0 24px rgba(6,182,212,0.85), 0 4px 10px rgba(0,0,0,0.7)",
-          lineHeight: 1,
-        }}>SIMON<br/>MEMORY</div>
-      </div>
-
-      <div style={{
-        maxWidth: "360px", textAlign: "center",
-        color: "rgba(220,200,255,0.75)", fontSize: "13px", fontWeight: 700, lineHeight: 1.6,
-      }}>
-        Watch the sequence.
-        Tap the buttons back in order.
-        Each round adds one more.
-        <br/>
-        <span style={{ color: "rgba(251,191,36,0.85)" }}>
-          One mistake ends the run
-        </span>
-      </div>
-
-      {guest && <GuestPlayChip left={guestLeft} />}
-      {needsSetup && onFinishSetup && <SetupPlayChip onFinishSetup={onFinishSetup} />}
-
-      {/* Gas posture pill · warn/block only · null for the happy path. */}
-      {gasBanner}
-
-      {/* Top players preview · leaderboard becomes content on the play
-          surface, not chrome in the corner. Reads live Season N data so it
-          stays in sync with the leaderboard's LIVE tab. */}
-      <SimonTopPlayersPreview onViewAll={onLeaderboard} />
-
-      {/* A friend sent a round to beat */}
-      {challenge && (
-        <div style={{ width: "100%", maxWidth: 360, margin: "0 auto", padding: "9px 12px", borderRadius: 14, textAlign: "center", background: "linear-gradient(180deg, rgba(251,146,60,0.22), rgba(120,40,10,0.3))", border: "1.5px solid rgba(251,146,60,0.65)", boxShadow: "0 0 18px rgba(251,146,60,0.3)" }}>
-          <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 9.5, fontWeight: 900, letterSpacing: "0.2em", color: "#fdba74" }}>🔥 YOU HAVE BEEN CHALLENGED</div>
-          <div style={{ fontSize: 15, color: "#fff", marginTop: 3 }}>{challenge.by} reached <span style={{ color: "#fde68a" }}>round {challenge.rounds}</span>. Go deeper.</div>
-        </div>
-      )}
-
-      {/* Choose how to play. Ranked counts; the rest are free variants. */}
-      <div style={{ width: "100%", maxWidth: 360, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "2px 4px 6px", scrollbarWidth: "none" }}>
-          {MODES.map((m) => {
-            const on = m.id === mode;
-            return (
-              <button key={m.id} onClick={() => onPickMode(m.id)} aria-pressed={on} ref={on ? (el) => { el?.scrollIntoView({ inline: "center", block: "nearest" }); } : undefined} style={{
-                flex: "none", padding: "7px 11px 6px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit", color: "#fff", whiteSpace: "nowrap",
-                background: on ? `${m.color}33` : "rgba(20,8,50,0.72)", border: `1.5px solid ${on ? m.color : "rgba(167,139,250,0.3)"}`,
-                boxShadow: on ? `0 0 14px ${m.color}66` : "none",
-              }}>
-                <span style={{ fontSize: 12.5 }}>{m.name}</span>
-                <span style={{ marginLeft: 6, fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 8, fontWeight: 900, letterSpacing: "0.12em", color: m.id === "ranked" ? "#fde68a" : "rgba(220,200,255,0.6)" }}>{m.tag}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif', fontSize: 11, fontWeight: 600, color: "rgba(220,200,255,0.78)", textAlign: "center", minHeight: 16 }}>{modeById(mode).blurb}</div>
-      </div>
-      {/* Play the same round as your friends, at the same time. */}
-      <FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart part="button" dark />
-
-      {/* START button */}
-      <div role="button" tabIndex={0} onClick={onStart}
-        style={{ cursor: "pointer", userSelect: "none", width: "min(240px, 80vw)" }}>
-        <div style={{
-          borderRadius: "18px", background: "#083a6b", paddingBottom: "6px",
-          boxShadow: "0 12px 28px -6px rgba(6,182,212,0.75), 0 0 40px rgba(6,182,212,0.3)",
-        }}>
-          <div style={{
-            borderRadius: "16px 16px 12px 12px",
-            background: "linear-gradient(160deg, #a5f3fc 0%, #06b6d4 50%, #0e4f6b 100%)",
-            padding: "18px 28px", textAlign: "center",
-            border: "2px solid rgba(255,255,255,0.5)",
-            position: "relative", overflow: "hidden",
-            boxShadow: "inset 0 6px 14px rgba(255,255,255,0.65), inset 0 -3px 8px rgba(0,0,0,0.3)",
-          }}>
-            <div style={{
-              position: "absolute", top: "2px", left: "4%", right: "4%", height: "48%",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, transparent 100%)",
-              borderRadius: "16px 16px 60px 60px", pointerEvents: "none",
-            }} />
-            <span style={{
-              position: "relative", zIndex: 1,
-              color: "white", fontSize: "20px", fontWeight: 900, letterSpacing: "0.18em",
-              textShadow: "0 2px 4px rgba(0,0,0,0.45)",
-            }}>START</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <GameLobby
+      title="Simon Memory"
+      headline={<>Watch. Remember.<br />Repeat.</>}
+      rules={<>Watch the sequence, then tap it back in order. Each round adds one more. <b>One mistake ends the run.</b></>}
+      cover="/games/covers/simon.jpg" focus="50% 45%"
+      onExit={onExit} onStart={onStart}
+      modes={MODES} mode={mode} onPickMode={onPickMode}
+      gameType={1} onLeaderboard={onLeaderboard}
+      guest={guest} guestLeft={guestLeft} needsSetup={needsSetup} onFinishSetup={onFinishSetup} gasBanner={gasBanner}
+      challenge={challenge ? <>{challenge.by} reached <b>round {challenge.rounds}</b>. Go deeper.</> : null}
+      friends={<FriendsPlay room={room} gameName="Simon Memory" sharePath="/games/simon" atStart part="button" />}
+    />
   );
 }
 
