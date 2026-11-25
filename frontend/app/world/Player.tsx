@@ -24,6 +24,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { DEVICES, hands } from "./game";
+import { useAppStore } from "./appStore";
 import { worldControls } from "./controls";
 import { resolveObstacles } from "./obstacles";
 
@@ -80,6 +81,7 @@ export default function Player() {
   const wasDriving = useRef(false); // true on the frame we hop out of a vehicle
   const wasMoving = useRef(false);
   const didInitCam = useRef(false);
+  const chase = useRef(new THREE.Vector3());
 
   const camForward = useRef(new THREE.Vector3());
   const camRight = useRef(new THREE.Vector3());
@@ -138,6 +140,20 @@ export default function Player() {
   }, [scene, idleG, walkG, runG, hitG, shockG]);
   const { actions } = useAnimations(clips, group);
   const camera = useThree((s) => s.camera);
+  // ── A phone is tall, not wide ──────────────────────────────────────────
+  // The field of view is measured top to bottom. On a tall screen the same
+  // number leaves a narrow slice from side to side: at 55 the street was a
+  // 30 degree keyhole. A tall screen gets a wider lens, so the player sees the
+  // road and both kerbs, and the camera sits closer and lower behind them.
+  const size = useThree((s) => s.size);
+  const tall = size.width / Math.max(1, size.height) < 0.8;
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (!cam.isPerspectiveCamera) return;
+    cam.fov = tall ? 70 : 55; cam.updateProjectionMatrix();
+  }, [camera, tall]);
+  const tallRef = useRef(tall); tallRef.current = tall;
+  const touch = useMemo(() => typeof window !== "undefined" && (("ontouchstart" in window) || (navigator.maxTouchPoints ?? 0) > 0), []);
   const controls = useThree((s) => s.controls) as unknown as
     | { target: THREE.Vector3; update: () => void }
     | null;
@@ -488,7 +504,8 @@ export default function Player() {
     const tz = g.position.z;
     if (!didInitCam.current) {
       smoothTarget.current.set(tx, TARGET_Y, tz);
-      camera.position.set(tx, TARGET_Y + 5.5, tz + 10);
+      // behind and above the player, looking up the street; closer on a tall phone so the character is not a speck
+      if (tallRef.current) camera.position.set(tx, TARGET_Y + 3.4, tz + 6.6); else camera.position.set(tx, TARGET_Y + 5.5, tz + 10);
       if (controls) controls.target.copy(smoothTarget.current);
       didInitCam.current = true;
     }
@@ -502,6 +519,23 @@ export default function Player() {
     // offset (angle + zoom) is kept while the view follows the character.
     camera.position.x += smoothTarget.current.x - prevX;
     camera.position.z += smoothTarget.current.z - prevZ;
+    // ── On a phone the camera helps steer ───────────────────────────────────
+    // One thumb is on the stick, so the view cannot also be turned all the time.
+    // While the player runs sideways the camera swings gently round behind them,
+    // the way a third-person game on a phone does, so "forward" stays the way
+    // they are going. It never does this while they run toward the camera (that
+    // would spin the controls under their thumb), nor for a moment after they
+    // turn the view themselves.
+    if (touch && hasInput && !gesturing.current && !reacting.current && performance.now() - worldControls.lookedAt > 1400) {
+      const side = move.current.dot(camRight.current), ahead = move.current.dot(camForward.current);
+      if (ahead > -0.25 && Math.abs(side) > 0.18) {
+        // gentle: a quarter turn takes about three seconds at full stick, so crossing the
+        // street sideways still crosses it, and a long sideways run brings the view round
+        chase.current.set(camera.position.x - smoothTarget.current.x, 0, camera.position.z - smoothTarget.current.z).applyAxisAngle(UP, -side * (0.34 + 0.2 * Math.max(0, ahead)) * dt);
+        camera.position.x = smoothTarget.current.x + chase.current.x;
+        camera.position.z = smoothTarget.current.z + chase.current.z;
+      }
+    }
     if (controls) {
       controls.target.copy(smoothTarget.current);
       controls.update();
@@ -537,7 +571,8 @@ export default function Player() {
   useFrame((_, rawDt) => {
     const g = group.current;
     if (!g || !arms.lu || !arms.lf || !arms.ru || !arms.rf) return;
-    const held = hands.idx >= 0 ? DEVICES[hands.idx].id : "";
+    // arms go up only in Charge Rush, and only while something is in them
+    const held = useAppStore.getState().mode === "charge" && hands.idx >= 0 ? DEVICES[hands.idx].id : "";
     const kind = held ? 2 : 0; // everything is carried on the head: it is where the camera can see it
     if (kind) carryKind.current = kind;
     carryW.current += ((kind ? 1 : 0) - carryW.current) * (1 - Math.exp(-Math.min(rawDt, 0.1) * 12));

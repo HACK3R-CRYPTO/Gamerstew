@@ -97,7 +97,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
       </div>
       <style>{`
         .fs-wrap { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; background: rgba(34,16,79,0.42); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fsFade .2s ease both; }
-        .fs { position: relative; width: 100%; max-width: 440px; padding: 20px 18px calc(env(safe-area-inset-bottom, 0px) + 20px); border-radius: 28px 28px 0 0; background: #fff; color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; box-shadow: 0 -20px 50px -20px rgba(34,16,79,0.6); display: flex; flex-direction: column; gap: 12px; animation: fsUp .28s cubic-bezier(.2,.9,.3,1.1) both; }
+        .fs { position: relative; box-sizing: border-box; width: 100%; max-width: 440px; max-height: 94dvh; overflow-y: auto; overscroll-behavior: contain; padding: 20px 18px calc(env(safe-area-inset-bottom, 0px) + 20px); border-radius: 28px 28px 0 0; background: #fff; color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; box-shadow: 0 -20px 50px -20px rgba(34,16,79,0.6); display: flex; flex-direction: column; gap: 12px; animation: fsUp .28s cubic-bezier(.2,.9,.3,1.1) both; }
         @media (min-width: 620px) { .fs-wrap { align-items: center; } .fs { border-radius: 28px; } }
         @keyframes fsFade { from { opacity: 0; } } @keyframes fsUp { from { transform: translateY(30px); opacity: 0; } }
         .fs button, .fs input, .fs a { font: inherit; }
@@ -107,14 +107,15 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-sub { margin: -4px 0 2px; font-size: 14px; line-height: 1.45; color: rgba(34,16,79,0.66); }
         .fs-as { padding: 12px 14px; border-radius: 14px; background: #f1e9ff; font-size: 14.5px; font-weight: 600; color: rgba(34,16,79,0.7); } .fs-as b { color: #4c1d95; }
         .fs-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 800; color: rgba(34,16,79,0.6); }
-        .fs input { padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(76,29,149,0.2); background: #faf7ff; color: #22104f; font-size: 16px; font-weight: 700; outline: none; }
+        .fs input { box-sizing: border-box; width: 100%; min-width: 0; padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(76,29,149,0.2); background: #faf7ff; color: #22104f; font-size: 16px; font-weight: 700; outline: none; }
         .fs input:focus { border-color: #6d28d9; }
         .fs-primary { padding: 15px 0; border: none; border-radius: 18px; font-size: 19px; color: #fff !important; background: #6d28d9; box-shadow: 0 5px 0 #4c1d95; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .2s ease; }
         .fs-primary:active { transform: translateY(3px); box-shadow: 0 2px 0 #4c1d95; }
         .fs-primary:disabled { opacity: 0.55; cursor: default; }
         .fs-or { text-align: center; font-size: 12px; font-weight: 700; color: rgba(34,16,79,0.5); }
-        .fs-join { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-        .fs-join input { text-align: center; letter-spacing: 0.4em; font-size: 20px; text-transform: uppercase; }
+        .fs-join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+        .fs-join input { text-align: center; letter-spacing: 0.3em; font-size: 20px; text-transform: uppercase; }
+        @media (max-width: 380px) { .fs-join input { letter-spacing: 0.18em; font-size: 18px; } .fs-join button { padding: 0 16px; } }
         .fs-join button { padding: 0 22px; border-radius: 14px; border: 1.5px solid #6d28d9; background: #fff; color: #6d28d9 !important; font-weight: 900; cursor: pointer; }
         .fs-join button:disabled { opacity: 0.4; cursor: default; }
         .fs-code { display: flex; justify-content: center; gap: 7px; }

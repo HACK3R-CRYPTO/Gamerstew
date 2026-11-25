@@ -52,6 +52,8 @@ export interface WorldControls {
   /** Camera-shake amplitude (metres). Directors spike it on big hits / the
    *  blackout; Player.tsx jitters the camera by it each frame and decays it. */
   shake: number;
+  /** when the player last turned the view by hand (ms), so the camera does not fight their thumb */
+  lookedAt: number;
   /** Guidance: the active mode writes the world-space position of your NEXT
    *  target (nearest unlit breaker / chargeable device) here, and GuideArrow
    *  points at it. guide.active is false when there's nothing to point at. */
@@ -124,6 +126,7 @@ export const worldControls: WorldControls = {
   actionHeld: false,
   actionUp: false,
   shake: 0,
+  lookedAt: 0,
   guide: { x: 0, z: 0, active: false },
   speedMul: 1,
   playerYaw: 0,

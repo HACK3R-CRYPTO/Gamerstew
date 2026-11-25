@@ -14,6 +14,7 @@ import { useMemo, useRef, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
+const _tagAt = new THREE.Vector3();
 import { worldControls } from "./controls";
 import { DEVICES, STATION, SOCKET_COUNT, live, hands, naira, rush, perks, type DeviceDef } from "./game";
 import { GA } from "./theme";
@@ -222,6 +223,9 @@ function DeviceMesh({ def, idx }: { def: DeviceDef; idx: number }) {
     if (label.current) {
       label.current.visible = d.where === "home";
       label.current.quaternion.copy(g.quaternion).invert().multiply(camera.quaternion); // the device now turns, the tag must not
+      // a price tag is a label, not scenery: about the same size on screen wherever the camera is,
+      // so one near the lens no longer fills a corner of a phone
+      label.current.scale.setScalar(THREE.MathUtils.clamp(camera.position.distanceTo(g.getWorldPosition(_tagAt)) / 12, 0.45, 1.15));
     }
     if (beam.current) {
       // a neighbour's rush job burns gold and brighter, and shows even while your hands are full

@@ -23,7 +23,7 @@ import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
 import { quality } from "./quality";
 import { setWorldAudioEnabled, armWorldAudio, setWorldAudioMuted } from "./audio";
-import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult } from "./game";
+import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult, hands, resetLive } from "./game";
 import { useAppStore } from "./appStore";
 import { useRestoreStore, SCORE_MAX } from "./restore";
 import { recordHigh, type High } from "./highscore";
@@ -188,6 +188,9 @@ export default function World() {
 
   // Top-level mode routing + Restore-the-Light state.
   const appMode = useAppStore((s) => s.mode);
+  // Leaving Charge Rush puts down whatever was being carried. Without this the
+  // character walked into Restore the Light with both arms still in the air.
+  useEffect(() => { if (appMode !== "charge") { hands.idx = -1; resetLive(); } }, [appMode]);
   const setAppMode = useAppStore((s) => s.setMode);
   const fxKey = useFx((s) => s.key);
   const fxBig = useFx((s) => s.big);
@@ -707,28 +710,31 @@ export default function World() {
         )}
 
         {/* Controls hint (only while playing) */}
-        {appMode === "charge" && mode === "playing" && windowIndex === 0 && (
+        {appMode === "charge" && mode === "playing" && windowIndex === 0 && gCarrying < 0 && (
           <div
             style={{
               position: "absolute",
-              // under the chips + light bar, centred; only for the first window so
-              // it teaches once and then gets out of the way
-              top: "calc(238px + env(safe-area-inset-top))", // below the sockets, the at-risk line and the light bar
-              left: 0,
-              right: 0,
+              // Above the stick, on its own dark plate, only for the first light.
+              // It used to float in the middle of the screen as bare white text,
+              // on top of the character and under any message that popped up.
+              bottom: "calc(184px + env(safe-area-inset-bottom))",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "max-content",
+              maxWidth: "calc(100vw - 28px)",
+              padding: "8px 14px",
+              borderRadius: 14,
+              background: "rgba(14,6,34,0.72)",
               textAlign: "center",
               color: "#fff",
-              opacity: 0.75,
               fontFamily: '"Fredoka", system-ui, sans-serif',
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: 500,
-              lineHeight: 1.5,
-              textShadow: "0 1px 4px #000",
+              lineHeight: 1.45,
             }}
           >
-            {isMobile ? "Stick to move · drag to look" : "WASD to move · drag to look"}
-            <br />
-            Walk into a device to pick it up, then take it to the sockets
+            {/* how to move, and nothing else: what to DO is the prompt just below, which changes as the player goes */}
+            {isMobile ? "Left thumb moves · right thumb looks around" : "WASD to move · drag to look"}
           </div>
         )}
 
@@ -975,7 +981,8 @@ export default function World() {
               gap: 8,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+            {/* wraps onto a second line on a narrow phone: the last chip used to run off the right edge */}
+            <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 6, maxWidth: "calc(100vw - 16px)", padding: "0 8px", boxSizing: "border-box" }}>
               <div style={pill("#ffffff")}>⏱ {rElapsed.toFixed(1)}s</div>
               {/* The street as a row of bulbs: a finish line you can SEE filling up.
                   People push harder the closer a visible goal gets, so the last

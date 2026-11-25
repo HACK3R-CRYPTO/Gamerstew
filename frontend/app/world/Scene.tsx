@@ -50,23 +50,48 @@ import IntroDirector from "./IntroDirector";
 import PerfProbe from "./PerfProbe";
 import { useWorldStore } from "./store";
 import { useAppStore } from "./appStore";
+import { worldControls } from "./controls";
 import { setObstaclesActive } from "./obstacles";
 
 // Hard fps cap + pause-when-hidden, implemented with a manual render loop.
 // The Canvas runs with frameloop="never" and we call `advance` ourselves at the
 // target rate; when `running` is false (tab/canvas hidden) we stop advancing,
 // which fully pauses rendering.
-function FrameGovernor({ fps, running }: { fps: number; running: boolean }) {
+//
+// It also looks after sharpness. The world starts at the tier's sharpest
+// setting. If this phone then draws well under its target rate for four seconds,
+// the picture is made one step softer.
+// A level that proved too much is not tried again, so the picture never flips
+// back and forth. The first seconds are ignored: loading the street stutters on
+// any phone. So a strong phone stays crisp and a weak one stays smooth, without
+// anyone choosing a setting.
+function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running: boolean; maxDpr: number; minDpr: number }) {
   const advance = useThree((s) => s.advance);
+  const setDpr = useThree((s) => s.setDpr);
   useEffect(() => {
     if (!running) return;
     let raf = 0;
     let last = 0;
-    const interval = 1000 / fps;
+    // a little under the true interval: screens tick at 16.6 ms, and waiting for a
+    // full 16.67 skipped every other tick and halved a 60 fps target to 30
+    const interval = 1000 / fps - 3;
+    const cap = Math.min(maxDpr, window.devicePixelRatio || 1); const floor = Math.min(minDpr, cap);
+    let dpr = cap; let frames = 0; let since = 0; let slow = 0; let born = 0;
+    setDpr(dpr);
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
       if (t - last >= interval) {
+        const gap = last ? t - last : 0;
         last = t;
+        if (!born) born = t;
+        if (gap > 0 && gap < 500 && t - born > 5000) { // a long gap is a hidden tab or a load, not a slow phone
+          frames++; since += gap;
+          if (since >= 2000) {
+            const got = (frames * 1000) / since; frames = 0; since = 0;
+            slow = got < fps * 0.72 ? slow + 1 : 0;
+            if (slow >= 2 && dpr > floor) { dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; }
+          }
+        }
         // In frameloop="never", R3F derives the per-frame delta as
         // (timestamp - clock.elapsedTime) and expects SECONDS. The rAF timestamp
         // is in MILLISECONDS, so pass seconds — otherwise every useFrame (and
@@ -76,7 +101,7 @@ function FrameGovernor({ fps, running }: { fps: number; running: boolean }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [advance, fps, running]);
+  }, [advance, fps, running, maxDpr, minDpr, setDpr]);
   return null;
 }
 
@@ -112,7 +137,7 @@ export default function Scene({
 
   return (
     <>
-      <FrameGovernor fps={quality().fps} running={running} />
+      <FrameGovernor fps={quality().fps} running={running} maxDpr={quality().dpr} minDpr={quality().minDpr} />
       {process.env.NODE_ENV !== "production" && <DevStoreHook />}
       {process.env.NODE_ENV !== "production" && <PerfProbe />}
 
@@ -206,10 +231,13 @@ export default function Scene({
         enablePan={false}
         enableDamping
         dampingFactor={0.12}
-        rotateSpeed={0.7}
+        // a thumb travels less far than a mouse: turn further per swipe on a phone
+        rotateSpeed={isMobile ? 1.05 : 0.7}
+        onStart={() => { worldControls.lookedAt = performance.now(); }}
+        onEnd={() => { worldControls.lookedAt = performance.now(); }}
         zoomSpeed={0.8}
-        minDistance={5}
-        maxDistance={18}
+        minDistance={isMobile ? 4 : 5}
+        maxDistance={isMobile ? 14 : 18}
         minPolarAngle={0.35}
         maxPolarAngle={1.35}
         target={[0, 1.1, 0]}
