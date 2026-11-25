@@ -1241,7 +1241,7 @@ export default function StackTowerPage() {
             "YOUR BEST" line · the leaderboard preview shows where you stand. */}
       {phase === "idle" && (
         <GameLobby
-          title="Stack Tower"
+          title="Stack Tower" howTo="stack"
           headline={<>Drop the block.<br />Stack it clean.</>}
           rules={<>Tap to drop. Anything hanging over the edge gets sliced off. <b>A perfect drop keeps the full width</b> and builds a combo.</>}
           cover="/games/covers/stack.jpg" focus="50% 60%"

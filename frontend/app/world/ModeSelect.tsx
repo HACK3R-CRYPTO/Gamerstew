@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cameraMode, setCameraMode, type CameraMode } from "./controls";
+import { HowToButton } from "@/components/HowToPlay";
 import { BLACKOUT, DUSK, GA } from "./theme";
 
 export type LobbyChoice = "restore" | "charge" | "roam";
@@ -200,6 +201,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
           <span>🎥 Camera</span><b>{cam === "follow" ? "Follows you" : "You turn it"}</b><i>Change</i>
         </button>
       )}
+      <div style={{ alignSelf: "center" }}><HowToButton game="nepa3d" dark /></div>
       <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`

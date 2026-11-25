@@ -44,11 +44,13 @@ export default function PotCard() {
     <section className="pot" aria-label="Today's pot">
       <div className="pot-main">
         <div className="pot-kick">TODAY&apos;S POT · ends in {timeUntil(pot.endsAt)}</div>
-        <div className="pot-num" style={{ fontFamily: DISPLAY }}>{pot.pot.toLocaleString()} <small>G$</small></div>
+        {pot.pot > 0
+          ? <div className="pot-num" style={{ fontFamily: DISPLAY }}>{pot.pot.toLocaleString()} <small>G$</small></div>
+          : <div className="pot-num empty" style={{ fontFamily: DISPLAY }}>Opens with the first energy pack</div>}
         <div className="pot-line">
           {pot.you
             ? pot.you.prize > 0 ? <>You are <b>{ord(pot.you.rank)}</b> of {pot.players}, in line for <b>{pot.you.prize.toLocaleString()} G$</b>.</> : <>You are <b>{ord(pot.you.rank)}</b> of {pot.players}. The top {pot.paidPlaces || Math.max(1, Math.ceil(pot.players / 3))} are paid.</>
-            : <>Play one ranked run of <b>{g.name}</b> to enter. The top third split it.</>}
+            : pot.pot > 0 ? <>Play one ranked run of <b>{g.name}</b> to enter. The top third split it.</> : <>Most of every energy pack goes into the pot. Play <b>{g.name}</b> today to be in it.</>}
         </div>
         {short2 && <div className="pot-note">{pot.players} of the {pot.minPlayers} verified players needed today. If it falls short, the pot rolls into tomorrow.</div>}
       </div>
@@ -66,6 +68,7 @@ export default function PotCard() {
         .pot-kick { font-size: 11.5px; font-weight: 700; letter-spacing: 0.14em; color: rgba(255,255,255,0.78); }
         .pot-num { font-size: clamp(38px, 11vw, 54px); line-height: 1.05; margin-top: 2px; color: #fde68a; text-shadow: 0 2px 0 rgba(0,0,0,0.18); }
         .pot-num small { font-size: 0.42em; color: #fff; }
+        .pot-num.empty { font-size: clamp(22px, 6.4vw, 30px); line-height: 1.15; margin-top: 4px; }
         .pot-line { margin-top: 6px; font-size: 15px; line-height: 1.4; color: rgba(255,255,255,0.92); }
         .pot-line b { color: #fff; }
         .pot-note { margin-top: 8px; font-size: 12.5px; line-height: 1.4; color: rgba(255,255,255,0.7); }

@@ -94,7 +94,7 @@ export default async function RunsPage({ searchParams }: { searchParams: SP }) {
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "rgba(27,13,66,0.62)" }}>Pets poked in these days: {num(d.pokes.times)} times by {num(d.pokes.players)} players.</p>
         </Card>
         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
-          <Card title="Daily pot" note="One game a day carries a pot: 70% of that day's energy spend, plus the seed, plus whatever rolled over. The top third of verified players split it. The server never pays: each prize is written as a pending payout, and shows as owed here until it is paid on the Payouts page.">
+          <Card title="Daily pot" note="One game a day carries a pot: 70% of that day's energy spend, plus whatever rolled over. A tenth of each paid pot is held to open the next day's, so the pot needs no money from the treasury. The top third of verified players split it. The server never pays: each prize is written as a pending payout, and shows as owed here until it is paid on the Payouts page.">
             {!pot ? <NotYet what="Not set up yet" why="run games-backend/supabase-migrations/2026-11-27b_pot.sql in Supabase. The pot itself stays off until POT_ENABLED is set to true on the server." />
               : pot.days.length === 0 ? <NotYet what="No pot has closed yet" why="a day is closed just after midnight UTC, once POT_ENABLED is true on the server." />
               : (
@@ -108,7 +108,7 @@ export default async function RunsPage({ searchParams }: { searchParams: SP }) {
                   <Table rows={pot.days} cols={[
                     { head: "Day", cell: (x) => x.day }, { head: "Game", cell: (x) => gameName(x.game) }, { head: "Energy bought", cell: (x) => `${num(x.spend)} G$`, right: true }, { head: "Seed", cell: (x) => `${num(x.seed)} G$`, right: true },
                     { head: "Rolled in", cell: (x) => `${num(x.carried_in)} G$`, right: true }, { head: "Pot", cell: (x) => `${num(x.pot)} G$`, right: true }, { head: "Players", cell: (x) => num(x.players), right: true },
-                    { head: "Result", cell: (x) => (x.status === "paid" ? `${num(x.winners)} prizes` : `rolled ${num(x.carried_out)} G$ forward`), right: true },
+                    { head: "Result", cell: (x) => (x.status === "paid" ? `${num(x.winners)} prizes${Number(x.carried_out) > 0 ? `, ${num(x.carried_out)} G$ held for the next day` : ""}` : `rolled ${num(x.carried_out)} G$ forward`), right: true },
                   ]} />
                 </>
               )}

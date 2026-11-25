@@ -14,6 +14,7 @@ What each document is, and whether it describes the code as it is today.
 | [sign-in-costs.md](sign-in-costs.md) | PLAN: new email sign-ups move from Privy to Magic, own wallets sign in directly, old Privy players stay. Not started |
 | [pets-art.md](pets-art.md) | The five slime pets: rebuilt as 3D jelly in Blender, and how to render them again |
 | [word-ladder.md](word-ladder.md) | Word Ladder: the timed round with no ceiling on the score, the daily, friend rooms, and how the server checks a round |
+| [how-to-play.md](how-to-play.md) | The "How to play" sheet on every game and the practice ladder in Word Ladder, with the research behind them |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |

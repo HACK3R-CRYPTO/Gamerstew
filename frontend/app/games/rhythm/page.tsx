@@ -2463,7 +2463,7 @@ function IdleView({ room, songs, songId, todayId, onPickSong, mode, onPickMode, 
 }) {
   return (
     <GameLobby
-      title="Rhythm Rush"
+      title="Rhythm Rush" howTo="rhythm"
       headline={<>Tap the beat.<br />Chain the combo.</>}
       rules={<>Tap each note as it reaches the line. Combos multiply your score. <b>On a keyboard: A S D F or the arrow keys.</b></>}
       cover="/games/covers/rhythm.jpg" focus="50% 40%"

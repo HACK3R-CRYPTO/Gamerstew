@@ -94,3 +94,26 @@ test('closing days: when the facts cannot be read, nothing is closed and nothing
   assert.deepEqual((await w.pot.settleDue()).closed, []);
   assert.equal(w.closed.size, 0); assert.equal(w.payouts.length, 0);
 });
+
+test('the pot seeds itself: a tenth of a paid pot opens the next day, and every G$ still reaches players', async () => {
+  const nine = Array.from({ length: 9 }, (_, i) => E(i + 1, 100 - i));
+  const s = settle({ pot: 1000, entries: nine, minPlayers: 5, holdBps: 1000 });
+  assert.equal(s.status, 'paid'); assert.equal(s.carry, 100);
+  assert.equal(s.paid.reduce((a, p) => a + p.amount, 0), 900, 'winners share the rest, to the last G$');
+  assert.equal(settle({ pot: 1000, entries: nine, minPlayers: 5, holdBps: 99999 }).carry, 500, 'never more than half is held');
+  assert.equal(settle({ pot: 1000, entries: nine.slice(0, 2), minPlayers: 5, holdBps: 1000 }).carry, 1000, 'an unpaid pot still rolls over whole');
+  // across days, with no seed and no money from the owner
+  const clock = { t: Date.parse('2026-11-29T08:00:00Z') }; const closed = new Map<string, PotDay>(); let owed = 0;
+  const pot = createPot({
+    games: ['rhythm'], shareBps: 7000, seed: 0, minPlayers: 3, holdBps: 1000, now: () => clock.t,
+    store: {
+      spend: async (day) => (day === '2026-11-27' ? 1000 : 0), entries: async (day) => (day === '2026-11-29' ? [] : [E(1, 9), E(2, 8), E(3, 7)]),
+      closed: async (day) => closed.get(day) ?? null, close: async (row, ps) => { closed.set(row.day, row); owed += ps.reduce((a, p) => a + p.amount, 0); return true; },
+    },
+  });
+  await pot.settleDue();
+  assert.deepEqual(['2026-11-27', '2026-11-28'].map((d) => [closed.get(d)!.pot, closed.get(d)!.carried_out]), [[700, 70], [70, 7]]);
+  assert.equal(owed, 630 + 63);
+  const today = await pot.today();
+  assert.equal(today.pot, 7, 'today opens with what yesterday held back, before anyone has bought anything');
+});

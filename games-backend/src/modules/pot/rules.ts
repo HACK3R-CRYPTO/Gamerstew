@@ -6,6 +6,8 @@
 //
 // The split of every G$ spent on energy (the owner's decision, 2026-11-27):
 //   70% to that day's pot   20% to the treasury   10% to the GoodDollar UBI pool
+// A tenth of each paid pot is held back to open the next day's (POT_HOLD_BPS), so the
+// pot seeds itself from play and needs no money from the owner. A seed can still be added.
 // Only the 70% is worked out here. The other two happen on the chain, inside
 // the shop contract, which pays the UBI pool its share at the moment of sale.
 //
@@ -31,7 +33,7 @@ export function potSize(p: { spend: number; seed: number; carried: number; share
 
 export interface Entry { wallet: string; score: number; at: string }
 export interface Paid { wallet: string; rank: number; score: number; amount: number }
-export type Settlement = { status: 'paid'; paid: Paid[]; carry: 0; players: number } | { status: 'rolled'; paid: []; carry: number; players: number; why: 'no_pot' | 'too_few_players' };
+export type Settlement = { status: 'paid'; paid: Paid[]; carry: number; players: number } | { status: 'rolled'; paid: []; carry: number; players: number; why: 'no_pot' | 'too_few_players' };
 
 /** One line per player, best first. A tie goes to whoever got there first. */
 export function rank(entries: Entry[]): Entry[] {
@@ -56,14 +58,18 @@ export function shares(pot: number, winners: number): number[] {
   return out;
 }
 
-/** Close a day. Too few players, or nothing in the pot, and it rolls into tomorrow's instead. */
-export function settle(p: { pot: number; entries: Entry[]; minPlayers: number }): Settlement {
+/** Close a day. Too few players, or nothing in the pot, and it rolls into tomorrow's instead.
+ *  `holdBps`: the share of a PAID pot kept back to open tomorrow's. This is how the pot seeds itself:
+ *  the first player of a day always has something to play for, and the owner never has to fund it.
+ *  Every G$ held back is still paid to players, a day later. */
+export function settle(p: { pot: number; entries: Entry[]; minPlayers: number; holdBps?: number }): Settlement {
   const ranked = rank(p.entries); const players = ranked.length;
   if (p.pot <= 0) return { status: 'rolled', paid: [], carry: 0, players, why: 'no_pot' };
   if (players < Math.max(1, p.minPlayers)) return { status: 'rolled', paid: [], carry: p.pot, players, why: 'too_few_players' };
-  const amounts = shares(p.pot, winnersOf(players));
+  const held = Math.floor((p.pot * Math.max(0, Math.min(5_000, p.holdBps ?? 0))) / 10_000); // never more than half
+  const amounts = shares(p.pot - held, winnersOf(players));
   const paid = amounts.map((amount, i) => ({ wallet: ranked[i]!.wallet, rank: i + 1, score: ranked[i]!.score, amount })).filter((x) => x.amount > 0);
-  return { status: 'paid', paid, carry: 0, players };
+  return { status: 'paid', paid, carry: held, players };
 }
 
 export const ordinal = (n: number): string => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`; };

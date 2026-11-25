@@ -24,6 +24,8 @@ export interface PotOptions {
   shareBps: number;
   seed: number;
   minPlayers: number;
+  /** the share of a paid pot held back to open the next day's, in hundredths of a percent */
+  holdBps?: number;
   now?: () => number;
   nameOf?: (wallet: string) => Promise<string | null>;
   gameName?: (game: string) => string;
@@ -31,7 +33,7 @@ export interface PotOptions {
 }
 export interface PotView {
   day: string; game: string | null; pot: number; spend: number; seed: number; carried: number; endsAt: number;
-  players: number; paidPlaces: number; firstPrize: number; minPlayers: number;
+  players: number; paidPlaces: number; /** what today's winners share: the pot less what is held for tomorrow */ payable: number; firstPrize: number; minPlayers: number;
   top: { rank: number; wallet: string; name: string | null; score: number; prize: number }[];
   you: { rank: number; score: number; prize: number } | null;
   yesterday: { day: string; game: string; pot: number; status: 'paid' | 'rolled'; players: number; winners: number } | null;
@@ -39,6 +41,7 @@ export interface PotView {
 
 export function createPot(o: PotOptions) {
   const now = o.now ?? Date.now; const cacheMs = o.cacheMs ?? 30_000;
+  const hold = Math.max(0, Math.min(5_000, o.holdBps ?? 0));
   const nameOf = o.nameOf ?? (async () => null); const gameName = o.gameName ?? ((g: string) => g);
   type Built = { day: string; at: number; view: Omit<PotView, 'you'>; ranked: Entry[] };
   let cache: Built | null = null;
@@ -53,13 +56,14 @@ export function createPot(o: PotOptions) {
     const ranked = rank(entries ?? []);
     const pot = potSize({ spend: spend ?? 0, seed: o.seed, carried, shareBps: o.shareBps });
     const places = ranked.length >= Math.max(1, o.minPlayers) ? winnersOf(ranked.length) : 0;
-    const prizes = shares(pot, places);
+    const payable = pot - (places ? Math.floor((pot * hold) / 10_000) : 0); // what today's winners would share
+    const prizes = shares(payable, places);
     const top = await Promise.all(ranked.slice(0, 10).map(async (e, i) => ({ rank: i + 1, wallet: e.wallet, name: await nameOf(e.wallet).catch(() => null), score: e.score, prize: prizes[i] ?? 0 })));
     return {
       day, at: now(), ranked,
       view: {
         day, game, pot, spend: spend ?? 0, seed: o.seed, carried, endsAt: dayStart(day) + DAY_MS,
-        players: ranked.length, paidPlaces: places, firstPrize: prizes[0] ?? shares(pot, 1)[0] ?? 0, minPlayers: o.minPlayers, top,
+        players: ranked.length, paidPlaces: places, payable, firstPrize: prizes[0] ?? 0, minPlayers: o.minPlayers, top,
         yesterday: prev ? { day: prev.day, game: prev.game, pot: prev.pot, status: prev.status, players: prev.players, winners: prev.winners } : null,
       },
     };
@@ -75,7 +79,7 @@ export function createPot(o: PotOptions) {
       }
       const c = cache!; const w = String(wallet ?? '').toLowerCase();
       const i = w ? c.ranked.findIndex((e) => e.wallet === w) : -1;
-      const prizes = shares(c.view.pot, c.view.paidPlaces);
+      const prizes = shares(c.view.payable, c.view.paidPlaces);
       return { ...c.view, you: i >= 0 ? { rank: i + 1, score: c.ranked[i]!.score, prize: prizes[i] ?? 0 } : null };
     },
 
@@ -91,7 +95,7 @@ export function createPot(o: PotOptions) {
         if (spend === null || entries === null) break; // the facts could not be read: close nothing, and nothing later either (a later day depends on what this one carries)
         const carried = await carriedInto(day);
         const pot = potSize({ spend, seed: o.seed, carried, shareBps: o.shareBps });
-        const s = settle({ pot, entries, minPlayers: o.minPlayers });
+        const s = settle({ pot, entries, minPlayers: o.minPlayers, holdBps: hold });
         const row: PotDay = { day, game, spend, seed: o.seed, carried_in: carried, pot, players: s.players, winners: s.paid.length, status: s.status, carried_out: s.carry };
         const payouts = (s.paid as Paid[]).map((p) => ({ wallet: p.wallet, amount: p.amount, reason: `Daily pot, ${day}, ${gameName(game)}, ${ordinal(p.rank)} of ${s.players}` }));
         if (!(await o.store.close(row, payouts))) break;

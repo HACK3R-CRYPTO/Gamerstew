@@ -604,7 +604,7 @@ if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' &
   const pot = on ? core.platform.createPot({
     store: core.platform.supabasePot(core.lockedDb, int(process.env.ENERGY_PERK_ID, 10)),
     games: String(process.env.POT_GAMES ?? 'rhythm,simon,ladder,strike').split(',').map((g) => g.trim()).filter((g) => NAMES[g]),
-    shareBps: int(process.env.POT_SHARE_BPS, 7000), seed: int(process.env.POT_SEED, 0), minPlayers: int(process.env.POT_MIN_PLAYERS, 5),
+    shareBps: int(process.env.POT_SHARE_BPS, 7000), seed: int(process.env.POT_SEED, 0), minPlayers: int(process.env.POT_MIN_PLAYERS, 5), holdBps: int(process.env.POT_HOLD_BPS, 1000),
     nameOf: (w) => core.resolveUsername(w), gameName: (g) => NAMES[g] ?? g,
   }) : null;
   core.platform.registerPotRoutes(core.app, { pot, requireSecret: core.requireSecret });

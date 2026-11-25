@@ -1352,7 +1352,7 @@ function IdleView({ room, mode, onPickMode, challenge, onStart, onExit, onLeader
 }) {
   return (
     <GameLobby
-      title="Simon Memory"
+      title="Simon Memory" howTo="simon"
       headline={<>Watch. Remember.<br />Repeat.</>}
       rules={<>Watch the sequence, then tap it back in order. Each round adds one more. <b>One mistake ends the run.</b></>}
       cover="/games/covers/simon.jpg" focus="50% 45%"

@@ -1,4 +1,5 @@
 "use client";
+import { HowToButton, type HowToGame } from "@/components/HowToPlay";
 import { track } from "@/lib/track";
 
 // ─── The lobby every skill game opens on ─────────────────────────────────────
@@ -22,8 +23,10 @@ export interface LobbyMode { id: string; name: string; tag: string; blurb: strin
 export default function GameLobby<M extends string>({
   title, headline, rules, cover, focus = "50% 50%", onExit, onStart, startLabel = "Play",
   modes, mode, onPickMode, gameType, onLeaderboard, scoreWord = "Top players",
-  guest, guestLeft, needsSetup, onFinishSetup, gasBanner, challenge, extra, friends,
+  guest, guestLeft, needsSetup, onFinishSetup, gasBanner, challenge, extra, friends, howTo,
 }: {
+  /** which game's "How to play" sheet the lobby offers */
+  howTo?: HowToGame;
   title: string;
   /** the game in one short line */
   headline: ReactNode;
@@ -66,6 +69,7 @@ export default function GameLobby<M extends string>({
           <div className="gl-art" style={{ backgroundImage: `url(${cover})`, backgroundPosition: focus }} role="img" aria-label={title} />
           <h1 style={{ fontFamily: DISPLAY }}>{headline}</h1>
           <p className="gl-rules">{rules}</p>
+          {howTo && <div className="gl-how"><HowToButton game={howTo} /></div>}
           <div className="gl-board gl-wide"><TopPlayers gameType={gameType} label={scoreWord} onViewAll={onLeaderboard} /></div>
         </section>
 
@@ -114,6 +118,8 @@ export default function GameLobby<M extends string>({
         .gl h1 { margin: 0; font-size: clamp(28px, 7.4vw, 38px); line-height: 1.02; font-weight: 400; }
         .gl-rules { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--dim); }
         .gl-rules b { color: #22104f; }
+        .gl-how { display: flex; justify-content: center; }
+        @media (min-width: 900px) { .gl-how { justify-content: flex-start; } }
         .gl-panel { display: flex; flex-direction: column; gap: 10px; }
         .gl-modes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: 0 -2px; }
         .gl-modes::-webkit-scrollbar { display: none; }

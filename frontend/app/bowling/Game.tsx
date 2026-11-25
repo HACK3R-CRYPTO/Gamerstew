@@ -1,5 +1,6 @@
 "use client";
 import { track } from "@/lib/track";
+import { HowToButton } from "@/components/HowToPlay";
 
 // ─── Street Strike — Lagos street bowling ────────────────────────────────────
 // Not a neon alley. You roll an old tyre (the childhood game) down a Lagos
@@ -1807,7 +1808,8 @@ export default function Game() {
         <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, #ffffff 62%)" }}>
           <div style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 64px)", overflowY: "auto", borderRadius: 26, padding: "16px 14px 14px", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 -10px 40px rgba(76,29,149,0.22)" }}>
             <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: "#92400e" }}>Strike</span></div>
-            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
+            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 8 }}>Roll the tyre. Scatter the bottles.</div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><HowToButton game="strike" /></div>
             <div style={{ display: room ? "none" : "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {MODES.map((m) => {
                 const on = m.id === mode;

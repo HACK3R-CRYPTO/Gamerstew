@@ -62,6 +62,7 @@ export const SETTINGS: Record<string, Setting> = {
   POT_GAMES: s('Pot', 'list', 'The games that take turns carrying the pot, one a day. Only games the server scores itself.', { default: 'rhythm,simon,ladder,strike' }),
   POT_SHARE_BPS: s('Pot', 'int', 'The pot\'s share of every G$ spent on energy, in hundredths of a percent. 7000 is 70%.', { default: '7000' }),
   POT_SEED: s('Pot', 'int', 'G$ the treasury adds to every day\'s pot before anyone plays.', { default: '0' }),
+  POT_HOLD_BPS: s('Pot', 'int', 'The share of each paid pot held back to open the next day\'s, in hundredths of a percent. 1000 is 10%. This is how the pot seeds itself without money from the owner.', { default: '1000' }),
   POT_MIN_PLAYERS: s('Pot', 'int', 'Fewer verified players than this and the day\'s pot rolls into the next day instead of being paid.', { default: '5' }),
   ENERGY_ENABLED: s('Pot', 'bool', 'Limit ranked runs to a number of free ones a day, with more for sale in the shop. Off unless set to "true".', { default: 'false' }),
   ENERGY_FREE_PER_DAY: s('Pot', 'int', 'Ranked runs a player may start each day for free.', { default: '5' }),

@@ -160,7 +160,7 @@ Both are in the code and switched off. Nothing changes for players until the ste
 |---|---|---|
 | Energy | 5 free ranked runs a day, then runs bought as shop item 10 (5 runs a pack, kept until used). Counted in the database, exactly | `games-backend/src/modules/energy`, `2026-11-27c_energy.sql` |
 | Out of energy | One sheet, from any game: when the free runs come back, a pack if the shop sells one, and "Play for fun instead". It never blocks play | `frontend/components/EnergySheet.tsx` |
-| The pot | One game a day in turn (Rhythm Rush, Simon Memory, Word Ladder, Street Strike). Pot = 70% of that day's energy spend + the seed + what rolled over | `games-backend/src/modules/pot`, `2026-11-27b_pot.sql` |
+| The pot | One game a day in turn (Rhythm Rush, Simon Memory, Word Ladder, Street Strike). Pot = 70% of that day's energy spend + what rolled over (a tenth of each paid pot, and all of an unpaid one) + a seed if one is set | `games-backend/src/modules/pot`, `2026-11-27b_pot.sql` |
 | Who wins | The top third of **verified** players, by their best **confirmed** score that day. First place gets the most, the last paid place the least, in whole G$ that add up to the pot exactly. Fewer than 5 players and the pot rolls into tomorrow | `pot/rules.ts` |
 | Home screen | The pot, the time left, the game of the day, where the player stands and what that place pays | `frontend/components/home/PotCard.tsx` |
 | Admin | Each closed day, what was spent, what was paid, what is still owed | Admin, "Runs and shop" |
@@ -177,4 +177,6 @@ Both are in the code and switched off. Nothing changes for players until the ste
 
 **What has not been tested for real:** a purchase of an energy pack with a real wallet, and a day closing on the live database. Both were tested against a local database and with the server's own tests (the split adds up exactly, a day closes only once, a failed read closes nothing). Buy one pack yourself on the first day and check the run count goes up by 5.
 
-**Still open:** whether to seed the pot from the weekly challenge budget (section 9, decision 3), and legal advice once pots grow (decision 6).
+**The pot seeds itself (decided 2026-11-27).** The owner cannot always fund a seed, so the pot does not depend on one. A tenth of each paid pot is held back to open the next day's (`POT_HOLD_BPS`, 1000). The first player of a day has something to play for, the money comes from play, and every G$ held is still paid to players a day later. `POT_SEED` stays at 0 and can be raised on any day there is money to add. On a day with nothing in it yet, the home card says the pot opens with the first energy pack.
+
+**Still open:** legal advice once pots grow (section 9, decision 6).

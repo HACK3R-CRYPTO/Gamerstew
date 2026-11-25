@@ -1,5 +1,6 @@
 "use client";
 import { track } from "@/lib/track";
+import { HowToButton } from "@/components/HowToPlay";
 
 // ─── Word Ladder ─────────────────────────────────────────────────────────────
 // You are given a start word and a target word. Change ONE letter at a time,
@@ -43,6 +44,11 @@ const CLIMB_PARS = [2, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5];
 const parAt = (i: number) => CLIMB_PARS[i] ?? 6;
 const clock = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const KEYS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+// The practice ladder: one easy ladder with a coach that points at what to tap next.
+// A first-time player gets it when they press Play. It is not scored, not timed and not ranked.
+const LEARNED_KEY = "gamearena:ladder:learned";
+const PRACTICE: [string, string, number] = ["cold", "word", 2];
+const PRACTICE_NEXT: Record<string, string> = { cold: "cord", cord: "word" }; // the familiar route, not the obscure one
 const BEST_KEY = "gamearena:ladder:best3"; // "3": a solo round is now timed, with no ceiling on the score
 
 const WORDS = new Set(VALID.split(" "));
@@ -148,10 +154,14 @@ export default function WordLadderPage() {
   const used = useRef(0);
   const [left, setLeft] = useState(CLIMB_MS);
   const [timeUp, setTimeUp] = useState(false);
+  const [practice, setPractice] = useState(false);
+  const [learned, setLearned] = useState(true); // assumed until the device says otherwise, so nothing flashes for a returning player
+  const [ready, setReady] = useState(false); // just finished the practice: say so on the start screen
 
   useEffect(() => {
     try {
       setBest(Number(localStorage.getItem(BEST_KEY) || 0));
+      setLearned(localStorage.getItem(LEARNED_KEY) === "1" || Number(localStorage.getItem(BEST_KEY) || 0) > 0 || Number(localStorage.getItem("gamearena:ladder:best2") || 0) > 0);
       const d = JSON.parse(localStorage.getItem(DAILY_KEY) || "null");
       if (d && d.day === todayKey()) setDailyDone(Number(d.score));
     } catch { /* private window */ }
@@ -173,8 +183,21 @@ export default function WordLadderPage() {
     setSel(Math.max(0, [0, 1, 2, 3].findIndex((k) => s[k] !== t[k])));
     t0.current = Date.now(); setSecs(0);
   }, []);
+  const startPractice = () => {
+    track("tutorial_start", { game: "Word Ladder" });
+    setIsRoomRound(false); setIsRanked(false); setDaily(false); setClimb(false); setReady(false); setPractice(true);
+    setSet([PRACTICE]); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle([PRACTICE], 0);
+  };
+  /** The practice is over, by finishing it or by leaving it. Either way the player has seen how it works. */
+  const endPractice = (how: "done" | "skipped") => {
+    track(how === "done" ? "tutorial_done" : "tutorial_skipped", { game: "Word Ladder" });
+    try { localStorage.setItem(LEARNED_KEY, "1"); } catch { /* private window */ }
+    setLearned(true); setPractice(false); setReady(how === "done"); setResults([]); setPhase("start");
+  };
   const begin = async (isDaily = false) => {
     if (opening) return;
+    if (!isDaily && !learned) { startPractice(); return; } // a first-time player learns it by doing it, before the clock
+    setPractice(false); setReady(false);
     if (!gate.allow()) return; // a guest out of free runs is asked to sign in
     track("game_start", { game: "Word Ladder" });
     setIsRoomRound(false);
@@ -207,7 +230,7 @@ export default function WordLadderPage() {
     const dealt = (v.deal as { ladders?: [string, string, number][] } | undefined)?.ladders;
     if (v.status === "playing" && v.round !== roomRound.current && dealt?.length === ROUND && !v.players[v.you]?.done) {
       roomRound.current = v.round;
-      setIsRoomRound(true); setIsRanked(false); setDaily(false); setClimb(false);
+      setIsRoomRound(true); setIsRanked(false); setDaily(false); setClimb(false); setPractice(false);
       setSet(dealt); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle(dealt, 0); setFriendsOpen(false);
     }
     // the host called a rematch: back to the lobby
@@ -236,6 +259,7 @@ export default function WordLadderPage() {
     if (skipped) playWhooshOut(); else { const perfect = steps <= par; playLadderSolved(perfect); buzz(perfect ? [18, 40, 18, 40, 30] : [18, 40, 24]); }
     if (isRoomRound) room.progress(all.length, { ix: all.length, pts: all.reduce((a, x) => a + x.points, 0), rows: [] }); // let the others see how far you have got
     setTimeout(() => {
+      if (practice) { endPractice(skipped ? "skipped" : "done"); return; }
       if (endedRef.current) return; // the player ended the run while this ladder was closing
       if (climb ? ix + 1 < set.length && used.current < CLIMB_MS : ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
       else {
@@ -312,7 +336,7 @@ export default function WordLadderPage() {
   }, [phase, solved, puzzle, current, sel, rungs, start, target]);
   const undo = () => { if (!solved && rungs.length) { playLadderUndo(); setRungs(rungs.slice(0, -1)); setHintWord(null); setMsg(null); } };
   const hint = () => {
-    if (solved || climb) return; // no hints against the clock
+    if (solved || climb || practice) return; // no hints against the clock, and the practice has its own coach
     const w = nextStep(current, target);
     if (!w) { say("No route from here. Undo a step"); return; }
     playLadderHint(); setHints((h) => h + 1); setHintWord(w); setSel([0, 1, 2, 3].findIndex((k) => w[k] !== current[k]));
@@ -330,6 +354,12 @@ export default function WordLadderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, type, rungs, solved]);
 
+  // the coach: in the practice, the next good word, which letter to tap, and what to say
+  const coachWord = practice && phase === "play" && !solved && puzzle ? (PRACTICE_NEXT[current] ?? nextStep(current, target)) : null;
+  const coachAt = coachWord ? [0, 1, 2, 3].findIndex((k) => coachWord[k] !== current[k]) : -1;
+  const coachSay = coachWord && coachAt >= 0 ? (sel !== coachAt ? `Tap the letter ${current[coachAt].toUpperCase()}` : `Now tap ${coachWord[coachAt].toUpperCase()} on the keyboard`) : null;
+  const guide = hintWord ?? coachWord; // what the tiles and keys point at
+
   const total = useMemo(() => results.reduce((a, x) => a + x.points, 0), [results]);
   const share = async () => {
     const lines = results.map((r) => (r.skipped ? "⬜" : r.steps <= r.par ? "🟩" : "🟨")).join("");
@@ -343,7 +373,7 @@ export default function WordLadderPage() {
     <div className={`wl-row ${kind}`}>
       {word.split("").map((ch, i) => (
         <button key={i} disabled={!onTap} onClick={() => { playLadderKey(); onTap?.(i); }} style={{ animationDelay: `${i * 70}ms` }}
-          className={`wl-tile${kind !== "target" && kind !== "ghost" && ch === target[i] ? " hit" : ""}${from && from[i] !== ch ? " moved" : ""}${kind === "live" && i === sel && !solved ? " sel" : ""}${hintWord && kind === "live" && hintWord[i] !== ch ? " nudge" : ""}`}
+          className={`wl-tile${kind !== "target" && kind !== "ghost" && ch === target[i] ? " hit" : ""}${from && from[i] !== ch ? " moved" : ""}${kind === "live" && i === sel && !solved ? " sel" : ""}${guide && kind === "live" && guide[i] !== ch ? " nudge" : ""}`}
           aria-label={kind === "live" ? `Letter ${i + 1}: ${ch}${i === sel ? ", selected" : ""}` : undefined}>
           {kind === "ghost" ? "" : ch}
         </button>
@@ -360,9 +390,9 @@ export default function WordLadderPage() {
   return (
     <div className="wl">
       <header className="wl-top">
-        <button className="wl-back" onClick={() => (phase !== "play" ? router.push("/dashboard") : isRanked || isRoomRound ? setQuitAsk(true) : setPhase("start"))} aria-label={phase === "play" ? "End this run" : "Back"}>←</button>
+        <button className="wl-back" onClick={() => (phase !== "play" ? router.push("/dashboard") : practice ? endPractice("skipped") : isRanked || isRoomRound ? setQuitAsk(true) : setPhase("start"))} aria-label={phase === "play" ? "End this run" : "Back"}>←</button>
         <b style={{ fontFamily: DISPLAY }}>Word Ladder</b>
-        {phase === "play" ? <span className="wl-meta">{total}</span> : <span className="wl-meta" />}
+        {phase === "play" && !practice ? <span className="wl-meta">{total}</span> : <span className="wl-meta" />}
       </header>
       {phase === "play" && climb && (
         <div className={`wl-clock${left <= 20_000 ? " low" : ""}`} role="timer" aria-label={`${clock(left)} left`}>
@@ -371,7 +401,8 @@ export default function WordLadderPage() {
           <strong style={{ fontFamily: DISPLAY }}>{clock(left)}</strong>
         </div>
       )}
-      {phase === "play" && !climb && (
+      {phase === "play" && practice && <div className="wl-practice"><b>PRACTICE</b> Nothing is scored. Follow the yellow.</div>}
+      {phase === "play" && !climb && !practice && (
         <div className="wl-pips" aria-label={`Ladder ${ix + 1} of ${ROUND}`}>
           {Array.from({ length: ROUND }, (_, i) => {
             const r = results[i];
@@ -394,7 +425,12 @@ export default function WordLadderPage() {
           <h1 style={{ fontFamily: DISPLAY }}>Turn one word<br />into another</h1>
           <p>Change <b>one letter</b> at a time. Every step has to be a real word. Solve as many as you can in <b>3 minutes</b>.</p>
           <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)} disabled={opening}>{opening ? "Dealing…" : "Play"}</button>
-          <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
+          {ready && <div className="wl-ready">You have got it. Now do it against the clock.</div>}
+          {!learned && <div className="wl-first">First time? Play starts with a short practice ladder.</div>}
+          <div className="wl-pair">
+            <HowToButton game="ladder" full onPractice={startPractice} />
+            <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
+          </div>
           <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
           {dailyDone === null ? (
             <button className="wl-daily" onClick={() => begin(true)}>
@@ -429,7 +465,7 @@ export default function WordLadderPage() {
             <span><b>{par}</b>par</span>
             <span><b>{secs}s</b>time</span>
           </div>
-          <div className="wl-speed" aria-label={`Speed bonus: ${speedLeft} of 5 points left`}>
+          <div className="wl-speed" style={practice ? { display: "none" } : undefined} aria-label={`Speed bonus: ${speedLeft} of 5 points left`}>
             <em>Speed bonus</em>
             <i>{[0, 1, 2, 3, 4].map((k) => <u key={k} className={k < speedLeft ? "on" : ""} />)}</i>
             <b>+{speedLeft}</b>
@@ -439,7 +475,7 @@ export default function WordLadderPage() {
           {/* the ladder: start at the top, the target waiting at the bottom, your
               words filling the gap. Empty rungs show roughly how far is left. */}
           <div className="wl-ladder">
-            <div className={`wl-rails${flash ? ` wl-flash-${flash % 2}` : ""}`} key={ix}>
+            <div className={`wl-rails${flash ? ` wl-flash-${flash % 2}` : ""}${practice ? " coach" : ""}`} key={ix}>
               <Tiles word={start} kind={rungs.length ? "start" : "live"} onTap={rungs.length || solved ? undefined : setSel} />
               {rungs.map((w, i) => {
                 const live = i === rungs.length - 1;
@@ -458,20 +494,20 @@ export default function WordLadderPage() {
             </div>
           </div>
 
-          <div className="wl-msg" key={msg?.key ?? "none"} role="status">{hintWord ? `Try ${hintWord.toUpperCase()}` : msg?.text ?? (rungs.length === 0 ? "Tap a letter, then tap what to change it to" : "")}</div>
+          <div className={`wl-msg${coachSay && !msg ? " coach" : ""}`} key={msg?.key ?? coachSay ?? "none"} role="status">{coachSay && !msg ? coachSay : hintWord ? `Try ${hintWord.toUpperCase()}` : msg?.text ?? (rungs.length === 0 ? "Tap a letter, then tap what to change it to" : "")}</div>
 
-          <div className="wl-keys">
+          <div className={practice ? "wl-keys coach" : "wl-keys"}>
             {KEYS.map((row, r) => (
               <div key={row}>
                 {r === 2 && <button className="wide" onClick={undo} disabled={!rungs.length || solved} aria-label="Undo">↶</button>}
-                {row.split("").map((k) => <button key={k} onClick={() => { playLadderKey(); type(k); }} className={hintWord && hintWord[sel] === k ? "glow" : ""}>{k}</button>)}
-                {r === 2 && (climb
+                {row.split("").map((k) => <button key={k} onClick={() => { playLadderKey(); type(k); }} className={(hintWord && hintWord[sel] === k) || (coachWord && sel === coachAt && coachWord[sel] === k) ? "glow" : ""}>{k}</button>)}
+                {r === 2 && (climb || practice
                   ? <button className="wide" onClick={() => !solved && finishPuzzle(rungs.length, true)} disabled={solved} aria-label="Skip this ladder">⏭</button>
                   : <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 3 points">?</button>)}
               </div>
             ))}
           </div>
-          <button className="wl-skip" onClick={() => !solved && finishPuzzle(rungs.length, true)} disabled={solved}>Skip this ladder</button>
+          <button className="wl-skip" onClick={() => (practice ? endPractice("skipped") : !solved && finishPuzzle(rungs.length, true))} disabled={solved}>{practice ? "Skip the practice" : "Skip this ladder"}</button>
         </main>
       )}
 
@@ -563,6 +599,14 @@ export default function WordLadderPage() {
         .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; text-align: center; }
         .wl-top b { font-size: 20px; font-weight: 400; }
         .wl-quit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; background: rgba(34,16,79,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+        .wl-practice { width: 100%; max-width: 460px; margin: 0 auto; padding: 2px 16px 6px; text-align: center; font-size: 13px; font-weight: 600; color: rgba(34,16,79,0.72); }
+        .wl-practice b { margin-right: 8px; padding: 3px 9px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 11px; letter-spacing: 0.1em; }
+        .wl-msg.coach { justify-self: center; align-self: center; min-height: 0; margin: 2px auto; padding: 9px 16px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 15.5px; box-shadow: 0 3px 0 rgba(180,83,9,0.35); }
+        .wl-rails.coach .wl-row.live .wl-tile.nudge { background: #fef3c7; box-shadow: 0 0 0 3px #f59e0b, 0 4px 0 #b45309; }
+        .wl-keys.coach button.glow { background: #fde68a; color: #3b0764; box-shadow: 0 0 0 3px #f59e0b, 0 3px 0 #b45309; animation: wlNudge .7s ease-in-out infinite; }
+        .wl-ready { padding: 10px 14px; border-radius: 14px; background: #dcfce7; color: #166534; font-size: 14.5px; font-weight: 700; }
+        .wl-first { font-size: 13px; font-weight: 600; color: var(--dim); }
+        .wl-pair .wl-friends { width: 100%; }
         .wl-clock { width: 100%; max-width: 460px; margin: 0 auto; padding: 2px 16px 6px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 700; color: rgba(34,16,79,0.7); }
         .wl-clock b { color: #22104f; }
         .wl-clock i { flex: 1; height: 8px; border-radius: 999px; background: rgba(76,29,149,0.14); overflow: hidden; }
