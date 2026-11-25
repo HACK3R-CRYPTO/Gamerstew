@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { petFrame, type PetMood } from "@/lib/pets";
+import { track } from "@/lib/track";
 
 export interface PetBurst { mood: "joy" | "sad"; ts: number; ms?: number }
 
@@ -62,6 +63,7 @@ export default function Pet({
   }, [burstTs]);
 
   const onPoke = () => {
+    if (!poke) track("pet_poke", { stage: stage.id, mood }); // once a visit: that a player touched it, not how many times
     setPoke((n) => n + 1);
     if (!egg) { setPassing("joy"); later(() => setPassing(null), 1300); }
     try { navigator.vibrate?.(12); } catch { /* no haptics here */ }

@@ -434,6 +434,7 @@ export default function World() {
     const st = useRestoreStore.getState();
     if (st.mode !== "playing") return;
     const lit = Math.max(0, Math.min(st.restored, st.total - 1)); // every breaker lit is a win, and this is not one
+    track("run_quit", { game: "UP NEPA 3D", saved: lit > 0, ranked: true });
     if (lit === 0) { toMenu(); return; }
     resetTiming();
     worldControls.guide.active = false;

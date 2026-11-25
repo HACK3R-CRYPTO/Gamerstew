@@ -34,8 +34,16 @@ import { useAudioSettings } from "@/hooks/useAudioSettings";
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 const ROUND = 5;
 const PARS = [2, 3, 3, 4, 4]; // short first, so the first ladder teaches the game
+// The Climb (a solo round): three minutes on the clock, ladders that keep coming and get
+// harder, and no ceiling on the score. No hints: stuck means skip. These must match
+// games-backend/src/modules/ladder/rules.ts. The daily and friend rooms stay at five ladders.
+const CLIMB_MS = 180_000;
+const CLIMB_DEALT = 60;
+const CLIMB_PARS = [2, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5];
+const parAt = (i: number) => CLIMB_PARS[i] ?? 6;
+const clock = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const KEYS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
-const BEST_KEY = "gamearena:ladder:best2"; // "2": scores went from out of 1,000 to out of 100
+const BEST_KEY = "gamearena:ladder:best3"; // "3": a solo round is now timed, with no ceiling on the score
 
 const WORDS = new Set(VALID.split(" "));
 
@@ -43,14 +51,16 @@ const WORDS = new Set(VALID.split(" "));
 // are held back until the whole set has been used, so two players, or the same
 // player on two rounds, do not get the same five.
 const SEEN_KEY = "gamearena:ladder:seen";
-function deal(): [string, string, number][] {
+function deal(count = ROUND): [string, string, number][] {
   let seen: string[] = [];
   try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { /* private window */ }
   const seenSet = new Set(seen); const used = new Set<string>();
-  const out = PARS.map((par) => {
+  const out = Array.from({ length: count }, (_, i) => {
+    const par = parAt(i);
     const free = (p: [string, string, number]) => p[2] === par && !used.has(p[0]) && !used.has(p[1]);
     let pool = PUZZLES.filter((p) => free(p) && !seenSet.has(p[0] + p[1]));
     if (!pool.length) pool = PUZZLES.filter(free); // seen them all: start over
+    if (!pool.length) pool = PUZZLES.filter((p) => p[2] === par); // a very long round: go round again
     const p = pool[Math.floor(Math.random() * pool.length)]; used.add(p[0]); used.add(p[1]);
     return p;
   });
@@ -97,7 +107,7 @@ function routeStep(from: string, to: string, clean: boolean): string | null {
 interface Result { start: string; target: string; par: number; steps: number; seconds: number; hints: number; skipped: boolean; points: number; words: string[]; ms: number }
 function pointsFor(par: number, steps: number, seconds: number, hints: number) {
   // must match games-backend/src/modules/ladder/rules.ts: a ladder is worth up
-  // to 20 (10 solve + 5 par + 5 speed), a round is out of 100
+  // to 20 (10 solve + 5 par + 5 speed). A daily or a friend room is five ladders, so out of 100; a solo round has no ceiling
   const route = steps <= par ? 5 : Math.max(0, 5 - (steps - par));
   const speed = Math.max(0, 5 - Math.floor(seconds / 20));
   return Math.max(2, 10 + route + speed - hints * 3);
@@ -133,6 +143,11 @@ export default function WordLadderPage() {
   const [best, setBest] = useState(0);
   const t0 = useRef(0);
   const ladderEnd = useRef<HTMLDivElement>(null);
+  // the timed round: time already spent on finished ladders, and what is left to show
+  const [climb, setClimb] = useState(false);
+  const used = useRef(0);
+  const [left, setLeft] = useState(CLIMB_MS);
+  const [timeUp, setTimeUp] = useState(false);
 
   useEffect(() => {
     try {
@@ -167,12 +182,13 @@ export default function WordLadderPage() {
     if (!isDaily && ranked.canRank) {
       // the server deals a ranked round; if it cannot be reached, play unranked
       setOpening(true);
-      const opened = await ranked.start().catch(() => null);
+      const opened = await ranked.start({ climb: true }).catch(() => null);
       setOpening(false);
-      if (opened?.success && opened.ladders?.length === ROUND) { list = opened.ladders; rankedRound = true; }
+      if (opened?.success && (opened.ladders?.length ?? 0) >= ROUND) { list = opened.ladders!; rankedRound = true; }
       else toast("This round is not ranked: the game server could not open it. You can still play."); // never fall back to unranked without saying so
     }
-    if (!list) list = deal();
+    if (!list) list = deal(CLIMB_DEALT);
+    setClimb(list.length > ROUND); used.current = 0; setLeft(CLIMB_MS); setTimeUp(false);
     setIsRanked(rankedRound);
     setDaily(isDaily); setSet(list); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle(list, 0);
   };
@@ -191,7 +207,7 @@ export default function WordLadderPage() {
     const dealt = (v.deal as { ladders?: [string, string, number][] } | undefined)?.ladders;
     if (v.status === "playing" && v.round !== roomRound.current && dealt?.length === ROUND && !v.players[v.you]?.done) {
       roomRound.current = v.round;
-      setIsRoomRound(true); setIsRanked(false); setDaily(false);
+      setIsRoomRound(true); setIsRanked(false); setDaily(false); setClimb(false);
       setSet(dealt); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle(dealt, 0); setFriendsOpen(false);
     }
     // the host called a rematch: back to the lobby
@@ -212,14 +228,16 @@ export default function WordLadderPage() {
 
   const say = (text: string) => setMsg({ text, key: Date.now() });
   const finishPuzzle = (steps: number, skipped: boolean) => {
-    const ms = Date.now() - t0.current; const seconds = Math.floor(ms / 1000);
+    let ms = Date.now() - t0.current;
+    if (climb) { ms = Math.max(0, Math.min(ms, CLIMB_MS - used.current)); used.current += ms; } // a ladder cannot take more of the clock than is left
+    const seconds = Math.floor(ms / 1000);
     const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints), words: skipped ? rungs : [...rungs.slice(0, steps - 1), target].slice(0, steps), ms };
     const all = [...results, r]; setResults(all); setSolved(true);
     if (skipped) playWhooshOut(); else { const perfect = steps <= par; playLadderSolved(perfect); buzz(perfect ? [18, 40, 18, 40, 30] : [18, 40, 24]); }
     if (isRoomRound) room.progress(all.length, { ix: all.length, pts: all.reduce((a, x) => a + x.points, 0), rows: [] }); // let the others see how far you have got
     setTimeout(() => {
       if (endedRef.current) return; // the player ended the run while this ladder was closing
-      if (ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
+      if (climb ? ix + 1 < set.length && used.current < CLIMB_MS : ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
       else {
         const total = all.reduce((a, x) => a + x.points, 0);
         if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
@@ -228,9 +246,10 @@ export default function WordLadderPage() {
         if (total >= 80) crowd("crowd-cheer"); else if (total >= 40) crowd("crowd-clap");
         // dev only: hands the finished round to an automated test, which checks it
         // against the server's rules
-        if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
+        if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, climb, ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
         if (isRoomRound) void room.finish({ ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) });
-        if (isRanked) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof: { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) } });
+        if (isRanked) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof: { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })), ...(climb ? { ladderClimb: true } : {}) } });
+        if (climb) setTimeUp(true);
       }
     }, skipped ? 500 : 1300);
   };
@@ -244,22 +263,39 @@ export default function WordLadderPage() {
   const endedRef = useRef(false);
   const [quitAsk, setQuitAsk] = useState(false);
   const pointsNow = results.reduce((a, x) => a + x.points, 0);
-  const endNow = () => {
+  const endNow = (clockRanOut = false) => {
     if (phase !== "play" || endedRef.current) return;
     endedRef.current = true; setQuitAsk(false);
-    const ms = Date.now() - t0.current;
+    if (!clockRanOut) track("run_quit", { game: "Word Ladder", saved: pointsNow > 0, ranked: isRanked });
+    const ms = climb ? Math.max(0, Math.min(Date.now() - t0.current, CLIMB_MS - used.current)) : Date.now() - t0.current;
+    if (clockRanOut) setTimeUp(true);
     const blank = (pz: (typeof set)[number], words: string[], took: number, used: number): Result => ({ start: pz[0], target: pz[1], par: pz[2], steps: words.length, seconds: Math.floor(took / 1000), hints: used, skipped: true, points: 0, words, ms: took });
     // the ladder on screen (unless it was just solved and is already counted), then the ones never opened
-    const all = [...results, ...(solved || !puzzle ? [] : [blank(puzzle, rungs, ms, hints)]), ...set.slice(ix + 1).map((pz) => blank(pz, [], 0, 0))];
+    // (a timed round has no "never opened" ladders: it is as long as the player made it)
+    const all = [...results, ...(solved || !puzzle ? [] : [blank(puzzle, rungs, ms, hints)]), ...(climb ? [] : set.slice(ix + 1).map((pz) => blank(pz, [], 0, 0)))];
     const total = all.reduce((a, x) => a + x.points, 0);
     setResults(all);
     if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
     setPhase("done"); playWhooshOut();
-    const proof = { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) };
+    const proof = { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })), ...(climb ? { ladderClimb: true } : {}) };
+    if (process.env.NODE_ENV !== "production") (window as unknown as { __ladderProbe?: (x: unknown) => void }).__ladderProbe?.({ set, total, climb, ...proof });
     if (isRoomRound) void room.finish(proof);
     // a run ended with nothing solved is not handed in: opening a round and closing it must not count as a game played
     if (isRanked && total > 0) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof });
   };
+
+  // the round's clock: it runs only while a ladder is open, never during the pause after a solve
+  const endRef = useRef(endNow); endRef.current = endNow;
+  const solvedRef = useRef(solved); solvedRef.current = solved;
+  useEffect(() => {
+    if (phase !== "play" || !climb) return;
+    const t = setInterval(() => {
+      const l = CLIMB_MS - used.current - (solvedRef.current ? 0 : Date.now() - t0.current);
+      setLeft(Math.max(0, l));
+      if (l <= 0 && !solvedRef.current) endRef.current(true);
+    }, 200);
+    return () => clearInterval(t);
+  }, [phase, climb]);
 
   const type = useCallback((letter: string) => {
     if (phase !== "play" || solved || !puzzle) return;
@@ -276,7 +312,7 @@ export default function WordLadderPage() {
   }, [phase, solved, puzzle, current, sel, rungs, start, target]);
   const undo = () => { if (!solved && rungs.length) { playLadderUndo(); setRungs(rungs.slice(0, -1)); setHintWord(null); setMsg(null); } };
   const hint = () => {
-    if (solved) return;
+    if (solved || climb) return; // no hints against the clock
     const w = nextStep(current, target);
     if (!w) { say("No route from here. Undo a step"); return; }
     playLadderHint(); setHints((h) => h + 1); setHintWord(w); setSel([0, 1, 2, 3].findIndex((k) => w[k] !== current[k]));
@@ -328,7 +364,14 @@ export default function WordLadderPage() {
         <b style={{ fontFamily: DISPLAY }}>Word Ladder</b>
         {phase === "play" ? <span className="wl-meta">{total}</span> : <span className="wl-meta" />}
       </header>
-      {phase === "play" && (
+      {phase === "play" && climb && (
+        <div className={`wl-clock${left <= 20_000 ? " low" : ""}`} role="timer" aria-label={`${clock(left)} left`}>
+          <span>Ladder <b>{ix + 1}</b></span>
+          <i><u style={{ width: `${Math.max(0, Math.min(100, (left / CLIMB_MS) * 100))}%` }} /></i>
+          <strong style={{ fontFamily: DISPLAY }}>{clock(left)}</strong>
+        </div>
+      )}
+      {phase === "play" && !climb && (
         <div className="wl-pips" aria-label={`Ladder ${ix + 1} of ${ROUND}`}>
           {Array.from({ length: ROUND }, (_, i) => {
             const r = results[i];
@@ -349,7 +392,7 @@ export default function WordLadderPage() {
             </div>
           </div>
           <h1 style={{ fontFamily: DISPLAY }}>Turn one word<br />into another</h1>
-          <p>Change <b>one letter</b> at a time. Every step has to be a real word.</p>
+          <p>Change <b>one letter</b> at a time. Every step has to be a real word. Solve as many as you can in <b>3 minutes</b>.</p>
           <button className="wl-primary" style={{ fontFamily: DISPLAY }} onClick={() => begin(false)} disabled={opening}>{opening ? "Dealing…" : "Play"}</button>
           <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
           <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
@@ -362,8 +405,8 @@ export default function WordLadderPage() {
           )}
           <Link className="wl-rankline" href="/games/ladder/leaderboard">See this week's leaderboard</Link>
           <div className="wl-facts">
-            <span><b>5</b>ladders a round</span>
-            <span><b>100</b>points a round</span>
+            <span><b>3:00</b>on the clock</span>
+            <span><b>No limit</b>20 a ladder</span>
             <span><b>{best || "–"}</b>your best</span>
           </div>
         </main>
@@ -422,7 +465,9 @@ export default function WordLadderPage() {
               <div key={row}>
                 {r === 2 && <button className="wide" onClick={undo} disabled={!rungs.length || solved} aria-label="Undo">↶</button>}
                 {row.split("").map((k) => <button key={k} onClick={() => { playLadderKey(); type(k); }} className={hintWord && hintWord[sel] === k ? "glow" : ""}>{k}</button>)}
-                {r === 2 && <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 3 points">?</button>}
+                {r === 2 && (climb
+                  ? <button className="wide" onClick={() => !solved && finishPuzzle(rungs.length, true)} disabled={solved} aria-label="Skip this ladder">⏭</button>
+                  : <button className="wide" onClick={hint} disabled={solved} aria-label="Hint, costs 3 points">?</button>)}
               </div>
             ))}
           </div>
@@ -432,9 +477,10 @@ export default function WordLadderPage() {
 
       {phase === "done" && (
         <main className="wl-done">
-          <div className="wl-kicker">{isRoomRound ? "YOUR SCORE" : daily ? "DAILY LADDER" : "ROUND COMPLETE"}</div>
+          <div className="wl-kicker">{isRoomRound ? "YOUR SCORE" : daily ? "DAILY LADDER" : climb ? (timeUp ? "TIME" : "ROUND ENDED") : "ROUND COMPLETE"}</div>
           <h1 style={{ fontFamily: DISPLAY }}><CountUp to={total} /> <small>points</small></h1>
           {total >= best && total > 0 && <div className="wl-new">New best</div>}
+          {climb && <div className="wl-solved">{results.filter((r) => !r.skipped).length} ladder{results.filter((r) => !r.skipped).length === 1 ? "" : "s"} solved in 3 minutes</div>}
           {isRoomRound && room.view && (
             <div className="wl-standings">
               <div className="wl-kicker">ROOM {room.view.code} · {room.view.status === "over" ? "FINAL" : "STILL PLAYING"}</div>
@@ -491,7 +537,7 @@ export default function WordLadderPage() {
             <p>{isRoomRound ? "Your friends will see the score you have now." : pointsNow > 0 ? "It still counts. Your score so far goes on the board and on-chain." : "You have not solved a ladder yet, so there is no score to save."}</p>
             <div className="wl-quit-score"><span>Score so far</span><strong>{pointsNow}</strong></div>
             <button className="keep" onClick={() => setQuitAsk(false)}>Keep playing</button>
-            <button className="end" onClick={endNow}>End and save my score</button>
+            <button className="end" onClick={() => endNow()}>End and save my score</button>
           </div>
         </div>
       )}
@@ -517,6 +563,15 @@ export default function WordLadderPage() {
         .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; text-align: center; }
         .wl-top b { font-size: 20px; font-weight: 400; }
         .wl-quit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; background: rgba(34,16,79,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+        .wl-clock { width: 100%; max-width: 460px; margin: 0 auto; padding: 2px 16px 6px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 700; color: rgba(34,16,79,0.7); }
+        .wl-clock b { color: #22104f; }
+        .wl-clock i { flex: 1; height: 8px; border-radius: 999px; background: rgba(76,29,149,0.14); overflow: hidden; }
+        .wl-clock u { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #7c3aed, #a78bfa); transition: width 0.2s linear; }
+        .wl-clock strong { min-width: 46px; text-align: right; font-size: 19px; color: #22104f; font-variant-numeric: tabular-nums; }
+        .wl-clock.low u { background: linear-gradient(90deg, #be123c, #fb7185); }
+        .wl-clock.low strong { color: #be123c; animation: wlLow 1s ease-in-out infinite; }
+        @keyframes wlLow { 50% { transform: scale(1.12); } }
+        .wl-solved { margin-top: 4px; font-size: 13.5px; font-weight: 700; color: rgba(34,16,79,0.7); }
         .wl-quit > div { width: 100%; max-width: 440px; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; background: #fff; display: grid; gap: 10px; text-align: center; animation: wlUp .25s ease both; }
         @keyframes wlUp { from { transform: translateY(24px); opacity: 0; } }
         .wl-quit b { font-family: "Melon Pop", sans-serif; font-weight: 400; font-size: 26px; } .wl-quit p { margin: 0; font-size: 15px; line-height: 1.4; color: rgba(34,16,79,0.75); }

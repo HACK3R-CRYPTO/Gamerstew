@@ -60,7 +60,9 @@ export function createScoreService(deps: ScoreDeps) {
     }
     // Word Ladder: the server deals the five ladders from the ticket itself, so
     // the player cannot pick easy ones and nothing extra has to be stored.
-    if (game === 'ladder') return reply(200, { success: true, sessionToken: token, ladders: ladder.deal(token) });
+    // `climb` is the timed round with no ceiling: a longer deal from the same ticket. A page that
+    // does not ask for it (an older one still open on a phone) gets the five it expects.
+    if (game === 'ladder') return reply(200, { success: true, sessionToken: token, ladders: body.climb === true ? ladder.deal(token, ladder.CLIMB_DEALT) : ladder.deal(token) });
     return reply(200, seed ? { success: true, sessionToken: token, seed } : { success: true, sessionToken: token });
   }
 
@@ -107,7 +109,8 @@ export function createScoreService(deps: ScoreDeps) {
     } else if (game === 'ladder') {
       // Fully replayed: the score is worked out here from the player's words.
       // The number the client sent is ignored.
-      const run = ladder.verify(ladder.deal(sessionToken), body.ladderRuns, elapsedMs);
+      const climb = body.ladderClimb === true;
+      const run = climb ? ladder.verify(ladder.deal(sessionToken, ladder.CLIMB_DEALT), body.ladderRuns, elapsedMs, { climb: true }) : ladder.verify(ladder.deal(sessionToken), body.ladderRuns, elapsedMs);
       if (!run.ok) {
         logger.warn(`[ladder] rejected ${playerAddress}: ${run.error}`);
         return reply(403, { error: 'Ladder check failed', reason: run.error });

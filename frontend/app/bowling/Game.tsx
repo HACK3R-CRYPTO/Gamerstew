@@ -1359,6 +1359,7 @@ export default function Game() {
     setQuitAsk(false);
     endedRef.current = true;
     const made = allRef.current[0] ?? [];
+    track("run_quit", { game: "Street Strike", saved: made.reduce((a, b) => a + b, 0) > 0, ranked: true });
     const card = made.slice();
     for (let k = 0; k < 16 && !score(card, FRAMES).done; k++) card.push(0);
     allRef.current = [card];

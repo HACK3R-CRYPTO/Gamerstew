@@ -63,12 +63,13 @@ export function useRankedRun(game: GameId) {
 
   const token = useCallback(async () => (isMiniPay ? null : await getAccessToken()), [isMiniPay, getAccessToken]);
 
-  const start = useCallback(async (): Promise<StartRunResult> => {
+  /** `extra` goes to the server with the request (Word Ladder asks for the timed round with it). */
+  const start = useCallback(async (extra?: Record<string, unknown>): Promise<StartRunResult> => {
     tokenRef.current = null; setStatus("idle"); setError(null); setResult(null);
     if (!canRank || !address) return { success: false, error: "Not signed in" };
     const auth = await token();
     if (!isMiniPay && !auth) return { success: false, error: "Not signed in" };
-    const opened = await startRun(auth, address, game);
+    const opened = await startRun(auth, address, game, extra);
     if (opened.success) tokenRef.current = opened.sessionToken;
     return opened;
   }, [canRank, address, token, isMiniPay, game]);

@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/track";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePerks } from "@/hooks/usePerks";
 import { savePerkFor, type Perk } from "@/lib/perks";
@@ -71,6 +72,9 @@ export default function SaveRunOverlay({
   const canAfford = !!perk && gBalance >= perk.priceG$;
   const busy = status === "buying";
 
+  // counted for the dashboard: how often a continue is offered, bought and turned down, by game
+  const seen = { game, item: perk?.id ?? 0, ranked, price: perk?.priceLabel ?? "" };
+  useEffect(() => { if (open && perk) track("continue_offer", seen); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
   useEffect(() => {
     if (!open) return;
     declinedRef.current = false;
@@ -79,7 +83,7 @@ export default function SaveRunOverlay({
       const p = Math.max(0, 1 - (now - startRef.current) / decideMs);
       setProgress(p);
       if (p <= 0) {
-        if (!declinedRef.current) { declinedRef.current = true; onDecline(); }
+        if (!declinedRef.current) { declinedRef.current = true; track("continue_declined", { ...seen, how: "timed_out" }); onDecline(); }
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -102,7 +106,7 @@ export default function SaveRunOverlay({
   const handleBuy = useCallback(async () => {
     if (!perk || busy) return;
     pauseCountdown(); setStatus("buying"); setErrMsg(null);
-    try { await buyPerk(perk); onSaved(); }
+    try { await buyPerk(perk); track("continue_bought", { ...seen, from: "wallet" }); onSaved(); }
     catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
   }, [perk, busy, buyPerk, onSaved, pauseCountdown]);
 
@@ -111,8 +115,8 @@ export default function SaveRunOverlay({
     pauseCountdown(); setStatus("buying"); setErrMsg(null);
     try {
       const ok = await spendStock(perk.id);
-      if (ok) { onSaved(); return; }
-      await buyPerk(perk); onSaved();
+      if (ok) { track("continue_bought", { ...seen, from: "stock" }); onSaved(); return; }
+      await buyPerk(perk); track("continue_bought", { ...seen, from: "wallet" }); onSaved();
     } catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
   }, [perk, busy, spendStock, buyPerk, onSaved, pauseCountdown]);
 
@@ -120,6 +124,7 @@ export default function SaveRunOverlay({
     if (declinedRef.current) return;
     declinedRef.current = true;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    track("continue_declined", { ...seen, how: "said_no" });
     onDecline();
   }, [onDecline]);
 

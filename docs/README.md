@@ -13,6 +13,7 @@ What each document is, and whether it describes the code as it is today.
 | [business-model.md](business-model.md) | PROPOSED: the Daily Pot. Players buy plays, the day's spend is the day's prize, the house keeps a share. Decisions waiting on the owner |
 | [sign-in-costs.md](sign-in-costs.md) | PLAN: new email sign-ups move from Privy to Magic, own wallets sign in directly, old Privy players stay. Not started |
 | [pets-art.md](pets-art.md) | The five slime pets: rebuilt as 3D jelly in Blender, and how to render them again |
+| [word-ladder.md](word-ladder.md) | Word Ladder: the timed round with no ceiling on the score, the daily, friend rooms, and how the server checks a round |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |
@@ -34,7 +35,7 @@ What each document is, and whether it describes the code as it is today.
 
 ## Not written yet
 
-Word Ladder and Street Strike have no design document. Their rules are described in the code: `games-backend/src/modules/ladder/rules.ts`, `games-backend/src/modules/strike/game.ts`, `frontend/app/bowling/Game.tsx`.
+Street Strike has no design document. Its rules are described in the code: `games-backend/src/modules/strike/game.ts`, `frontend/app/bowling/Game.tsx`.
 
 ## Pictures
 
