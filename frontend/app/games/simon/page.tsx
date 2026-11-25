@@ -441,6 +441,7 @@ export default function SimonGamePage() {
 
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
+  const continuedRef = useRef(false); // true once a paid continue was used in this run
   // Retry perk (M1): a wrong tap opens the retry prompt (casual mode only).
   // Buying replays the round; the run then stays off the ranked ladder.
   const usedPerkRef = useRef(false);
@@ -610,7 +611,10 @@ export default function SimonGamePage() {
     setGameTimeMs(gameTime);
     clearTimeouts();
 
-    // A retried run submits normally — using a retry counts on the weekly board.
+    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
+    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
+    // transaction on the server's side, next to the purchase itself.
+    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
 
     if (runModeRef.current === "room") { void roomRef.current.finish({ simonTapLog: tapLogRef.current.slice(), score: Math.max(0, Math.round(finalScore)) }); return; }
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
@@ -834,7 +838,7 @@ export default function SimonGamePage() {
       juice.lossPopup(50, 60, "WRONG");
       // Offer a retry (casual) before ending — signed-in, minted players only,
       // and only for a run that will actually be submitted.
-      if (runModeRef.current === "ranked" && address && !needsMint) {
+      if (runModeRef.current !== "room" && address && !needsMint) { // any solo run: a continue is for fun, and a continued run is never ranked
         pendingEndRef.current = { score: scoreRef.current, time: Date.now() - startTimeRef.current };
         setActiveBtn(null);
         setIsShowingSequence(false);
@@ -900,6 +904,7 @@ export default function SimonGamePage() {
 
   // ─── Retry perk: replay the current round (casual) or end the run ───────────
   const resumeAfterRetry = useCallback(() => {
+    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
     usedPerkRef.current = true;
     pendingEndRef.current = null;
     userPatternRef.current = [];
@@ -945,6 +950,7 @@ export default function SimonGamePage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
+    continuedRef.current = false; // a fresh run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for

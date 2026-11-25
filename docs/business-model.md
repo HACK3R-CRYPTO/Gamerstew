@@ -1,6 +1,6 @@
 # GameArena business model: the Daily Pot
 
-> Status: PROPOSED on 2026-11-26. Nothing in this document is built yet except where a line says "exists". No money code is to be written until the owner approves section 9.
+> Status: PROPOSED on 2026-11-26, revised the same day after the owner's notes. **Everything is priced in G$. There are no dollar or stablecoin items.** Built so far: the rule that a continued run is never ranked (section 5), a transaction for every unfinished run, and leaving a Word Ladder round finishing it (section 13). The pot, energy and the new items are not built, and wait on section 9.
 
 ## 1. The idea in one paragraph
 
@@ -47,8 +47,10 @@ The pot is also **seeded**. Today the treasury puts 126,000 G$ a week into the c
 |---|---|---|
 | Energy (more ranked plays) | Ranked | Yes. More attempts at a best score, each one pure skill |
 | Continue after a fail | Casual only | No. A continued run never reaches a prize board |
+| Streak freeze | Both | Keeps a streak alive through one missed day. Players pay to protect what they built |
+| Pet care | Both | Feeds the pet so it keeps growing. The pet and its "sad" message exist already |
+| Cup ticket | Ranked | Entry to a bigger weekly cup. The tickets are the prize |
 | Season pass (later) | Both | Rewards are energy, cosmetics, and entries, never score |
-| Stablecoin packs in MiniPay (later) | Both | Bundles of the above, paid in dollars, in one tap |
 
 A rich player can take more shots. They cannot buy a higher score. That is the line between a skill game people trust and a pay-to-win game people leave.
 
@@ -77,7 +79,7 @@ Illustration only, to show the shape. Assume 300 daily players and an energy pac
 | 1 in 4 buys one pack | 7,500 G$ | 4,500 G$ | 1,500 G$ |
 | 1 in 4 buys two packs | 15,000 G$ | 9,000 G$ | 3,000 G$ |
 
-In G$ this is small money. Its value is that it runs every day without anyone selling anything, and it grows in step with the number of players. Dollar revenue comes from the stablecoin packs (stage 3), which this stage makes possible.
+In G$ this is small money per player. So the model leans on three things instead of a high price: many small reasons to spend each day (energy, a continue, a streak freeze, pet care, a cup ticket), every one of them a transaction on the chain, and a share of each kept by the house. Volume and habit, not a big ticket.
 
 ## 9. Decisions the owner has to make
 
@@ -86,7 +88,7 @@ In G$ this is small money. Its value is that it runs every day without anyone se
 3. **The seed.** Redirect the weekly 126,000 G$ into daily pots, or keep the weekly challenge and seed less.
 4. **Who is paid.** Verified players only (recommended), or everyone.
 5. **Custody.** Accept that the pot sits in the treasury wallet until payout (no new contract), or pay for a contract with an audit.
-6. **Law.** Paid entry with a cash prize is regulated in many places, Nigeria included. Skill games are usually treated more kindly than games of chance, but this needs a real opinion before stablecoin packs are sold. Nothing here is legal advice.
+6. **Law.** Paid play with a prize is regulated in many places, Nigeria included. Skill games are usually treated more kindly than games of chance. G$ is a token with a market price, so this still deserves a real opinion once pots grow. Nothing here is legal advice.
 
 ## 10. Build order
 
@@ -94,7 +96,7 @@ In G$ this is small money. Its value is that it runs every day without anyone se
 |---|---|---|
 | 1 | Energy, game of the day, the pot, daily payout, home-screen pot, admin page for it | Decisions 1 to 5 |
 | 2 | Continue in every game, on the casual lane | Stage 1 live |
-| 3 | Stablecoin packs in MiniPay | Decision 6 |
+| 3 | Streak freeze, pet care, cup tickets | Stage 1 live, and the shop items in section 14 set by the owner |
 | 4 | Season pass | A steady daily base |
 
 ## 11. What this replaces, and what it does not
@@ -106,3 +108,26 @@ In G$ this is small money. Its value is that it runs every day without anyone se
 ## 12. How we will know it works
 
 Watched on the admin dashboard, daily: players who used all free energy, players who bought energy, G$ spent, pot size, share of players who came back the next day. The one number that matters most is **players who return the day after they first played for a pot**.
+
+## 13. Three rules that are already in the code (2026-11-26)
+
+**A continue is for fun, never for rank.** Stack Tower, Rhythm Rush and Simon Memory sold a continue only in ranked play, and the continued run still went on the weekly board: money bought rank. Now a continue is offered in every solo mode, the overlay says before the player pays "Continue for fun · this run will not be ranked", and a continued run is not handed in. The purchase is still a transaction, and the run's unused ticket becomes an unfinished-run transaction (below). Code: `continuedRef` in each game's page, `components/SaveRunOverlay.tsx`.
+
+**Every run a player opens is a transaction.** A run that was started and never finished used to leave nothing on the chain. Fifteen minutes after it starts, the server now sends a transaction for it: a note from its own wallet to itself that reads "GameArena · unfinished run · <game> · <player>". It is not a score on purpose: a zero score counts as a game played, the weekly challenge pays by games played, and players could earn by opening and closing games. Limits: 8 a pass, 20 a player a day, 1,500 a day. Code: `games-backend/src/modules/scores/unfinished.ts`. Switch: `UNFINISHED_ONCHAIN`. The dashboard link needs `2026-11-26c_unfinished_tx.sql`.
+
+**Leaving a round finishes it.** In Word Ladder, the back arrow during a ranked round used to throw the round away. It now asks "End this run?" and, on yes, hands in every unsolved ladder as skipped: the server scores what was solved and the run goes on the board and the chain. A round ended with nothing solved is not handed in, so opening and closing a round does not count as a game played. Street Strike and UP NEPA 3D do not do this yet: Street Strike's server check only accepts a finished card.
+
+## 14. Shop items the owner has to switch on
+
+The live shop contract sells items 1 to 6. Its owner is `0x2E33…7Ad1`, and only that wallet can add an item: `setPerk(id, price in wei, false)` on `0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5`. Proposed, all consumable:
+
+| Id | Item | Proposed price |
+|---|---|---|
+| 7 | Word Ladder: reveal the next rung | 50 G$ |
+| 8 | Street Strike: bowl the last throw again | 50 G$ |
+| 9 | UP NEPA 3D: one more life | 100 G$ |
+| 10 | Energy: 5 more ranked plays | 100 G$ |
+| 11 | Streak freeze | 150 G$ |
+| 12 | Pet food | 30 G$ |
+
+The app side of items 7 to 12 is not built. Nothing should be set on the contract until each one is, or players could buy something that does nothing.

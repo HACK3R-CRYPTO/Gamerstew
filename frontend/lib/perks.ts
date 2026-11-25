@@ -3,8 +3,8 @@
 // (0x0fc6C5593B205b1c617CF33A236362B2c5c67650). Prices are display values;
 // the contract holds the canonical on-chain price in 18-decimal G$.
 //
-// Every perk is CASUAL-MODE ONLY. Ranked play stays pure skill and never
-// touches this shop. 20% of every purchase streams to the GoodDollar
+// A continue (save or retry) can be bought in any solo run, and a run that was
+// continued is never ranked: it buys more play, never a place on a board. 20% of every purchase streams to the GoodDollar
 // UBI pool; the split is enforced on-chain.
 
 import { parseEther } from "viem";

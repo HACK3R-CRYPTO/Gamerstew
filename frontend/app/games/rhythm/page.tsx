@@ -893,6 +893,7 @@ export default function RhythmGamePage() {
   // player (Privy JWT or MiniPay wallet signature) happens server-side.
   const gameStartMsRef = useRef<number>(0);
   const submittedRef = useRef<boolean>(false);  // one-shot guard so we never double-submit
+  const continuedRef = useRef(false); // true once a paid continue was used in this run
   // Save perk (M1): running out of lives in the encore opens the save prompt
   // (casual mode only). Buying restores lives; the run then stays off ranked.
   const usedPerkRef = useRef(false);
@@ -1043,6 +1044,7 @@ export default function RhythmGamePage() {
     roomRunRef.current = inRoom; roomSentRef.current = false;
     if (inRoom) { songIdRef.current = roomSong as string; setSongId(roomSong as string); }
     runModeRef.current = inRoom ? "room" : modeRef.current;
+    continuedRef.current = false; // a fresh run
     const ranked = runModeRef.current === "ranked";
     // Practice variants never touch the chain: no gas check, no session ticket.
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
@@ -1246,7 +1248,10 @@ export default function RhythmGamePage() {
     }
     if (runModeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
-    // A saved run submits normally — using a save counts on the weekly board.
+    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
+    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
+    // transaction on the server's side, next to the purchase itself.
+    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -2025,7 +2030,7 @@ export default function RhythmGamePage() {
             setEncoreLives(3 - encoreMissesRef.current);
             if (encoreMissesRef.current >= 3) {
               // Paying to save only makes sense for a run that will be submitted.
-              if (runModeRef.current === "ranked" && address && !needsMint) {
+              if (runModeRef.current !== "room" && address && !needsMint) { // any solo run: a continue is for fun, and a continued run is never ranked
                 savePausedAtRef.current = performance.now(); // freeze the clock
                 setPhase("saving");
               } else {
@@ -2086,6 +2091,7 @@ export default function RhythmGamePage() {
 
   // ─── Save perk: restore encore lives (casual) or end the run ────────────────
   const resumeAfterSave = useCallback(() => {
+    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
     usedPerkRef.current = true;
     encoreMissesRef.current = 0;
     setEncoreLives(3);

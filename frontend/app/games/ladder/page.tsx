@@ -174,7 +174,7 @@ export default function WordLadderPage() {
     }
     if (!list) list = deal();
     setIsRanked(rankedRound);
-    setDaily(isDaily); setSet(list); setResults([]); setPhase("play"); openPuzzle(list, 0);
+    setDaily(isDaily); setSet(list); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle(list, 0);
   };
 
   useEffect(() => {
@@ -192,7 +192,7 @@ export default function WordLadderPage() {
     if (v.status === "playing" && v.round !== roomRound.current && dealt?.length === ROUND && !v.players[v.you]?.done) {
       roomRound.current = v.round;
       setIsRoomRound(true); setIsRanked(false); setDaily(false);
-      setSet(dealt); setResults([]); setPhase("play"); openPuzzle(dealt, 0); setFriendsOpen(false);
+      setSet(dealt); endedRef.current = false; setResults([]); setPhase("play"); openPuzzle(dealt, 0); setFriendsOpen(false);
     }
     // the host called a rematch: back to the lobby
     if (v.status === "waiting" && isRoomRound && phase === "done") { setPhase("start"); setIsRoomRound(false); setFriendsOpen(true); }
@@ -218,6 +218,7 @@ export default function WordLadderPage() {
     if (skipped) playWhooshOut(); else { const perfect = steps <= par; playLadderSolved(perfect); buzz(perfect ? [18, 40, 18, 40, 30] : [18, 40, 24]); }
     if (isRoomRound) room.progress(all.length, { ix: all.length, pts: all.reduce((a, x) => a + x.points, 0), rows: [] }); // let the others see how far you have got
     setTimeout(() => {
+      if (endedRef.current) return; // the player ended the run while this ladder was closing
       if (ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
       else {
         const total = all.reduce((a, x) => a + x.points, 0);
@@ -232,6 +233,32 @@ export default function WordLadderPage() {
         if (isRanked) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof: { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) } });
       }
     }, skipped ? 500 : 1300);
+  };
+
+  // ── Ending a run early ─────────────────────────────────────────────────────
+  // Leaving a ranked round used to throw it away: the ticket was never handed
+  // in, so the run left no score and no transaction. Now leaving IS finishing.
+  // Every ladder not yet solved is handed in as skipped, the server scores what
+  // was solved, and the run goes on the chain and the board like any other. A
+  // player cannot quit their way out of a bad round. They are asked first.
+  const endedRef = useRef(false);
+  const [quitAsk, setQuitAsk] = useState(false);
+  const pointsNow = results.reduce((a, x) => a + x.points, 0);
+  const endNow = () => {
+    if (phase !== "play" || endedRef.current) return;
+    endedRef.current = true; setQuitAsk(false);
+    const ms = Date.now() - t0.current;
+    const blank = (pz: (typeof set)[number], words: string[], took: number, used: number): Result => ({ start: pz[0], target: pz[1], par: pz[2], steps: words.length, seconds: Math.floor(took / 1000), hints: used, skipped: true, points: 0, words, ms: took });
+    // the ladder on screen (unless it was just solved and is already counted), then the ones never opened
+    const all = [...results, ...(solved || !puzzle ? [] : [blank(puzzle, rungs, ms, hints)]), ...set.slice(ix + 1).map((pz) => blank(pz, [], 0, 0))];
+    const total = all.reduce((a, x) => a + x.points, 0);
+    setResults(all);
+    if (total > best) { setBest(total); try { localStorage.setItem(BEST_KEY, String(total)); } catch { /* ignore */ } }
+    setPhase("done"); playWhooshOut();
+    const proof = { ladderRuns: all.map((x) => ({ words: x.words, ms: x.ms, hints: x.hints, skipped: x.skipped })) };
+    if (isRoomRound) void room.finish(proof);
+    // a run ended with nothing solved is not handed in: opening a round and closing it must not count as a game played
+    if (isRanked && total > 0) void ranked.finish({ score: total, gameTime: all.reduce((a, x) => a + x.ms, 0), proof });
   };
 
   const type = useCallback((letter: string) => {
@@ -297,7 +324,7 @@ export default function WordLadderPage() {
   return (
     <div className="wl">
       <header className="wl-top">
-        <button className="wl-back" onClick={() => (phase === "play" ? setPhase("start") : router.push("/dashboard"))} aria-label="Back">←</button>
+        <button className="wl-back" onClick={() => (phase !== "play" ? router.push("/dashboard") : isRanked || isRoomRound ? setQuitAsk(true) : setPhase("start"))} aria-label={phase === "play" ? "End this run" : "Back"}>←</button>
         <b style={{ fontFamily: DISPLAY }}>Word Ladder</b>
         {phase === "play" ? <span className="wl-meta">{total}</span> : <span className="wl-meta" />}
       </header>
@@ -457,6 +484,17 @@ export default function WordLadderPage() {
         </main>
       )}
 
+      {quitAsk && phase === "play" && (
+        <div className="wl-quit" role="dialog" aria-modal="true" aria-label="End this run?">
+          <div>
+            <b>End this run?</b>
+            <p>{isRoomRound ? "Your friends will see the score you have now." : pointsNow > 0 ? "It still counts. Your score so far goes on the board and on-chain." : "You have not solved a ladder yet, so there is no score to save."}</p>
+            <div className="wl-quit-score"><span>Score so far</span><strong>{pointsNow}</strong></div>
+            <button className="keep" onClick={() => setQuitAsk(false)}>Keep playing</button>
+            <button className="end" onClick={endNow}>End and save my score</button>
+          </div>
+        </div>
+      )}
       {friendsOpen && phase === "start" && <FriendsSheet room={room} gameName="Word Ladder" sharePath="/games/ladder" initialCode={inviteCode} onClose={() => setFriendsOpen(false)} />}
 
       <style>{`
@@ -478,6 +516,13 @@ export default function WordLadderPage() {
         .wl button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
         .wl-top { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; text-align: center; }
         .wl-top b { font-size: 20px; font-weight: 400; }
+        .wl-quit { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; background: rgba(34,16,79,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+        .wl-quit > div { width: 100%; max-width: 440px; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; background: #fff; display: grid; gap: 10px; text-align: center; animation: wlUp .25s ease both; }
+        @keyframes wlUp { from { transform: translateY(24px); opacity: 0; } }
+        .wl-quit b { font-family: "Melon Pop", sans-serif; font-weight: 400; font-size: 26px; } .wl-quit p { margin: 0; font-size: 15px; line-height: 1.4; color: rgba(34,16,79,0.75); }
+        .wl-quit-score { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 16px; background: #f4eeff; } .wl-quit-score span { font-size: 13px; font-weight: 700; color: rgba(34,16,79,0.7); } .wl-quit-score strong { font-family: "Melon Pop", sans-serif; font-weight: 400; font-size: 30px; }
+        .wl-quit button { min-height: 52px; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; } .wl-quit .keep { border: none; background: linear-gradient(180deg,#7c3aed,#6d28d9); box-shadow: 0 5px 0 #4c1d95; color: #fff; } .wl-quit .end { border: 2px solid rgba(109,40,217,0.3); background: #fff; color: #6d28d9; }
+        @media (min-width: 620px) { .wl-quit { align-items: center; } .wl-quit > div { border-radius: 26px; } }
         .wl-back { width: 40px; height: 40px; border-radius: 14px; border: 1px solid var(--line); background: #fff; font-size: 18px; }
         .wl-meta { justify-self: end; min-width: 40px; font-family: 'Melon Pop', 'Fredoka', sans-serif; font-size: 20px; color: var(--brand); font-variant-numeric: tabular-nums; }
         .wl-pips { display: flex; justify-content: center; gap: 6px; padding: 2px 0 6px; }

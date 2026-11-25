@@ -11,8 +11,8 @@ import { savePerkFor, type Perk } from "@/lib/perks";
 //     and a plain seconds number, so the countdown is unmistakable
 //   · a clear "Confirming…" state so the wallet wait never looks frozen
 // With stock, a save is free and instant (spends from inventory). At zero
-// stock it's one gasless signature. A saved run continues and still submits —
-// using a save counts on the weekly leaderboard.
+// stock it's one gasless signature. A continued run is for fun: it is NOT ranked,
+// and the overlay says so before the player pays.
 
 const T = {
   ink: "#22104f",
@@ -152,6 +152,8 @@ export default function SaveRunOverlay({
         <div style={{ fontFamily: T.display, fontSize: 13, letterSpacing: "0.24em", color: T.danger }}>{headline}</div>
         <div style={{ fontFamily: T.display, fontSize: 44, color: T.ink, marginTop: 2, lineHeight: 1 }}>{score.toLocaleString()}</div>
         <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, marginTop: 2, letterSpacing: "0.02em" }}>your score</div>
+        {/* said before the player pays, not after: a continue buys more play, never a place on a board */}
+        {perk?.kind !== "cosmetic" && <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 700, color: T.inkDim, marginTop: 8, padding: "6px 12px", borderRadius: 999, background: "rgba(109,40,217,0.08)", display: "inline-block" }}>Continue for fun · this run will not be ranked</div>}
       </div>
 
       {/* Circular medallion + depleting timer ring + seconds badge */}

@@ -183,6 +183,7 @@ export default function StackTowerPage() {
   const sessionTokenRef = useRef<string | null>(null);
   const startingRef = useRef(false);
   const submittedRef = useRef(false);
+  const continuedRef = useRef(false); // true once a paid continue was used in this run
   const gameStartMsRef = useRef(0);
 
   // ═══ Save-your-run (M1 perk) ═════════════════════════════════════════════
@@ -388,7 +389,7 @@ export default function StackTowerPage() {
       // Only signed-in, minted players can buy a save on-chain. Guests and
       // not-yet-minted players fall straight through to the finish screen.
       // So does every free mode: paying to save a run that is never submitted makes no sense.
-      if (runModeRef.current === "ranked" && address && !needsMint) {
+      if (runModeRef.current !== "room" && address && !needsMint) { // any solo run: a continue is for fun, and a continued run is never ranked
         savePausedAtRef.current = Date.now();
         setPhase("saving");
       } else {
@@ -479,6 +480,7 @@ export default function StackTowerPage() {
   // Re-arm a moving block from the current top of the tower and hand back the
   // seconds the save decision cost. The run continues and still submits.
   const resumeAfterSave = useCallback(() => {
+    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
     const stack = stackRef.current;
     const top = stack[stack.length - 1];
     const level = levelRef.current;
@@ -537,6 +539,7 @@ export default function StackTowerPage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
+    continuedRef.current = false; // a fresh run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -743,7 +746,10 @@ export default function StackTowerPage() {
     if (phase !== "finished") return;
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
-    // A saved run submits normally — using a save counts on the weekly board.
+    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
+    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
+    // transaction on the server's side, next to the purchase itself.
+    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
