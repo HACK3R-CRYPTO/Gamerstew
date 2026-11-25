@@ -10,8 +10,10 @@
 // in a per-room lock or a compare-and-set, or one phone's poll will overwrite
 // another phone's roll. That is the work to do at that point.
 
-export interface Player { name: string; token: string; rolls: number[]; done: boolean; seen: number; left: boolean }
-export interface Room { code: string; status: 'waiting' | 'playing' | 'over'; round: number; touched: number; players: Player[] }
+/** One throw as the player released it: which tyre, where from, the angle, how hard, how much curve. */
+export interface Throw { tyre: string; x: number; angle: number; speed: number; spin: number }
+export interface Player { name: string; token: string; rolls: number[]; done: boolean; seen: number; left: boolean; /** every throw of this round, in order: enough to replay the whole card on another screen */ throws?: Throw[] }
+export interface Room { code: string; status: 'waiting' | 'playing' | 'over'; round: number; touched: number; players: Player[]; /** a second, public name for the room: it lets anyone watch and can never be used to join */ watch?: string }
 
 export interface RoomStore {
   get(code: string): Promise<Room | undefined>;
@@ -19,6 +21,7 @@ export interface RoomStore {
   put(room: Room): Promise<void>;
   delete(code: string): Promise<void>;
   count(): Promise<number>;
+  all(): Promise<Room[]>;
   /** drop every room not touched since `olderThan` (ms epoch) */
   sweep(olderThan: number): Promise<void>;
 }
@@ -29,6 +32,7 @@ export class MemoryRoomStore implements RoomStore {
   async put(room: Room) { this.rooms.set(room.code, room); }
   async delete(code: string) { this.rooms.delete(code); }
   async count() { return this.rooms.size; }
+  async all() { return [...this.rooms.values()]; }
   async sweep(olderThan: number) {
     for (const [code, r] of this.rooms) if (r.touched < olderThan) this.rooms.delete(code);
   }

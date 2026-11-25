@@ -13,13 +13,14 @@ export default function LiveNow() {
   const router = useRouter(); const [rooms, setRooms] = useState<Live[]>([]);
   useEffect(() => {
     let live = true;
-    const look = () => fetch("/api/rooms/rooms/live", { cache: "no-store" }).then((r) => r.json()).then((d) => { if (live && Array.isArray(d.rooms)) setRooms(d.rooms); }).catch(() => {});
+    const get = (u: string) => fetch(u, { cache: "no-store" }).then((r) => r.json()).then((d) => (Array.isArray(d.rooms) ? (d.rooms as Live[]) : [])).catch(() => [] as Live[]);
+    const look = () => Promise.all([get("/api/rooms/rooms/live"), get("/api/strike/rooms/live")]).then(([a, b]) => { if (live) setRooms([...a, ...b]); });
     void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 15000);
     return () => { live = false; clearInterval(t); };
   }, []);
   if (!rooms.length) return null;
   return (
-    <button className="lvn" onClick={() => router.push(rooms.length === 1 ? `/watch/${rooms[0].watch}` : "/watch")}>
+    <button className="lvn" onClick={() => router.push("/watch")}>
       <i /> <b>{rooms.length} {rooms.length === 1 ? "round" : "rounds"} live</b><span>{rooms[0].players.join(" vs ")}</span><em>Watch ›</em>
       <style>{`
         .lvn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 12px 8px 16px; border-radius: 18px; border: none; background: #fff; box-shadow: 0 0 0 1px rgba(220,38,38,0.28), 0 14px 26px -24px rgba(76,29,149,0.9); cursor: pointer; text-align: left; color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }

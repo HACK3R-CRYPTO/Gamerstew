@@ -36,6 +36,8 @@ export interface StrikeDeps {
   requireSecret?: RequestHandler;
   service?: StrikeService;
   now?: () => number;
+  /** told the room's code after every request that may have changed it, so the live line can push it out */
+  changed?: (code: string) => void;
 }
 
 export function registerStrikeRoutes(app: Application, deps: StrikeDeps = {}): StrikeService {
@@ -48,17 +50,18 @@ export function registerStrikeRoutes(app: Application, deps: StrikeDeps = {}): S
   const route = (fn: (req: Request) => Promise<unknown>): RequestHandler => (req: Request, res: Response) => {
     Promise.resolve()
       .then(() => fn(req))
-      .then((out) => { if (isFail(out)) res.status(out.status).json({ error: out.error }); else res.json(out); })
+      .then((out) => { if (isFail(out)) res.status(out.status).json({ error: out.error }); else { res.json(out); if (deps.changed && req.method === 'POST') { const code = req.params.code ?? (out as { code?: string } | null)?.code; if (code) deps.changed(String(code)); } } })
       .catch((err) => { console.error('strike route failed:', err); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); });
   };
   const allowCreate = createLimiter(deps.now ?? Date.now);
   const who = (req: Request) => String(req.headers['x-client-ip'] ?? 'shared').slice(0, 64);
 
   app.post('/api/strike/rooms', gate, route(async (req) => (allowCreate(who(req)) ? service.create(body(req).name) : { error: 'slow_down', status: 429 })));
+  app.get('/api/strike/live', gate, route(async () => ({ rooms: await service.live() })));
   app.post('/api/strike/rooms/:code/join', gate, route((req) => service.join(req.params.code, body(req).name)));
-  app.get('/api/strike/rooms/:code', gate, route((req) => service.get(req.params.code, req.query.token)));
+  app.get('/api/strike/rooms/:code', gate, route((req) => service.get(req.params.code, req.query.token, req.query.watch ? who(req) : undefined)));
   app.post('/api/strike/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
-  app.post('/api/strike/rooms/:code/roll', gate, route((req) => service.roll(req.params.code, body(req).token, body(req).rolls)));
+  app.post('/api/strike/rooms/:code/roll', gate, route((req) => service.roll(req.params.code, body(req).token, body(req).rolls, body(req).throws)));
   app.post('/api/strike/rooms/:code/rematch', gate, route((req) => service.rematch(req.params.code, body(req).token)));
   app.post('/api/strike/rooms/:code/leave', gate, route((req) => service.leave(req.params.code, body(req).token)));
   return service;

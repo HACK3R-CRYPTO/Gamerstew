@@ -81,6 +81,10 @@ Anyone with a room code can look on without playing.
 - **Simon Memory is shown as the real pad.** The player's phone sends the pattern when it starts being shown, with the game's own flash and gap times, then a message for every pad pressed. The watch page plays the pattern through at that speed and lights each press in order (`components/SimonReplay.tsx`). A wrong press lights the pad that was pressed, in red, and the pad shakes. Presses that arrive together are played one after another, so none is skipped.
 - Known trade-off: everyone in a Simon room has the same pattern, so a player with a second screen could watch a rival's pad. It is shown anyway, by the owner's decision (2026-11-25): each player is shown the same pattern on their own screen, and for rooms played for G$ this should be looked at again.
 - The watch page is pushed the room over the live line (below). Asking once a second is only the fallback.
+- **Street Strike is shown as the exact game.** A lane sends each throw with its rolls: which tyre, where from, the angle, the speed and the curve. A watcher opens the real 3D street (`/bowling?watch=…`), and the page runs that throw through the game's own simulation (`app/bowling/sim.ts`, the same one the server checks ranked games with). The same throw always gives the same result, so the watcher sees the real tyre take the real line and knock down the same bottles. Checked on a ten-roll card: every roll on the watcher's screen matched the server's.
+  - A watcher can tap any player in the lane to follow them. Joining part-way, switching player, or falling more than two throws behind puts the card and the rack where they stand at once, then plays on from there.
+  - The server holds each throw to what the game allows, accepts only known tyres, and never more throws than rolls.
+  - Street Strike lanes have their own live line (`/live/strike`) and appear on `/watch` with the other games.
 - Only numbers are accepted, at most 8 fields, so nothing a player types can reach a watcher's screen that way.
 - Word Ladder shows which letters are in place and never the letters. Everyone in a room has the same words, so the letters would hand a rival the answer.
 - The watch page is laid out like a match: the game and clock across the top, one panel per player (score, live game, who is leading), chat beside them. It uses the shared top bar and the full width on a desktop.
@@ -94,7 +98,7 @@ Anyone with a room code can look on without playing.
 - The page asks the room for its state every 1.5 seconds, and only while the tab is visible.
 - The watcher count is everyone who looked in the last 8 seconds. It is not saved: a restart starts the count again.
 
-It covers the five games that use shared rooms: Rhythm Rush, Simon Memory, Stack Tower, Word Ladder and UP NEPA 3D. Street Strike has its own rooms and cannot be watched yet.
+It covers all six room games: Rhythm Rush, Simon Memory, Stack Tower, Word Ladder, UP NEPA 3D, and Street Strike (which has its own lanes and its own watch page inside the game).
 
 Code: `games-backend/src/modules/rooms/service.ts` (`get` with a watcher, `watching`, `goal`), `frontend/app/watch/`.
 
@@ -152,7 +156,7 @@ Code: `frontend/hooks/useGuestGate.tsx` (the three newer games), `frontend/lib/g
 
 ## How it was checked
 
-- Backend tests: 361 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
+- Backend tests: 362 pass, including friends (ask, accept, refuse, invite, remove) and spectators (not dealt the round, counted once).
 - The friends flow was run end to end through the app's own route against a local server.
 - A real local room with three players was watched from a phone-sized browser, through waiting, live and closed.
 - Not yet checked: friends against the real database, and a real invite arriving on a phone.

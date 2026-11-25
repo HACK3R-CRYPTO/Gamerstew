@@ -19,20 +19,21 @@ export interface RoomSocket { /** true while the line is up */ open(): boolean; 
 let where: Promise<string> | null = null;
 const address = () => (where ??= fetch("/api/live").then((r) => r.json()).then((d) => (typeof d?.url === "string" ? d.url : "")).catch(() => ""));
 
-export function openRoomSocket(hello: Hello, on: { view: (v: RoomView) => void; gone?: () => void; state?: (up: boolean) => void }): RoomSocket {
+/** `kind` picks the line: the shared rooms, or Street Strike's own lanes. */
+export function openRoomSocket<V = RoomView>(hello: Hello, on: { view: (v: V) => void; gone?: () => void; state?: (up: boolean) => void }, kind: "rooms" | "strike" = "rooms"): RoomSocket {
   let ws: WebSocket | null = null; let wanted = true; let up = false; let wait = 1000; let again: ReturnType<typeof setTimeout> | null = null; let beat: ReturnType<typeof setInterval> | null = null;
   const set = (v: boolean) => { if (up !== v) { up = v; on.state?.(v); } };
   const send = (msg: unknown) => { if (!ws || ws.readyState !== WebSocket.OPEN || !up) return false; try { ws.send(JSON.stringify(msg)); return true; } catch { return false; } };
   const retry = () => { set(false); if (beat) { clearInterval(beat); beat = null; } if (!wanted || again) return; again = setTimeout(() => { again = null; void start(); }, wait); wait = Math.min(8000, wait * 2); };
   const start = async () => {
-    const url = await address();
+    const base = await address(); const url = base && kind === "strike" ? `${base.replace(/\/$/, "")}/strike` : base;
     if (!wanted || !url || typeof WebSocket === "undefined") return; // no live line here: the page keeps asking instead
     let s: WebSocket;
     try { s = new WebSocket(url); } catch { retry(); return; }
     ws = s;
     s.onopen = () => { try { s.send(JSON.stringify({ t: "hello", ...hello })); } catch { /* onclose follows */ } };
     s.onmessage = (e) => {
-      let m: { t?: string; view?: RoomView };
+      let m: { t?: string; view?: V };
       try { m = JSON.parse(String(e.data)); } catch { return; }
       if (m.t === "room" && m.view) { wait = 1000; set(true); on.view(m.view); if (!beat) beat = setInterval(() => send({ t: "ping" }), 25000); }
       else if (m.t === "gone") { wanted = false; set(false); on.gone?.(); try { s.close(); } catch { /* closed */ } }

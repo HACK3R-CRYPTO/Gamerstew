@@ -3,8 +3,10 @@
 // phone and watches the others' cards fill in. The phone asks the server for
 // the room every second or so; there is no socket to drop.
 
-export interface RoomPlayer { name: string; host: boolean; rolls: number[]; done: boolean; away: boolean }
-export interface Room { code: string; status: "waiting" | "playing" | "over"; round: number; frames: number; you: number; players: RoomPlayer[] }
+/** One throw as it was released. With the tyre and the bottles still standing, it replays exactly. */
+export interface Shot { tyre: string; x: number; angle: number; speed: number; spin: number }
+export interface RoomPlayer { name: string; host: boolean; rolls: number[]; done: boolean; away: boolean; /** every throw of this round, in order */ throws?: Shot[] }
+export interface Room { code: string; status: "waiting" | "playing" | "over"; round: number; frames: number; you: number; players: RoomPlayer[]; /** the lane's public watch name */ watchId?: string; watching?: number }
 export interface Session { code: string; token: string; seat: number }
 
 const WORDS: Record<string, string> = {
@@ -35,7 +37,10 @@ export const net = {
   join: (code: string, name: string) => call<Session>(`rooms/${code}/join`, { name }),
   get: (s: Session) => call<Room>(`rooms/${s.code}?token=${s.token}`),
   start: (s: Session) => call<Room>(`rooms/${s.code}/start`, { token: s.token }),
-  roll: (s: Session, rolls: number[]) => call<Room>(`rooms/${s.code}/roll`, { token: s.token, rolls }),
+  // the throws go with the rolls, so someone watching can replay each one in their own street
+  roll: (s: Session, rolls: number[], throws?: Shot[]) => call<Room>(`rooms/${s.code}/roll`, { token: s.token, rolls, ...(throws ? { throws } : {}) }),
+  /** a lane as a spectator sees it, by its watch name or its code */
+  watch: (by: string) => call<Room>(`rooms/${by}?watch=1`),
   rematch: (s: Session) => call<Room>(`rooms/${s.code}/rematch`, { token: s.token }),
   leave: (s: Session) => call<{ ok: true }>(`rooms/${s.code}/leave`, { token: s.token }).catch(() => ({ ok: true as const })),
 };

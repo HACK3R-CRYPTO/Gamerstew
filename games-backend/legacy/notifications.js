@@ -428,7 +428,11 @@ core.jobs.every('indexOnChainScores', 5 * 60 * 1000, core.indexOnChainScores);
 require('../lib/duelRooms').registerDuelRoutes(core.app, { supabase: core.supabase, provider: core.provider, validator: core.validator, isVerified: core.isVerified, requireSecret: core.requireSecret });
 
 // Street Strike online rooms · a free friend lane. In memory, no chain, no stakes.
-core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret });
+// Street Strike's own rooms, with their own live line so a throw reaches watchers at once.
+let strikeHub = null;
+const strikeService = core.platform.registerStrikeRoutes(core.app, { requireSecret: core.requireSecret, changed: (code) => strikeHub?.publish(code) });
+strikeHub = core.platform.createLiveHub({ service: strikeService });
+{ const t = setInterval(() => { try { strikeHub.tick(); } catch (e) { console.warn('[live] strike tick failed:', e?.message || e); } }, 1000); if (t.unref) t.unref(); }
 // The inbox: read, delete and announcements, remembered per player (src/modules/inbox).
 // ─── Admin dashboard ─────────────────────────────────────────────────────────
 // Sign-in, roles, the dashboard's reads, the payout ledger and visit tracking:
@@ -622,10 +626,12 @@ const server = core.app.listen(core.PORT, () => {
   const allowed = (origin) => !!origin && (core.config.allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(origin)));
   server.on('upgrade', (req, socket, head) => {
     let path = ''; try { path = new URL(req.url, 'http://x').pathname; } catch { /* not a path we serve */ }
-    if (path !== '/live' || !allowed(req.headers.origin)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
+    // /live is the shared rooms; /live/strike is Street Strike's own rooms
+    const hub = path === '/live' ? liveHub : path === '/live/strike' ? strikeHub : null;
+    if (!hub || !allowed(req.headers.origin)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, (ws) => {
       const who = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
-      const conn = liveHub.connect({ send: (d) => { if (ws.readyState === 1) ws.send(d); }, close: () => { try { ws.close(); } catch { /* already closed */ } } }, who);
+      const conn = hub.connect({ send: (d) => { if (ws.readyState === 1) ws.send(d); }, close: () => { try { ws.close(); } catch { /* already closed */ } } }, who);
       ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; });
       ws.on('message', (data, isBinary) => { if (!isBinary) conn.message(data.toString()); });
       ws.on('close', () => conn.closed()); ws.on('error', () => conn.closed());
@@ -634,7 +640,7 @@ const server = core.app.listen(core.PORT, () => {
   // a phone that vanished without saying goodbye is noticed within a minute
   const beat = setInterval(() => { for (const ws of wss.clients) { if (ws.isAlive === false) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch { /* closing */ } } }, 30000);
   if (beat.unref) beat.unref();
-  core.app.get('/internal/live', core.requireSecret, (_req, res) => res.json(liveHub.stats()));
+  core.app.get('/internal/live', core.requireSecret, (_req, res) => res.json({ ...liveHub.stats(), strike: strikeHub.stats() }));
 }
 
 // A stray rejected promise is logged instead of killing the server, and a
