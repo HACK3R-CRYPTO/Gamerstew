@@ -49,11 +49,13 @@ type Props = {
   headline?: string;
   titleOverride?: string;
   ctaOverride?: string;
+  /** a ranked run: the score so far is kept on the board, and only what follows is for fun */
+  ranked?: boolean;
 };
 
 export default function SaveRunOverlay({
   open, score, game, onSaved, onDecline, perk: perkOverride, decideMs = 6000, headline = "RUN OVER",
-  titleOverride, ctaOverride,
+  titleOverride, ctaOverride, ranked = false,
 }: Props) {
   const perk = perkOverride ?? savePerkFor(game);
   const { gBalance, buyPerk, stock, stockReady, spendStock } = usePerks();
@@ -153,7 +155,7 @@ export default function SaveRunOverlay({
         <div style={{ fontFamily: T.display, fontSize: 44, color: T.ink, marginTop: 2, lineHeight: 1 }}>{score.toLocaleString()}</div>
         <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, marginTop: 2, letterSpacing: "0.02em" }}>your score</div>
         {/* said before the player pays, not after: a continue buys more play, never a place on a board */}
-        {perk?.kind !== "cosmetic" && <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 700, color: T.inkDim, marginTop: 8, padding: "6px 12px", borderRadius: 999, background: "rgba(109,40,217,0.08)", display: "inline-block" }}>Continue for fun · this run will not be ranked</div>}
+        {perk?.kind !== "cosmetic" && <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 700, color: T.inkDim, marginTop: 8, padding: "6px 12px", borderRadius: 999, background: "rgba(109,40,217,0.08)", display: "inline-block" }}>{ranked ? `Your ranked score stays at ${Math.round(score).toLocaleString()}. What you add after is for fun.` : "Continue for fun · this run is not ranked"}</div>}
       </div>
 
       {/* Circular medallion + depleting timer ring + seconds badge */}

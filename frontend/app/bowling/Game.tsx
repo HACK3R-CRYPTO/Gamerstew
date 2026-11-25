@@ -1187,6 +1187,8 @@ export default function Game() {
   const throwLog = useRef<{ tyre: string; x: number; angle: number; speed: number; spin: number }[]>([]);
   const gameT0 = useRef(0);
   const [rankedGame, setRankedGame] = useState(false);
+  const [quitAsk, setQuitAsk] = useState(false); // "End this game?": leaving a ranked game ends it, it does not throw it away
+  const endedRef = useRef(false); // the game was ended early: a tyre still rolling must not add to the closed card
   const onThrow = useCallback((t: { tyre: string; x: number; angle: number; speed: number; spin: number }) => { throwLog.current.push(t); }, []);
   // Who is playing. One list of rolls per seat; `turn` is the seat on the line.
   const [mode, setMode] = useState<Mode>("solo");
@@ -1263,6 +1265,7 @@ export default function Game() {
   const say2 = (text: string, tone: "big" | "good" | "bad") => setBanner({ text, tone, key: Date.now() });
 
   const onResult = useCallback((down: boolean[], gutter: boolean) => {
+    if (endedRef.current) return;
     const before = standingRef.current;
     const count = down.filter(Boolean).length;
     const seat = turnRef.current;
@@ -1350,7 +1353,25 @@ export default function Game() {
     }, cleared ? 3000 : 1000); // a cleared rack holds longer: the strike camera is still circling
   }, []);
 
+  /** Leave a ranked game part-way: the throws not made count as misses, the card is
+   *  closed and handed in. The server replays the throws and works out the same total. */
+  const endNow = () => {
+    setQuitAsk(false);
+    endedRef.current = true;
+    const made = allRef.current[0] ?? [];
+    const card = made.slice();
+    for (let k = 0; k < 16 && !score(card, FRAMES).done; k++) card.push(0);
+    allRef.current = [card];
+    setAllRolls(allRef.current);
+    setHint(null);
+    setPhase("over");
+    if (rankedRef.current.hasTicket() && made.reduce((a, b) => a + b, 0) > 0) {
+      void rankedRef.current.finish({ score: score(card, FRAMES).total, gameTime: Date.now() - gameT0.current, proof: { strikeThrows: throwLog.current.slice(), endedEarly: true } });
+    }
+  };
+
   const restart = (m: Mode = modeRef.current) => {
+    endedRef.current = false;
     throwLog.current = [];
     gameT0.current = Date.now();
     setRankedGame(false);
@@ -1700,7 +1721,7 @@ export default function Game() {
 
       {/* top bar */}
       <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", pointerEvents: "none" }}>
-        <Link href="/games" style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
+        <Link href="/games" onClick={(e) => { if (rankedGame && mode === "solo" && phase !== "over" && !setup && (allRef.current[0]?.length ?? 0) > 0) { e.preventDefault(); setQuitAsk(true); } }} style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
         <div style={{ fontFamily: DISPLAY, fontSize: 18, color: "#fff", textShadow: "0 2px 12px rgba(124,58,237,0.8)" }}>
           Street <span style={{ color: GA.goldLight }}>Strike</span>
         </div>
@@ -1892,6 +1913,21 @@ export default function Game() {
           </div>
         </div>
       )}
+      {quitAsk && (
+        <div role="dialog" aria-modal="true" aria-label="End this game?" style={{ position: "absolute", inset: 0, zIndex: 40, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "rgba(10,1,32,0.62)" }}>
+          <div style={{ width: "100%", maxWidth: 420, borderRadius: 24, padding: "20px 18px 16px", textAlign: "center", color: "#22104f", background: "#fff", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 18px 50px rgba(10,1,32,0.45)" }}>
+            <div style={{ fontFamily: DISPLAY, fontSize: 24, lineHeight: 1.15 }}>End this game?</div>
+            <p style={{ margin: "8px 0 16px", fontSize: 14, lineHeight: 1.45, color: "rgba(34,16,79,0.78)" }}>
+              {(allRef.current[0] ?? []).reduce((a, b) => a + b, 0) > 0
+                ? "This is a ranked game. If you leave now it ends here: the throws you have not made count as misses, and your score is saved."
+                : "This is a ranked game. Nothing is down yet, so leaving now ends it with no score."}
+            </p>
+            <button onClick={() => setQuitAsk(false)} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", background: "#6d28d9", color: "#fff", fontFamily: BODY, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Keep playing</button>
+            <button onClick={endNow} style={{ width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 14, border: "1px solid rgba(76,29,149,0.22)", background: "transparent", color: "#4c1d95", fontFamily: BODY, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>End the game</button>
+          </div>
+        </div>
+      )}
+
       {phase === "over" && !watching && (
         <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, #ffffff 100%)" }}>
           <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>

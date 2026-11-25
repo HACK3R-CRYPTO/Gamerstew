@@ -184,6 +184,9 @@ export default function StackTowerPage() {
   const startingRef = useRef(false);
   const submittedRef = useRef(false);
   const continuedRef = useRef(false); // true once a paid continue was used in this run
+  // what the run was worth at the moment of the first continue: this, not the final score, is what is ranked
+  const bankedRef = useRef<{ score: number; log: DropLogEntry[]; gameTime: number } | null>(null);
+  const [bankedScore, setBankedScore] = useState<number | null>(null);
   const gameStartMsRef = useRef(0);
 
   // ═══ Save-your-run (M1 perk) ═════════════════════════════════════════════
@@ -480,7 +483,11 @@ export default function StackTowerPage() {
   // Re-arm a moving block from the current top of the tower and hand back the
   // seconds the save decision cost. The run continues and still submits.
   const resumeAfterSave = useCallback(() => {
-    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
+    continuedRef.current = true; // what is added from here on is for fun (see bankedRef)
+    if (!bankedRef.current) {
+      bankedRef.current = { score: scoreRef.current, log: dropLogRef.current.slice(), gameTime: Date.now() - gameStartMsRef.current };
+      if (runModeRef.current === "ranked") setBankedScore(Math.round(scoreRef.current));
+    }
     const stack = stackRef.current;
     const top = stack[stack.length - 1];
     const level = levelRef.current;
@@ -539,7 +546,7 @@ export default function StackTowerPage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
-    continuedRef.current = false; // a fresh run
+    continuedRef.current = false; bankedRef.current = null; setBankedScore(null); // a fresh run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -746,19 +753,19 @@ export default function StackTowerPage() {
     if (phase !== "finished") return;
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
     if (submittedRef.current) return;
-    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
-    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
-    // transaction on the server's side, next to the purchase itself.
-    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
+    // A run that was continued hands in the score it had BEFORE the continue (bankedRef):
+    // paying to carry on never buys a place on the board, and never costs the place already earned.
+    const banked = bankedRef.current;
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
     if (hasMinted === false) return; // no pass · show mint prompt, don't revert
     submittedRef.current = true;
 
-    const rawGameTime = Date.now() - gameStartMsRef.current;
+    const rawGameTime = banked ? banked.gameTime : Date.now() - gameStartMsRef.current;
     const gameTime = Math.max(5000, rawGameTime);
-    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(scoreRef.current)));
+    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(banked ? banked.score : scoreRef.current)));
+    const dropLog = banked ? banked.log : dropLogRef.current;
 
     // 0-score + sub-5s ends are the player tapping START and bailing.
     // Skip the network round-trip and surface a calm message.
@@ -796,7 +803,7 @@ export default function StackTowerPage() {
             undefined, // tapLog · unused by stack
             // Optional + additive · shadow re-scoring only, does not change the
             // signed score (see games-backend/ANTICHEAT.md).
-            dropLogRef.current,
+            dropLog,
           );
         } else {
           authToken = await getAccessToken();
@@ -811,7 +818,7 @@ export default function StackTowerPage() {
             undefined, // tapLog · unused by stack
             // Optional + additive · shadow re-scoring only, does not change the
             // signed score (see games-backend/ANTICHEAT.md).
-            dropLogRef.current,
+            dropLog,
           );
         }
 
@@ -1258,6 +1265,7 @@ export default function StackTowerPage() {
           score={score}
           game="stack"
           headline="TOWER TOPPLED"
+          ranked={runModeRef.current === "ranked"}
           onSaved={resumeAfterSave}
           onDecline={declineSave}
         />
@@ -1273,6 +1281,7 @@ export default function StackTowerPage() {
             eyebrow="Tower down" tone="#0e7490" badge="🧱" score={score}
             notes={<>
               {score >= localBest && score > 0 && <span className="gold">New personal best</span>}
+              {bankedScore != null && <span className="warm">Ranked score: <b>{bankedScore.toLocaleString()}</b>, from before your continue. The rest was for fun.</span>}
               {challenge && built > 0 && (
                 <span className={d > 0 ? "good" : "warm"}>{d > 0 ? `You beat ${challenge.by} by ${d} block${d === 1 ? "" : "s"}!` : d === 0 ? `Level with ${challenge.by}. One more block takes it` : `${-d} block${d === -1 ? "" : "s"} short of ${challenge.by}. Build again`}</span>
               )}

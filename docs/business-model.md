@@ -1,6 +1,6 @@
 # GameArena business model: the Daily Pot
 
-> Status: PROPOSED on 2026-11-26, revised the same day after the owner's notes. **Everything is priced in G$. There are no dollar or stablecoin items.** Built so far: the rule that a continued run is never ranked (section 5), a transaction for every unfinished run, and leaving a Word Ladder round finishing it (section 13). The pot, energy and the new items are not built, and wait on section 9.
+> Status: PROPOSED on 2026-11-26, revised the same day after the owner's notes. **Everything is priced in G$. There are no dollar or stablecoin items.** Built so far: a continue that never buys or costs rank, a transaction for every unfinished run, and leaving a ranked round finishing it in every game (section 13). The pot, energy and the new items are not built, and wait on section 9.
 
 ## 1. The idea in one paragraph
 
@@ -111,11 +111,21 @@ Watched on the admin dashboard, daily: players who used all free energy, players
 
 ## 13. Three rules that are already in the code (2026-11-26)
 
-**A continue is for fun, never for rank.** Stack Tower, Rhythm Rush and Simon Memory sold a continue only in ranked play, and the continued run still went on the weekly board: money bought rank. Now a continue is offered in every solo mode, the overlay says before the player pays "Continue for fun · this run will not be ranked", and a continued run is not handed in. The purchase is still a transaction, and the run's unused ticket becomes an unfinished-run transaction (below). Code: `continuedRef` in each game's page, `components/SaveRunOverlay.tsx`.
+**A continue never buys rank, and never costs it.** Stack Tower, Rhythm Rush and Simon Memory sold a continue only in ranked play, and the continued run went on the weekly board with everything added after it: money bought rank. Now a continue is offered in every solo mode. In a ranked run the score is banked at the moment of the continue, and that banked score is what goes on the board and the chain; what the player adds afterwards is for fun. The overlay says so before they pay ("Your ranked score stays at 1,240. What you add after is for fun."), and the result screen shows both numbers. There is no separate "continue mode" to pick first: the choice is made at the moment a run dies, which is the only moment anyone wants it. The purchase itself is a transaction. Code: `bankedRef` in each game's page, `components/SaveRunOverlay.tsx`.
 
 **Every run a player opens is a transaction.** A run that was started and never finished used to leave nothing on the chain. Fifteen minutes after it starts, the server now sends a transaction for it: a note from its own wallet to itself that reads "GameArena · unfinished run · <game> · <player>". It is not a score on purpose: a zero score counts as a game played, the weekly challenge pays by games played, and players could earn by opening and closing games. Limits: 8 a pass, 20 a player a day, 1,500 a day. Code: `games-backend/src/modules/scores/unfinished.ts`. Switch: `UNFINISHED_ONCHAIN`. The dashboard link needs `2026-11-26c_unfinished_tx.sql`.
 
-**Leaving a round finishes it.** In Word Ladder, the back arrow during a ranked round used to throw the round away. It now asks "End this run?" and, on yes, hands in every unsolved ladder as skipped: the server scores what was solved and the run goes on the board and the chain. A round ended with nothing solved is not handed in, so opening and closing a round does not count as a game played. Street Strike and UP NEPA 3D do not do this yet: Street Strike's server check only accepts a finished card.
+**Leaving a round finishes it.** A ranked round a player walks out of is ended and handed in, after one question ("End this game?"), instead of being thrown away:
+
+| Game | What leaving does |
+|---|---|
+| Word Ladder | Unsolved ladders are handed in as skipped; the server scores what was solved |
+| Street Strike | Throws not made count as misses; the server replays the throws that were made and closes the card (`endedEarly`) |
+| UP NEPA 3D | The breakers lit so far are handed in as an unfinished round, which the server already scores |
+| Rhythm Rush, Simon Memory | QUIT has always ended the run with the score so far |
+| Stack Tower | No way out mid-run except closing the page |
+
+In every game, a round left with nothing scored is not handed in, so opening and closing a round is not a game played. It still gets the unfinished-run transaction above.
 
 ## 14. Shop items the owner has to switch on
 

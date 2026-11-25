@@ -442,6 +442,9 @@ export default function SimonGamePage() {
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
   const continuedRef = useRef(false); // true once a paid continue was used in this run
+  // what the run was worth at the moment of the first continue: this, not the final score, is what is ranked
+  const bankedRef = useRef<{ score: number; time: number; log: string[]; rounds: number } | null>(null);
+  const [bankedScore, setBankedScore] = useState<number | null>(null);
   // Retry perk (M1): a wrong tap opens the retry prompt (casual mode only).
   // Buying replays the round; the run then stays off the ranked ladder.
   const usedPerkRef = useRef(false);
@@ -611,10 +614,10 @@ export default function SimonGamePage() {
     setGameTimeMs(gameTime);
     clearTimeouts();
 
-    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
-    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
-    // transaction on the server's side, next to the purchase itself.
-    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
+    // A run that was continued hands in the score it had BEFORE the continue (bankedRef):
+    // paying to carry on never buys a place on the board, and never costs the place already earned.
+    const banked = bankedRef.current;
+    if (banked) { finalScore = banked.score; gameTime = banked.time; }
 
     if (runModeRef.current === "room") { void roomRef.current.finish({ simonTapLog: tapLogRef.current.slice(), score: Math.max(0, Math.round(finalScore)) }); return; }
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
@@ -664,7 +667,7 @@ export default function SimonGamePage() {
           sessionTokenRef.current ?? "",
           undefined, undefined,
           // Simon shadow payload · additive, does not change the signed score.
-          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
+          { tapLog: banked ? banked.log : tapLogRef.current, rounds: banked ? banked.rounds : sequencesRef.current, elapsedMs: clampedGameTime },
         );
       } else {
         authToken = await getAccessToken();
@@ -678,7 +681,7 @@ export default function SimonGamePage() {
           sessionTokenRef.current ?? "",
           undefined, undefined,
           // Simon shadow payload · additive, does not change the signed score.
-          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
+          { tapLog: banked ? banked.log : tapLogRef.current, rounds: banked ? banked.rounds : sequencesRef.current, elapsedMs: clampedGameTime },
         );
       }
 
@@ -904,7 +907,12 @@ export default function SimonGamePage() {
 
   // ─── Retry perk: replay the current round (casual) or end the run ───────────
   const resumeAfterRetry = useCallback(() => {
-    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
+    continuedRef.current = true; // what is added from here on is for fun (see bankedRef)
+    if (!bankedRef.current) {
+      const at = pendingEndRef.current ?? { score: scoreRef.current, time: Date.now() - startTimeRef.current };
+      bankedRef.current = { score: at.score, time: at.time, log: tapLogRef.current.slice(), rounds: sequencesRef.current };
+      if (runModeRef.current === "ranked") setBankedScore(Math.round(at.score));
+    }
     usedPerkRef.current = true;
     pendingEndRef.current = null;
     userPatternRef.current = [];
@@ -950,7 +958,7 @@ export default function SimonGamePage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
-    continuedRef.current = false; // a fresh run
+    continuedRef.current = false; bankedRef.current = null; setBankedScore(null); // a fresh run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -1211,6 +1219,7 @@ export default function SimonGamePage() {
           game="simon"
           perk={getPerk(5)}
           headline="WRONG!"
+          ranked={runModeRef.current === "ranked"}
           onSaved={resumeAfterRetry}
           onDecline={declineRetry}
         />
@@ -1254,6 +1263,7 @@ export default function SimonGamePage() {
       {/* in a friend room the room's standings are the result screen */}
       {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
+          bankedScore={bankedScore}
           grade={grade}
           score={score}
           rounds={sequences}
@@ -2063,12 +2073,14 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bankedScore,
   bestResult, practice, challenge, onChallenge,
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  bankedScore: number | null; // the ranked score of a continued run: what it was worth before the continue
   bestResult: { prev: number | null; isNew: boolean } | null; // deepest round before this run, and whether this run beat it
   practice: string | null; // name of the free mode just played, null for a ranked run
   challenge: Challenge | null; // a friend's round this run was chasing
@@ -2091,6 +2103,7 @@ function FinishedView({
     <GameResult
       eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
       notes={<>
+        {bankedScore != null && <span className="warm">Ranked score: <b>{bankedScore.toLocaleString()}</b>, from before your continue. The rest was for fun.</span>}
         {challenge && rounds > 0 && (
           <span className={rounds > challenge.rounds ? "good" : "warm"}>
             {rounds > challenge.rounds ? `You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}

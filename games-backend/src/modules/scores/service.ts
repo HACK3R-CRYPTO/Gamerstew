@@ -117,7 +117,7 @@ export function createScoreService(deps: ScoreDeps) {
     } else if (game === 'strike') {
       // Fully replayed: every throw goes through the same lane simulation the
       // phone ran, and the total comes from that. The client's number is ignored.
-      const run = strike.replay(await strike.engine(), body.strikeThrows, elapsedMs);
+      const run = strike.replay(await strike.engine(), body.strikeThrows, elapsedMs, body.endedEarly === true);
       if (!run.ok) {
         logger.warn(`[strike] rejected ${playerAddress}: ${run.error}`);
         return reply(403, { error: 'Game check failed', reason: run.error });

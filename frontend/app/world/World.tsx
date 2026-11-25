@@ -27,7 +27,7 @@ import RotateHint from "@/components/RotateHint";
 import { setWorldAudioEnabled, armWorldAudio, setWorldAudioMuted } from "./audio";
 import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult, hands, resetLive } from "./game";
 import { useAppStore } from "./appStore";
-import { useRestoreStore, SCORE_MAX } from "./restore";
+import { useRestoreStore, SCORE_MAX, restoreScore, restoreParts, resetTiming } from "./restore";
 import { recordHigh, type High } from "./highscore";
 import { useFx } from "./fx";
 import { useShout } from "./shout";
@@ -382,6 +382,25 @@ export default function World() {
     resetWorldControls();
     setAppMode("menu");
   };
+  // Leaving a ranked round ends it: the breakers lit so far are handed in as an
+  // unfinished run, which the server scores (breakers only). Nothing lit is not a
+  // game played, so that round is simply left.
+  const [quitAsk, setQuitAsk] = useState(false);
+  const leaveRound = () => {
+    const st = useRestoreStore.getState();
+    if (st.mode === "playing" && rankedRound && !roomRun.current && rankedRef.current.hasTicket()) { setQuitAsk(true); return; }
+    toMenu();
+  };
+  const endRound = () => {
+    setQuitAsk(false);
+    const st = useRestoreStore.getState();
+    if (st.mode !== "playing") return;
+    const lit = Math.max(0, Math.min(st.restored, st.total - 1)); // every breaker lit is a win, and this is not one
+    if (lit === 0) { toMenu(); return; }
+    resetTiming();
+    worldControls.guide.active = false;
+    st.finish({ restored: lit, total: st.total, timeTaken: null, won: false, score: restoreScore(lit, st.total, null, 0), parts: restoreParts(lit, st.total, null, 0) });
+  };
   const skipIntro = () => {
     worldControls.lit = 1;
     useWorldStore.getState().setHud(null);
@@ -621,7 +640,7 @@ export default function World() {
             </Link>
           ) : (
             <button
-              onClick={toMenu}
+              onClick={leaveRound}
               style={{
                 pointerEvents: "auto",
                 color: "#fff",
@@ -1225,6 +1244,21 @@ export default function World() {
             <button onClick={toMenu} style={{ marginTop: 10, background: "none", border: "none", color: "rgba(34,16,79,0.64)", fontSize: 13, cursor: "pointer" }}>
               ← Modes
             </button>
+          </div>
+        </div>
+      )}
+
+      {quitAsk && (
+        <div role="dialog" aria-modal="true" aria-label="End this round?" style={{ position: "absolute", inset: 0, zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "rgba(10,1,32,0.62)", pointerEvents: "auto" }}>
+          <div style={{ width: "100%", maxWidth: 420, borderRadius: 24, padding: "20px 18px 16px", textAlign: "center", color: "#22104f", background: "#fff", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 18px 50px rgba(10,1,32,0.45)", fontFamily: HUD_BODY }}>
+            <div style={{ fontFamily: HUD_DISPLAY, fontSize: 24, lineHeight: 1.15 }}>End this round?</div>
+            <p style={{ margin: "8px 0 16px", fontSize: 14, lineHeight: 1.45, color: "rgba(34,16,79,0.78)" }}>
+              {useRestoreStore.getState().restored > 0
+                ? "This is a ranked round. If you leave now it ends here, and the breakers you have lit are saved as your score."
+                : "This is a ranked round. No breaker is lit yet, so leaving now ends it with no score."}
+            </p>
+            <button onClick={() => setQuitAsk(false)} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", background: "#6d28d9", color: "#fff", fontFamily: HUD_BODY, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Keep playing</button>
+            <button onClick={endRound} style={{ width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 14, border: "1px solid rgba(76,29,149,0.22)", background: "transparent", color: "#4c1d95", fontFamily: HUD_BODY, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>End the round</button>
           </div>
         </div>
       )}

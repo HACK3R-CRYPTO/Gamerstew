@@ -894,6 +894,9 @@ export default function RhythmGamePage() {
   const gameStartMsRef = useRef<number>(0);
   const submittedRef = useRef<boolean>(false);  // one-shot guard so we never double-submit
   const continuedRef = useRef(false); // true once a paid continue was used in this run
+  // what the run was worth at the moment of the first continue: this, not the final score, is what is ranked
+  const bankedRef = useRef<{ score: number; log: RhythmTap[]; gameTime: number } | null>(null);
+  const [bankedScore, setBankedScore] = useState<number | null>(null);
   // Save perk (M1): running out of lives in the encore opens the save prompt
   // (casual mode only). Buying restores lives; the run then stays off ranked.
   const usedPerkRef = useRef(false);
@@ -1044,7 +1047,7 @@ export default function RhythmGamePage() {
     roomRunRef.current = inRoom; roomSentRef.current = false;
     if (inRoom) { songIdRef.current = roomSong as string; setSongId(roomSong as string); }
     runModeRef.current = inRoom ? "room" : modeRef.current;
-    continuedRef.current = false; // a fresh run
+    continuedRef.current = false; bankedRef.current = null; setBankedScore(null); // a fresh run
     const ranked = runModeRef.current === "ranked";
     // Practice variants never touch the chain: no gas check, no session ticket.
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
@@ -1248,10 +1251,8 @@ export default function RhythmGamePage() {
     }
     if (runModeRef.current !== "ranked") return; // practice variants are never signed or sent
     if (submittedRef.current) return;
-    // A run that was continued is NOT ranked. Paying to carry on must never buy a place on a
-    // prize board. The run was still real: its ticket, never used, becomes an "unfinished run"
-    // transaction on the server's side, next to the purchase itself.
-    if (continuedRef.current) { setSubmitError("You continued this run, so it is not ranked. Play a clean run to get on the board."); return; }
+    // A run that was continued hands in the score it had BEFORE the continue (bankedRef):
+    // paying to carry on never buys a place on the board, and never costs the place already earned.
     // Unminted: nothing to submit — the finish screen shows the mint
     // prompt instead of a bogus 'session missing' error.
     if (!address || needsMint) return;
@@ -1262,12 +1263,13 @@ export default function RhythmGamePage() {
     if (hasMinted === false) return;
     submittedRef.current = true;
 
-    const rawGameTime = Date.now() - gameStartMsRef.current;
+    const banked = bankedRef.current;
+    const rawGameTime = banked ? banked.gameTime : Date.now() - gameStartMsRef.current;
     const gameTime = Math.max(5000, rawGameTime);
     // Clamp to the backend's global upper bound (1M). Uncapped scoring is fine
     // because the submission path requires two independent auth factors (internal
     // secret + Privy/MiniPay verification) before a voucher is signed.
-    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(score)));
+    const scoreToSubmit = Math.min(1_000_000, Math.max(0, Math.round(banked ? banked.score : score)));
 
     // Quick-exit guard — 0-score, sub-5s ends are the player tapping
     // START and bailing before anything happened. There's no score to
@@ -1327,7 +1329,7 @@ export default function RhythmGamePage() {
         }
         // Snapshot the tap log so any late RAF tick after we read it won't
         // change the array the server replays.
-        const tapLogSnapshot = tapLogRef.current.slice();
+        const tapLogSnapshot = banked ? banked.log : tapLogRef.current.slice();
 
         if (isMiniPay) {
           // MiniPay forbids personal_sign. Identity is enforced by the
@@ -2091,7 +2093,11 @@ export default function RhythmGamePage() {
 
   // ─── Save perk: restore encore lives (casual) or end the run ────────────────
   const resumeAfterSave = useCallback(() => {
-    continuedRef.current = true; // this run was continued: it is not ranked (see the submit guard)
+    continuedRef.current = true; // what is added from here on is for fun (see bankedRef)
+    if (!bankedRef.current) {
+      bankedRef.current = { score: scoreLiveRef.current, log: tapLogRef.current.slice(), gameTime: Date.now() - gameStartMsRef.current };
+      if (runModeRef.current === "ranked") setBankedScore(Math.round(scoreLiveRef.current));
+    }
     usedPerkRef.current = true;
     encoreMissesRef.current = 0;
     setEncoreLives(3);
@@ -2284,6 +2290,7 @@ export default function RhythmGamePage() {
           score={score}
           game="rhythm"
           headline="OUT OF LIVES"
+          ranked={runModeRef.current === "ranked"}
           onSaved={resumeAfterSave}
           onDecline={declineSave}
         />
@@ -2360,6 +2367,7 @@ export default function RhythmGamePage() {
       {/* in a friend room the room's standings are the result screen */}
       {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
+          bankedScore={bankedScore}
           grade={grade}
           score={score} maxCombo={maxCombo} hits={hits}
           accuracy={Math.round(accuracy * 100)}
@@ -3188,12 +3196,14 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bankedScore,
   bestResult, gradeGap, topSpeed, practice, challenge, onChallenge,
   grade, score, maxCombo, hits, accuracy, encoreLoop,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  bankedScore: number | null; // the ranked score of a continued run: what it was worth before the continue
   // personal best on this device: what it was before this run, and whether this run beat it
   bestResult: { prev: number | null; isNew: boolean } | null;
   // how many more PERFECT hits the next grade up was away (null at grade S)
@@ -3226,6 +3236,7 @@ function FinishedView({
     <GameResult
       eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
       notes={<>
+        {bankedScore != null && <span className="warm">Ranked score: <b>{bankedScore.toLocaleString()}</b>, from before your continue. The rest was for fun.</span>}
         {challenge && score > 0 && (
           <span className={score > challenge.score ? "good" : "warm"}>
             {score > challenge.score ? `You beat ${challenge.by} by ${(score - challenge.score).toLocaleString()}!` : score === challenge.score ? `Level with ${challenge.by}. One more point takes it` : `${(challenge.score - score).toLocaleString()} short of ${challenge.by}. Go again`}
