@@ -61,7 +61,9 @@ import { setObstaclesActive } from "./obstacles";
 // It also looks after sharpness. The world starts at the tier's sharpest
 // setting. If this phone then draws well under its target rate for four seconds,
 // the picture is made one step softer. If it runs easily for six seconds, it is
-// made one step sharper, up to the sharpest worth drawing. A level that proved
+// made one step sharper, up to the sharpest worth drawing. The frame target
+// moves the same way: a phone at its softest that still cannot reach 60 is
+// held to a steady 30, and a phone guessed at 30 that has room is given 60. A level that proved
 // too much is not tried again, so the picture never flips back and forth. The first seconds are ignored: loading the street stutters on
 // any phone. So a strong phone stays crisp and a weak one stays smooth, without
 // anyone choosing a setting.
@@ -74,7 +76,9 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
     let last = 0;
     // a little under the true interval: screens tick at 16.6 ms, and waiting for a
     // full 16.67 skipped every other tick and halved a 60 fps target to 30
-    const interval = 1000 / fps - 3;
+    let rate = fps; // the frame target: it starts at the tier's guess and is adjusted like the sharpness
+    let interval = 1000 / rate - 3;
+    let ticks = 0, tickMs = 0, lastTick = 0, tried60 = false;
     // The tier is a first guess from what the phone says about itself, and phones
     // say little. So the guess is only where it STARTS: a phone that proves quick
     // is taken up a step at a time to the sharpest worth drawing (2, or the
@@ -86,6 +90,10 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
     setDpr(dpr);
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
+      // how often the screen itself ticks, drawn or not: at a 30 target every other tick is
+      // skipped, and ticks that still arrive on time say the phone has room for more
+      if (lastTick && t - lastTick < 500) { ticks++; tickMs += t - lastTick; }
+      lastTick = t;
       if (t - last >= interval) {
         const gap = last ? t - last : 0;
         last = t;
@@ -94,10 +102,19 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
           frames++; since += gap;
           if (since >= 2000) {
             const got = (frames * 1000) / since; frames = 0; since = 0;
-            slow = got < fps * 0.72 ? slow + 1 : 0; quick = got > fps * 0.93 ? quick + 1 : 0;
+            const tick = ticks ? tickMs / ticks : 0; ticks = 0; tickMs = 0;
+            if (process.env.NODE_ENV !== "production") (window as unknown as { __gov?: unknown }).__gov = { got: Math.round(got), rate, dpr, tick: Math.round(tick) };
+            slow = got < rate * 0.72 ? slow + 1 : 0; quick = got > rate * 0.93 ? quick + 1 : 0;
             if (slow >= 2 && dpr > floor) { tooMuch = dpr; dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; quick = 0; }
+            // As soft as it goes and still short of 60: a steady 30 looks and feels better
+            // than a 60 that stutters. This is the phone that pasted the link into Chrome,
+            // has plenty of memory and cores on paper, and a slow graphics chip.
+            else if (slow >= 2 && rate > 30) { rate = 30; interval = 1000 / rate - 3; slow = 0; quick = 0; tried60 = true; }
             // six easy seconds: try one step sharper, unless that step already proved too much
             else if (quick >= 3 && dpr + 0.25 <= top && dpr + 0.25 < tooMuch) { dpr += 0.25; setDpr(dpr); quick = 0; }
+            // already as sharp as is worth drawing, held to 30, and the screen still ticks on
+            // time with every other frame skipped: this phone can do 60. Tried once only.
+            else if (quick >= 3 && rate < 60 && !tried60 && tick > 0 && tick < 19) { rate = 60; interval = 1000 / rate - 3; quick = 0; tried60 = true; }
           }
         }
         // In frameloop="never", R3F derives the per-frame delta as

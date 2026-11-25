@@ -40,19 +40,31 @@ A quick tap inside the stick's area still counts as the game's tap, so that side
 
 `/tmp/gaqa/nepa-shots.cjs` and `nepa-ctl.cjs` (local, not in the repo) open the world as an iPhone 13 inside an in-app browser (390×664 at 3 pixels per point) and as an iPhone SE (320×568). They screenshot each screen and measure: canvas size, where the cards and the Join button sit, whether the stick appears under the thumb, how far the character moves, how far the view turns, and what the scene costs to draw.
 
-## Other phones
+## Other phones: read the chip, then measure
 
-| Phone | Starts at | Then |
+Two steps, neither of them a guess.
+
+**1. Read the graphics chip.** The browser will name the chip it draws with (`gpuName()` in `quality.ts`), and the chip is what decides how a 3D street runs. Memory and core counts do not: a phone with 8 GB and 8 cores can have a slow chip, and every iPhone reports 4 cores.
+
+| Chip | Examples | Starts at |
 |---|---|---|
-| iPhone or iPad | 2 pixels per point, 60 fps | softer only if it cannot keep up |
-| Android, opened in Chrome, 4 GB or more | 2, 60 fps | softer only if it cannot keep up |
-| Android with little memory or few cores | 1.5, 30 fps, fewer walkers | sharper if it proves quick, softer (to 1) if not |
-| Any phone inside WhatsApp, Instagram, TikTok, Facebook, MiniPay | 1.5, 30 fps, fewer walkers | the same: up if quick, down if slow |
-| A phone the code has never heard of | by its memory and cores, as above | measured and adjusted like the rest |
+| Strong | Apple, Adreno 640 and up, Mali G76 to G78 and G610 and up, Xclipse | 2 pixels per point, 60 fps |
+| Mid | Adreno 610 to 630, Mali G52, G57, G68, G71, G72 | 1.5, 30 fps (lower set inside an in-app browser) |
+| Weak | older Adreno, Mali G31, G35, G51, the T series, PowerVR (most budget Tecno, Infinix, itel) | 1.5, 30 fps, fewer walkers |
+| Not named by the browser | | by memory and cores, as before |
 
-The number of walkers and the frame target are fixed by the starting guess and do not change while playing. Only sharpness moves.
+**2. Measure, and adjust.** Whatever it started at, the frame loop watches the real frame rate:
+- runs easily for six seconds: one step sharper, up to 2 or the screen's limit;
+- well under target for four seconds: one step softer, down to a floor;
+- at the floor and still short of 60: held to a steady 30, which looks better than a 60 that stutters;
+- at 30 with room to spare: tried at 60 once.
+
+A level that proved too much is never retried. So it does not matter how the player got here: a link pasted into Chrome, a link tapped in WhatsApp, or a phone released next year.
+
+The number of walkers is fixed by the starting level and does not change while playing.
 
 ## Not verified
 
+- The step from 30 up to 60. It relies on how often the screen ticks while frames are skipped, and the test browser on a laptop does not tick like a phone, so it could not be watched happening. If it tries and the phone cannot hold it, it goes back to 30 and does not try again.
 - Frame rate on a real iPhone. A laptop's graphics chip is not a phone's. The governor is the safety net; a real device still has to confirm it holds 60.
 - How the camera's help with steering feels in the hand. The numbers are right; feel needs thumbs.
