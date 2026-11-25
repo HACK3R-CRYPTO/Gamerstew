@@ -5,9 +5,14 @@
 // keyboard writes, so the world is fully playable on a phone. Up on the stick =
 // forward (negative z), matching the camera-relative controller in Player.tsx.
 //
-// The stick FLOATS: it is drawn resting at the bottom-left, but the whole lower
-// left of the screen is its touch area, and it jumps to wherever the thumb
-// lands. A fixed pad has to be found without looking and is in the wrong place
+// Two thumbs, like a shooter on a phone: the LEFT HALF of the screen moves, the
+// RIGHT HALF looks, both at once, with the phone upright or on its side.
+//
+// The stick FLOATS: it is drawn resting at the bottom-left, but the whole left
+// half of the screen is its touch area, and it jumps to wherever the thumb
+// lands. Before, only the small pad counted: a left thumb that landed a little
+// off it fell on the 3D view instead, the view then had two fingers on it, and
+// it read them as a pinch. That is why two thumbs did not work. A fixed pad has to be found without looking and is in the wrong place
 // for half of all hands; this one is always under the thumb (the layout Apple's
 // game-control guidance recommends: a stick where the thumb lands for movement,
 // the rest of the screen for turning the view). The right side of the screen is
@@ -97,13 +102,14 @@ export default function Joystick() {
         position: "absolute",
         left: 0,
         bottom: 0,
-        width: "48%",
-        height: "44%",
+        width: "50%",
+        // everything under the top row of buttons and readouts
+        top: "calc(118px + env(safe-area-inset-top))",
         touchAction: "none",
         userSelect: "none",
         WebkitUserSelect: "none",
         WebkitTouchCallout: "none",
-        zIndex: 20,
+        zIndex: 9, // under the on-screen buttons (they stay pressable), over the 3D view
       }}
     >
       <div
