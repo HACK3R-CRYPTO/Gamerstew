@@ -28,6 +28,7 @@ import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { simulate, cleanThrow, STEP as SIM_STEP, type SimResult } from "./sim";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useGuestGate } from "@/hooks/useGuestGate";
 
 // What is on screen is a PLAYBACK of the lane simulation (./sim.ts), not live
 // physics. The simulation decides the roll in one go; these puppets are moved
@@ -56,6 +57,8 @@ import Batch from "../world/Batch";
 import { score, PINS, type ScoreState } from "./scoring";
 import { ADS, type Ad } from "./ads";
 import { net, explain, type Room, type Session } from "./online";
+import { openRoomSocket } from "@/lib/roomSocket";
+import AutoSharpness from "../world/AutoSharpness";
 import { armSfx, closeSfx, setMuted, setRumble, bottleHit, bottleRoll, sfxCount, thud, buzz, crowdSound } from "./sfx";
 
 // ── Tuning (metres, seconds) ─────────────────────────────────────────────────
@@ -1178,6 +1181,7 @@ export default function Game() {
   // Ranked solo games: the throws go to the server, which replays them through
   // the same simulation and records the score on-chain (hooks/useRankedRun.ts).
   const ranked = useRankedRun("strike");
+  const gate = useGuestGate("strike", "Street Strike");
   const rankedRef = useRef(ranked);
   rankedRef.current = ranked;
   const throwLog = useRef<{ tyre: string; x: number; angle: number; speed: number; spin: number }[]>([]);
@@ -1188,6 +1192,16 @@ export default function Game() {
   const [mode, setMode] = useState<Mode>("solo");
   const [level, setLevel] = useState(1); // CPU: 0 easy, 1 medium, 2 hard
   const [setup, setSetup] = useState(true); // the "how do you want to play" sheet
+  // ── watching someone else's lane (/bowling?watch=…) ──────────────────────
+  // The page plays the followed player's throws through this same street, so a
+  // watcher sees the real tyre and the real bottles. Nothing can be thrown.
+  const [watchId, setWatchId] = useState("");
+  const watching = !!watchId; const watchingRef = useRef(false); watchingRef.current = watching;
+  const [lane, setLane] = useState<Room | null>(null);   // the lane being watched
+  const [laneGone, setLaneGone] = useState(false);
+  const [follow, setFollow] = useState(0);                // whose card is on screen
+  const [lineUp, setLineUp] = useState(false);            // true while the server is pushing the lane to us
+  const [kick, setKick] = useState(0);
   // Online: a room on the server. Everyone in it bowls at once on their own phone.
   const [room, setRoom] = useState<Room | null>(null);
   const sess = useRef<Session | null>(null);
@@ -1235,7 +1249,7 @@ export default function Game() {
   const allOver = online ? room?.status === "over" : true;
   const meIx = online ? turn : mode === "cpu" ? 0 : -1;
   const me = seats[turn] ?? seats[0];
-  const canPlay = phase === "aim" && !setup && !handoff && !me.cpu;
+  const canPlay = phase === "aim" && !setup && !handoff && !me.cpu && !watching;
   const turnLabel = online ? "Your lane" : me.name === "You" ? "Your turn" : `${me.name}'s turn`;
 
   useEffect(() => {
@@ -1296,7 +1310,7 @@ export default function Game() {
 
     setAllRolls(allRef.current);
     setHint(null);
-    if (live && sess.current) net.roll(sess.current, nextRolls).then(setRoom).catch(() => { /* the next poll sends it again */ });
+    if (live && sess.current) net.roll(sess.current, nextRolls, throwLog.current.slice()).then(setRoom).catch(() => { /* the next poll sends it again */ });
     if (allDone) {
       setPhase("over");
       if (process.env.NODE_ENV !== "production") (window as unknown as { __strikeProbe?: (x: unknown) => void }).__strikeProbe?.({ mode: modeRef.current, total: score(allRef.current[0], FRAMES).total, throws: throwLog.current.slice() });
@@ -1304,7 +1318,7 @@ export default function Game() {
         void rankedRef.current.finish({ score: score(allRef.current[0], FRAMES).total, gameTime: Date.now() - gameT0.current, proof: { strikeThrows: throwLog.current.slice() } });
       }
       // your best is your own score: seat 0, and never in pass-the-phone
-      if (modeRef.current !== "pass") try {
+      if (modeRef.current !== "pass" && !watchingRef.current) try {
         const mine = score(allRef.current[live ? seat : 0], FRAMES).total;
         const prev = Number(localStorage.getItem("streetstrike.best")) || 0;
         if (mine > prev) {
@@ -1342,7 +1356,7 @@ export default function Game() {
     setRankedGame(false);
     // a solo game by a signed-in player is ranked; the ticket is opened in the
     // background so the first throw is never held up
-    if (m === "solo" && rankedRef.current.canRank) void rankedRef.current.start().then((o) => { if (o.success) { gameT0.current = Date.now(); setRankedGame(true); } else toast("This game is not ranked: the game server could not open it. You can still play."); }).catch(() => toast("This game is not ranked: the game server could not open it. You can still play."));
+    if (m === "solo" && !watchingRef.current && rankedRef.current.canRank) void rankedRef.current.start().then((o) => { if (o.success) { gameT0.current = Date.now(); setRankedGame(true); } else toast("This game is not ranked: the game server could not open it. You can still play."); }).catch(() => toast("This game is not ranked: the game server could not open it. You can still play."));
     modeRef.current = m;
     setMode(m);
     allRef.current = seatsFor(m).map(() => []);
@@ -1357,6 +1371,75 @@ export default function Game() {
     setBeat(false);
     setPhase("aim");
   };
+
+  // ── watching: follow the lane, and play its throws ─────────────────────────
+  useEffect(() => {
+    const w = new URLSearchParams(window.location.search).get("watch") || "";
+    if (/^[0-9a-f]{8}$/.test(w)) setWatchId(w); else if (/^[A-Za-z0-9]{5}$/.test(w)) setWatchId(w.toUpperCase());
+  }, []);
+  useEffect(() => {
+    if (!watchId) return;
+    let live = true; let up = false;
+    setSetup(false); // a watcher never sees the "how do you want to play" sheet
+    track("room_watched", { game: "Street Strike" });
+    const look = () => { if (up) return; net.watch(watchId).then((v) => { if (live) setLane(v); }).catch((e: Error) => { if (live && e.message === "no_room") setLaneGone(true); }); };
+    const sock = openRoomSocket<Room>({ watch: watchId }, { view: (v) => { if (live) setLane(v); }, gone: () => { if (live) setLaneGone(true); }, state: (x) => { up = x; setLineUp(x); if (!x) look(); } }, "strike");
+    look(); const id = window.setInterval(look, 1200);
+    return () => { live = false; window.clearInterval(id); sock.close(); };
+  }, [watchId]);
+
+  // How far this screen has got through the followed player's throws, and which
+  // round and seat that count belongs to.
+  const played = useRef(0); const shown = useRef({ round: -1, seat: -1 });
+  const followed = lane?.players[follow]; const shots = followed?.throws ?? []; const laneRolls = followed?.rolls ?? [];
+  /** Put the card and the rack where they stand after the first `k` rolls, with
+   *  no animation: used to join a game part-way, to switch player, and to catch
+   *  up when this screen has fallen behind. The rack is found by replaying the
+   *  throws since the last fresh one. */
+  const jumpTo = useCallback(async (k: number, rolls: number[], throws: { tyre: string; x: number; angle: number; speed: number; spin: number }[]) => {
+    const done = rolls.slice(0, k);
+    let from = k; while (from > 0 && !score(done.slice(0, from), FRAMES).freshRack) from--;
+    let rack = Array(PINS).fill(true) as boolean[];
+    if (from < k) {
+      try { await RAPIER.init(); } catch { /* the rack is shown full if the engine cannot load */ }
+      for (let i = from; i < k; i++) {
+        const t = throws[i];
+        if (t) { try { const res = simulate(RAPIER, { tyre: t.tyre, throw: cleanThrow(t.tyre, t), standing: rack }); rack = rack.map((upright, j) => upright && !res.down[j]); continue; } catch { /* fall through to a count */ } }
+        let left = done[i] ?? 0; rack = rack.map((upright) => (upright && left-- > 0 ? false : upright)); // an older phone sent no throw: knock down the right number
+      }
+    }
+    modeRef.current = "solo"; setMode("solo");
+    allRef.current = [done]; setAllRolls(allRef.current);
+    turnRef.current = 0; setTurn(0); setHandoff(false); setHint(null); setBanner(null); setBeat(false);
+    setStanding(rack); setRackKey((x) => x + 1);
+    throwLog.current = []; played.current = k;
+    setPhase(score(done, FRAMES).done ? "over" : "aim");
+  }, []);
+  useEffect(() => {
+    if (!watching || !lane) return;
+    setSetup(false);
+    if (phase !== "aim" && phase !== "over") return; // a roll is playing: let it land first
+    if (lane.status === "waiting") { if (shown.current.round !== -2) { shown.current = { round: -2, seat: follow }; void jumpTo(0, [], []); } return; }
+    // a new round, another player, or this screen is more than a throw behind: go straight to where they are
+    const behind = Math.min(shots.length, laneRolls.length) - played.current;
+    const stale = shots.length < laneRolls.length; // rolls with no throws to replay
+    if (shown.current.round !== lane.round || shown.current.seat !== follow || behind > 2 || (stale && played.current !== laneRolls.length) || played.current > laneRolls.length) {
+      const first = shown.current.round !== lane.round || shown.current.seat !== follow;
+      shown.current = { round: lane.round, seat: follow };
+      // joining a lane: show the last throw happen, so the watcher has something to see at once
+      void jumpTo(stale ? laneRolls.length : Math.max(0, first ? shots.length - 1 : shots.length - 1), laneRolls, shots);
+      return;
+    }
+    if (phase !== "aim" || played.current >= shots.length) return;
+    const next = shots[played.current];
+    const ix = Math.max(0, TYRES.findIndex((t) => t.id === next.tyre));
+    if (ix !== tyreIx) { setTyreIx(ix); return; } // the tyre they chose, then the throw on the next pass
+    const before = throwLog.current.length;
+    apiRef.current?.throwIt({ x: next.x, angle: next.angle, speed: next.speed, spin: next.spin });
+    if (throwLog.current.length > before) played.current += 1;
+    else { const t = window.setTimeout(() => setKick((x) => x + 1), 350); return () => window.clearTimeout(t); } // the street is still loading
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watching, lane, follow, phase, tyreIx, kick, jumpTo]);
 
   // ── swipe to roll ──────────────────────────────────────────────────────────
   const trail = useRef<{ x: number; y: number; t: number }[]>([]);
@@ -1420,7 +1503,7 @@ export default function Game() {
         keyX.current = THREE.MathUtils.clamp(keyX.current + (e.key === "ArrowLeft" ? -0.08 : 0.08), -LANE_W / 2, LANE_W / 2);
         apiRef.current?.aimX(keyX.current);
         e.preventDefault();
-      } else if (e.key === " " || e.key === "Enter") {
+      } else if ((e.key === " " || e.key === "Enter") && !watchingRef.current) {
         armSfx();
         setStarted(true);
         apiRef.current?.throwIt({ x: keyX.current, angle: 0, speed: 8.6, spin: 0 });
@@ -1434,6 +1517,7 @@ export default function Game() {
   // ── online room ────────────────────────────────────────────────────────────
   const beginRound = useCallback((v: Room) => {
     roundRef.current = v.round;
+    throwLog.current = []; // this round's throws, sent with each roll so the lane can be watched
     modeRef.current = "online";
     allRef.current = v.players.map(() => []);
     setAllRolls(allRef.current);
@@ -1453,7 +1537,7 @@ export default function Game() {
     if (v.status === "playing" && v.round !== roundRef.current && v.you >= 0) beginRound(v);
     // a roll the server never got (a dropped request) is sent again here
     const mine = allRef.current[v.you] ?? [];
-    if (v.status === "playing" && v.round === roundRef.current && v.you >= 0 && sess.current && (v.players[v.you]?.rolls.length ?? 0) < mine.length) net.roll(sess.current, mine).catch(() => {});
+    if (v.status === "playing" && v.round === roundRef.current && v.you >= 0 && sess.current && (v.players[v.you]?.rolls.length ?? 0) < mine.length) net.roll(sess.current, mine, throwLog.current.slice()).catch(() => {});
   }, [beginRound]);
   const leaveRoom = useCallback(() => {
     if (sess.current) net.leave(sess.current);
@@ -1473,8 +1557,12 @@ export default function Game() {
         if (live && e.message === "no_room") { leaveRoom(); setNetErr("The room closed."); setSetup(true); }
       });
     };
-    const id = window.setInterval(tick, 1500);
-    return () => { live = false; window.clearInterval(id); };
+    // the live line pushes the lane the moment a roll lands; asking is the fallback when it is down
+    let up = false; const s1 = sess.current;
+    const sock = s1 ? openRoomSocket<Room>({ code: s1.code, token: s1.token }, { view: (v) => { if (live && sess.current === s1) takeRoom(v); }, state: (x) => { up = x; } }, "strike") : null;
+    const id = window.setInterval(() => { if (!up) tick(); }, 1500);
+    const slow = window.setInterval(tick, 9000);
+    return () => { live = false; window.clearInterval(id); window.clearInterval(slow); sock?.close(); };
   }, [hasRoom, takeRoom, leaveRoom]);
   const enterRoom = async (how: "create" | "join") => {
     const who = nick.trim() || "Player";
@@ -1575,8 +1663,10 @@ export default function Game() {
   const tone = banner?.tone === "big" ? GA.goldLight : banner?.tone === "bad" ? "#ff8a8a" : "#8ff0a4";
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", background: GA.purpleNight, touchAction: "none", fontFamily: BODY }}>
-      <Canvas shadows={!isMobile} dpr={[1, isMobile ? 1.5 : 2]} gl={{ antialias: !isMobile, powerPreference: "high-performance" }} camera={{ position: [0, 1.45, 2.4], fov: 50, near: 0.1, far: 140 }}
+      <Canvas shadows={!isMobile} dpr={[1, 2]} gl={{ antialias: !isMobile, powerPreference: "high-performance" }} camera={{ position: [0, 1.45, 2.4], fov: 50, near: 0.1, far: 140 }}
         onCreated={({ gl, camera }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.outputColorSpace = THREE.SRGBColorSpace; camera.lookAt(0, 0.32, -4.1); /* down the road while models load, not at the floor */ }}>
+        {/* sharp where the phone can take it, softer where it cannot: the same check UP NEPA 3D uses */}
+        <AutoSharpness game="Street Strike" />
         <NightRig lowPerf={isMobile} />
         <Street lowPerf={isMobile} />
         {/* Scenery loads on its own. The tyre and bottles must never wait for the
@@ -1719,7 +1809,7 @@ export default function Game() {
 <div style={{ fontSize: 10.5, letterSpacing: "0.18em", fontWeight: 600, color: "rgba(34,16,79,0.68)", margin: "12px 0 6px", textAlign: "center" }}>PICK YOUR TYRE</div>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{tyreCards}</div>
             {!online && (
-              <button onClick={() => { armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
+              <button onClick={() => { if (!gate.allow()) return; armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
             )}
             {online && !room && (
               <div style={{ marginTop: 10 }}>
@@ -1776,7 +1866,33 @@ export default function Game() {
       )}
 
       {/* end sheet */}
-      {phase === "over" && (
+      {watching && (
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 45, padding: "10px 12px calc(12px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 8, alignItems: "center", pointerEvents: "none", fontFamily: BODY }}>
+          <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 720 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 999, background: laneGone ? "#475569" : "#dc2626", color: "#fff", fontWeight: 800, fontSize: 12.5, letterSpacing: "0.08em" }}>{laneGone ? "ENDED" : <><i style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} /> LIVE</>}</span>
+            {lineUp && !laneGone && <span style={{ padding: "7px 12px", borderRadius: 999, background: "#22c55e", color: "#052e16", fontWeight: 800, fontSize: 12.5 }}>⚡ Instant</span>}
+            {(lane?.watching ?? 0) > 0 && <span style={{ padding: "7px 12px", borderRadius: 999, background: "rgba(10,2,32,0.72)", color: "#fff", fontWeight: 700, fontSize: 12.5 }}>👁 {lane!.watching}</span>}
+          </div>
+          <div style={{ pointerEvents: "auto", width: "100%", maxWidth: 720, padding: 10, borderRadius: 20, background: "rgba(255,255,255,0.96)", boxShadow: "0 18px 40px -18px rgba(0,0,0,0.7)", display: "grid", gap: 8, color: "#22104f" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(34,16,79,0.7)", textAlign: "center" }}>
+              {laneGone ? "This lane has closed." : !lane ? "Finding the lane…" : lane.status === "waiting" ? "Waiting for the host to start the game." : followed?.done ? `${followed.name} has finished: ${score(laneRolls, FRAMES).total}` : `Watching ${followed?.name ?? "the lane"} bowl. Tap a player to follow them.`}
+            </div>
+            {lane && <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+              {lane.players.map((p, i) => (
+                <button key={i} onClick={() => setFollow(i)} aria-pressed={follow === i} style={{ flex: "1 0 auto", minWidth: 96, minHeight: 52, padding: "6px 12px", borderRadius: 14, border: "none", cursor: "pointer", textAlign: "left", background: follow === i ? "#22104f" : "#f1ecfb", color: follow === i ? "#fff" : "#22104f", opacity: p.away && !p.done ? 0.6 : 1 }}>
+                  <b style={{ display: "block", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 130 }}>{p.name}</b>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 20, lineHeight: 1 }}>{score(p.rolls, FRAMES).total}</span><span style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.75 }}> {p.done ? "done" : `frame ${Math.min(FRAMES, score(p.rolls, FRAMES).frame + 1)}`}</span>
+                </button>
+              ))}
+            </div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { window.location.href = "/watch"; }} style={{ flex: 1, minHeight: 46, borderRadius: 14, border: "2px solid rgba(109,40,217,0.3)", background: "#fff", color: "#6d28d9", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>← All live rounds</button>
+              <button onClick={() => { window.location.href = "/bowling"; }} style={{ flex: 1, minHeight: 46, borderRadius: 14, border: "none", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", boxShadow: "0 4px 0 #4c1d95", color: "#fff", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>Play it yourself</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {phase === "over" && !watching && (
         <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, #ffffff 100%)" }}>
           <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>STREET STRIKE · FINAL</div>
@@ -1822,6 +1938,7 @@ export default function Game() {
         </div>
       )}
       <style>{`@keyframes ssSwipe { 0% { transform: translateY(0) scale(1); opacity: 0; } 12% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-34vh) scale(0.8); opacity: 0; } } @keyframes ssDash { to { background-position: 0 -20px; } } @keyframes ssPulse2 { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } } @keyframes ssPulse { 0%, 100% { transform: translate(-50%, -100%) scale(1); } 50% { transform: translate(-50%, -100%) scale(1.07); } } @keyframes ssPop { 0% { opacity: 0; transform: scale(0.6); } 12% { opacity: 1; transform: scale(1.12); } 22% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px); } }`}</style>
+      {gate.prompt}
     </div>
   );
 }

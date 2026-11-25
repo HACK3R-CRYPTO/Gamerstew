@@ -15,7 +15,7 @@
 // the cards are a swipe row that snaps one card at a time; on a wide screen all
 // three sit side by side.
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BLACKOUT, DUSK, GA } from "./theme";
 
 export type LobbyChoice = "restore" | "charge" | "roam";
@@ -131,6 +131,9 @@ const SOON = ["Torch in the Dark", "Generator Hustle", "Power Thief"];
 
 export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode }) {
   const rail = useRef<HTMLDivElement>(null);
+  // Always open on the first card, squarely in view. Some phone browsers bring a
+  // scroller back half-way between two cards, which left the first one cut off.
+  useEffect(() => { const r = rail.current; if (!r) return; const fix = () => { r.scrollLeft = 0; }; fix(); const t = window.setTimeout(fix, 350); return () => window.clearTimeout(t); }, []);
   const [at, setAt] = useState(0);
   const onScroll = () => {
     const el = rail.current; if (!el) return;
@@ -188,7 +191,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         {[...MODES.map((m) => m.id), "soon"].map((id, i) => <button key={id} className={i === at ? "on" : ""} onClick={() => go(i)} tabIndex={-1} />)}
       </div>
       {friends && <div className="nl-friends">{friends}</div>}
-      <p className="nl-foot">{touch ? "In a round: left stick moves, drag the screen to look" : "In a round: W A S D to move, drag to look, Space to act"}</p>
+      <p className="nl-foot">{touch ? "In a round: left thumb moves, right thumb looks around" : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
         .nl { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 14px); color: #f4f1ea; font-family: "Fredoka", system-ui, sans-serif; background: linear-gradient(180deg, rgba(10,1,32,0.5) 0%, rgba(10,1,32,0.3) 26%, rgba(10,1,32,0.86) 100%); touch-action: pan-x; }
@@ -198,9 +201,9 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         .nl-head h1 span { color: ${GA.goldLight}; }
         .nl-head p { margin: 6px 0 0; font-size: 14.5px; font-weight: 500; opacity: 0.85; }
 
-        .nl-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px max(16px, calc(50% - 160px)) 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .nl-rail { display: flex; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding: 4px max(16px, calc(50% - min(160px, 41vw))) 8px; scroll-padding-inline: max(16px, calc(50% - min(160px, 41vw))); scrollbar-width: none; -webkit-overflow-scrolling: touch; }
         .nl-rail::-webkit-scrollbar { display: none; }
-        .nl-card { flex: 0 0 min(320px, 82vw); scroll-snap-align: center; display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; background: #150a2c; border: 2px solid rgba(255,255,255,0.14); box-shadow: 0 22px 44px -22px #000; animation: nlIn .45s cubic-bezier(.2,.8,.2,1) both; }
+        .nl-card { flex: 0 0 min(320px, 82vw); scroll-snap-align: center; scroll-snap-stop: always; display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; background: #150a2c; border: 2px solid rgba(255,255,255,0.14); box-shadow: 0 22px 44px -22px #000; animation: nlIn .45s cubic-bezier(.2,.8,.2,1) both; }
         .nl-card.gold { border-color: ${GA.goldLight}; }
         .nl-card.green { border-color: #4ade80; }
         @keyframes nlIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }

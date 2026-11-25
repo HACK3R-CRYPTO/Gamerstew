@@ -10,6 +10,7 @@
 // It also banks any ?ref on THIS page into the existing referral store, since
 // a shared passport link is exactly where new players land first.
 
+import AddFriendButton from "@/components/AddFriendButton";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureReferralFromUrl } from "@/lib/referral";
@@ -103,6 +104,7 @@ export default function PassportActions({ address, name, refCode }: { address: s
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {!isOwner && <AddFriendButton wallet={address} />}
       {isOwner ? (
         <>
           <button

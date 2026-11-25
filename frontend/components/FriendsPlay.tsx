@@ -10,6 +10,9 @@
 
 import { gd, type FriendRoom, type RoomView } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
+import AddSeat from "@/components/AddSeat";
+import RoomChat from "@/components/RoomChat";
+import { useFriends } from "@/hooks/useFriends";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 
@@ -29,6 +32,7 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
 }) {
   const v = room.view;
   const open = room.sheetOpen, code = room.inviteCode;
+  const friends = useFriends(); // who in this room is already a friend, and who can be added
   const me = v && v.you >= 0 ? v.players[v.you] : null;
   const lobby = room.inRoom && v?.status === "waiting";
   const playing = room.inRoom && v?.status === "playing" && me && !me.done;
@@ -62,7 +66,7 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
               {v.players.map((p, i) => ({ p, i })).sort((a, b) => (b.p.score ?? -1) - (a.p.score ?? -1)).map(({ p, i }, rank) => (
                 <li key={i} className={`${i === v.you ? "me" : ""}${v.status === "over" && rank === 0 && p.score != null ? " win" : ""}`}>
                   <span>{p.score != null ? rank + 1 : "·"}</span>
-                  <b>{p.name}{i === v.you ? " (you)" : ""}</b>
+                  <b>{p.name}{i === v.you ? " (you)" : ""}{i !== v.you && <AddSeat f={friends} wallet={p.wallet} />}</b>
                   <i>{p.score != null ? p.score : p.away ? "left" : `${progressWord} ${p.progress + 1}`}{p.chain?.state === "recorded" && p.chain.tx ? <a className="fp-tick" href={`https://celoscan.io/tx/${p.chain.tx}`} target="_blank" rel="noreferrer" aria-label="See this score on the chain" title="On-chain">✓</a> : null}</i>
                 </li>
               ))}
@@ -73,6 +77,8 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
               </div>
             ); })()}
             {v.stake && v.status === "over" && <StakeResult view={v} />}
+            <RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} />
+            {(v.watching ?? 0) > 0 && <div className="fp-note">👁 {v.watching} watching</div>}
             {room.error && <div className="fp-err">{room.error}</div>}
             {v.status === "over"
               ? (room.isHost ? <button className="fp-go" style={{ fontFamily: DISPLAY }} disabled={room.busy} onClick={() => room.rematch()}>Play again</button> : <div className="fp-note">Waiting for the host to start another round…</div>)

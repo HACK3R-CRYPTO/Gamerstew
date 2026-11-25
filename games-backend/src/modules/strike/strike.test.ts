@@ -221,3 +221,27 @@ test('the secret gate guards every route, and one address cannot flood rooms', a
     server.close();
   }
 });
+
+test('throws are kept with the rolls so a round can be replayed; a watcher sees them and never the code', async () => {
+  const svc = createStrikeService(new MemoryRoomStore());
+  const host = ok<Seat>(await svc.create('Ada')); const guest = ok<Seat>(await svc.join(host.code, 'Bo'));
+  assert.deepStrictEqual(await svc.live(), [], 'a lane still waiting is not listed');
+  ok<RoomView>(await svc.start(host.code, host.token));
+  const shot = { tyre: 'keke', x: 0.1, angle: 0.02, speed: 9, spin: 3 };
+  const v = ok<RoomView>(await svc.roll(host.code, host.token, [7], [{ ...shot, speed: 9999, extra: 'x' }]));
+  assert.equal(v.players[0]!.throws.length, 1);
+  assert.ok(v.players[0]!.throws[0]!.speed < 100, 'a throw is held to what the game allows');
+  assert.deepStrictEqual(Object.keys(v.players[0]!.throws[0]!).sort(), ['angle', 'speed', 'spin', 'tyre', 'x']);
+  // more throws than rolls, an unknown tyre, or junk: the rolls still count, the throws are left as they were
+  ok<RoomView>(await svc.roll(host.code, host.token, [7, 2], [shot, shot, shot]));
+  ok<RoomView>(await svc.roll(host.code, host.token, [7, 2], [{ ...shot, tyre: 'tank' }, shot]));
+  assert.equal(ok<RoomView>(await svc.get(host.code, host.token)).players[0]!.throws.length, 1);
+  const [live] = await svc.live();
+  assert.deepStrictEqual([live!.game, live!.players], ['strike', ['Ada', 'Bo']]); assert.equal(JSON.stringify(live).includes(host.code), false);
+  const seen = ok<RoomView>(await svc.get(live!.watch, undefined, 'tv'));
+  assert.deepStrictEqual([seen.code, seen.you, seen.players[0]!.throws.length], ['', -1, 1]);
+  assert.equal((await svc.live())[0]!.watching, 1);
+  assert.equal(err(await svc.join(live!.watch, 'Sneak')), 'no_room', 'a watch name is not a way in');
+  assert.equal(await svc.codeFor(live!.watch), host.code);
+  void guest;
+});

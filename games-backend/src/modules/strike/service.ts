@@ -11,7 +11,8 @@
 
 import { randomBytes } from 'crypto';
 import { cleanName, FRAMES, readCard } from './card';
-import type { Room, RoomStore } from './store';
+import type { Room, RoomStore, Throw } from './store';
+import { cleanThrow, SIM_TYRES } from './sim';
 
 export const MAX_PLAYERS = 4;
 export const MAX_ROOMS = 2000;
@@ -29,7 +30,26 @@ export interface RoomView {
   frames: number;
   /** the caller's seat, or -1 for a stranger */
   you: number;
-  players: { name: string; host: boolean; rolls: number[]; done: boolean; away: boolean }[];
+  players: { name: string; host: boolean; rolls: number[]; done: boolean; away: boolean; /** every throw of this round, so another screen can replay the card */ throws: Throw[] }[];
+  /** the room's public watch name */
+  watchId: string;
+  /** people looking on, seen in the last few seconds */
+  watching: number;
+}
+/** A room as the "live" list shows it. No code: a stranger can watch, not join. */
+export interface LiveLane { watch: string; game: 'strike'; status: Room['status']; round: number; elapsed: number; players: string[]; watching: number; stake: boolean }
+export const MAX_THROWS = 30;
+/** Throws as a phone sent them, made safe: a known tyre, numbers inside what the game allows, never more throws than rolls. */
+export function cleanThrows(raw: unknown, rolls: number): Throw[] | null {
+  if (!Array.isArray(raw) || raw.length > rolls || raw.length > MAX_THROWS) return null;
+  const out: Throw[] = [];
+  for (const t of raw) {
+    if (typeof t !== 'object' || t === null) return null;
+    const r = t as Record<string, unknown>; const tyre = String(r.tyre ?? '');
+    if (!Object.prototype.hasOwnProperty.call(SIM_TYRES, tyre)) return null;
+    out.push({ tyre, ...cleanThrow(tyre, { x: Number(r.x), angle: Number(r.angle), speed: Number(r.speed), spin: Number(r.spin) }) });
+  }
+  return out;
 }
 
 const fail = (error: FailCode, status: number): Fail => ({ error, status });
@@ -43,6 +63,13 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
   // The host is the first player who has not left, so a host walking out never
   // strands the room: the next player inherits start and rematch.
   const hostSeat = (room: Room) => room.players.findIndex((p) => !p.left);
+  const WATCH_ID = /^[0-9a-f]{8}$/;
+  const watchName = (room: Room) => (room.watch ??= randomBytes(4).toString('hex'));
+  const byWatch = async (id: string) => (await store.all()).find((r) => r.watch === id);
+  // who is looking on, by room. Kept beside the rooms and never saved.
+  const WATCH_MS = 8000; const watchers = new Map<string, Map<string, number>>(); const started = new Map<string, number>();
+  const watchingNow = (code: string, t: number) => { const w = watchers.get(code); if (!w) return 0; for (const [k, at] of w) if (t - at > WATCH_MS) w.delete(k); if (!w.size) watchers.delete(code); return w.size; };
+  const noteWatcher = (code: string, who: string, t: number) => { if (watchers.size > 5000) watchers.clear(); let w = watchers.get(code); if (!w) { w = new Map(); watchers.set(code, w); } if (w.size < 200 || w.has(who)) w.set(who, t); };
 
   /** What the room looks like right now. A round is over when everyone still
    *  here has finished: a phone that went quiet does not hold the others. This is
@@ -63,7 +90,9 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       frames: FRAMES,
       you: seat,
       // tokens are the players' keys to the room: they never leave the server
-      players: room.players.map((p, i) => ({ name: p.name, host: i === host, rolls: p.rolls, done: p.done, away: gone(room, i, t) })),
+      players: room.players.map((p, i) => ({ name: p.name, host: i === host, rolls: p.rolls, done: p.done, away: gone(room, i, t), throws: p.throws ?? [] })),
+      watchId: watchName(room),
+      watching: watchingNow(room.code, t),
     };
   }
   async function newCode(): Promise<string | null> {
@@ -107,9 +136,18 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       return { code: room.code, token, seat: room.players.length - 1 };
     },
 
-    async get(code: unknown, token: unknown): Promise<RoomView | Fail> {
+    /** A look at a room. With a seat's key it is that player's view; without one it is a
+     *  spectator's. By the room's watch name the reply never carries the code. */
+    async get(code: unknown, token: unknown, watcher?: unknown): Promise<RoomView | Fail> {
+      if (typeof code === 'string' && WATCH_ID.test(code)) {
+        const seen = await byWatch(code);
+        if (!seen) return fail('no_room', 404);
+        if (typeof watcher === 'string' && watcher) noteWatcher(seen.code, watcher.slice(0, 64), now());
+        return { ...view(seen, -1), code: '' };
+      }
       const room = await find(code);
       if (!room) return fail('no_room', 404);
+      if (seatOf(room, token) < 0 && typeof watcher === 'string' && watcher) noteWatcher(room.code, watcher.slice(0, 64), now());
       const seat = seatOf(room, token);
       const me = room.players[seat];
       if (me) { me.seen = now(); room.touched = now(); }
@@ -127,12 +165,29 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       if (room.players.filter((p) => !p.left).length < 2) return fail('need_two', 409);
       room.status = 'playing';
       room.round += 1;
-      room.touched = now();
+      room.touched = now(); started.set(room.code, now());
       await store.put(room);
       return view(room, seat);
     },
 
-    async roll(code: unknown, token: unknown, rolls: unknown): Promise<RoomView | Fail> {
+    /** The room a code or a watch name belongs to, or nothing. */
+    async codeFor(by: unknown): Promise<string | null> {
+      if (typeof by === 'string' && WATCH_ID.test(by)) return (await byWatch(by))?.code ?? null;
+      return (await find(by))?.code ?? null;
+    },
+
+    /** Games being played right now, for the "live" list. */
+    async live(): Promise<LiveLane[]> {
+      const t = now(); const out: LiveLane[] = [];
+      for (const room of await store.all()) {
+        const here = room.players.filter((p, i) => !gone(room, i, t));
+        if (statusOf(room) !== 'playing' || here.length < 2) continue;
+        out.push({ watch: watchName(room), game: 'strike', status: 'playing', round: room.round, elapsed: Math.max(0, Math.round((t - (started.get(room.code) ?? t)) / 1000)), players: here.map((p) => p.name), watching: watchingNow(room.code, t), stake: false });
+      }
+      return out.sort((a, b) => b.watching - a.watching || a.elapsed - b.elapsed).slice(0, 20);
+    },
+
+    async roll(code: unknown, token: unknown, rolls: unknown, throws?: unknown): Promise<RoomView | Fail> {
       const room = await find(code);
       if (!room) return fail('no_room', 404);
       const seat = seatOf(room, token);
@@ -146,6 +201,9 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       if (next.length < p.rolls.length || p.rolls.some((v, i) => next[i] !== v)) return fail('rewrite', 409);
       p.rolls = next.slice();
       p.done = card.done;
+      // the throws behind those rolls, so someone watching can replay them. Never fewer than before.
+      const shots = cleanThrows(throws, next.length);
+      if (shots && shots.length >= (p.throws?.length ?? 0)) p.throws = shots;
       p.seen = now();
       room.touched = now();
       const v = view(room, seat);
@@ -159,7 +217,8 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       const seat = seatOf(room, token);
       if (seat < 0 || seat !== hostSeat(room)) return fail('not_host', 403);
       if (statusOf(room) !== 'over') return fail('not_over', 409);
-      for (const p of room.players) { p.rolls = []; p.done = false; }
+      for (const p of room.players) { p.rolls = []; p.done = false; p.throws = []; }
+      started.set(room.code, now());
       room.status = 'playing';
       room.round += 1;
       room.touched = now();

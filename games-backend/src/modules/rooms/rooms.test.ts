@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoomService, isFail, AWAY_MS, ROUND_MAX_MS, MAX_PLAYERS, type GameRules, type RoomView, type Seat } from './service';
+import { createRoomService, isFail, CHAT_GAP_MS, CHAT_KEEP, AWAY_MS, ROUND_MAX_MS, MAX_PLAYERS, type GameRules, type RoomView, type Seat } from './service';
 import { ROOM_GAMES, rhythmSongFor } from './games';
 import * as ladder from '../ladder/rules';
 import { VALID } from '../ladder/data';
@@ -282,4 +282,62 @@ test("a signed-in seat's checked round goes on the chain after the result; guest
   const l = ok<Seat>(svc.create('loose', 'L', A)); ok<Seat>(svc.join(l.code, 'M')); svc.start(l.code, l.token); await svc.finish(l.code, l.token, '99'); await settle();
   assert.equal(sent.length, 2);
   assert.equal(ok<Seat | { error: string }>(svc.create('toy', 'Q', 'not-a-wallet')) && sent.length, 2);
+});
+
+test('spectators: a stranger sees scores and progress but never the deal, and is counted while looking', () => {
+  const w = world(); const r = open(w);
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 3));
+  const seen = ok<RoomView>(w.svc.get(r.code, undefined, 'phone-a'));
+  assert.equal(seen.you, -1); assert.equal(seen.deal, undefined, 'a spectator must not be dealt the round');
+  assert.equal(seen.players[0]!.progress, 3); assert.equal(seen.goal, 5); assert.equal(seen.watching, 1);
+  ok<RoomView>(w.svc.get(r.code, undefined, 'phone-a')); // the same phone looking again is still one
+  assert.equal(ok<RoomView>(w.svc.get(r.code, undefined, 'phone-b')).watching, 2);
+  assert.equal(ok<RoomView>(w.svc.get(r.code, r.host.token, 'ignored')).watching, 2, 'a player is not a spectator');
+  w.clock.t += 9000; // nobody looked for a while
+  assert.equal(ok<RoomView>(w.svc.get(r.code, r.host.token)).watching, 0);
+});
+
+test('a signed-in seat is named to the other players, so they can add each other, and never to a spectator', () => {
+  const w = world(); const A = '0x' + 'a'.repeat(40);
+  const host = ok<Seat>(w.svc.create('toy', 'Ada', A)); ok<Seat>(w.svc.join(host.code, 'Bo'));
+  const mine = ok<RoomView>(w.svc.get(host.code, host.token));
+  assert.equal(mine.players[0]!.wallet, A); assert.equal(mine.players[1]!.wallet, undefined, 'a guest has none');
+  assert.equal(ok<RoomView>(w.svc.get(host.code, undefined, 'onlooker')).players[0]!.wallet, undefined);
+});
+
+test('live list and watch name: a round between two people is listed without its code, and the watch name cannot join', () => {
+  const w = world(); const r = open(w);
+  assert.deepEqual(w.svc.live(), [], 'a room still waiting is not listed');
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  const [live] = w.svc.live();
+  assert.deepEqual(live!.players, ['Ada', 'Bo']); assert.equal(JSON.stringify(live).includes(r.code), false, 'the code never appears in the list');
+  const seen = ok<RoomView>(w.svc.get(live!.watch, undefined, 'tv'));
+  assert.equal(seen.code, ''); assert.equal(seen.you, -1); assert.equal(seen.deal, undefined); assert.equal(seen.players[0]!.name, 'Ada');
+  assert.equal(isFail(w.svc.join(live!.watch, 'Sneak')), true, 'a watch name is not a way in');
+  assert.equal(w.svc.live()[0]!.watching, 1);
+});
+
+test('chat: players talk, spectators read, text is cleaned, a flood is refused and old lines fall away', () => {
+  const w = world(); const r = open(w);
+  assert.equal(isFail(w.svc.say(r.code, 'f'.repeat(32), 'hi')), true, 'no seat, no voice');
+  const v = ok<RoomView>(w.svc.say(r.code, r.host.token, '  <b>good   luck</b>\n '));
+  assert.deepEqual(v.chat.map((c) => [c.name, c.text]), [['Ada', 'b good luck /b']]);
+  assert.equal(isFail(w.svc.say(r.code, r.host.token, 'again')), true, 'too soon');
+  for (let i = 0; i < CHAT_KEEP + 5; i++) { w.clock.t += CHAT_GAP_MS; ok<RoomView>(w.svc.say(r.code, r.others[0]!.token, `m${i}`)); }
+  const watcher = ok<RoomView>(w.svc.get(r.code, undefined, 'tv'));
+  assert.equal(watcher.chat.length, 30); assert.equal(watcher.chat[29]!.text, `m${CHAT_KEEP + 4}`);
+  assert.equal(isFail(w.svc.say(r.code, r.host.token, '   ')), true);
+});
+
+test('live state: a spectator is shown each player\'s screen as numbers; words and oversized shapes never get through', () => {
+  const w = world(); const r = open(w);
+  ok<RoomView>(w.svc.start(r.code, r.host.token));
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 2, { pts: 40.129, rows: [[1, 0, 0, 1], [1, 1, 0, 1]], word: 'cold', BAD: 1, deep: [[[1]]], many: Array.from({ length: 30 }, (_, i) => i) }));
+  const seen = ok<RoomView>(w.svc.get(r.code, undefined, 'tv')).players[0]!.live!;
+  assert.deepEqual(seen.pts, 40.13); assert.deepEqual(seen.rows, [[1, 0, 0, 1], [1, 1, 0, 1]]);
+  assert.equal('word' in seen, false, 'no text'); assert.equal('BAD' in seen, false); assert.equal('deep' in seen, false);
+  assert.equal((seen.many as number[]).length, 12);
+  ok<RoomView>(w.svc.progress(r.code, r.host.token, 3)); // a plain progress call keeps the last picture
+  assert.deepEqual(ok<RoomView>(w.svc.get(r.code, undefined, 'tv')).players[0]!.live!.pts, 40.13);
 });

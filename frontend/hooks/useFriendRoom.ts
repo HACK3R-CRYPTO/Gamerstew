@@ -1,5 +1,7 @@
 "use client";
 
+import { openRoomSocket, type RoomSocket } from "@/lib/roomSocket";
+
 // ─── useFriendRoom ───────────────────────────────────────────────────────────
 // A friend room, as a game page sees it. One player opens a room and shares the
 // code; everyone plays the same round at once and watches each other's progress.
@@ -21,13 +23,20 @@ import { useIsMiniPay } from "@/hooks/useMiniPay";
 
 /** A finished round on its way to the chain: only for a signed-in seat, in a game the server scores itself. */
 export interface ChainNote { state: "sending" | "recorded" | "failed"; tx?: string }
-export interface RoomPlayer { name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; chain?: ChainNote }
+export type LiveState = Record<string, number | number[] | number[][]>;
+export interface RoomPlayer { live?: LiveState; name: string; host: boolean; score: number | null; done: boolean; progress: number; away: boolean; /** the signed-in player in this seat, when there is one */ wallet?: string; chain?: ChainNote }
 export type StakeState = "collecting" | "ready" | "playing" | "settling" | "settled" | "void";
 export type PayState = "paid" | "unpaid" | "expired";
 /** A room played for G$. Nobody's money is held: each loser's entry goes straight to the winner when the round ends. */
 export interface RoomStake { entryWei: string; feeBps: number; state: StakeState; signed: boolean[]; winnerSeat: number; pays: (PayState | null)[]; txs: (string | null)[] }
+export interface ChatLine { id: number; seat: number; name: string; text: string; at: number }
 export interface RoomView {
   code: string; game: string; status: "waiting" | "playing" | "over"; round: number; verified: boolean; you: number; elapsed: number; players: RoomPlayer[]; deal?: unknown;
+  /** people looking on */
+  watching?: number;
+  /** the room's public watch name: a link built from it lets people look on, never join */
+  watchId?: string;
+  chat?: ChatLine[];
   /** this room can be played for G$ */
   stakes?: boolean;
   stakeTerms?: { spender: string; entries: string[]; feeBps: number };
@@ -107,7 +116,23 @@ export function useFriendRoom(game: string) {
     try { return await fn(); } catch (e) { setError((e as { reason?: string }).reason ?? explainRoom((e as Error).message)); return null; } finally { setBusy(false); }
   }, []);
 
-  // ask for the room about once a second while we are in one
+  // The live line: the server pushes this room the moment it changes. While
+  // the line is up, asking is only a slow safety net; if it drops, the room
+  // goes back to asking about once a second until it is back.
+  const line = useRef<RoomSocket | null>(null);
+  const [lineUp, setLineUp] = useState(false);
+  useEffect(() => {
+    if (!session) return;
+    const s = openRoomSocket({ code: session.code, token: session.token }, {
+      view: (v) => { if (v.you < 0) { setSession(null); setView(null); } else setView(v); },
+      gone: () => { setSession(null); setView(null); setError("That room has closed."); },
+      state: setLineUp,
+    });
+    line.current = s;
+    return () => { s.close(); if (line.current === s) line.current = null; setLineUp(false); };
+  }, [session]);
+
+  // ask for the room: about once a second without the live line, now and then with it
   useEffect(() => {
     if (!session) return;
     let live = true;
@@ -116,9 +141,9 @@ export function useFriendRoom(game: string) {
       catch (e) { if (live && (e as Error).message === "no_room") { setSession(null); setView(null); setError("That room has closed."); } }
     };
     void tick();
-    const id = window.setInterval(tick, 1200);
+    const id = window.setInterval(tick, lineUp ? 8000 : 1200);
     return () => { live = false; window.clearInterval(id); };
-  }, [session]);
+  }, [session, lineUp]);
 
   // leaving the page leaves the room, so friends are not left waiting on a ghost
   // Not at once, though: React also runs this when it only HIDES the screen for a
@@ -140,7 +165,7 @@ export function useFriendRoom(game: string) {
   }, [guard]);
 
   return {
-    session, view, error, busy,
+    session, view, error, busy, live: lineUp,
     sheetOpen, inviteCode, openSheet: () => setSheetOpen(true), closeSheet: () => setSheetOpen(false),
     inRoom: !!session,
     isHost: !!view && view.you >= 0 && !!view.players[view.you]?.host,
@@ -149,13 +174,16 @@ export function useFriendRoom(game: string) {
     start: () => act("start"),
     rematch: () => act("rematch"),
     // progress is a courtesy to the others: never let it surface an error
-    progress: (n: number) => { const s = sess.current; if (s) void call(`${s.code}/progress`, { token: s.token, progress: n }).catch(() => {}); },
+    // `live` is the player's screen as a few numbers, so people watching see the game itself (never text)
+    progress: (n: number, live?: LiveState) => { const s = sess.current; if (!s) return; if (line.current?.progress(n, live)) return; void call(`${s.code}/progress`, { token: s.token, progress: n, ...(live ? { live } : {}) }).catch(() => {}); },
     finish: (proof: unknown) => act("finish", { proof }),
     // playing for G$: the host sets the entry, everyone signs, the host can call it off
     setEntry: (entryWei: string, permit: unknown) => act("stake", { entryWei, permit }),
     agreeEntry: (permit: unknown) => act("commit", { permit }),
     clearEntry: () => act("unstake"),
     say: (message: string | null) => setError(message),
+    /** a line of room chat. Quiet on failure: chat must never get in the way of a round. */
+    chat: async (text: string): Promise<boolean> => { const s = sess.current; if (!s) return false; if (line.current?.say(text)) return true; try { setView(await call<RoomView>(`${s.code}/say`, { token: s.token, text })); return true; } catch { return false; } },
     leave: () => { const s = sess.current; setSession(null); setView(null); setError(null); if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); },
   };
 }

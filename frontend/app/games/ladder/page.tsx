@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PUZZLES, VALID } from "./data";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useGuestGate } from "@/hooks/useGuestGate";
 import { useFriendRoom } from "@/hooks/useFriendRoom";
 import FriendsSheet from "@/components/FriendsSheet";
 import TxStatus from "@/components/TxStatus";
@@ -105,6 +106,7 @@ function pointsFor(par: number, steps: number, seconds: number, hints: number) {
 export default function WordLadderPage() {
   const router = useRouter();
   const ranked = useRankedRun("ladder");
+  const gate = useGuestGate("ladder", "Word Ladder");
   const [isRanked, setIsRanked] = useState(false); // this round has a server ticket
   const [opening, setOpening] = useState(false);
   // Friend rooms: everyone in the room is dealt the same five ladders and plays
@@ -158,6 +160,7 @@ export default function WordLadderPage() {
   }, []);
   const begin = async (isDaily = false) => {
     if (opening) return;
+    if (!gate.allow()) return; // a guest out of free runs is asked to sign in
     track("game_start", { game: "Word Ladder" });
     setIsRoomRound(false);
     let list = isDaily ? dealDaily() : null; let rankedRound = false;
@@ -195,6 +198,16 @@ export default function WordLadderPage() {
     if (v.status === "waiting" && isRoomRound && phase === "done") { setPhase("start"); setIsRoomRound(false); setFriendsOpen(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.view, phase, isRoomRound]);
+  // People watching see the SHAPE of this ladder: which letters are in place on
+  // each rung, never the letters. Everyone in the room has the same words, so
+  // showing them would hand a rival the answer.
+  const tell = room.progress; const pointsSoFar = results.reduce((a, x) => a + x.points, 0);
+  useEffect(() => {
+    if (!isRoomRound || phase !== "play" || !target) return;
+    const t = setTimeout(() => tell(results.length, { ix: results.length, pts: pointsSoFar, rows: [start, ...rungs].slice(-10).map((w) => w.split("").map((c, i) => (c === target[i] ? 1 : 0))) }), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rungs, ix, isRoomRound, phase]);
   const leaveRoom = () => { room.leave(); setIsRoomRound(false); roomRound.current = 0; setFriendsOpen(false); setPhase("start"); };
 
   const say = (text: string) => setMsg({ text, key: Date.now() });
@@ -203,7 +216,7 @@ export default function WordLadderPage() {
     const r: Result = { start, target, par, steps, seconds, hints, skipped, points: skipped ? 0 : pointsFor(par, steps, seconds, hints), words: skipped ? rungs : [...rungs.slice(0, steps - 1), target].slice(0, steps), ms };
     const all = [...results, r]; setResults(all); setSolved(true);
     if (skipped) playWhooshOut(); else { const perfect = steps <= par; playLadderSolved(perfect); buzz(perfect ? [18, 40, 18, 40, 30] : [18, 40, 24]); }
-    if (isRoomRound) room.progress(all.length); // let the others see how far you have got
+    if (isRoomRound) room.progress(all.length, { ix: all.length, pts: all.reduce((a, x) => a + x.points, 0), rows: [] }); // let the others see how far you have got
     setTimeout(() => {
       if (ix + 1 < ROUND) { playWhooshIn(); openPuzzle(set, ix + 1); }
       else {
@@ -581,6 +594,7 @@ export default function WordLadderPage() {
         @media (min-width: 900px) { .wl main { max-width: 520px; } .wl-keys button { max-width: 46px; } }
         @media (prefers-reduced-motion: reduce) { .wl * { animation: none !important; transition: none !important; } }
       `}</style>
+      {gate.prompt}
     </div>
   );
 }

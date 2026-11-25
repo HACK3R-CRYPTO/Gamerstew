@@ -8,6 +8,7 @@ import { celo } from "viem/chains";
 import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
+import { graphicsChoice, setGraphicsChoice, type Graphics } from "@/app/world/quality";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
@@ -243,6 +244,9 @@ export default function SettingsPage() {
   // - "denied" → browser-level block; open a help affordance instead of toggling
   // - "unsupported" → not in this browser; show the chip and disable the row
   // - everything else → live Toggle
+  // 3D graphics: the player's own choice, read on the device after the page is up
+  const [gfx, setGfx] = useState<Graphics>("auto");
+  useEffect(() => { setGfx(graphicsChoice()); }, []);
   const { state: pushState, subscribe, unsubscribe } = usePushNotifications(address);
   const pushOn = pushState === "subscribed";
 
@@ -574,6 +578,13 @@ export default function SettingsPage() {
         <section>
           <SectionLabel>Gameplay</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Row icon="🎮" label="3D graphics" sub={gfx === "auto" ? "Auto: fits your phone and adjusts while you play." : gfx === "smooth" ? "Smooth: softer picture, steady frames, cooler phone." : "Sharp: the crispest picture, for a strong phone."}>
+              <div role="radiogroup" aria-label="3D graphics" style={{ display: "inline-flex", padding: 3, borderRadius: 999, background: "rgba(76,29,149,0.07)", border: `1px solid ${T.hairline}` }}>
+                {(["auto", "smooth", "sharp"] as const).map((v) => (
+                  <button key={v} role="radio" aria-checked={gfx === v} onClick={() => { setGraphicsChoice(v); setGfx(v); }} style={{ minHeight: 36, padding: "0 13px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 12.5, fontWeight: 800, textTransform: "capitalize", background: gfx === v ? "#6d28d9" : "transparent", color: gfx === v ? "#fff" : T.inkDim }}>{v}</button>
+                ))}
+              </div>
+            </Row>
             <div style={{ opacity: 0.55, pointerEvents: "none" }} aria-disabled="true">
               <Row
                 icon="🌐"

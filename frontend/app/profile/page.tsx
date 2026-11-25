@@ -469,6 +469,7 @@ export default function ProfilePage() {
         {/* Heading row · YOUR PET + Settings */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em" }}>YOUR PET</div>
+          <button onClick={() => router.push("/friends")} style={{ marginLeft: "auto", marginRight: 8, display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 999, background: "#6d28d9", border: "none", cursor: "pointer", color: "#fff", fontFamily: T.body, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.04em" }}>👥 Friends</button>
           <button onClick={() => router.push("/settings")} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px 8px 11px", borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, cursor: "pointer", color: T.inkDim, fontFamily: T.body, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em" }}>
             <Icon name="settings" size={15} color="currentColor" /> Settings
           </button>

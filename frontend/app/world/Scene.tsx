@@ -50,23 +50,79 @@ import IntroDirector from "./IntroDirector";
 import PerfProbe from "./PerfProbe";
 import { useWorldStore } from "./store";
 import { useAppStore } from "./appStore";
+import { worldControls } from "./controls";
+import { rememberSettled, deviceFacts } from "./quality";
+import { track } from "@/lib/track";
 import { setObstaclesActive } from "./obstacles";
 
 // Hard fps cap + pause-when-hidden, implemented with a manual render loop.
 // The Canvas runs with frameloop="never" and we call `advance` ourselves at the
 // target rate; when `running` is false (tab/canvas hidden) we stop advancing,
 // which fully pauses rendering.
-function FrameGovernor({ fps, running }: { fps: number; running: boolean }) {
+//
+// It also looks after sharpness. The world starts at the tier's sharpest
+// setting. If this phone then draws well under its target rate for four seconds,
+// the picture is made one step softer. If it runs easily for six seconds, it is
+// made one step sharper, up to the sharpest worth drawing. The frame target
+// moves the same way: a phone at its softest that still cannot reach 60 is
+// held to a steady 30, and a phone guessed at 30 that has room is given 60. A level that proved
+// too much is not tried again, so the picture never flips back and forth. The first seconds are ignored: loading the street stutters on
+// any phone. So a strong phone stays crisp and a weak one stays smooth, without
+// anyone choosing a setting.
+function FrameGovernor({ fps, running, maxDpr, minDpr, climb }: { fps: number; running: boolean; maxDpr: number; minDpr: number; climb: boolean }) {
   const advance = useThree((s) => s.advance);
+  const setDpr = useThree((s) => s.setDpr);
   useEffect(() => {
     if (!running) return;
     let raf = 0;
     let last = 0;
-    const interval = 1000 / fps;
+    // a little under the true interval: screens tick at 16.6 ms, and waiting for a
+    // full 16.67 skipped every other tick and halved a 60 fps target to 30
+    let rate = fps; // the frame target: it starts at the tier's guess and is adjusted like the sharpness
+    let interval = 1000 / rate - 3;
+    let ticks = 0, tickMs = 0, lastTick = 0, tried60 = false, windows = 0;
+    // The tier is a first guess from what the phone says about itself, and phones
+    // say little. So the guess is only where it STARTS: a phone that proves quick
+    // is taken up a step at a time to the sharpest worth drawing (2, or the
+    // screen's own limit), and one that proves slow is taken down. This is what
+    // makes an unknown phone come out right.
+    const top = climb ? Math.min(2, window.devicePixelRatio || 1) : Math.min(maxDpr, window.devicePixelRatio || 1); // a level the player chose is the ceiling
+    const cap = Math.min(maxDpr, top); const floor = Math.min(minDpr, cap);
+    let dpr = cap; let frames = 0; let since = 0; let slow = 0; let quick = 0; let tooMuch = Infinity; let born = 0;
+    setDpr(dpr);
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
+      // how often the screen itself ticks, drawn or not: at a 30 target every other tick is
+      // skipped, and ticks that still arrive on time say the phone has room for more
+      if (lastTick && t - lastTick < 500) { ticks++; tickMs += t - lastTick; }
+      lastTick = t;
       if (t - last >= interval) {
+        const gap = last ? t - last : 0;
         last = t;
+        if (!born) born = t;
+        if (gap > 0 && gap < 500 && t - born > 5000) { // a long gap is a hidden tab or a load, not a slow phone
+          frames++; since += gap;
+          if (since >= 2000) {
+            const got = (frames * 1000) / since; frames = 0; since = 0;
+            const tick = ticks ? tickMs / ticks : 0; ticks = 0; tickMs = 0;
+            if (process.env.NODE_ENV !== "production") (window as unknown as { __gov?: unknown }).__gov = { got: Math.round(got), rate, dpr, tick: Math.round(tick) };
+            // After twenty seconds of play it has found its level: keep it for the next visit,
+            // and tell the dashboard once what this device is and how it ran.
+            windows++;
+            if (windows === 10) { if (climb) rememberSettled(dpr, rate); track("device_profile", { ...deviceFacts(), game: "UP NEPA 3D", settled_dpr: dpr, settled_fps: rate, got_fps: Math.round(got) }); }
+            slow = got < rate * 0.72 ? slow + 1 : 0; quick = got > rate * 0.93 ? quick + 1 : 0;
+            if (slow >= 2 && dpr > floor) { tooMuch = dpr; dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; quick = 0; }
+            // As soft as it goes and still short of 60: a steady 30 looks and feels better
+            // than a 60 that stutters. This is the phone that pasted the link into Chrome,
+            // has plenty of memory and cores on paper, and a slow graphics chip.
+            else if (slow >= 2 && rate > 30) { rate = 30; interval = 1000 / rate - 3; slow = 0; quick = 0; tried60 = true; }
+            // six easy seconds: try one step sharper, unless that step already proved too much
+            else if (quick >= 3 && dpr + 0.25 <= top && dpr + 0.25 < tooMuch) { dpr += 0.25; setDpr(dpr); quick = 0; }
+            // already as sharp as is worth drawing, held to 30, and the screen still ticks on
+            // time with every other frame skipped: this phone can do 60. Tried once only.
+            else if (climb && quick >= 3 && rate < 60 && !tried60 && tick > 0 && tick < 19) { rate = 60; interval = 1000 / rate - 3; quick = 0; tried60 = true; }
+          }
+        }
         // In frameloop="never", R3F derives the per-frame delta as
         // (timestamp - clock.elapsedTime) and expects SECONDS. The rAF timestamp
         // is in MILLISECONDS, so pass seconds — otherwise every useFrame (and
@@ -76,7 +132,7 @@ function FrameGovernor({ fps, running }: { fps: number; running: boolean }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [advance, fps, running]);
+  }, [advance, fps, running, maxDpr, minDpr, climb, setDpr]);
   return null;
 }
 
@@ -112,7 +168,7 @@ export default function Scene({
 
   return (
     <>
-      <FrameGovernor fps={quality().fps} running={running} />
+      <FrameGovernor fps={quality().fps} running={running} maxDpr={quality().dpr} minDpr={quality().minDpr} climb={quality().climb} />
       {process.env.NODE_ENV !== "production" && <DevStoreHook />}
       {process.env.NODE_ENV !== "production" && <PerfProbe />}
 
@@ -206,10 +262,13 @@ export default function Scene({
         enablePan={false}
         enableDamping
         dampingFactor={0.12}
-        rotateSpeed={0.7}
+        // a thumb travels less far than a mouse: turn further per swipe on a phone
+        rotateSpeed={isMobile ? 1.05 : 0.7}
+        onStart={() => { worldControls.lookedAt = performance.now(); }}
+        onEnd={() => { worldControls.lookedAt = performance.now(); }}
         zoomSpeed={0.8}
-        minDistance={5}
-        maxDistance={18}
+        minDistance={isMobile ? 4 : 5}
+        maxDistance={isMobile ? 14 : 18}
         minPolarAngle={0.35}
         maxPolarAngle={1.35}
         target={[0, 1.1, 0]}
