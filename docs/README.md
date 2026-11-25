@@ -12,6 +12,7 @@ What each document is, and whether it describes the code as it is today.
 | [world-on-phones.md](world-on-phones.md) | UP NEPA 3D on phones: why it was not sharp, the camera and stick, and the small-screen fixes |
 | [business-model.md](business-model.md) | PROPOSED: the Daily Pot. Players buy plays, the day's spend is the day's prize, the house keeps a share. Decisions waiting on the owner |
 | [sign-in-costs.md](sign-in-costs.md) | PLAN: new email sign-ups move from Privy to Magic, own wallets sign in directly, old Privy players stay. Not started |
+| [pets-art.md](pets-art.md) | The five slime pets: rebuilt as 3D jelly in Blender, and how to render them again |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |

@@ -53,3 +53,6 @@
 - `public/bowling/audio/glass-1..6.mp3`: cut from "Binging Glass" by hugh, public domain, via Wikimedia Commons.
 - `public/bowling/audio/night.mp3`: cut from "Country night noise", public domain, via Wikimedia Commons.
 - `public/bowling/audio/music.mp3`: "Funk Game Loop" by Kevin MacLeod (incompetech.com), licensed under Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/). Re-encoded and levelled. THIS LICENCE REQUIRES CREDIT: keep this line, and show the credit somewhere players can reach before a public launch.
+
+## Pets (public/pets)
+- The five pet stages (egg, baby, teen, crystal, king) are built and rendered in Blender from the terminal by `frontend/tools/blender/build_pets.py`, then trimmed, centred and given a soft shadow by `finish_pets.py`. Our own geometry and materials; no outside assets.
