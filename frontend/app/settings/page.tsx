@@ -9,6 +9,7 @@ import { formatEther } from "viem";
 import { CONTRACT_ADDRESSES, ERC20_ABI, GAME_PASS_ABI } from "@/lib/contracts";
 import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { graphicsChoice, setGraphicsChoice, type Graphics } from "@/app/world/quality";
+import { cameraMode, setCameraMode, type CameraMode } from "@/app/world/controls";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
@@ -246,7 +247,8 @@ export default function SettingsPage() {
   // - everything else → live Toggle
   // 3D graphics: the player's own choice, read on the device after the page is up
   const [gfx, setGfx] = useState<Graphics>("auto");
-  useEffect(() => { setGfx(graphicsChoice()); }, []);
+  const [cam, setCam] = useState<CameraMode>("follow");
+  useEffect(() => { setGfx(graphicsChoice()); setCam(cameraMode()); }, []);
   const { state: pushState, subscribe, unsubscribe } = usePushNotifications(address);
   const pushOn = pushState === "subscribed";
 
@@ -578,6 +580,13 @@ export default function SettingsPage() {
         <section>
           <SectionLabel>Gameplay</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Row icon="🎥" label="3D camera" sub={cam === "follow" ? "Follows you: it swings behind you as you run. One thumb is enough." : "You turn it: it only moves when you drag with your right thumb."}>
+              <div role="radiogroup" aria-label="3D camera" style={{ display: "inline-flex", padding: 3, borderRadius: 999, background: "rgba(76,29,149,0.07)", border: `1px solid ${T.hairline}` }}>
+                {([["follow", "Follows me"], ["manual", "I turn it"]] as const).map(([v, label]) => (
+                  <button key={v} role="radio" aria-checked={cam === v} onClick={() => { setCameraMode(v); setCam(v); }} style={{ minHeight: 36, padding: "0 12px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: T.body, fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap", background: cam === v ? "#6d28d9" : "transparent", color: cam === v ? "#fff" : T.inkDim }}>{label}</button>
+                ))}
+              </div>
+            </Row>
             <Row icon="🎮" label="3D graphics" sub={gfx === "auto" ? "Auto: fits your phone and adjusts while you play." : gfx === "smooth" ? "Smooth: softer picture, steady frames, cooler phone." : "Sharp: the crispest picture, for a strong phone."}>
               <div role="radiogroup" aria-label="3D graphics" style={{ display: "inline-flex", padding: 3, borderRadius: 999, background: "rgba(76,29,149,0.07)", border: `1px solid ${T.hairline}` }}>
                 {(["auto", "smooth", "sharp"] as const).map((v) => (

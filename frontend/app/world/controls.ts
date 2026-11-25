@@ -180,3 +180,21 @@ export function resetWorldControls() {
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   (window as unknown as { __wc?: WorldControls }).__wc = worldControls;
 }
+
+// ─── Who turns the camera ────────────────────────────────────────────────────
+// "follow" (the default on a phone): the camera swings round behind the player
+// by itself, so one thumb is enough. "manual": the camera never moves unless the
+// player drags it with their right thumb, the way a shooter on a phone works.
+// The choice is the player's, kept on the device, and can be changed on the
+// mode screen or in Settings.
+export type CameraMode = "follow" | "manual";
+let camMode: CameraMode | null = null;
+export function cameraMode(): CameraMode {
+  if (camMode) return camMode;
+  try { camMode = window.localStorage.getItem("ga_camera") === "manual" ? "manual" : "follow"; } catch { camMode = "follow"; }
+  return camMode;
+}
+export function setCameraMode(m: CameraMode) {
+  camMode = m;
+  try { if (m === "follow") window.localStorage.removeItem("ga_camera"); else window.localStorage.setItem("ga_camera", m); } catch { /* lasts for this visit only */ }
+}

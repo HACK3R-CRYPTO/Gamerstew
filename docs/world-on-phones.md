@@ -30,6 +30,8 @@ The model is a shooter on a phone: **the left half of the screen moves, the righ
 
 **Why the stick's directions are fixed while it is held.** With the camera turning by itself, a stick read against the live camera would chase its own tail: push down to run back, the camera swings behind you, and "down" now means the opposite way. So on a phone the stick's directions are taken from where the camera was when the thumb pushed, and stay until the thumb lets go, changes direction by more than about 35 degrees, or the player turns the view by hand. Measured: push down and hold, the player runs 9 m in a straight line and the camera ends within 2 degrees of directly behind.
 
+**The player chooses who turns the camera.** "Follows you" is the default. "You turn it" switches the following off: the camera then moves only when the right thumb drags it, as in a shooter on a phone, and the stick is read against the live view. The choice is on the mode screen (the Camera button under "Play with friends") and in Settings → Gameplay → 3D camera, and is kept on the device. Measured on "You turn it": the stick held down for 2.4 s turned the view by 0.1 rad (the tail of a drag settling), against 3.1 rad when following.
+
 The camera leaves the view alone for 1.6 s after the player turns it by hand, so two-thumb players keep the angle they chose.
 
 The stick's area sits under the on-screen buttons, so every button is still pressed. A quick tap inside it that does not move counts as the game's tap.
