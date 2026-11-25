@@ -18,6 +18,7 @@ import LiveBoard, { LIVE_BOARD_CSS } from "@/components/LiveBoard";
 import RoomChat from "@/components/RoomChat";
 import type { RoomView } from "@/hooks/useFriendRoom";
 import { track } from "@/lib/track";
+import { openRoomSocket } from "@/lib/roomSocket";
 
 type View = RoomView & { goal?: number };
 const GAMES: Record<string, { name: string; path: string; art: string; what: string }> = {
@@ -35,13 +36,15 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
   const [v, setV] = useState<View | null>(null);
   const [state, setState] = useState<"loading" | "live" | "gone" | "offline">("loading");
   const misses = useRef(0);
+  const [line, setLine] = useState(false); // true while the server is pushing this room to us
   const [wide, setWide] = useState(false);
   useEffect(() => { const q = window.matchMedia("(min-width: 900px)"); const on = () => setWide(q.matches); on(); q.addEventListener("change", on); return () => q.removeEventListener("change", on); }, []);
 
   useEffect(() => {
     if (!byName && !/^[A-Z0-9]{5}$/.test(code)) { setState("gone"); return; }
-    track("room_watched"); let live = true;
+    track("room_watched"); let live = true; let up = false;
     const look = async () => {
+      if (up) return; // the live line is carrying it
       try {
         const r = await fetch(`/api/rooms/rooms/${code}?watch=1`, { cache: "no-store" });
         if (!live) return;
@@ -50,9 +53,11 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
         setV(await r.json()); setState("live"); misses.current = 0;
       } catch { if (live && ++misses.current >= 3) setState("offline"); }
     };
-    // often enough that a watcher is never far behind the play
-    void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 800);
-    return () => { live = false; clearInterval(t); };
+    // The live line: the server pushes the room the moment it changes. Asking
+    // is the fallback for when the line is down, about once a second.
+    const sock = openRoomSocket({ watch: code }, { view: (view) => { if (!live) return; setV(view as View); setState("live"); misses.current = 0; }, gone: () => { if (live) setState("gone"); }, state: (v) => { up = v; setLine(v); if (!v) void look(); } });
+    void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 1000);
+    return () => { live = false; clearInterval(t); sock.close(); };
   }, [code, byName]);
 
   const game = v ? GAMES[v.game] ?? { name: "GameArena", path: "/dashboard", art: "", what: "" } : null;
@@ -80,7 +85,7 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
                 <h1>{game.name}</h1>
                 <p>{game.what}</p>
               </div>
-              <div className="facts"><span>👁 <b>{Math.max(1, v.watching ?? 1)}</b> watching</span>{v.round > 0 && <span>Round <b>{v.round}</b></span>}<span><b>{v.players.length}</b> players</span>{v.stake && <span className="gold">Playing for G$</span>}{!byName && <span>Room <b>{code}</b></span>}</div>
+              <div className="facts">{line && <span className="inst" title="Updates arrive the moment they happen">⚡ Instant</span>}<span>👁 <b>{Math.max(1, v.watching ?? 1)}</b> watching</span>{v.round > 0 && <span>Round <b>{v.round}</b></span>}<span><b>{v.players.length}</b> players</span>{v.stake && <span className="gold">Playing for G$</span>}{!byName && <span>Room <b>{code}</b></span>}</div>
             </section>
             {state === "offline" && <p className="note">Connection lost. Showing the last thing seen.</p>}
             {top && <div className="win" role="status">🏆 <b>{top.name}</b> wins with {top.score!.toLocaleString()}</div>}
@@ -122,7 +127,7 @@ export default function WatchRoom({ params }: { params: Promise<{ code: string }
         .hero h1 { font-family: "Melon Pop", sans-serif; font-weight: 400; font-size: 38px; line-height: 1; margin: 10px 0 6px; } .hero p { margin: 0; font-size: 15px; color: rgba(255,255,255,0.82); }
         .state { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.18); font-size: 12.5px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
         .state.playing { background: #dc2626; } .state.playing i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: wrP 1.4s ease-in-out infinite; } @keyframes wrP { 50% { opacity: 0.35; } }
-        .facts { display: flex; flex-wrap: wrap; gap: 8px; } .facts span { padding: 7px 12px; border-radius: 12px; background: rgba(255,255,255,0.14); font-size: 13.5px; font-weight: 600; } .facts b { font-weight: 900; } .facts .gold { background: #fde68a; color: #713f12; font-weight: 800; }
+        .facts { display: flex; flex-wrap: wrap; gap: 8px; } .facts span { padding: 7px 12px; border-radius: 12px; background: rgba(255,255,255,0.14); font-size: 13.5px; font-weight: 600; } .facts b { font-weight: 900; } .facts .inst { background: #22c55e; color: #052e16; font-weight: 800; } .facts .gold { background: #fde68a; color: #713f12; font-weight: 800; }
         .win { padding: 14px 18px; border-radius: 18px; background: linear-gradient(180deg, #fff7d6, #fde68a); font-size: 18px; box-shadow: 0 0 0 1px rgba(180,120,0,0.25); }
         .stage { display: flex; flex-direction: column; gap: 14px; }
         .screens { display: grid; gap: 12px; grid-template-columns: 1fr; }

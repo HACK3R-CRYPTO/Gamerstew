@@ -15,6 +15,7 @@ export { tokenStakePay, TOKEN_ABI } from './modules/rooms/pay';
 export { createInbox } from './modules/inbox/service';
 export { supabaseInbox } from './modules/inbox/adapters';
 export { registerInboxRoutes } from './modules/inbox/routes';
+export { createLiveHub } from './modules/rooms/live';
 export { createFriends } from './modules/friends/service';
 export { supabaseFriends } from './modules/friends/adapters';
 export { registerFriendRoutes } from './modules/friends/routes';

@@ -364,6 +364,12 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       return view(room, seat);
     },
 
+    /** The room a code or a watch name belongs to, or nothing. */
+    codeFor(by: unknown): string | null {
+      if (typeof by === 'string' && WATCH_ID.test(by)) return findWatch(by)?.code ?? null;
+      return find(by)?.code ?? null;
+    },
+
     /** Rooms being played right now, for the "live" list. Busiest first. */
     live(limit = 20): LiveRoom[] {
       const t = now(); const out: LiveRoom[] = [];

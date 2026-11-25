@@ -16,14 +16,14 @@ function createLimiter(now: () => number) {
   };
 }
 
-export function registerRoomRoutes(app: Application, deps: { requireSecret?: RequestHandler; service?: RoomService; now?: () => number } = {}): RoomService {
+export function registerRoomRoutes(app: Application, deps: { requireSecret?: RequestHandler; service?: RoomService; now?: () => number; /** told the room's code after every request that may have changed it, so the live line can push it out */ changed?: (code: string) => void } = {}): RoomService {
   const service = deps.service ?? createRoomService(ROOM_GAMES);
   const gate: RequestHandler = deps.requireSecret ?? ((_req, _res, next) => next());
   const body = (req: Request): Record<string, unknown> => (typeof req.body === 'object' && req.body !== null ? (req.body as Record<string, unknown>) : {});
   const route = (fn: (req: Request) => unknown): RequestHandler => (req: Request, res: Response) => {
     Promise.resolve()
       .then(() => fn(req))
-      .then((out) => { if (isFail(out)) res.status(out.status).json({ error: out.error, reason: out.reason }); else res.json(out); })
+      .then((out) => { if (isFail(out)) res.status(out.status).json({ error: out.error, reason: out.reason }); else { res.json(out); if (deps.changed && req.method === 'POST') { const code = req.params.code ?? (out as { code?: string } | null)?.code; if (code) deps.changed(String(code)); } } })
       .catch((err) => { console.error('room route failed:', err); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); });
   };
   const allowCreate = createLimiter(deps.now ?? Date.now);
