@@ -411,6 +411,12 @@ core.app.post('/api/perks/grant', core.requireSecret, core.gameSubmitLimiter, as
     const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
     return res.json({ ok: true, kind: 'matches', remaining });
   }
+  // Energy: one purchase adds a pack of ranked runs (src/modules/energy). Only when energy is switched on.
+  if (core.energy && pid === (parseInt(process.env.ENERGY_PERK_ID ?? '10', 10) || 10)) {
+    const bought = await core.energy.grant(w);
+    if (bought === null) return res.status(500).json({ error: 'grant_failed' });
+    return res.json({ ok: true, kind: 'energy', bought });
+  }
   if (CONSUMABLE_STOCK_PERKS.has(pid)) {
     const { data: row } = await core.supabase
       .from('perk_inventory').select('balance').eq('wallet', w).eq('perk_id', pid).maybeSingle();

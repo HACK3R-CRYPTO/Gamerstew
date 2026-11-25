@@ -595,6 +595,25 @@ if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' &
   core.app.get('/internal/unfinished', core.requireSecret, (_req, res) => res.json(unfinished.stats()));
 }
 
+// The daily pot. Off unless POT_ENABLED is "true". It never sends money: closing a
+// day writes each prize as a pending payout for the owner to pay. See modules/pot.
+{
+  const on = String(process.env.POT_ENABLED ?? 'false').toLowerCase() === 'true';
+  const int = (v, d) => { const n = parseInt(v ?? '', 10); return Number.isFinite(n) ? n : d; };
+  const NAMES = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', ladder: 'Word Ladder', strike: 'Street Strike', stack: 'Stack Tower' };
+  const pot = on ? core.platform.createPot({
+    store: core.platform.supabasePot(core.lockedDb, int(process.env.ENERGY_PERK_ID, 10)),
+    games: String(process.env.POT_GAMES ?? 'rhythm,simon,ladder,strike').split(',').map((g) => g.trim()).filter((g) => NAMES[g]),
+    shareBps: int(process.env.POT_SHARE_BPS, 7000), seed: int(process.env.POT_SEED, 0), minPlayers: int(process.env.POT_MIN_PLAYERS, 5),
+    nameOf: (w) => core.resolveUsername(w), gameName: (g) => NAMES[g] ?? g,
+  }) : null;
+  core.platform.registerPotRoutes(core.app, { pot, requireSecret: core.requireSecret });
+  if (pot) core.jobs.every('settlePot', 10 * 60 * 1000, async () => {
+    const out = await pot.settleDue();
+    for (const c of out.closed) console.log(`[pot] ${c.day} closed: ${c.status}, pot ${c.pot} G$, ${c.winners} prizes written as pending payouts`);
+  });
+}
+
 // Friends: ask, accept, remove, invite into a room. The table is locked to the
 // server, so it is read with the service-role client. A friend is told through
 // their inbox, and by push when they have allowed it.

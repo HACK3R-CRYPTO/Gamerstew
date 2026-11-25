@@ -99,7 +99,17 @@ core.jobs.every('outboxWatch', 60_000, async () => {
   } catch { /* a balance read failing is not news */ }
 });
 
+// Energy: a number of free ranked runs a day, then bought ones. Off unless
+// ENERGY_ENABLED is "true". See src/modules/energy.
+const energyInt = (v, d) => { const n = parseInt(v ?? '', 10); return Number.isFinite(n) && n > 0 ? n : d; };
+const energy = String(process.env.ENERGY_ENABLED ?? 'false').toLowerCase() === 'true'
+  ? core.platform.createEnergy({ store: core.platform.supabaseEnergy(core.lockedDb, energyInt(process.env.ENERGY_PERK_ID, 10)), free: energyInt(process.env.ENERGY_FREE_PER_DAY, 5), packPlays: energyInt(process.env.ENERGY_PACK_PLAYS, 5) })
+  : null;
+core.energy = energy; // the shop's purchase route adds a pack through this
+core.platform.registerEnergyRoutes(core.app, { energy, requireSecret: core.requireSecret });
+
 core.platform.registerScoreRoutes(core.app, {
+  ...(energy ? { energy } : {}),
   requireSecret: core.requireSecret,
   limiter: core.gaslessLimiter,
   gameTypes: core.GAME_TYPE,
