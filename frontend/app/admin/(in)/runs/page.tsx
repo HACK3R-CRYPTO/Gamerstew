@@ -70,7 +70,7 @@ export default async function RunsPage({ searchParams }: { searchParams: SP }) {
         <Card title="Runs per day" note="A run is finished when its score was handed in. One left unfinished for 15 minutes gets a note transaction of its own, so every run a player opens is on the chain.">
           <Chart series={[{ name: "Started", color: "#6d28d9", points: days("started") }, { name: "Finished", color: "#16a34a", points: days("finished") }, { name: "Unfinished, sent", color: "#b45309", points: days("unfinished_onchain") }]} />
         </Card>
-        <Card title="Word Ladder has no ceiling" note="A round was out of 100 until 27 November 2026. A solo round is now three minutes with ladders that keep coming, so a score above 100 is the new rule at work.">
+        <Card title="Word Ladder has no ceiling" note="A round used to be out of 100. A solo round is now three minutes with ladders that keep coming, so a score above 100 is the new rule at work.">
           <Grid min={120}>
             <Stat label="Rounds" value={num(d.ladder.rounds)} />
             <Stat label="Above 100" value={num(d.ladder.over_100)} sub={pct(Number(d.ladder.over_100), Number(d.ladder.rounds))} />

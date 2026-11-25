@@ -207,7 +207,7 @@ Sidebar grouped into Growth, Money and Records. Headline cards with a trend line
 Migration for all of section 8: `games-backend/supabase-migrations/2026-11-25b_admin_chain_truth.sql`, run after the first one.
 
 
-## Runs and shop (added 2026-11-27)
+## Runs and shop (added 2026-11-26)
 
 `/admin/runs`. Needs `games-backend/supabase-migrations/2026-11-27_admin_runs.sql`.
 

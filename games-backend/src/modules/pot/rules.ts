@@ -4,7 +4,7 @@
 // energy that day, plus a seed, plus whatever an unpaid day rolled forward.
 // When the day ends, the top third of players split it by rank.
 //
-// The split of every G$ spent on energy (the owner's decision, 2026-11-27):
+// The split of every G$ spent on energy (the owner's decision, 2026-11-26):
 //   70% to that day's pot   20% to the treasury   10% to the GoodDollar UBI pool
 // A tenth of each paid pot is held back to open the next day's (POT_HOLD_BPS), so the
 // pot seeds itself from play and needs no money from the owner. A seed can still be added.

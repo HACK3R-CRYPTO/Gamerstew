@@ -1,6 +1,6 @@
 # GameArena business model: the Daily Pot
 
-> Status on 2026-11-27: **the owner approved the pot at 70% to winners, 20% to the treasury, 10% to the UBI pool.** Everything is priced in G$; there are no dollar or stablecoin items. The pot and energy are BUILT and SWITCHED OFF: section 15 is how to switch them on. Also built: a continue that never buys or costs rank, a transaction for every unfinished run, and leaving a ranked round finishing it (section 13).
+> Status on 2026-11-26: **the owner approved the pot at 70% to winners, 20% to the treasury, 10% to the UBI pool.** Everything is priced in G$; there are no dollar or stablecoin items. The pot and energy are BUILT and SWITCHED OFF: section 15 is how to switch them on. Also built: a continue that never buys or costs rank, a transaction for every unfinished run, and leaving a ranked round finishing it (section 13).
 
 ## 1. The idea in one paragraph
 
@@ -35,7 +35,7 @@ For each G$ a player spends on energy:
 | 20% | GameArena | Revenue |
 | 10% | GoodDollar UBI pool | The shop contract sends 20% there today. The owner changes it to 10% with one command (section 15) |
 
-The owner set these on 2026-11-27. The pot's share is the `POT_SHARE_BPS` setting on the server (7000). The UBI share is set on the shop contract. The treasury keeps what is left.
+The owner set these on 2026-11-26. The pot's share is the `POT_SHARE_BPS` setting on the server (7000). The UBI share is set on the shop contract. The treasury keeps what is left.
 
 The pot is also **seeded**. Today the treasury puts 126,000 G$ a week into the community challenge. That budget is redirected: about 18,000 G$ a day opens each pot, so the first player of the day already has something to play for. As player spending grows, the seed is reduced.
 
@@ -150,7 +150,7 @@ cast send 0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5 "setPerk(uint16,uint256,boo
 
 **Ids 7 and 8 are left free.** A paid hint in Word Ladder and a paid re-bowl in Street Strike were considered and dropped. A continue is fair when the run is already over: the score before it can be ranked and the rest is for fun. Neither game has that moment. A re-bowl in the middle of a ranked card, or a hint with no cost in points, would buy rank. Word Ladder already has free hints that cost points. What those two games can sell fairly is access, not help: energy and cup tickets.
 
-## 15. The pot and energy: built, and how to switch them on (2026-11-27)
+## 15. The pot and energy: built, and how to switch them on (2026-11-26)
 
 Both are in the code and switched off. Nothing changes for players until the steps below are done. They can be switched on one at a time: energy first, the pot later, or both together.
 
@@ -177,6 +177,6 @@ Both are in the code and switched off. Nothing changes for players until the ste
 
 **What has not been tested for real:** a purchase of an energy pack with a real wallet, and a day closing on the live database. Both were tested against a local database and with the server's own tests (the split adds up exactly, a day closes only once, a failed read closes nothing). Buy one pack yourself on the first day and check the run count goes up by 5.
 
-**The pot seeds itself (decided 2026-11-27).** The owner cannot always fund a seed, so the pot does not depend on one. A tenth of each paid pot is held back to open the next day's (`POT_HOLD_BPS`, 1000). The first player of a day has something to play for, the money comes from play, and every G$ held is still paid to players a day later. `POT_SEED` stays at 0 and can be raised on any day there is money to add. On a day with nothing in it yet, the home card says the pot opens with the first energy pack.
+**The pot seeds itself (decided 2026-11-26).** The owner cannot always fund a seed, so the pot does not depend on one. A tenth of each paid pot is held back to open the next day's (`POT_HOLD_BPS`, 1000). The first player of a day has something to play for, the money comes from play, and every G$ held is still paid to players a day later. `POT_SEED` stays at 0 and can be raised on any day there is money to add. On a day with nothing in it yet, the home card says the pot opens with the first energy pack.
 
 **Still open:** legal advice once pots grow (section 9, decision 6).

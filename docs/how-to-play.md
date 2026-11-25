@@ -1,6 +1,6 @@
 # How to play
 
-Players said they opened a game and did not know what to do. Word Ladder was the one named most. Added 2026-11-27.
+Players said they opened a game and did not know what to do. Word Ladder was the one named most. Added 2026-11-26.
 
 ## What the research says
 

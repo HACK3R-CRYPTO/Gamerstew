@@ -10,7 +10,7 @@ Turn one four-letter word into another, one letter at a time. Every step has to 
 | Daily | The same five ladders for everyone that day. One try | Out of 100 | Yes, 3 points each |
 | Friend room | Five ladders, the same for everyone in the room | Out of 100 | Yes, 3 points each |
 
-Until 27 November 2026 a solo round was five ladders too, so every good player ended on or near 100 and the board could not tell them apart. The owner's rule is that a ranked score is never capped.
+Until 26 November 2026 a solo round was five ladders too, so every good player ended on or near 100 and the board could not tell them apart. The owner's rule is that a ranked score is never capped.
 
 ## The timed round
 
