@@ -60,9 +60,9 @@ import { setObstaclesActive } from "./obstacles";
 //
 // It also looks after sharpness. The world starts at the tier's sharpest
 // setting. If this phone then draws well under its target rate for four seconds,
-// the picture is made one step softer.
-// A level that proved too much is not tried again, so the picture never flips
-// back and forth. The first seconds are ignored: loading the street stutters on
+// the picture is made one step softer. If it runs easily for six seconds, it is
+// made one step sharper, up to the sharpest worth drawing. A level that proved
+// too much is not tried again, so the picture never flips back and forth. The first seconds are ignored: loading the street stutters on
 // any phone. So a strong phone stays crisp and a weak one stays smooth, without
 // anyone choosing a setting.
 function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running: boolean; maxDpr: number; minDpr: number }) {
@@ -75,8 +75,14 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
     // a little under the true interval: screens tick at 16.6 ms, and waiting for a
     // full 16.67 skipped every other tick and halved a 60 fps target to 30
     const interval = 1000 / fps - 3;
-    const cap = Math.min(maxDpr, window.devicePixelRatio || 1); const floor = Math.min(minDpr, cap);
-    let dpr = cap; let frames = 0; let since = 0; let slow = 0; let born = 0;
+    // The tier is a first guess from what the phone says about itself, and phones
+    // say little. So the guess is only where it STARTS: a phone that proves quick
+    // is taken up a step at a time to the sharpest worth drawing (2, or the
+    // screen's own limit), and one that proves slow is taken down. This is what
+    // makes an unknown phone come out right.
+    const top = Math.min(2, window.devicePixelRatio || 1);
+    const cap = Math.min(maxDpr, top); const floor = Math.min(minDpr, cap);
+    let dpr = cap; let frames = 0; let since = 0; let slow = 0; let quick = 0; let tooMuch = Infinity; let born = 0;
     setDpr(dpr);
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
@@ -88,8 +94,10 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
           frames++; since += gap;
           if (since >= 2000) {
             const got = (frames * 1000) / since; frames = 0; since = 0;
-            slow = got < fps * 0.72 ? slow + 1 : 0;
-            if (slow >= 2 && dpr > floor) { dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; }
+            slow = got < fps * 0.72 ? slow + 1 : 0; quick = got > fps * 0.93 ? quick + 1 : 0;
+            if (slow >= 2 && dpr > floor) { tooMuch = dpr; dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; quick = 0; }
+            // six easy seconds: try one step sharper, unless that step already proved too much
+            else if (quick >= 3 && dpr + 0.25 <= top && dpr + 0.25 < tooMuch) { dpr += 0.25; setDpr(dpr); quick = 0; }
           }
         }
         // In frameloop="never", R3F derives the per-frame delta as

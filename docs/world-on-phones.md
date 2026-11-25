@@ -10,6 +10,7 @@ What was wrong on a phone, what was changed, and how to check it. Fixed on 2026-
 - iPhones and iPads are never called weak.
 - Phones start at 2 device pixels per point. Low-end and in-app browsers start at 1.5.
 - The frame loop (`FrameGovernor` in `app/world/Scene.tsx`) watches the real frame rate. If a phone runs well under its target for four seconds, the picture is made one step softer, down to a floor. A level that proved too much is not tried again, so the picture never flips back and forth. The first five seconds are ignored, because loading stutters on any phone.
+- It also steps UP. The tier is a guess from what a phone says about itself, and phones say little. If a phone runs easily for six seconds, the picture is made one step sharper, up to 2 pixels per point or the screen's own limit. So an unknown phone, or a strong one opened inside WhatsApp, is not stuck with a low guess.
 - A normal phone now targets 60 frames a second. The old cap waited a full 16.67 ms between frames; screens tick at 16.6, so it skipped every other tick and a 60 target ran at 30. It now allows 3 ms of slack.
 
 Measured on an iPhone 13 sized screen: 390×664 drawn before, 780×1328 after. The scene costs about 89 draw calls and 63,000 triangles on the phone tier, which is light; sharpness was the problem, not load.
@@ -38,6 +39,18 @@ A quick tap inside the stick's area still counts as the game's tap, so that side
 ## How to check
 
 `/tmp/gaqa/nepa-shots.cjs` and `nepa-ctl.cjs` (local, not in the repo) open the world as an iPhone 13 inside an in-app browser (390×664 at 3 pixels per point) and as an iPhone SE (320×568). They screenshot each screen and measure: canvas size, where the cards and the Join button sit, whether the stick appears under the thumb, how far the character moves, how far the view turns, and what the scene costs to draw.
+
+## Other phones
+
+| Phone | Starts at | Then |
+|---|---|---|
+| iPhone or iPad | 2 pixels per point, 60 fps | softer only if it cannot keep up |
+| Android, opened in Chrome, 4 GB or more | 2, 60 fps | softer only if it cannot keep up |
+| Android with little memory or few cores | 1.5, 30 fps, fewer walkers | sharper if it proves quick, softer (to 1) if not |
+| Any phone inside WhatsApp, Instagram, TikTok, Facebook, MiniPay | 1.5, 30 fps, fewer walkers | the same: up if quick, down if slow |
+| A phone the code has never heard of | by its memory and cores, as above | measured and adjusted like the rest |
+
+The number of walkers and the frame target are fixed by the starting guess and do not change while playing. Only sharpness moves.
 
 ## Not verified
 
