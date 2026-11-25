@@ -20,12 +20,14 @@ import React from "react";
 
 type GameLoadingScreenProps = {
   title: string;
+  /** shown under the loading dots: a hint for this game */
+  tip?: React.ReactNode;
   art: string | React.ReactNode;   // PNG path string OR inline JSX (stack)
   bg: string;                       // game's identity gradient
   glow: string;                     // accent color for the spinner + drop-shadow
 };
 
-export function GameLoadingScreen({ title, art }: GameLoadingScreenProps) {
+export function GameLoadingScreen({ title, art, tip }: GameLoadingScreenProps) {
   // `bg` and `glow` are still accepted, and ignored: every loader now wears the
   // app's one look instead of a different dark gradient per game.
   return (
@@ -37,6 +39,8 @@ export function GameLoadingScreen({ title, art }: GameLoadingScreenProps) {
       <div className="gload-title">{title}</div>
       <div className="gload-dots" aria-hidden><i /><i /><i /></div>
       <div className="gload-word">Loading</div>
+      {/* something worth knowing while they wait, when the game has it */}
+      {tip ? <div style={{ marginTop: 10 }}>{tip}</div> : null}
       <style>{`
         .gload { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 40px 24px; background: radial-gradient(120% 60% at 50% 0%, #fbf8ff 0%, #f0e8ff 45%, #e2d6ff 100%); color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; animation: gloadIn .18s ease both; }
         @keyframes gloadIn { from { opacity: 0; } }

@@ -23,6 +23,7 @@ import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
 import { quality } from "./quality";
 import Minimap from "./Minimap";
+import RotateHint from "@/components/RotateHint";
 import { setWorldAudioEnabled, armWorldAudio, setWorldAudioMuted } from "./audio";
 import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult, hands, resetLive } from "./game";
 import { useAppStore } from "./appStore";
@@ -1141,6 +1142,10 @@ export default function World() {
 
       </div>
 
+      {/* While the street comes into view, before any round: the one tip that changes how the game feels on a phone. */}
+      {appMode === "intro" && (
+        <div style={{ position: "absolute", left: 0, right: 0, top: "calc(74px + env(safe-area-inset-top))", zIndex: 29, display: "flex", justifyContent: "center", pointerEvents: "none" }}><RotateHint /></div>
+      )}
       {/* ── Intro cold-open (tap anywhere to skip) ───────────────────────── */}
       {appMode === "intro" && (
         <div

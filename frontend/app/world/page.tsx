@@ -9,13 +9,14 @@
 
 import dynamic from "next/dynamic";
 import { GameLoadingScreen } from "@/components/GameLoadingScreen";
+import RotateHint from "@/components/RotateHint";
 import { useEffect } from "react";
 import { initVatar } from "./vatar";
 
 const World = dynamic(() => import("./World"), {
   ssr: false,
   // the same loading screen every game uses, in the app's look
-  loading: () => <GameLoadingScreen title="UP NEPA 3D" art="/games/covers/upnepa3d.jpg" bg="" glow="" />,
+  loading: () => <GameLoadingScreen title="UP NEPA 3D" art="/games/covers/upnepa3d.jpg" bg="" glow="" tip={<RotateHint tone="light" />} />,
 });
 
 export default function WorldPage() {
