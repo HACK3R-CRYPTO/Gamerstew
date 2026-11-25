@@ -18,6 +18,22 @@ import type { SessionRow } from './rules';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface SupabaseLike { from(table: string): any }
 
+/** Runs that were started and never finished, for the unfinished-run recorder. */
+export function supabaseUnfinished(db: SupabaseLike): import('./unfinished').UnfinishedStore {
+  return {
+    async open(olderThanIso, newerThanIso, limit) {
+      const { data, error } = await db.from('game_sessions').select('token, wallet, game, started_at').eq('used', false).is('tx_hash', null).lt('started_at', olderThanIso).gt('started_at', newerThanIso).order('started_at', { ascending: true }).limit(limit);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return error ? [] : ((data ?? []) as any[]).map((r) => ({ token: r.token, wallet: r.wallet, game: r.game, startedAt: r.started_at }));
+    },
+    async mark(token, txHash) {
+      // only a run that is still unfinished: if it was finished in the meantime, its own score transaction stands
+      const { error } = await db.from('game_sessions').update({ tx_hash: txHash }).eq('token', token).eq('used', false);
+      return !error;
+    },
+  };
+}
+
 export function supabaseSessions(db: SupabaseLike, nowIso: () => string = () => new Date().toISOString()): SessionStore {
   return {
     async create(row) {

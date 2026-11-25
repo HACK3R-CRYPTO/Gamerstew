@@ -577,6 +577,24 @@ const liveHub = core.platform.createLiveHub({ service: roomService });
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService, changed: liveHub.publish });
 { const t = setInterval(() => { try { liveHub.tick(); } catch (e) { console.warn('[live] tick failed:', e?.message || e); } }, 1000); if (t.unref) t.unref(); }
 
+// Unfinished runs get a transaction too. Not a score (a zero score would count as
+// a game played and could be farmed for the weekly challenge): a note the server
+// wallet sends to itself, which the dashboard links to. See scores/unfinished.ts.
+if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' && core.validator && core.serializeSignerWrite) {
+  const unfinished = core.platform.createUnfinishedRecorder({
+    store: core.platform.supabaseUnfinished(core.supabase),
+    send: async (note) => {
+      const tx = await core.serializeSignerWrite(() => core.validator.sendTransaction({ to: core.validator.address, value: 0n, data: core.ethers.hexlify(core.ethers.toUtf8Bytes(note)) }));
+      return tx.hash;
+    },
+  });
+  core.jobs.every('recordUnfinishedRuns', 2 * 60 * 1000, async () => {
+    const out = await unfinished.sweep();
+    if (out.sent || out.failed) console.log(`[unfinished] ${out.sent} recorded on-chain${out.failed ? ` · ${out.failed} could not be sent (gas or node), will retry` : ''}`);
+  });
+  core.app.get('/internal/unfinished', core.requireSecret, (_req, res) => res.json(unfinished.stats()));
+}
+
 // Friends: ask, accept, remove, invite into a room. The table is locked to the
 // server, so it is read with the service-role client. A friend is told through
 // their inbox, and by push when they have allowed it.
