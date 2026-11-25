@@ -17,15 +17,26 @@ Measured on an iPhone 13 sized screen: 390×664 drawn before, 780×1328 after. T
 
 ## 2. The camera and controls
 
+The model is a shooter on a phone: **the left half of the screen moves, the right half looks, both at once**, with the phone upright or on its side. And it still plays with one thumb.
+
 | Before | After |
 |---|---|
+| Only a small pad in the corner moved the player. A left thumb that landed a little off it fell on the 3D view; the view then had two fingers on it and read them as a pinch. Two thumbs did not work | The whole left half of the screen is the stick's area, and the stick appears under the thumb. Two fingers are never a pinch on a phone: zoom is for the mouse wheel |
+| An iPhone could take two thumbs for a page zoom and cancel both touches | The browser's own pinch gestures are refused on this page |
 | The lens was set for a wide screen: on a tall phone the street was a 30 degree keyhole | A tall screen gets a wider lens (70 against 55) |
 | The camera sat 11 m back and high: the character was a speck | It starts about 7 m back and lower, behind the player |
-| A fixed pad in the corner, to be found without looking | The stick floats: the lower left of the screen is its area, and it appears under the thumb |
-| The view never turned by itself, and one thumb is busy | While the player runs sideways, the camera swings gently round behind them (a quarter turn in about three seconds). Never while running toward the camera, and not for 1.4 s after the player turns the view by hand |
+| The view never turned by itself, so a player with one thumb could not see where they were running | The camera swings round behind the player wherever they run, in about a second and a half |
 | Turning the view took a long swipe | The view turns further per swipe on a phone |
 
-A quick tap inside the stick's area still counts as the game's tap, so that side of the screen is not dead. The right side is for looking around and tapping.
+**Why the stick's directions are fixed while it is held.** With the camera turning by itself, a stick read against the live camera would chase its own tail: push down to run back, the camera swings behind you, and "down" now means the opposite way. So on a phone the stick's directions are taken from where the camera was when the thumb pushed, and stay until the thumb lets go, changes direction by more than about 35 degrees, or the player turns the view by hand. Measured: push down and hold, the player runs 9 m in a straight line and the camera ends within 2 degrees of directly behind.
+
+The camera leaves the view alone for 1.6 s after the player turns it by hand, so two-thumb players keep the angle they chose.
+
+The stick's area sits under the on-screen buttons, so every button is still pressed. A quick tap inside it that does not move counts as the game's tap.
+
+**Minimap** (`app/world/Minimap.tsx`). A tall strip on the right edge, where neither thumb rests: the player as an arrow, breakers as rings (gold once lit, red when about to trip), or in Charge Rush the waiting devices and the charging table. With the camera low behind the player, it is what says the last dark breaker is behind them. It is a small 2D drawing refreshed eight times a second from positions the game already keeps.
+
+The mode screen tells phone players they can turn the phone sideways for a wider view. Nothing forces it.
 
 ## 3. Things that broke on small phones
 

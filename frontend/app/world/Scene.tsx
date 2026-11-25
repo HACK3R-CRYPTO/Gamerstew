@@ -258,7 +258,8 @@ export default function Scene({
         autoRotate={lobby && mode === "menu"}
         autoRotateSpeed={0.45}
         enableRotate={!lobby}
-        enableZoom={!lobby}
+        // on a phone two fingers on the view are two thumbs, never a pinch: zoom is for the mouse wheel
+        enableZoom={!lobby && !isMobile}
         enablePan={false}
         enableDamping
         dampingFactor={0.12}

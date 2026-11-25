@@ -22,6 +22,7 @@ import Joystick from "./Joystick";
 import { worldControls, resetWorldControls } from "./controls";
 import { useWorldStore } from "./store";
 import { quality } from "./quality";
+import Minimap from "./Minimap";
 import { setWorldAudioEnabled, armWorldAudio, setWorldAudioMuted } from "./audio";
 import { useGameStore, DEVICES, PERKS, naira, TOTAL_WINDOWS, FINAL_MULT, streakMult, hands, resetLive } from "./game";
 import { useAppStore } from "./appStore";
@@ -188,6 +189,17 @@ export default function World() {
 
   // Top-level mode routing + Restore-the-Light state.
   const appMode = useAppStore((s) => s.mode);
+  // Two thumbs on the screen must stay two thumbs. An iPhone otherwise takes them
+  // for a pinch and zooms the whole page (and cancels both touches) even where
+  // the page says not to. These are the browser's own gesture events for that.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    const two = (e: TouchEvent) => { if (e.touches.length > 1 && e.cancelable) e.preventDefault(); };
+    document.addEventListener("gesturestart", stop, { passive: false });
+    document.addEventListener("gesturechange", stop, { passive: false });
+    document.addEventListener("touchmove", two, { passive: false });
+    return () => { document.removeEventListener("gesturestart", stop); document.removeEventListener("gesturechange", stop); document.removeEventListener("touchmove", two); };
+  }, []);
   // Leaving Charge Rush puts down whatever was being carried. Without this the
   // character walked into Restore the Light with both arms still in the air.
   useEffect(() => { if (appMode !== "charge") { hands.idx = -1; resetLive(); } }, [appMode]);
@@ -1418,6 +1430,8 @@ export default function World() {
       )}
 
       {!lobbyOpen && appMode !== "intro" && <Joystick />}
+      {/* the street from above: where everything is, including what is behind the camera */}
+      {!lobbyOpen && ((appMode === "restore" && rState === "playing") || (appMode === "charge" && mode === "playing")) && <Minimap mode={appMode} />}
 
       <style>{`
         @keyframes worldFxFlash {

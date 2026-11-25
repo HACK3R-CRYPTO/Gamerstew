@@ -83,7 +83,9 @@ export default function Player() {
   const didInitCam = useRef(false);
   const chase = useRef(new THREE.Vector3());
 
-  const camForward = useRef(new THREE.Vector3());
+  const camForward = useRef(new THREE.Vector3()); // the direction the stick's "up" means
+  const camLive = useRef(new THREE.Vector3());    // where the camera is looking this frame
+  const held = useRef({ on: false, ang: 0 });      // the stick push the directions were fixed for
   const camRight = useRef(new THREE.Vector3());
   const move = useRef(new THREE.Vector3());
   const vel = useRef(new THREE.Vector3()); // smoothed world velocity (weight)
@@ -276,9 +278,27 @@ export default function Player() {
 
     // CAMERA-RELATIVE movement: forward (W / stick up) is away from the camera,
     // using the live camera azimuth, so it always matches whatever angle you orbit to.
-    camera.getWorldDirection(camForward.current);
-    camForward.current.y = 0;
-    camForward.current.normalize();
+    camera.getWorldDirection(camLive.current);
+    camLive.current.y = 0;
+    camLive.current.normalize();
+    // ── One thumb is enough ───────────────────────────────────────────────────
+    // On a phone the camera comes round behind the player by itself (see the
+    // follow, further down), so no second hand is needed to look around. For that
+    // to work the stick must not be read against a camera that is turning: push
+    // "down" to run back, the camera swings behind you, and "down" would then mean
+    // the opposite way and send you back again, for ever. So on a phone the
+    // stick's directions are FIXED from the moment it is pushed: they are taken
+    // from where the camera was then, and stay until the thumb lets go, changes
+    // direction clearly, or the player turns the view by hand.
+    const sx0 = worldControls.input.x, sz0 = worldControls.input.z;
+    const pushed = sx0 * sx0 + sz0 * sz0 > 0.0025;
+    const byHand = performance.now() - worldControls.lookedAt < 500;
+    const ang = Math.atan2(sx0, -sz0);
+    let turned = ang - held.current.ang; if (turned > Math.PI) turned -= 2 * Math.PI; if (turned < -Math.PI) turned += 2 * Math.PI;
+    if (!touch || !pushed || byHand || !held.current.on || Math.abs(turned) > 0.6) {
+      camForward.current.copy(camLive.current);
+      held.current.on = pushed; held.current.ang = ang;
+    }
     camRight.current.crossVectors(camForward.current, UP).normalize();
 
     // Traffic-hit stun: frozen for a beat (no input) after a vehicle clips you.
@@ -519,19 +539,17 @@ export default function Player() {
     // offset (angle + zoom) is kept while the view follows the character.
     camera.position.x += smoothTarget.current.x - prevX;
     camera.position.z += smoothTarget.current.z - prevZ;
-    // ── On a phone the camera helps steer ───────────────────────────────────
-    // One thumb is on the stick, so the view cannot also be turned all the time.
-    // While the player runs sideways the camera swings gently round behind them,
-    // the way a third-person game on a phone does, so "forward" stays the way
-    // they are going. It never does this while they run toward the camera (that
-    // would spin the controls under their thumb), nor for a moment after they
-    // turn the view themselves.
-    if (touch && hasInput && !gesturing.current && !reacting.current && performance.now() - worldControls.lookedAt > 1400) {
-      const side = move.current.dot(camRight.current), ahead = move.current.dot(camForward.current);
-      if (ahead > -0.25 && Math.abs(side) > 0.18) {
-        // gentle: a quarter turn takes about three seconds at full stick, so crossing the
-        // street sideways still crosses it, and a long sideways run brings the view round
-        chase.current.set(camera.position.x - smoothTarget.current.x, 0, camera.position.z - smoothTarget.current.z).applyAxisAngle(UP, -side * (0.34 + 0.2 * Math.max(0, ahead)) * dt);
+    // ── On a phone the camera follows the player round ──────────────────────
+    // Wherever the player runs, the camera swings to sit behind them, so they
+    // always see where they are going with one thumb. It turns faster the further
+    // off it is (about a second to come right round), never while they are flipping
+    // a breaker or knocked down, and it waits a moment after they turn the view
+    // themselves, so a player who does want to look around keeps what they chose.
+    if (touch && hasInput && !gesturing.current && !reacting.current && performance.now() - worldControls.lookedAt > 1600) {
+      const off = Math.atan2(camLive.current.z * move.current.x - camLive.current.x * move.current.z, camLive.current.x * move.current.x + camLive.current.z * move.current.z); // signed angle from the view to the run, about the up axis
+      if (Math.abs(off) > 0.05) {
+        const step = Math.sign(off) * Math.min(Math.abs(off), (0.7 + 2.3 * Math.min(1, Math.abs(off) / 1.6)) * dt);
+        chase.current.set(camera.position.x - smoothTarget.current.x, 0, camera.position.z - smoothTarget.current.z).applyAxisAngle(UP, step);
         camera.position.x = smoothTarget.current.x + chase.current.x;
         camera.position.z = smoothTarget.current.z + chase.current.z;
       }

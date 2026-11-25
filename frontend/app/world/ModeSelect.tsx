@@ -191,7 +191,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         {[...MODES.map((m) => m.id), "soon"].map((id, i) => <button key={id} className={i === at ? "on" : ""} onClick={() => go(i)} tabIndex={-1} />)}
       </div>
       {friends && <div className="nl-friends">{friends}</div>}
-      <p className="nl-foot">{touch ? "In a round: left thumb moves, right thumb looks around" : "In a round: W A S D to move, drag to look, Space to act"}</p>
+      <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
         .nl { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 14px); color: #f4f1ea; font-family: "Fredoka", system-ui, sans-serif; background: linear-gradient(180deg, rgba(10,1,32,0.5) 0%, rgba(10,1,32,0.3) 26%, rgba(10,1,32,0.86) 100%); touch-action: pan-x; }
