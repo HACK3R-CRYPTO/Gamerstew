@@ -58,6 +58,7 @@ import { score, PINS, type ScoreState } from "./scoring";
 import { ADS, type Ad } from "./ads";
 import { net, explain, type Room, type Session } from "./online";
 import { openRoomSocket } from "@/lib/roomSocket";
+import AutoSharpness from "../world/AutoSharpness";
 import { armSfx, closeSfx, setMuted, setRumble, bottleHit, bottleRoll, sfxCount, thud, buzz, crowdSound } from "./sfx";
 
 // ── Tuning (metres, seconds) ─────────────────────────────────────────────────
@@ -1662,8 +1663,10 @@ export default function Game() {
   const tone = banner?.tone === "big" ? GA.goldLight : banner?.tone === "bad" ? "#ff8a8a" : "#8ff0a4";
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", background: GA.purpleNight, touchAction: "none", fontFamily: BODY }}>
-      <Canvas shadows={!isMobile} dpr={[1, isMobile ? 1.5 : 2]} gl={{ antialias: !isMobile, powerPreference: "high-performance" }} camera={{ position: [0, 1.45, 2.4], fov: 50, near: 0.1, far: 140 }}
+      <Canvas shadows={!isMobile} dpr={[1, 2]} gl={{ antialias: !isMobile, powerPreference: "high-performance" }} camera={{ position: [0, 1.45, 2.4], fov: 50, near: 0.1, far: 140 }}
         onCreated={({ gl, camera }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.outputColorSpace = THREE.SRGBColorSpace; camera.lookAt(0, 0.32, -4.1); /* down the road while models load, not at the floor */ }}>
+        {/* sharp where the phone can take it, softer where it cannot: the same check UP NEPA 3D uses */}
+        <AutoSharpness game="Street Strike" />
         <NightRig lowPerf={isMobile} />
         <Street lowPerf={isMobile} />
         {/* Scenery loads on its own. The tyre and bottles must never wait for the

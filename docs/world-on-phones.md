@@ -63,6 +63,21 @@ A level that proved too much is never retried. So it does not matter how the pla
 
 The number of walkers is fixed by the starting level and does not change while playing.
 
+## The player's choice, memory, and the report
+
+- **Settings → Gameplay → 3D graphics**: Auto (the default), Smooth, or Sharp. Smooth caps sharpness at 1.25 and holds 30 frames, for a phone that runs hot. Sharp draws at 2 and aims for 60. A chosen level is a ceiling: the picture is never made sharper than the player asked.
+- **Remembered.** After twenty seconds of play the level a phone settled at is kept on that phone, tied to its graphics chip, for a month. The next visit starts there.
+- **Street Strike uses the same check** (`app/world/AutoSharpness.tsx`), so both 3D games behave alike.
+- **Reported.** Each visit to a 3D game sends one `device_profile` event: the chip, the level it started and settled at, and the frame rate it got. No person is named. The admin dashboard's Visits page turns these into a report: how many visits ran smooth or slow, by chip, by actual phone, by game, and which setting players chose. It needs `games-backend/supabase-migrations/2026-11-26b_admin_devices.sql`.
+
+The report is the point. "It looks bad on my phone" becomes a number: which chips, how many players, how slow.
+
+### What was considered and left out
+
+- **A separate speed test before the game.** It delays the first play and measures an empty scene, not the game. Measuring the game itself while it is played is both quicker and truer.
+- **A device-name library.** It reads the browser's description of itself, which gives the brand and browser. That is already known, and it says nothing about speed.
+- **Refusing to run on a weak phone.** Nobody is turned away. A weak phone gets a softer picture and fewer walkers.
+
 ## Not verified
 
 - The step from 30 up to 60. It relies on how often the screen ticks while frames are skipped, and the test browser on a laptop does not tick like a phone, so it could not be watched happening. If it tries and the phone cannot hold it, it goes back to 30 and does not try again.

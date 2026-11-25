@@ -51,6 +51,8 @@ import PerfProbe from "./PerfProbe";
 import { useWorldStore } from "./store";
 import { useAppStore } from "./appStore";
 import { worldControls } from "./controls";
+import { rememberSettled, deviceFacts } from "./quality";
+import { track } from "@/lib/track";
 import { setObstaclesActive } from "./obstacles";
 
 // Hard fps cap + pause-when-hidden, implemented with a manual render loop.
@@ -67,7 +69,7 @@ import { setObstaclesActive } from "./obstacles";
 // too much is not tried again, so the picture never flips back and forth. The first seconds are ignored: loading the street stutters on
 // any phone. So a strong phone stays crisp and a weak one stays smooth, without
 // anyone choosing a setting.
-function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running: boolean; maxDpr: number; minDpr: number }) {
+function FrameGovernor({ fps, running, maxDpr, minDpr, climb }: { fps: number; running: boolean; maxDpr: number; minDpr: number; climb: boolean }) {
   const advance = useThree((s) => s.advance);
   const setDpr = useThree((s) => s.setDpr);
   useEffect(() => {
@@ -78,13 +80,13 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
     // full 16.67 skipped every other tick and halved a 60 fps target to 30
     let rate = fps; // the frame target: it starts at the tier's guess and is adjusted like the sharpness
     let interval = 1000 / rate - 3;
-    let ticks = 0, tickMs = 0, lastTick = 0, tried60 = false;
+    let ticks = 0, tickMs = 0, lastTick = 0, tried60 = false, windows = 0;
     // The tier is a first guess from what the phone says about itself, and phones
     // say little. So the guess is only where it STARTS: a phone that proves quick
     // is taken up a step at a time to the sharpest worth drawing (2, or the
     // screen's own limit), and one that proves slow is taken down. This is what
     // makes an unknown phone come out right.
-    const top = Math.min(2, window.devicePixelRatio || 1);
+    const top = climb ? Math.min(2, window.devicePixelRatio || 1) : Math.min(maxDpr, window.devicePixelRatio || 1); // a level the player chose is the ceiling
     const cap = Math.min(maxDpr, top); const floor = Math.min(minDpr, cap);
     let dpr = cap; let frames = 0; let since = 0; let slow = 0; let quick = 0; let tooMuch = Infinity; let born = 0;
     setDpr(dpr);
@@ -104,6 +106,10 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
             const got = (frames * 1000) / since; frames = 0; since = 0;
             const tick = ticks ? tickMs / ticks : 0; ticks = 0; tickMs = 0;
             if (process.env.NODE_ENV !== "production") (window as unknown as { __gov?: unknown }).__gov = { got: Math.round(got), rate, dpr, tick: Math.round(tick) };
+            // After twenty seconds of play it has found its level: keep it for the next visit,
+            // and tell the dashboard once what this device is and how it ran.
+            windows++;
+            if (windows === 10) { if (climb) rememberSettled(dpr, rate); track("device_profile", { ...deviceFacts(), game: "UP NEPA 3D", settled_dpr: dpr, settled_fps: rate, got_fps: Math.round(got) }); }
             slow = got < rate * 0.72 ? slow + 1 : 0; quick = got > rate * 0.93 ? quick + 1 : 0;
             if (slow >= 2 && dpr > floor) { tooMuch = dpr; dpr = Math.max(floor, dpr - 0.25); setDpr(dpr); slow = 0; quick = 0; }
             // As soft as it goes and still short of 60: a steady 30 looks and feels better
@@ -114,7 +120,7 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
             else if (quick >= 3 && dpr + 0.25 <= top && dpr + 0.25 < tooMuch) { dpr += 0.25; setDpr(dpr); quick = 0; }
             // already as sharp as is worth drawing, held to 30, and the screen still ticks on
             // time with every other frame skipped: this phone can do 60. Tried once only.
-            else if (quick >= 3 && rate < 60 && !tried60 && tick > 0 && tick < 19) { rate = 60; interval = 1000 / rate - 3; quick = 0; tried60 = true; }
+            else if (climb && quick >= 3 && rate < 60 && !tried60 && tick > 0 && tick < 19) { rate = 60; interval = 1000 / rate - 3; quick = 0; tried60 = true; }
           }
         }
         // In frameloop="never", R3F derives the per-frame delta as
@@ -126,7 +132,7 @@ function FrameGovernor({ fps, running, maxDpr, minDpr }: { fps: number; running:
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [advance, fps, running, maxDpr, minDpr, setDpr]);
+  }, [advance, fps, running, maxDpr, minDpr, climb, setDpr]);
   return null;
 }
 
@@ -162,7 +168,7 @@ export default function Scene({
 
   return (
     <>
-      <FrameGovernor fps={quality().fps} running={running} maxDpr={quality().dpr} minDpr={quality().minDpr} />
+      <FrameGovernor fps={quality().fps} running={running} maxDpr={quality().dpr} minDpr={quality().minDpr} climb={quality().climb} />
       {process.env.NODE_ENV !== "production" && <DevStoreHook />}
       {process.env.NODE_ENV !== "production" && <PerfProbe />}
 
