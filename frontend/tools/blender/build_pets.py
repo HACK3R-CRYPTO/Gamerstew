@@ -1,5 +1,5 @@
 # The five pet stages, built and rendered in Blender from the terminal:
-#   /Applications/Blender.app/Contents/MacOS/Blender -b --python frontend/tools/blender/build_pets.py -- <out_dir> [stage ...]
+#   /Applications/Blender.app/Contents/MacOS/Blender -b --python frontend/tools/blender/build_pets.py -- <out_dir> [stage ...] [moods=happy,blink,joy,sad,sleepy]
 #
 # Each pet is real geometry with a real jelly material (light passes through the
 # body and is tinted on the way), lit by three lamps, rendered with no
@@ -17,7 +17,11 @@ from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = argv[0] if argv else "/tmp/pets"
-ONLY = set(argv[1:])
+MOODS = ["happy"]
+for a in argv[1:]:
+    if a.startswith("moods="): MOODS = a[6:].split(",")
+ONLY = set(a for a in argv[1:] if "=" not in a)
+MOOD = "happy"   # the face being built: happy, blink, joy, sad, sleepy. The body never changes, so the frames line up.
 random.seed(7)
 
 def reset():
@@ -125,23 +129,51 @@ def ball(loc, r, mat, scale=(1, 1, 1), seg=48):
     bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=loc, segments=seg, ring_count=seg // 2)
     o = bpy.context.object; o.scale = scale; bpy.ops.object.shade_smooth(); o.data.materials.append(mat); return o
 
+def arc(loc, r, thick, up, mat, squash=0.75):
+    """Half a ring, stood up to face the camera: a smile (up=False) or a frown, a closed eye, a brow (up=True)."""
+    bpy.ops.mesh.primitive_torus_add(major_radius=r, minor_radius=thick, location=loc, rotation=(math.radians(90), 0, 0), major_segments=48, minor_segments=14)
+    o = bpy.context.object
+    bm = bmesh.new(); bm.from_mesh(o.data)   # the ring lies flat before it is stood up: its far half becomes the top
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if (v.co.y < r * 0.2 if up else v.co.y > -r * 0.2)], context="VERTS")
+    bm.to_mesh(o.data); bm.free()
+    o.scale = (1, 1, squash); bpy.ops.object.shade_smooth(); o.data.materials.append(mat)
+    return o
+
 def face(y, z, gap, eye_r, look=(0.0, 0.0), happy=True, cheek=(1.0, 0.45, 0.6)):
-    """Two glossy eyes with a catch-light each, a small mouth, and a blush. `y` is how far forward the face sits."""
+    """The face for the current MOOD. `y` is how far forward it sits. `happy` only sets how wide the resting smile is."""
+    mood = MOOD
     black = solid("eye", (0.004, 0.003, 0.012), rough=0.04, coat=1.0)
     white = solid("glint", (1, 1, 1), emit=(1, 1, 1), strength=6.0)
-    for sx in (-1, 1):
-        ball((sx * gap, y, z), eye_r, black, (1, 0.62, 1.12))
-        ball((sx * gap - eye_r * 0.30 + look[0], y - eye_r * 0.52, z + eye_r * 0.42 + look[1]), eye_r * 0.30, white, (1, 0.5, 1))
-        ball((sx * gap + eye_r * 0.30 + look[0], y - eye_r * 0.52, z - eye_r * 0.30 + look[1]), eye_r * 0.13, white, (1, 0.5, 1))
-        ball((sx * (gap + eye_r * 1.35), y - 0.01, z - eye_r * 1.0), eye_r * 0.6, solid("blush", (cheek[0] * 0.9, cheek[1] * 0.55, cheek[2] * 0.6), rough=0.85, emit=cheek, strength=0.1), (1, 0.14, 0.55))
     mouth = solid("mouth", (0.16, 0.01, 0.04), rough=0.5)
-    if True:
-        bpy.ops.mesh.primitive_torus_add(major_radius=eye_r * (0.62 if happy else 0.5), minor_radius=eye_r * (0.1 if happy else 0.075), location=(0, y - 0.03, z - eye_r * 0.62), rotation=(math.radians(90), 0, 0))
-        o = bpy.context.object
-        bm = bmesh.new(); bm.from_mesh(o.data)
-        bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.y > -eye_r * 0.12], context="VERTS")  # the ring lies flat before it is stood up: its far half is the top of the smile
-        bm.to_mesh(o.data); bm.free()
-        o.scale = (1, 1, 0.75); bpy.ops.object.shade_smooth(); o.data.materials.append(mouth)
+    line = solid("line", (0.01, 0.006, 0.03), rough=0.3)
+    glow = 0.32 if mood == "joy" else 0.02 if mood == "sad" else 0.1
+    for sx in (-1, 1):
+        if mood in ("blink", "sleepy"):          # closed: a soft lower arc
+            arc((sx * gap, y - eye_r * 0.3, z + eye_r * 0.1), eye_r * 0.62, eye_r * 0.11, False, line, 0.6)
+        elif mood == "joy":                       # squeezed shut with delight: an upper arc
+            arc((sx * gap, y - eye_r * 0.3, z - eye_r * 0.42), eye_r * 0.7, eye_r * 0.14, True, line, 0.95)
+        else:
+            down = -eye_r * 0.2 if mood == "sad" else 0.0
+            ball((sx * gap, y, z), eye_r, black, (1, 0.62, 1.12))
+            big = 0.36 if mood == "sad" else 0.30  # sad eyes are wet: a bigger light in them, lower down
+            ball((sx * gap - eye_r * 0.30 + look[0], y - eye_r * 0.52, z + eye_r * 0.42 + look[1] + down), eye_r * big, white, (1, 0.5, 1))
+            ball((sx * gap + eye_r * 0.30 + look[0], y - eye_r * 0.52, z - eye_r * 0.30 + look[1] + down * 0.5), eye_r * (0.2 if mood == "sad" else 0.13), white, (1, 0.5, 1))
+        if mood == "sad":                         # worried brows: inner ends up
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=eye_r * 0.5, location=(sx * gap * 0.92, y - eye_r * 0.45, z + eye_r * 1.42), segments=24, ring_count=12)
+            b = bpy.context.object; b.scale = (1.0, 0.3, 0.2); b.rotation_euler = (0, sx * math.radians(24), 0); bpy.ops.object.shade_smooth(); b.data.materials.append(line)
+        ball((sx * (gap + eye_r * 1.35), y - 0.01, z - eye_r * 1.0), eye_r * (0.72 if mood == "joy" else 0.6), solid("blush", (cheek[0] * 0.9, cheek[1] * 0.55, cheek[2] * 0.6), rough=0.85, emit=cheek, strength=glow), (1, 0.14, 0.55))
+    if mood == "joy":                             # mouth wide open, tongue showing
+        ball((0, y - 0.05, z - eye_r * 1.2), eye_r * 0.66, mouth, (1.25, 0.4, 0.95), seg=32)
+        ball((0, y - 0.09, z - eye_r * 1.62), eye_r * 0.24, solid("tongue", (0.9, 0.28, 0.38), rough=0.7), (1.5, 0.35, 0.55), seg=24)
+    elif mood == "sad":                           # the smile, upside down
+        arc((0, y - 0.03, z - eye_r * 1.42), eye_r * 0.5, eye_r * 0.09, True, mouth)
+        tear = solid("tear", (0.55, 0.85, 1.0), rough=0.03, emit=(0.5, 0.8, 1.0), strength=0.6, coat=1.0)
+        ball((-gap - eye_r * 0.55, y - eye_r * 0.5, z - eye_r * 1.25), eye_r * 0.26, tear, (0.8, 0.6, 1.25), seg=24)
+        ball((-gap - eye_r * 0.55, y - eye_r * 0.5, z - eye_r * 0.98), eye_r * 0.13, tear, (0.8, 0.6, 1.5), seg=16)
+    elif mood == "sleepy":                        # a small round mouth, breathing out
+        ball((0, y - 0.04, z - eye_r * 0.95), eye_r * 0.2, mouth, (1.0, 0.4, 1.1), seg=24)
+    else:
+        arc((0, y - 0.03, z - eye_r * 0.62), eye_r * (0.62 if happy else 0.5), eye_r * (0.1 if happy else 0.075), False, mouth)
 
 def bubbles(n, r, zmin, zmax, mat):
     for _ in range(n):
@@ -169,6 +201,7 @@ def crown(z, r=0.42, tilt=0.0, x=0.0, gems=True):
     return parts
 
 def render(name):
+    name = name if MOOD == "happy" else f"{name}-{MOOD}"
     bpy.context.scene.render.filepath = f"{OUT}/{name}.png"
     bpy.ops.render.render(write_still=True)
     print("rendered", name)
@@ -255,5 +288,9 @@ def king():
             ball((x + sx * 0.17, y - 0.42, 0.5), 0.1, blk, (1, 0.6, 1.1), seg=20); ball((x + sx * 0.17 - 0.025, y - 0.49, 0.54), 0.032, wh, seg=12)
     render("stage-5-king")
 
-for name, fn in [("egg", egg), ("baby", baby), ("teen", teen), ("crystal", crystal), ("king", king)]:
-    if not ONLY or name in ONLY: fn()
+for MOOD in MOODS:
+    for name, fn in [("egg", egg), ("baby", baby), ("teen", teen), ("crystal", crystal), ("king", king)]:
+        if name == "egg" and MOOD != "happy": continue   # an egg has no face yet
+        if not ONLY or name in ONLY:
+            random.seed(7)                                # the same bubbles in every mood
+            fn()

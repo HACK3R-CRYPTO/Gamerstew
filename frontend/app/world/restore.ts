@@ -278,6 +278,11 @@ interface RestoreStore {
   nearIdx: number | null; // nearest in-range unlit/warning point (for the prompt)
   nearWarn: boolean; // is that nearest target a warning breaker (save) vs an unlit one (flip)?
   summary: RestoreSummary | null;
+  // One more life (a shop item). When the last life goes and `canRevive` is set, the round is HELD
+  // instead of ended: the clock, the breakers and the traffic hits all stop while the player decides.
+  hold: boolean;
+  canRevive: boolean; // set by World for a round that may offer it; one offer a round
+  revived: boolean;
   start: () => void;
   finish: (summary: RestoreSummary) => void;
   loseLife: () => void;
@@ -308,9 +313,12 @@ export const useRestoreStore = create<RestoreStore>((set) => ({
   nearIdx: null,
   nearWarn: false,
   summary: null,
+  hold: false,
+  canRevive: false,
+  revived: false,
   start: () => {
     resetPointState();
-    set({ mode: "playing", elapsed: 0, restored: 0, total: POWER_POINTS.length, lives: LIVES_START, pStreak: 0, dodges: 0, dodgeStreak: 0, dodgeBonus: 0, chain: 0, brownout: 0, saves: 0, megaActive: false, mega: 0, intensity: 0, vipLit: false, vipWarn: false, raidKey: 0, nearIdx: null, nearWarn: false, summary: null });
+    set({ hold: false, revived: false, mode: "playing", elapsed: 0, restored: 0, total: POWER_POINTS.length, lives: LIVES_START, pStreak: 0, dodges: 0, dodgeStreak: 0, dodgeBonus: 0, chain: 0, brownout: 0, saves: 0, megaActive: false, mega: 0, intensity: 0, vipLit: false, vipWarn: false, raidKey: 0, nearIdx: null, nearWarn: false, summary: null });
   },
   finish: (summary) => set({ mode: summary.won ? "won" : "over", summary, nearIdx: null }),
   // A car clipped you — lose a heart (never below 0) AND drop your dodge streak
@@ -323,7 +331,7 @@ export const useRestoreStore = create<RestoreStore>((set) => ({
       const streak = s.dodgeStreak + 1;
       return { dodges: s.dodges + 1, dodgeStreak: streak, dodgeBonus: s.dodgeBonus + DODGE_BASE * Math.min(streak, DODGE_STREAK_CAP) };
     }),
-  reset: () => set({ mode: "idle", restored: 0, elapsed: 0, lives: LIVES_START, dodges: 0, dodgeStreak: 0, dodgeBonus: 0, chain: 0, brownout: 0, saves: 0, megaActive: false, mega: 0, intensity: 0, vipLit: false, vipWarn: false, raidKey: 0, nearIdx: null, nearWarn: false, summary: null }),
+  reset: () => set({ hold: false, revived: false, canRevive: false, mode: "idle", restored: 0, elapsed: 0, lives: LIVES_START, dodges: 0, dodgeStreak: 0, dodgeBonus: 0, chain: 0, brownout: 0, saves: 0, megaActive: false, mega: 0, intensity: 0, vipLit: false, vipWarn: false, raidKey: 0, nearIdx: null, nearWarn: false, summary: null }),
   setLive: (v) => set(v),
 }));
 

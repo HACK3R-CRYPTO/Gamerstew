@@ -1,5 +1,7 @@
 "use client";
 
+import Pet from "@/components/Pet";
+import { petForLevel, restingMood, moodLine } from "@/lib/pets";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
@@ -511,7 +513,7 @@ export default function ProfilePage() {
               display: "flex", alignItems: "center", justifyContent: "center",
               padding: isDesktop ? "26px 0 26px 22px" : "20px 18px 8px",
             }}>
-              <img src={stage.src} alt={s.petName} width={150} height={150} style={{ width: 150, height: 150, objectFit: "contain", filter: `drop-shadow(0 0 24px ${equippedHabitat.bg.accent}66) drop-shadow(0 14px 26px rgba(0,0,0,0.55))`, animation: "profile-float-gentle 3s ease-in-out infinite" }} />
+              <Pet stage={petForLevel(s.level)} mood={restingMood(s)} size={150} interactive alt={s.petName} filter={`drop-shadow(0 0 24px ${equippedHabitat.bg.accent}66) drop-shadow(0 14px 26px rgba(0,0,0,0.55))`} />
             </div>
 
             {/* Name + tier + xp */}
@@ -532,6 +534,10 @@ export default function ProfilePage() {
                 {stage.nextAt < 999
                   ? <>Next evolution at <strong style={{ color: "#fff" }}>LV {stage.nextAt}</strong></>
                   : <>Max evolution unlocked 👑</>}
+              </div>
+              {/* why the pet looks the way it does, and what changes it */}
+              <div style={{ fontFamily: T.body, fontSize: 13, fontWeight: 600, color: restingMood(s) === "happy" ? "rgba(255,255,255,0.92)" : "#fde68a", marginTop: 6, textShadow: "0 1px 8px rgba(0,0,0,0.75)" }}>
+                {petForLevel(s.level).id === "egg" ? "Your egg hatches at LV 5. Play to warm it up." : moodLine("Your slime", s)}
               </div>
               <div style={{ marginTop: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 12, color: "rgba(255,255,255,0.92)", fontWeight: 700, textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>

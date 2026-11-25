@@ -24,3 +24,38 @@ export function petForLevel(level: number): PetStage {
   for (const s of PET_STAGES) if (level >= s.minLevel) stage = s;
   return stage;
 }
+
+// ─── Moods ───────────────────────────────────────────────────────────────────
+// Every slime has five faces, rendered from the same model so they line up
+// exactly (tools/blender/build_pets.py). The egg has no face yet.
+//   happy   the resting face           blink   eyes shut for a moment
+//   joy     a win, a poke, a level up  sad     the streak is about to break
+//   sleepy  nobody has played for a while
+export type PetMood = "happy" | "blink" | "joy" | "sad" | "sleepy";
+
+/** The picture for a stage and a mood. `small` is a 128px copy for avatars. */
+export function petFrame(stage: { id: string }, mood: PetMood = "happy", small = false): string {
+  const m = stage.id === "egg" ? "happy" : mood;
+  return `/pets/m/${stage.id}-${m}${small ? "-s" : ""}.webp`;
+}
+
+/** How the pet feels when nothing is happening, from what the player has done.
+ *  Played today: happy. A streak that today would break: sad. Nothing to lose and no play: asleep. */
+export function restingMood(p: { playedToday: boolean; streak: number } | null | undefined): "happy" | "sad" | "sleepy" {
+  if (!p || p.playedToday) return "happy";
+  return p.streak > 0 ? "sad" : "sleepy";
+}
+
+/** One line that says why the pet looks the way it does, and what fixes it. */
+export function moodLine(name: string, p: { playedToday: boolean; streak: number } | null | undefined): string {
+  const mood = restingMood(p);
+  if (mood === "sad") return `${name} misses you. Play one game today to keep your ${p!.streak} day streak.`;
+  if (mood === "sleepy") return `${name} is asleep. Play a game to wake it up.`;
+  return p && p.streak > 1 ? `${name} is happy. ${p.streak} days in a row.` : `${name} is happy. You played today.`;
+}
+
+/** Fetch a stage's faces ahead of time, so the first reaction in a game does not wait on the network. */
+export function preloadPetFaces(stage: { id: string }, moods: PetMood[] = ["happy", "joy", "sad"]): void {
+  if (typeof window === "undefined" || stage.id === "egg") return;
+  for (const m of moods) { const im = new Image(); im.decoding = "async"; im.src = petFrame(stage, m); }
+}

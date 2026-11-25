@@ -11,12 +11,14 @@ import { track } from "@/lib/track";
 // reactive NEPA light cycle (power on → NEPA cut → UP NEPA relight) is the point.
 
 import { toast } from "@/lib/toast";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import Scene from "./Scene";
 import { useRankedRun } from "@/hooks/useRankedRun";
+import { useLivePerk } from "@/hooks/useLivePerk";
+import SaveRunOverlay from "@/components/SaveRunOverlay";
 import { useGuestGate } from "@/hooks/useGuestGate";
 import Joystick from "./Joystick";
 import { worldControls, resetWorldControls } from "./controls";
@@ -312,6 +314,37 @@ export default function World() {
       rStart();
     });
   };
+  // ── One more life (shop item 9; offered only once the shop has priced it) ──
+  // A round that takes it hands in the breakers it had lit BEFORE the extra life: the life
+  // buys more play, never rank, and never costs the rank already earned.
+  const lifePerk = useLivePerk(9);
+  const rHold = useRestoreStore((s) => s.hold);
+  const lifeBank = useRef<{ restored: number; total: number } | null>(null);
+  const [lifeBanked, setLifeBanked] = useState<number | null>(null);
+  const canRankNow = ranked.canRank;
+  useEffect(() => {
+    if (rState !== "playing") return;
+    const st = useRestoreStore.getState();
+    if (!st.revived && !st.hold) { lifeBank.current = null; setLifeBanked(null); }
+    st.setLive({ canRevive: !!lifePerk && canRankNow && !roomRun.current && !st.revived });
+  }, [rState, lifePerk, canRankNow]);
+  const takeLife = useCallback(() => {
+    const st = useRestoreStore.getState();
+    if (!st.hold) return;
+    const lit = Math.max(0, Math.min(st.restored, st.total - 1));
+    lifeBank.current = { restored: lit, total: st.total };
+    if (rankedRef.current.hasTicket()) setLifeBanked(restoreScore(lit, st.total, null, 0));
+    worldControls.stun = 0; worldControls.invuln = 3; // back on your feet, and untouchable for a moment
+    st.setLive({ hold: false, lives: 1, revived: true, canRevive: false });
+  }, []);
+  const passLife = useCallback(() => {
+    const st = useRestoreStore.getState();
+    if (!st.hold) return;
+    worldControls.stun = 0;
+    st.setLive({ hold: false, canRevive: false }); // the director ends the round on its next frame
+  }, []);
+  // a held round with nothing to offer (the price could not be read) is never left hanging
+  useEffect(() => { if (rHold && !lifePerk) passLife(); }, [rHold, lifePerk, passLife]);
   // when a ranked round ends, send it to be checked and saved
   const rSent = useRef<unknown>(null);
   useEffect(() => {
@@ -319,6 +352,11 @@ export default function World() {
     rSent.current = rSummary;
     if (roomRun.current) { void roomRef.current.finish({ nepa3dRun: { won: rSummary.won, restored: rSummary.restored, timeTaken: rSummary.timeTaken, skill: rSummary.parts?.skill ?? 0 } }); return; }
     if (!rankedRef.current.hasTicket()) return;
+    const bank = lifeBank.current;
+    if (bank) { // the round as it stood when the extra life was taken: an unfinished run of that many breakers
+      void rankedRef.current.finish({ score: restoreScore(bank.restored, bank.total, null, 0), gameTime: 5000, proof: { nepa3dRun: { won: false, restored: bank.restored, timeTaken: null, skill: 0 } } });
+      return;
+    }
     void rankedRef.current.finish({
       score: rSummary.score,
       gameTime: (rSummary.timeTaken ?? 5) * 1000,
@@ -373,7 +411,7 @@ export default function World() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.inRoom, room.view?.status]);
   // dev only: lets an automated check end a round without playing the 3D street
-  useEffect(() => { if (process.env.NODE_ENV !== "production") (window as unknown as { __restore?: unknown }).__restore = { store: useRestoreStore, game: useGameStore, inRoomRun: () => roomRun.current }; }, []);
+  useEffect(() => { if (process.env.NODE_ENV !== "production") (window as unknown as { __restore?: unknown }).__restore = { store: useRestoreStore, game: useGameStore, inRoomRun: () => roomRun.current, takeLife, passLife }; }, []);
 
   const toMenu = () => {
     setModesOpen(true); // back from a game → straight to the lobby
@@ -1248,6 +1286,24 @@ export default function World() {
         </div>
       )}
 
+      {rHold && lifePerk && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 70, pointerEvents: "auto" }}>
+          <SaveRunOverlay
+            open
+            score={restoreScore(Math.min(useRestoreStore.getState().restored, useRestoreStore.getState().total - 1), useRestoreStore.getState().total, null, 0)}
+            game="nepa3d"
+            perk={lifePerk}
+            headline="NEPA DON TAKE LIGHT"
+            titleOverride="Get back up"
+            ctaOverride="One more life"
+            ranked={rankedRound}
+            decideMs={8000}
+            onSaved={takeLife}
+            onDecline={passLife}
+          />
+        </div>
+      )}
+
       {quitAsk && (
         <div role="dialog" aria-modal="true" aria-label="End this round?" style={{ position: "absolute", inset: 0, zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "rgba(10,1,32,0.62)", pointerEvents: "auto" }}>
           <div style={{ width: "100%", maxWidth: 420, borderRadius: 24, padding: "20px 18px 16px", textAlign: "center", color: "#22104f", background: "#fff", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 18px 50px rgba(10,1,32,0.45)", fontFamily: HUD_BODY }}>
@@ -1339,6 +1395,11 @@ export default function World() {
                 {bestInfo.isBest
                   ? `−${(bestInfo.prevBest - rSummary.timeTaken).toFixed(1)}s vs your best`
                   : `your best ${bestInfo.prevBest.toFixed(1)}s`}
+              </div>
+            )}
+            {lifeBanked != null && (
+              <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "#9a3412" }}>
+                Ranked score: <b style={{ color: "#22104f" }}>{lifeBanked.toLocaleString()}</b>, from before your extra life. The rest was for fun.
               </div>
             )}
             <div role="status" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4, color: "rgba(34,16,79,0.68)" }}>

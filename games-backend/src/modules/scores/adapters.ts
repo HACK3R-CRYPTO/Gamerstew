@@ -31,6 +31,11 @@ export function supabaseUnfinished(db: SupabaseLike): import('./unfinished').Unf
       const { error } = await db.from('game_sessions').update({ tx_hash: txHash }).eq('token', token).eq('used', false);
       return !error;
     },
+    async sent(sinceIso) {
+      const { data, error } = await db.from('game_sessions').select('wallet').eq('used', false).not('tx_hash', 'is', null).gte('started_at', sinceIso).limit(5000);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return error ? null : ((data ?? []) as any[]).map((r) => String(r.wallet || ''));
+    },
   };
 }
 

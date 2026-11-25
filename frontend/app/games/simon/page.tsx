@@ -54,6 +54,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 // ─── Pet stages (same data as rhythm — pet evolves with your level) ──────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
+import { petFrame, preloadPetFaces } from "@/lib/pets";
 const PET_STAGES: PetStage[] = [
   { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  color: "#e2e8f0" },
   { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  color: "#22c55e" },
@@ -1447,6 +1448,9 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
     : "pet-breathe";
 
   const wilt = reaction === "wrong";
+  useEffect(() => { preloadPetFaces(pet); }, [pet]);
+  // the face follows what just happened: joy for a right tap or a cleared round, sad for the wrong one
+  const face = petFrame(pet, reaction === "wrong" ? "sad" : reaction === "idle" ? "happy" : "joy");
   const popScale = reaction === "bonus" ? 1.35 : reaction === "clear" ? 1.2 : reaction === "correct" ? 1.1 : 1;
 
   return (
@@ -1472,11 +1476,11 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
         }}>
           <div className={animClass} style={{
             width: "88%", height: "88%",
-            filter: wilt ? "grayscale(0.9) brightness(0.6) saturate(0.5)" : "none",
+            filter: wilt ? "grayscale(0.35) brightness(0.86)" : "none", // the sad face says it now; the grey only underlines it
             transition: "filter 0.2s",
           }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pet.src} alt="" draggable={false}
+            <img src={face} alt="" draggable={false}
               style={{
                 width: "100%", height: "100%", objectFit: "contain",
                 filter: `drop-shadow(0 0 6px ${pet.color}cc)`,

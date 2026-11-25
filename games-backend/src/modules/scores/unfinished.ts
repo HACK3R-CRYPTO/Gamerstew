@@ -25,6 +25,9 @@ export interface UnfinishedStore {
   open(olderThanIso: string, newerThanIso: string, limit: number): Promise<OpenRun[]>;
   /** write the transaction down against the run. false: could not save */
   mark(token: string, txHash: string): Promise<boolean>;
+  /** the player of every unfinished run started since `sinceIso` that already has its transaction.
+   *  This is how the day's limits survive a restart: the count is read back, not remembered. */
+  sent?(sinceIso: string): Promise<string[] | null>;
 }
 export interface UnfinishedOptions {
   store: UnfinishedStore;
@@ -45,6 +48,7 @@ export function createUnfinishedRecorder(o: UnfinishedOptions) {
   const perPass = o.perPass ?? 8, perWallet = o.perWalletPerDay ?? 20, perDay = o.perDay ?? 1500;
   let day = ''; let sentToday = 0; const byWallet = new Map<string, number>(); const given = new Set<string>(); // runs passed over for today, so they are not looked at again every pass
   let busy = false;
+  let counted = false; // today's count has been read back from the store (after a restart, memory starts empty)
 
   return {
     /** One pass. Returns what it did; never throws. */
@@ -54,7 +58,15 @@ export function createUnfinishedRecorder(o: UnfinishedOptions) {
       busy = true;
       try {
         const t = now(); const today = new Date(t).toISOString().slice(0, 10);
-        if (today !== day) { day = today; sentToday = 0; byWallet.clear(); given.clear(); }
+        if (today !== day) { day = today; sentToday = 0; byWallet.clear(); given.clear(); counted = false; }
+        if (!counted && o.store.sent) {
+          const wallets = await o.store.sent(`${today}T00:00:00.000Z`).catch(() => null);
+          if (wallets) {
+            counted = true; byWallet.clear();
+            for (const w of wallets) { const k = String(w).toLowerCase(); byWallet.set(k, (byWallet.get(k) ?? 0) + 1); }
+            sentToday = Math.max(sentToday, wallets.length);
+          } else return out; // the limits are not known yet: send nothing rather than guess
+        }
         if (sentToday >= perDay) return out;
         const runs = await o.store.open(new Date(t - settle).toISOString(), new Date(t - maxAge).toISOString(), perPass * 4).catch(() => [] as OpenRun[]);
         for (const r of runs) {

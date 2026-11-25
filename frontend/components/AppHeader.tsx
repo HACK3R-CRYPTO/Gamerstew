@@ -1,5 +1,7 @@
 "use client";
 
+import Pet from "@/components/Pet";
+import { petForLevel, restingMood } from "@/lib/pets";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
@@ -197,7 +199,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // Real level + streak come from games-backend (`/api/user/{address}`),
   // same source profile uses. A previous version hardcoded `LV 1` and
   // streak `0` so the header didn't reflect any actual play.
-  const [meta, setMeta] = useState<{ level: number; streak: number } | null>(null);
+  const [meta, setMeta] = useState<{ level: number; streak: number; playedToday: boolean } | null>(null);
   useEffect(() => {
     if (!connected || !address) { setMeta(null); return; }
     let cancelled = false;
@@ -206,7 +208,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (cancelled || !d) return;
-        setMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0) });
+        setMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0), playedToday: d.playedToday === undefined ? true : !!d.playedToday });
       })
       .catch(() => { });
     return () => { cancelled = true; };
@@ -265,7 +267,9 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
           {showVatar && vatarPlayer?.avatar ? (
             <img src={vatarPlayer.avatar} alt="" style={{ width: 42, height: 42, objectFit: "cover" }} />
           ) : (
-            <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: identified ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
+            identified && meta
+              ? <Pet stage={petForLevel(meta.level)} mood={restingMood(meta)} size={36} filter="drop-shadow(0 1px 2px rgba(0,0,0,0.4))" />
+              : <img src="/pets/stage-2-baby.png" alt="" style={{ width: 34, height: 34, objectFit: "contain", filter: identified ? "drop-shadow(0 1px 2px rgba(0,0,0,0.4))" : "grayscale(0.7) brightness(0.9)" }} />
           )}
         </button>
         {connected && isVerified && (

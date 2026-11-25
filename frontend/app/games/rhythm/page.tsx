@@ -58,6 +58,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 // ─── Pet stages (same data as profile — pet evolves with your level) ──────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
+import { petFrame, preloadPetFaces } from "@/lib/pets";
 const PET_STAGES: PetStage[] = [
   { id: "egg", name: "Mystery Egg", src: "/pets/stage-1-egg.png", minLevel: 1, color: "#e2e8f0" },
   { id: "baby", name: "Baby Slime", src: "/pets/stage-2-baby.png", minLevel: 5, color: "#22c55e" },
@@ -2537,6 +2538,7 @@ function PetCenter({
   // so misses actually register visually — previously 420ms was too brief for
   // players focused on the tiles to notice.
   const [reaction, setReaction] = useState<"idle" | "jump" | "wilt">("idle");
+  useEffect(() => { preloadPetFaces(pet); }, [pet]);
   const [bubble, setBubble] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2634,12 +2636,12 @@ function PetCenter({
           display: "flex", alignItems: "flex-end", justifyContent: "center",
           transformOrigin: "50% 100%",
           filter: reaction === "wilt"
-            ? "grayscale(0.85) brightness(0.5) saturate(0.4)"
+            ? "grayscale(0.35) brightness(0.86)"
             : "none",
           transition: "filter 0.2s",
         }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={pet.src} alt="" draggable={false}
+          <img src={petFrame(pet, reaction === "wilt" ? "sad" : reaction === "jump" ? "joy" : "happy")} alt="" draggable={false}
             style={{
               width: "100%", height: "100%", objectFit: "contain",
               filter: `drop-shadow(0 0 12px ${pet.color}cc) drop-shadow(0 4px 6px rgba(0,0,0,0.5))`,

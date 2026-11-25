@@ -704,13 +704,18 @@ export default function StackTowerPage() {
   // Ticks 4×/sec, computes remaining time off gameStartMsRef so animation
   // pauses don't desync the countdown. At 0, finish() ends the run with the
   // current score (same path as a missed drop).
+  // `finish` is a new function on every render (it closes over the juice helpers, which are),
+  // so it is read through a ref. With `finish` as a dependency this effect restarted on every
+  // render, and each restart set the time again, which rendered again: a loop for the whole run.
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
   useEffect(() => {
     if (phase !== "playing") return;
     const tick = () => {
       const remaining = GAME_DURATION_MS - (Date.now() - gameStartMsRef.current);
       if (remaining <= 0) {
         setTimeLeftMs(0);
-        finish();
+        finishRef.current();
         return;
       }
       setTimeLeftMs(remaining);
@@ -718,7 +723,7 @@ export default function StackTowerPage() {
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [phase, finish]);
+  }, [phase]);
 
   // ═══ Vatar embed · record the finished run ═══════════════════════════════
   // The embed player has no browser wallet, so the on-chain submit effect below

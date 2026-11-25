@@ -42,3 +42,26 @@ test('a failed send stops the pass and marks nothing, so it is tried again later
   const odd = world([{ token: 'g', wallet: 'guest', game: 'stack', startedAt: at(30) }]);
   assert.deepEqual(await odd.rec.sweep(), { sent: 0, skipped: 1, failed: 0 });
 });
+
+test('a restart does not reset the day: the count is read back from the store, and nothing is sent while it cannot be read', async () => {
+  const runs = Array.from({ length: 6 }, (_, i) => ({ token: `r${i}`, wallet: W('a'), game: 'stack', startedAt: at(30 + i) }));
+  const marked = new Map<string, string>(); const sent: string[] = []; let n = 0; let down = false;
+  const make = () => createUnfinishedRecorder({
+    now: () => Date.parse('2026-11-26T12:00:00Z'), perPass: 2, perWalletPerDay: 3, perDay: 1500,
+    store: {
+      open: async (older, newer, limit) => runs.filter((r) => !marked.has(r.token) && r.startedAt < older && r.startedAt > newer).slice(0, limit),
+      mark: async (token, hash) => { marked.set(token, hash); return true; },
+      sent: async () => (down ? null : [...marked.keys()].map(() => W('A'))),
+    },
+    send: async (note) => { sent.push(note); return H(++n); },
+  });
+  assert.equal((await make().sweep()).sent, 2);
+  // the server restarts: a new recorder with an empty memory
+  const second = make();
+  assert.equal((await second.sweep()).sent, 1, 'two were already sent for this player today, so only one more');
+  assert.equal(second.stats().sentToday, 3);
+  assert.equal((await make().sweep()).sent, 0, 'and a third restart sends none');
+  down = true;
+  assert.deepEqual(await make().sweep(), { sent: 0, skipped: 0, failed: 0 }, 'limits unknown: nothing is sent');
+  assert.equal(sent.length, 3);
+});

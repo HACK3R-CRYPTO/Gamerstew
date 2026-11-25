@@ -124,12 +124,14 @@ export default function RestoreDirector() {
     // fastest-time leaderboard — but the cap still rejects the multi-second
     // spike of the first frame after a mode switch / tab stall, which would
     // otherwise blow past MAX_TIME and end the run the instant you press Play.
+    if (store.hold) { resetTiming(); return; } // the player is deciding on one more life: nothing moves on
     elapsed.current += Math.min(rawDt, 0.25);
 
     // ── GAME OVER: the road wins when your last heart is gone ───────────────
     // Lives are spent by car hits (Traffic.tsx). When they run out, NEPA keeps
     // the night — end the run with partial (coverage) credit.
     if (store.lives <= 0) {
+      if (store.canRevive && !store.revived) { store.setLive({ hold: true }); worldControls.stun = 999; resetTiming(); return; }
       resetTiming();
       worldControls.guide.active = false;
       worldControls.shake = 0.4;

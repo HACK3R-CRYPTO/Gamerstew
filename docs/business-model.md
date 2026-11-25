@@ -129,15 +129,23 @@ In every game, a round left with nothing scored is not handed in, so opening and
 
 ## 14. Shop items the owner has to switch on
 
-The live shop contract sells items 1 to 6. Its owner is `0x2E33…7Ad1`, and only that wallet can add an item: `setPerk(id, price in wei, false)` on `0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5`. Proposed, all consumable:
+The live shop contract sells items 1 to 6. Its owner is `0x2E33…7Ad1`, and only that wallet can add an item, by calling `setPerk(id, price in wei, false)` on `0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5`.
 
-| Id | Item | Proposed price |
-|---|---|---|
-| 7 | Word Ladder: reveal the next rung | 50 G$ |
-| 8 | Street Strike: bowl the last throw again | 50 G$ |
-| 9 | UP NEPA 3D: one more life | 100 G$ |
-| 10 | Energy: 5 more ranked plays | 100 G$ |
-| 11 | Streak freeze | 150 G$ |
-| 12 | Pet food | 30 G$ |
+The app reads the price from the contract (`hooks/useLivePerk.ts`). An item with no price is never offered, so an item can be built and shipped before it is switched on, and the owner can change a price without an app release.
 
-The app side of items 7 to 12 is not built. Nothing should be set on the contract until each one is, or players could buy something that does nothing.
+| Id | Item | State | Proposed price |
+|---|---|---|---|
+| 9 | UP NEPA 3D: one more life | **Built, waiting to be switched on** | 100 G$ |
+| 10 | Energy: 5 more ranked plays | Not built | 100 G$ |
+| 11 | Streak freeze | Not built | 150 G$ |
+| 12 | Pet food | Not built | 30 G$ |
+
+To switch on item 9 at 100 G$, the owner wallet sends, on Celo:
+
+```bash
+cast send 0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5 "setPerk(uint16,uint256,bool)" 9 100000000000000000000 false --rpc-url https://forno.celo.org --private-key $OWNER_KEY
+```
+
+**One more life.** When the last life goes in a Restore round, the round is held: the clock, the breakers and the traffic all stop while the player decides (8 seconds). Taking the life gives one life back and three seconds of safety. One offer a round. In a ranked round the breakers lit before the extra life are what is handed in, the same rule as every other continue. Not offered to guests or in friend rooms. Code: `hold` in `app/world/restore.ts`, `takeLife` in `app/world/World.tsx`.
+
+**Ids 7 and 8 are left free.** A paid hint in Word Ladder and a paid re-bowl in Street Strike were considered and dropped. A continue is fair when the run is already over: the score before it can be ranked and the rest is for fun. Neither game has that moment. A re-bowl in the middle of a ranked card, or a hint with no cost in points, would buy rank. Word Ladder already has free hints that cost points. What those two games can sell fairly is access, not help: energy and cup tickets.

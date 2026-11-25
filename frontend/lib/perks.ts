@@ -13,7 +13,7 @@ export type PerkKind = "save" | "retry" | "cosmetic";
 
 export interface Perk {
   id: number;              // on-chain perkId (uint16)
-  game: "rhythm" | "stack" | "simon" | "challenge-ai";
+  game: "rhythm" | "stack" | "simon" | "challenge-ai" | "nepa3d" | "ladder" | "strike";
   gameLabel: string;       // human game name
   name: string;            // perk display name
   blurb: string;           // one-line "what it does"
@@ -54,6 +54,20 @@ export const PERKS: Perk[] = [
     id: 2, game: "rhythm", gameLabel: "Rhythm Rush",
     name: "Neon Trail", blurb: "A glowing neon trail on your notes. Yours forever.",
     priceG$: parseEther("750"), priceLabel: "750 G$", kind: "cosmetic", emoji: "✨",
+  },
+];
+
+// Built in the app, not yet priced on the contract. The shop owner switches one on with
+// setPerk(id, price, false); until then perkPrice(id) is 0 and the app never offers it
+// (hooks/useLivePerk.ts reads the price, and uses the contract's price, not this one).
+// Ids 7 and 8 are left free. A paid hint in Word Ladder and a paid re-bowl in Street Strike were
+// considered and dropped: neither game has a moment where the run is already over, so in a ranked
+// game either one would buy rank. Word Ladder already has free hints that cost points.
+export const UPCOMING_PERKS: Perk[] = [
+  {
+    id: 9, game: "nepa3d", gameLabel: "UP NEPA 3D",
+    name: "One more life", blurb: "Out of lives? Get back up and keep the lights on.",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "save", emoji: "💡",
   },
 ];
 
