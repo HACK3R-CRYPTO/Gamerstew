@@ -1,6 +1,6 @@
 # GameArena business model: the Daily Pot
 
-> Status: PROPOSED on 2026-11-26, revised the same day after the owner's notes. **Everything is priced in G$. There are no dollar or stablecoin items.** Built so far: a continue that never buys or costs rank, a transaction for every unfinished run, and leaving a ranked round finishing it in every game (section 13). The pot, energy and the new items are not built, and wait on section 9.
+> Status on 2026-11-27: **the owner approved the pot at 70% to winners, 20% to the treasury, 10% to the UBI pool.** Everything is priced in G$; there are no dollar or stablecoin items. The pot and energy are BUILT and SWITCHED OFF: section 15 is how to switch them on. Also built: a continue that never buys or costs rank, a transaction for every unfinished run, and leaving a ranked round finishing it (section 13).
 
 ## 1. The idea in one paragraph
 
@@ -31,11 +31,11 @@ For each G$ a player spends on energy:
 
 | Share | Goes to | Note |
 |---|---|---|
-| 60% | That day's pot | Back to players |
+| 70% | That day's pot | Back to players |
 | 20% | GameArena | Revenue |
-| 20% | GoodDollar UBI pool | Exists today: the shop contract already sends 20% there |
+| 10% | GoodDollar UBI pool | The shop contract sends 20% there today. The owner changes it to 10% with one command (section 15) |
 
-These three numbers are the dials. They are a proposal, and the first thing to tune with real play.
+The owner set these on 2026-11-27. The pot's share is the `POT_SHARE_BPS` setting on the server (7000). The UBI share is set on the shop contract. The treasury keeps what is left.
 
 The pot is also **seeded**. Today the treasury puts 126,000 G$ a week into the community challenge. That budget is redirected: about 18,000 G$ a day opens each pot, so the first player of the day already has something to play for. As player spending grows, the seed is reduced.
 
@@ -149,3 +149,32 @@ cast send 0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5 "setPerk(uint16,uint256,boo
 **One more life.** When the last life goes in a Restore round, the round is held: the clock, the breakers and the traffic all stop while the player decides (8 seconds). Taking the life gives one life back and three seconds of safety. One offer a round. In a ranked round the breakers lit before the extra life are what is handed in, the same rule as every other continue. Not offered to guests or in friend rooms. Code: `hold` in `app/world/restore.ts`, `takeLife` in `app/world/World.tsx`.
 
 **Ids 7 and 8 are left free.** A paid hint in Word Ladder and a paid re-bowl in Street Strike were considered and dropped. A continue is fair when the run is already over: the score before it can be ranked and the rest is for fun. Neither game has that moment. A re-bowl in the middle of a ranked card, or a hint with no cost in points, would buy rank. Word Ladder already has free hints that cost points. What those two games can sell fairly is access, not help: energy and cup tickets.
+
+## 15. The pot and energy: built, and how to switch them on (2026-11-27)
+
+Both are in the code and switched off. Nothing changes for players until the steps below are done. They can be switched on one at a time: energy first, the pot later, or both together.
+
+**What is built**
+
+| Part | What it does | Where |
+|---|---|---|
+| Energy | 5 free ranked runs a day, then runs bought as shop item 10 (5 runs a pack, kept until used). Counted in the database, exactly | `games-backend/src/modules/energy`, `2026-11-27c_energy.sql` |
+| Out of energy | One sheet, from any game: when the free runs come back, a pack if the shop sells one, and "Play for fun instead". It never blocks play | `frontend/components/EnergySheet.tsx` |
+| The pot | One game a day in turn (Rhythm Rush, Simon Memory, Word Ladder, Street Strike). Pot = 70% of that day's energy spend + the seed + what rolled over | `games-backend/src/modules/pot`, `2026-11-27b_pot.sql` |
+| Who wins | The top third of **verified** players, by their best **confirmed** score that day. First place gets the most, the last paid place the least, in whole G$ that add up to the pot exactly. Fewer than 5 players and the pot rolls into tomorrow | `pot/rules.ts` |
+| Home screen | The pot, the time left, the game of the day, where the player stands and what that place pays | `frontend/components/home/PotCard.tsx` |
+| Admin | Each closed day, what was spent, what was paid, what is still owed | Admin, "Runs and shop" |
+
+**The server never pays a prize.** Closing a day writes each prize into the payout ledger as *pending*. The owner pays them and marks them paid on the Payouts page, exactly as with the weekly prizes today. This is on purpose: the code that decides who won is new, and money should not move on new code without a person looking first.
+
+**To switch it on**
+
+1. Run two migrations in Supabase: `2026-11-27b_pot.sql` and `2026-11-27c_energy.sql`.
+2. Put energy on sale, from the shop owner's wallet: `scripts/set-perk.sh 10 100` (item 10, 100 G$).
+3. To send 10% to the UBI pool instead of 20%: `scripts/set-shop-split.sh 10`. This changes the split for **every** shop item, continues included. Without it the numbers are 70% pot, 10% treasury, 20% UBI.
+4. On Railway, set `ENERGY_ENABLED=true` and `POT_ENABLED=true`. Optional: `POT_SEED` (G$ added to every day's pot), `POT_MIN_PLAYERS` (default 5), `ENERGY_FREE_PER_DAY` (default 5), `POT_GAMES`.
+5. Each morning, pay the pending prizes listed under "Daily pot" in the admin.
+
+**What has not been tested for real:** a purchase of an energy pack with a real wallet, and a day closing on the live database. Both were tested against a local database and with the server's own tests (the split adds up exactly, a day closes only once, a failed read closes nothing). Buy one pack yourself on the first day and check the run count goes up by 5.
+
+**Still open:** whether to seed the pot from the weekly challenge budget (section 9, decision 3), and legal advice once pots grow (decision 6).

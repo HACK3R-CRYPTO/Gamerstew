@@ -13,7 +13,7 @@ export type PerkKind = "save" | "retry" | "cosmetic";
 
 export interface Perk {
   id: number;              // on-chain perkId (uint16)
-  game: "rhythm" | "stack" | "simon" | "challenge-ai" | "nepa3d" | "ladder" | "strike";
+  game: "rhythm" | "stack" | "simon" | "challenge-ai" | "nepa3d" | "ladder" | "strike" | "all";
   gameLabel: string;       // human game name
   name: string;            // perk display name
   blurb: string;           // one-line "what it does"
@@ -68,6 +68,11 @@ export const UPCOMING_PERKS: Perk[] = [
     id: 9, game: "nepa3d", gameLabel: "UP NEPA 3D",
     name: "One more life", blurb: "Out of lives? Get back up and keep the lights on.",
     priceG$: parseEther("100"), priceLabel: "100 G$", kind: "save", emoji: "💡",
+  },
+  {
+    id: 10, game: "all", gameLabel: "Every game",
+    name: "Energy pack", blurb: "5 more ranked runs, in any game. They do not expire.",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "retry", emoji: "⚡",
   },
 ];
 

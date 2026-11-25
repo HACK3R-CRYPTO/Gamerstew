@@ -32,6 +32,7 @@ const GAME_ACCENT: Record<Perk["game"], string> = {
   nepa3d: "#b45309",
   ladder: "#0f766e",
   strike: "#7c3aed",
+  all: "#6d28d9",
 };
 
 const fmtG = (v: bigint) => (Number(v) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });

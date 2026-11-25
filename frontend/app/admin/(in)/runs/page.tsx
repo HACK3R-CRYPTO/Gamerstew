@@ -17,6 +17,7 @@ interface Runs {
   pokes: { times: number; players: number }; moods: { happy: number; sad: number; sleepy: number; breaks_today: number };
   shop: { item: number; sold: number; buyers: number; total: number; treasury: number; ubi: number }[];
 }
+interface PotReport { days: { day: string; game: string; spend: number; seed: number; carried_in: number; pot: number; players: number; winners: number; status: "paid" | "rolled"; carried_out: number }[]; paid_out: number; energy_spend: number; owed: number; owed_to: number; prizes: { day: string; wallet: string; amount: number; reason: string; status: string; tx_hash: string | null }[] }
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "–");
 const gameName = (g: string) => GAME_NAME[g] ?? g;
 
@@ -32,7 +33,8 @@ async function shopPrices(ids: number[]): Promise<Map<number, bigint> | null> {
 export default async function RunsPage({ searchParams }: { searchParams: SP }) {
   const r = rangeOf(await searchParams);
   const items = [...PERKS, ...UPCOMING_PERKS].sort((a, b) => a.id - b.id);
-  const [res, prices] = await Promise.all([adminRead<Runs>("runs", { from: r.from, to: r.to }), shopPrices(items.map((p) => p.id))]);
+  const [res, prices, potRes] = await Promise.all([adminRead<Runs>("runs", { from: r.from, to: r.to }), shopPrices(items.map((p) => p.id)), adminRead<PotReport>("pot", { from: r.from, to: r.to })]);
+  const pot = potRes.ok ? potRes.data : null;
   if (!res.ok || !res.data) {
     return (
       <Page title="Runs and shop" right={<RangeLinks base="/admin/runs" days={r.days} />}>
@@ -91,6 +93,27 @@ export default async function RunsPage({ searchParams }: { searchParams: SP }) {
           {withPets === 0 ? <NotYet what="Nothing yet" why="no players yet." /> : <Bars rows={[{ label: "Happy", value: Number(moods.happy) }, { label: "Sad", value: Number(moods.sad) }, { label: "Asleep", value: Number(moods.sleepy) }]} />}
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "rgba(27,13,66,0.62)" }}>Pets poked in these days: {num(d.pokes.times)} times by {num(d.pokes.players)} players.</p>
         </Card>
+        <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
+          <Card title="Daily pot" note="One game a day carries a pot: 70% of that day's energy spend, plus the seed, plus whatever rolled over. The top third of verified players split it. The server never pays: each prize is written as a pending payout, and shows as owed here until it is paid on the Payouts page.">
+            {!pot ? <NotYet what="Not set up yet" why="run games-backend/supabase-migrations/2026-11-27b_pot.sql in Supabase. The pot itself stays off until POT_ENABLED is set to true on the server." />
+              : pot.days.length === 0 ? <NotYet what="No pot has closed yet" why="a day is closed just after midnight UTC, once POT_ENABLED is true on the server." />
+              : (
+                <>
+                  <Grid min={150}>
+                    <Stat label="Paid to players" value={`${num(pot.paid_out)} G$`} sub="pots that closed and paid" />
+                    <Stat label="Energy bought" value={`${num(pot.energy_spend)} G$`} sub="on the days shown" />
+                    <Stat label="Still owed" value={`${num(pot.owed)} G$`} sub={`${num(pot.owed_to)} players waiting`} tone={Number(pot.owed) > 0 ? "warn" : "good"} />
+                  </Grid>
+                  <div style={{ height: 10 }} />
+                  <Table rows={pot.days} cols={[
+                    { head: "Day", cell: (x) => x.day }, { head: "Game", cell: (x) => gameName(x.game) }, { head: "Energy bought", cell: (x) => `${num(x.spend)} G$`, right: true }, { head: "Seed", cell: (x) => `${num(x.seed)} G$`, right: true },
+                    { head: "Rolled in", cell: (x) => `${num(x.carried_in)} G$`, right: true }, { head: "Pot", cell: (x) => `${num(x.pot)} G$`, right: true }, { head: "Players", cell: (x) => num(x.players), right: true },
+                    { head: "Result", cell: (x) => (x.status === "paid" ? `${num(x.winners)} prizes` : `rolled ${num(x.carried_out)} G$ forward`), right: true },
+                  ]} />
+                </>
+              )}
+          </Card>
+        </div>
         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}><Card title="Shop items" note="The price is read from the shop contract now. An item with no price is built but not on sale: its owner switches it on with scripts/set-perk.sh. Sales are read from the chain by our own reader.">
           <Table rows={items} cols={[
             { head: "Item", cell: (x) => `${x.id} · ${x.name}` }, { head: "Game", cell: (x) => x.gameLabel },

@@ -102,6 +102,16 @@ export async function setCosmeticEquip(
   }
 }
 
+// A player's energy: free ranked runs left today, and bought ones. `on: false` when energy is switched off.
+export async function getEnergy(wallet: string): Promise<{ on: boolean; free?: number; freeLeft?: number; bought?: number; left?: number; resetsAt?: number; packPlays?: number }> {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return { on: false };
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/energy/${wallet}`, { headers: { 'x-internal-secret': INTERNAL_SECRET ?? '' }, cache: 'no-store' });
+    const j = await res.json();
+    return j && j.on === true ? j : { on: false };
+  } catch { return { on: false }; }
+}
+
 // Read a player's save/retry stock counts, keyed by perk id.
 export async function getPerkInventory(
   wallet: string,

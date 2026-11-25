@@ -223,3 +223,5 @@ Migration for all of section 8: `games-backend/supabase-migrations/2026-11-25b_a
 | Shop items | Price on the contract now, and what each item sold | `perkPrice` read from the shop contract by the page; sales from `purchases`, filled by our own chain reader |
 
 The three event-based cards start from the day the page began sending those events. They are counts of browsers, not wallets.
+
+The same page has a **Daily pot** card (needs `2026-11-27b_pot.sql`): every closed day with the energy bought, the seed, what rolled in, the pot, the players and the result, and the G$ still owed to winners. "Still owed" is the sum of pending payouts written by the pot; it goes to zero as they are marked paid on the Payouts page.

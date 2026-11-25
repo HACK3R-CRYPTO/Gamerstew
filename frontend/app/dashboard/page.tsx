@@ -14,6 +14,7 @@ import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import InstallPrompt from "@/components/InstallPrompt";
+import PotCard from "@/components/home/PotCard";
 import FriendsStrip from "@/components/home/FriendsStrip";
 import LiveNow from "@/components/home/LiveNow";
 import { useSignMessage } from "wagmi";
@@ -537,6 +538,8 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {/* today's pot: shown only while the pot is switched on */}
+        <PotCard />
         {/* who is online right now, and a way into friends */}
         <FriendsStrip />
         {/* rounds being played right now, for anyone to watch */}
