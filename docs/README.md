@@ -11,6 +11,7 @@ What each document is, and whether it describes the code as it is today.
 | [friends-and-watching.md](friends-and-watching.md) | The friends list, inviting a friend into a room, watching a room live, and the guest limit on every game |
 | [world-on-phones.md](world-on-phones.md) | UP NEPA 3D on phones: why it was not sharp, the camera and stick, and the small-screen fixes |
 | [business-model.md](business-model.md) | PROPOSED: the Daily Pot. Players buy plays, the day's spend is the day's prize, the house keeps a share. Decisions waiting on the owner |
+| [sign-in-costs.md](sign-in-costs.md) | PLAN: new email sign-ups move from Privy to Magic, own wallets sign in directly, old Privy players stay. Not started |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |
