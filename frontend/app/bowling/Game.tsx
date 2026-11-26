@@ -183,6 +183,12 @@ function Bottle({ i, api }: { i: number; api: React.MutableRefObject<(RapierRigi
   );
 }
 
+/** how far to the side of the tyre the camera stands while aiming, in metres */
+const CAM_SIDE = 0.16;
+/** the "swipe up to roll" hint on the page, moved each frame to sit over the tyre */
+const swipeHint: { el: HTMLDivElement | null } = { el: null };
+const hintAt = new THREE.Vector3();
+
 // The tyre: follows the physics ball, stays upright, spins with travel. The
 // model is ours (tools/blender/tyre.py): chunky tread, white-wall, steel rim.
 const tyreUrl = (id: string) => `/world/models/tyre-${id}.glb`;
@@ -222,11 +228,13 @@ function Tyre({ ball, paint, id, r }: { ball: React.MutableRefObject<RapierRigid
     const dist = Math.hypot(p.x - last.current.x, p.z - last.current.z);
     last.current.set(p.x, p.y, p.z);
     wheel.current.rotation.x -= (dist / r) * Math.sign(-v.z || 1);
-    // Rolling: face along travel and lean into the hook. Waiting at the line: turn
-    // three-quarters to the camera so you see the white-wall and the rim, not just
-    // the dark edge of the tread, and rock gently so it feels alive.
+    // Rolling: face along travel and lean into the hook. Waiting at the line: point
+    // straight down the lane, because a tyre goes where it faces. It used to sit turned
+    // three-quarters to the camera to show off the rim, and players read that as "it will
+    // roll off to the side" beside a straight aim line. A small rock from side to side
+    // still shows a glint of the rim each way, so it feels alive without looking crooked.
     const sp = Math.hypot(v.x, v.z);
-    const want = sp > 0.4 ? Math.atan2(-v.x, -v.z) : 0.62 + Math.sin(performance.now() / 700) * 0.06;
+    const want = sp > 0.4 ? Math.atan2(-v.x, -v.z) : Math.sin(performance.now() / 700) * 0.09;
     g.current.rotation.y += (want - g.current.rotation.y) * (sp > 0.4 ? 0.35 : 0.1);
     g.current.rotation.z = THREE.MathUtils.clamp(-v.x * 0.06, -0.3, 0.3);
   });
@@ -844,9 +852,16 @@ function Brain({
     // camera: sits behind the release line, rides after the tyre, stops short of the bottles
     const target = ph === "aim" || ph === "over" || ph === "lobby" ? 2.3 : THREE.MathUtils.clamp(p.z + 3.2, -LANE_LEN + 3.4, 2.3);
     camZ.current += (target - camZ.current) * Math.min(1, dt * (ph === "aim" ? 3 : 5));
-    const rollX = (ph === "aim" || ph === "lobby" ? aim.current * 0.35 : THREE.MathUtils.clamp(p.x * 0.35, -0.4, 0.4)) + 0.42;
+    // The camera stands a little to the right of the tyre, enough to catch a sliver of the rim so it
+    // reads as a tyre and not a black slab, not so much that the lane looks skewed (it was 0.42).
+    const rollX = (ph === "aim" || ph === "lobby" ? aim.current * 0.35 : THREE.MathUtils.clamp(p.x * 0.35, -0.4, 0.4)) + CAM_SIDE;
     camera.position.set(rollX, 1.42 + (ph === "aim" || ph === "lobby" ? 0 : 0.28), camZ.current);
-    camera.lookAt((rollX - 0.42) * 0.6, 0.32, camZ.current - 6.5);
+    camera.lookAt((rollX - CAM_SIDE) * 0.6, 0.32, camZ.current - 6.5);
+    // the "swipe up" hint starts AT the tyre, wherever the tyre is on this screen
+    if (swipeHint.el && (ph === "aim" || ph === "lobby")) {
+      hintAt.set(aim.current, tyreRef.current.r, START_Z).project(camera);
+      swipeHint.el.style.transform = `translateX(${(hintAt.x * 50).toFixed(2)}vw)`;
+    }
   });
 
   return (
@@ -1749,7 +1764,7 @@ export default function Game() {
           tyre, again and again, until the player rolls. It comes back if they stall. */}
       {canPlay && (!started || idle) && (
         <div aria-hidden style={{ position: "absolute", left: 0, right: 0, top: "36%", bottom: "calc(176px + env(safe-area-inset-bottom))", zIndex: 9, pointerEvents: "none", display: "flex", justifyContent: "center" }}>
-          <div style={{ position: "relative", width: 120, height: "100%" }}>
+          <div ref={(el) => { swipeHint.el = el; }} style={{ position: "relative", width: 120, height: "100%" }}>
             <div style={{ position: "absolute", left: 57, top: "8%", bottom: "6%", width: 6, borderRadius: 3, background: `repeating-linear-gradient(180deg, ${GA.goldLight} 0 10px, transparent 10px 20px)`, opacity: 0.85, animation: "ssDash 0.5s linear infinite", filter: `drop-shadow(0 0 8px ${GA.gold})` }} />
             <div style={{ position: "absolute", left: 60, top: "8%", width: 0, height: 0, marginLeft: -15, marginTop: -22, borderLeft: "15px solid transparent", borderRight: "15px solid transparent", borderBottom: `24px solid ${GA.goldLight}`, filter: `drop-shadow(0 0 10px ${GA.gold})` }} />
             <div style={{ position: "absolute", left: 60, bottom: "0%", marginLeft: -27, fontSize: 54, lineHeight: 1, animation: "ssSwipe 1.5s cubic-bezier(.5,0,.2,1) infinite", filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.7))" }}>👆</div>
