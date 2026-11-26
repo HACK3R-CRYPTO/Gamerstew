@@ -563,3 +563,24 @@ test('a gasless score keeps its transaction with the run, so the server can fini
   broken.deps.sessions.noteTx = async () => { throw new Error('column missing'); };
   assert.strictEqual((await broken.svc.signScore(rhythmBody)).status, 200);
 });
+
+test('energy: with it on, a run that has none is refused with a clear answer and no ticket; with one, the reply says what is left', async () => {
+  const { createEnergy } = await import('../energy/service');
+  let left = 1; let gaveBack = 0;
+  const energy = createEnergy({
+    free: 1, packPlays: 5, now: () => Date.parse('2026-11-27T10:00:00Z'),
+    store: {
+      take: async () => (left > 0 ? { ok: true, paid: false, used: 1 - --left, bought: 0 } : { ok: false, paid: false, used: 1, bought: 0 }),
+      giveBack: async () => { gaveBack++; left++; }, state: async () => ({ used: 1 - left, bought: 0 }), add: async () => 5,
+    },
+  });
+  const w = world(); const svc = createScoreService({ ...w.deps, energy });
+  const first = await svc.startGame({ wallet: '0x' + 'b'.repeat(40), game: 'rhythm' });
+  assert.equal(first.status, 200); assert.equal((first.body.energy as { left: number }).left, 0);
+  const second = await svc.startGame({ wallet: '0x' + 'b'.repeat(40), game: 'rhythm' });
+  assert.equal(second.status, 402); assert.equal(second.body.error, 'out_of_energy'); assert.equal(second.body.sessionToken, undefined);
+  assert.equal(gaveBack, 0);
+  // and without energy in the dependencies nothing changes
+  const plain = await createScoreService(w.deps).startGame({ wallet: '0x' + 'b'.repeat(40), game: 'rhythm' });
+  assert.equal(plain.status, 200); assert.equal(plain.body.energy, undefined);
+});

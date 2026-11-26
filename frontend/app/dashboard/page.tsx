@@ -14,6 +14,9 @@ import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import InstallPrompt from "@/components/InstallPrompt";
+import WhatsNewModal from "@/components/WhatsNewModal";
+import PotCard from "@/components/home/PotCard";
+import StreakFlame from "@/components/StreakFlame";
 import FriendsStrip from "@/components/home/FriendsStrip";
 import LiveNow from "@/components/home/LiveNow";
 import { useSignMessage } from "wagmi";
@@ -287,7 +290,7 @@ export default function DashboardPage() {
   // Was hardcoded `LV 1` + `0-day streak` in the WELCOME pills · which made
   // them look fake even for players with real progression. Refetches when
   // the wallet flips so a wallet swap shows that wallet's numbers.
-  const [userMeta, setUserMeta] = useState<{ level: number; streak: number } | null>(null);
+  const [userMeta, setUserMeta] = useState<{ level: number; streak: number; playedToday: boolean; frozen: boolean } | null>(null);
   // Per-game loading overlay state · same pattern as /games/page.tsx ·
   // holds the tapped game's identity so the loader paints its art/title
   // /glow during the hub → lobby transition.
@@ -390,7 +393,7 @@ export default function DashboardPage() {
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (cancelled || !d) return;
-          setUserMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0) });
+          setUserMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0), playedToday: d.playedToday === undefined ? true : !!d.playedToday, frozen: !!d.streakFrozen });
         })
         .catch(() => {});
     };
@@ -530,13 +533,15 @@ export default function DashboardPage() {
           {connected && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {/* Live streak · "🔥 New" reads warmer than "0-day streak". */}
-              <Pill color={PILL_MUTED}>🔥 {userMeta && userMeta.streak > 0 ? `${userMeta.streak}d` : "New"}</Pill>
+              <Pill color={PILL_MUTED}><StreakFlame streak={userMeta?.streak ?? 0} playedToday={userMeta?.playedToday ?? true} frozen={userMeta?.frozen ?? false} size={12} suffix="d" empty="New" /></Pill>
               <Pill color={PILL_MUTED}>LV {userMeta?.level ?? 1}</Pill>
               {me && me.peak > 0 && <Pill color={PILL_MUTED}>PEAK {me.peak}</Pill>}
             </div>
           )}
         </div>
 
+        {/* today's pot: shown only while the pot is switched on */}
+        <PotCard />
         {/* who is online right now, and a way into friends */}
         <FriendsStrip />
         {/* rounds being played right now, for anyone to watch */}
@@ -588,6 +593,8 @@ export default function DashboardPage() {
       <AppBottomNav wide={isDesktop} tone="light" />
       {/* offers to put GameArena on the home screen as an app */}
       <InstallPrompt />
+      {/* news from GameArena, once per message: see components/WhatsNewModal.tsx */}
+      <WhatsNewModal level={userMeta?.level ?? 0} />
 
       {/* Per-game loading overlay · branded transition while the lobby's
           top-3 leaderboard cache warms up. Each game shows its own

@@ -40,5 +40,11 @@ export function supabaseInbox(db: Db): InboxStore {
       if (error && error.code === '23505') return { ok: true, created: false }; // already announced under this key
       return { ok: false, created: false };
     },
+    async latestBroadcast() {
+      const { data, error } = await db.from('notifications_feed').select('id, category, title, body, url, sent_at').is('wallet_address', null).in('category', ['whats_new', 'announcement']).order('sent_at', { ascending: false }).limit(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = error ? null : ((data ?? []) as any[])[0];
+      return r ? { id: r.id, kind: null, category: r.category, title: r.title, body: r.body, url: r.url, sent_at: r.sent_at, is_broadcast: true, read: false } : null;
+    },
   };
 }

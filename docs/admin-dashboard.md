@@ -206,3 +206,22 @@ Sidebar grouped into Growth, Money and Records. Headline cards with a trend line
 
 Migration for all of section 8: `games-backend/supabase-migrations/2026-11-25b_admin_chain_truth.sql`, run after the first one.
 
+
+## Runs and shop (added 2026-11-26)
+
+`/admin/runs`. Needs `games-backend/supabase-migrations/2026-11-27_admin_runs.sql`.
+
+| Card | What it answers | Where the number comes from |
+|---|---|---|
+| Runs started, finished, left unfinished | What happens to a run after it starts | `game_sessions`, the server's record of every ranked run opened. Started = finished + unfinished, apart from the last 15 minutes |
+| Unfinished, with a transaction | Whether every unfinished run got its note transaction | `game_sessions.tx_hash` on a run that was never handed in |
+| By game | The same, per game, with players, average and best | `game_sessions` |
+| Word Ladder has no ceiling | Whether the timed round is spreading scores | Word Ladder scores above 100 |
+| Leaving a ranked round | How often players end a round early, and how often there was a score to keep | `run_quit` events from the page |
+| Continues | Offered, bought, turned down, and how many buyers were in a ranked run | `continue_offer`, `continue_bought`, `continue_declined` events from the continue overlay |
+| How the pets feel today | Happy, sad, asleep, and how many streaks end tonight | `users.last_play_date` and `play_streak`, the same rule the app uses |
+| Shop items | Price on the contract now, and what each item sold | `perkPrice` read from the shop contract by the page; sales from `purchases`, filled by our own chain reader |
+
+The three event-based cards start from the day the page began sending those events. They are counts of browsers, not wallets.
+
+The same page has a **Daily pot** card (needs `2026-11-27b_pot.sql`): every closed day with the energy bought, the seed, what rolled in, the pot, the players and the result, and the G$ still owed to winners. "Still owed" is the sum of pending payouts written by the pot; it goes to zero as they are marked paid on the Payouts page.

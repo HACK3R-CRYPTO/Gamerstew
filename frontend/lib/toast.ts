@@ -1,3 +1,4 @@
+import { outOfEnergy } from "@/lib/energy";
 // A small message that appears at the bottom of the screen and fades away.
 // Plain DOM, so any screen can call it without finding a place to render it.
 export function toast(message: string, ms = 4200): void {
@@ -20,6 +21,8 @@ export function toast(message: string, ms = 4200): void {
 
 /** What to tell a player when a ranked run could not be opened. */
 export function startProblem(error?: string): string {
+  // out of energy is not a fault: the sheet (components/EnergySheet.tsx) explains it and offers more
+  if (error === "out_of_energy") { outOfEnergy(); return "You have used today's free ranked runs."; }
   if (error && /unauthori|sign in/i.test(error)) return "Your sign-in has expired. Sign in again to play ranked.";
   return "Can't reach the game server, so this run can't be ranked right now. Try again, or play a free mode.";
 }

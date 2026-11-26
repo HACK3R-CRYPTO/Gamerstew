@@ -25,7 +25,7 @@ import { useGLTF, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { DEVICES, hands } from "./game";
 import { useAppStore } from "./appStore";
-import { worldControls } from "./controls";
+import { worldControls, cameraMode } from "./controls";
 import { resolveObstacles } from "./obstacles";
 
 const CHAR_URL = "/world/models/player.glb"; // Mixamo realistic character (ch12)
@@ -295,7 +295,9 @@ export default function Player() {
     const byHand = performance.now() - worldControls.lookedAt < 500;
     const ang = Math.atan2(sx0, -sz0);
     let turned = ang - held.current.ang; if (turned > Math.PI) turned -= 2 * Math.PI; if (turned < -Math.PI) turned += 2 * Math.PI;
-    if (!touch || !pushed || byHand || !held.current.on || Math.abs(turned) > 0.6) {
+    // (with the camera left to the player, there is nothing turning by itself: the stick is read against the live view)
+    const follow = touch && cameraMode() === "follow";
+    if (!follow || !pushed || byHand || !held.current.on || Math.abs(turned) > 0.6) {
       camForward.current.copy(camLive.current);
       held.current.on = pushed; held.current.ang = ang;
     }
@@ -545,7 +547,7 @@ export default function Player() {
     // off it is (about a second to come right round), never while they are flipping
     // a breaker or knocked down, and it waits a moment after they turn the view
     // themselves, so a player who does want to look around keeps what they chose.
-    if (touch && hasInput && !gesturing.current && !reacting.current && performance.now() - worldControls.lookedAt > 1600) {
+    if (follow && hasInput && !gesturing.current && !reacting.current && performance.now() - worldControls.lookedAt > 1600) {
       const off = Math.atan2(camLive.current.z * move.current.x - camLive.current.x * move.current.z, camLive.current.x * move.current.x + camLive.current.z * move.current.z); // signed angle from the view to the run, about the up axis
       if (Math.abs(off) > 0.05) {
         const step = Math.sign(off) * Math.min(Math.abs(off), (0.7 + 2.3 * Math.min(1, Math.abs(off) / 1.6)) * dt);

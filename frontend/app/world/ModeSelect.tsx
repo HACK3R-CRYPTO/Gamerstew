@@ -16,6 +16,10 @@
 // three sit side by side.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { cameraMode, setCameraMode, type CameraMode } from "./controls";
+import { HowToButton } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
+import GuestLine from "@/components/GuestLine";
 import { BLACKOUT, DUSK, GA } from "./theme";
 
 export type LobbyChoice = "restore" | "charge" | "roam";
@@ -129,8 +133,10 @@ const MODES: Mode[] = [
 // Modes that are planned but not built. Names only: no dates are promised.
 const SOON = ["Torch in the Dark", "Generator Hustle", "Power Thief"];
 
-export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode }) {
+export default function ModeSelect({ onPick, touch, friends, guestLeft = null }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode; /** free plays a guest has left; null for a signed-in player */ guestLeft?: number | null }) {
   const rail = useRef<HTMLDivElement>(null);
+  const [cam, setCam] = useState<CameraMode>("follow");
+  useEffect(() => { setCam(cameraMode()); }, []);
   // Always open on the first card, squarely in view. Some phone browsers bring a
   // scroller back half-way between two cards, which left the first one cut off.
   useEffect(() => { const r = rail.current; if (!r) return; const fix = () => { r.scrollLeft = 0; }; fix(); const t = window.setTimeout(fix, 350); return () => window.clearTimeout(t); }, []);
@@ -158,7 +164,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
           <article key={m.id} className={`nl-card ${m.tone}`} style={{ animationDelay: `${i * 70}ms` }}>
             <div className="nl-art">{m.art}</div>
             <div className="nl-body">
-              <div className="nl-kicker">{m.kicker}</div>
+              <div className="nl-kicker">{m.kicker}<b className={m.id === "restore" ? "nl-rank" : "nl-rank fun"}>{m.id === "restore" ? "RANKED" : "FOR FUN"}</b></div>
               <h2 style={{ fontFamily: DISPLAY }}>{m.title}</h2>
               <p className="nl-goal">{m.goal}</p>
               <ol>
@@ -191,6 +197,14 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         {[...MODES.map((m) => m.id), "soon"].map((id, i) => <button key={id} className={i === at ? "on" : ""} onClick={() => go(i)} tabIndex={-1} />)}
       </div>
       {friends && <div className="nl-friends">{friends}</div>}
+      {/* who turns the camera: the game, or the player's right thumb. Chosen here, where they are about to play. */}
+      {touch && (
+        <button className="nl-cam" onClick={() => { const next = cam === "follow" ? "manual" : "follow"; setCameraMode(next); setCam(next); }} aria-label={`Camera: ${cam === "follow" ? "follows you" : "you turn it"}. Tap to change.`}>
+          <span>🎥 Camera</span><b>{cam === "follow" ? "Follows you" : "You turn it"}</b><i>Change</i>
+        </button>
+      )}
+      <div style={{ alignSelf: "center", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}><HowToButton game="nepa3d" dark /><EnergyLine dark /></div>
+      <GuestLine left={guestLeft} dark />
       <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
@@ -235,6 +249,10 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         .nl-dots { display: flex; justify-content: center; gap: 6px; }
         .nl-dots button { width: 7px; height: 7px; padding: 0; border: none; border-radius: 99px; background: rgba(255,255,255,0.3); transition: width .25s ease, background .25s ease; }
         .nl-dots button.on { width: 22px; background: #fff; }
+        .nl-rank { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; vertical-align: 1px; white-space: nowrap; }
+        .nl-rank.fun { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.8); }
+        .nl-cam { align-self: center; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #f4f1ea; font: 600 13px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
+        .nl-cam b { font-weight: 800; color: #ffd56b; } .nl-cam i { font-style: normal; font-weight: 800; font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.16); }
         .nl-foot { margin: 0; text-align: center; font-size: 12px; font-weight: 500; color: rgba(244,241,234,0.62); padding: 0 16px; }
 
         /* the drawn scenes */

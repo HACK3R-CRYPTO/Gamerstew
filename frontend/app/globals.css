@@ -351,6 +351,38 @@ button[aria-label$="button"],
 }
 .pet-poke { animation: pet-poke 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
 
+/* ─── Pet (components/Pet.tsx) ────────────────────────────────────────────────
+   The face is a picture; the life is here. Everything moves from the feet up
+   (transform-origin at the bottom), the way a soft body does. */
+.pet { position: relative; display: inline-block; flex: none; padding: 0; border: 0; background: none; line-height: 0; -webkit-tap-highlight-color: transparent; }
+button.pet { cursor: pointer; }
+.pet-body { position: absolute; inset: 0; display: block; transform-origin: 50% 92%; will-change: transform; }
+.pet--happy  .pet-body { animation: pet-happy 3.2s ease-in-out infinite; }
+.pet--joy    .pet-body { animation: pet-joy 0.62s cubic-bezier(0.3, 0, 0.3, 1) infinite; }
+.pet--sad    .pet-body { animation: pet-sad 4.6s ease-in-out infinite; }
+.pet--sleepy .pet-body { animation: pet-sleep 5.2s ease-in-out infinite; }
+.pet--egg    .pet-body { animation: pet-egg 4.4s ease-in-out infinite; transform-origin: 50% 96%; }
+.pet .pet-body--poke { animation: pet-squish 0.6s cubic-bezier(0.4, 0, 0.2, 1) 1, pet-happy 3.2s ease-in-out 0.6s infinite; }
+.pet--joy .pet-body--poke { animation: pet-squish 0.5s cubic-bezier(0.4, 0, 0.2, 1) 1, pet-joy 0.62s cubic-bezier(0.3, 0, 0.3, 1) 0.5s infinite; }
+.pet--egg .pet-body--poke { animation: pet-egg-knock 0.7s ease-in-out 1, pet-egg 4.4s ease-in-out 0.7s infinite; }
+.pet--still .pet-body { animation: none !important; }
+@keyframes pet-happy  { 0%, 100% { transform: scale(1, 1); } 45% { transform: scale(1.025, 0.972); } 75% { transform: scale(0.985, 1.02); } }
+@keyframes pet-joy    { 0%, 100% { transform: translateY(0) scale(1.08, 0.9); } 45% { transform: translateY(-13%) scale(0.94, 1.08); } 70% { transform: translateY(-4%) scale(1, 1); } }
+@keyframes pet-sad    { 0%, 100% { transform: scale(1.03, 0.955) rotate(-1.2deg); } 50% { transform: scale(1.045, 0.94) rotate(1.2deg); } }
+@keyframes pet-sleep  { 0%, 100% { transform: scale(1.02, 0.97); } 50% { transform: scale(0.985, 1.035); } }
+@keyframes pet-squish { 0% { transform: scale(1, 1); } 22% { transform: scale(1.24, 0.76); } 48% { transform: translateY(-9%) scale(0.9, 1.16); } 74% { transform: scale(1.06, 0.95); } 100% { transform: scale(1, 1); } }
+@keyframes pet-egg    { 0%, 78%, 100% { transform: rotate(0); } 82% { transform: rotate(-5deg); } 88% { transform: rotate(4deg); } 94% { transform: rotate(-2deg); } }
+@keyframes pet-egg-knock { 0% { transform: rotate(0); } 18% { transform: rotate(-11deg); } 40% { transform: rotate(9deg); } 62% { transform: rotate(-6deg); } 82% { transform: rotate(3deg); } 100% { transform: rotate(0); } }
+.pet-zz, .pet-spark { position: absolute; inset: 0; pointer-events: none; line-height: 1; }
+.pet-zz i { position: absolute; left: 68%; top: 22%; font: 800 calc(var(--pet) * 0.12) / 1 "Fredoka", system-ui, sans-serif; font-style: normal; color: #6d28d9; opacity: 0; animation: pet-zz 3.6s ease-out infinite; text-shadow: 0 1px 0 #fff; }
+.pet-zz i:nth-child(2) { animation-delay: 1.2s; } .pet-zz i:nth-child(3) { animation-delay: 2.4s; }
+@keyframes pet-zz { 0% { opacity: 0; transform: translate(0, 0) scale(0.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--pet) * 0.2), calc(var(--pet) * -0.34)) scale(1.5); } }
+.pet-spark i { position: absolute; font-size: calc(var(--pet) * 0.12); font-style: normal; color: #f59e0b; opacity: 0; animation: pet-spark 0.9s ease-out infinite; }
+.pet-spark i:nth-child(1) { left: 8%; top: 20%; } .pet-spark i:nth-child(2) { left: 84%; top: 14%; animation-delay: 0.3s; } .pet-spark i:nth-child(3) { left: 76%; top: 58%; animation-delay: 0.55s; }
+@keyframes pet-spark { 0% { opacity: 0; transform: scale(0.3) rotate(0); } 35% { opacity: 1; transform: scale(1.2) rotate(40deg); } 100% { opacity: 0; transform: scale(0.6) rotate(90deg); } }
+@media (prefers-reduced-motion: reduce) { .pet-body, .pet-zz i, .pet-spark i { animation: none !important; } }
+
+
 /* Generic rotate — used by the MiniPay auto-connect spinner on /connect */
 @keyframes rotate {
   to { transform: rotate(360deg); }

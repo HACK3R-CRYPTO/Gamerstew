@@ -1,5 +1,7 @@
 "use client";
 
+import Pet from "@/components/Pet";
+import { petForLevel, restingMood, moodLine } from "@/lib/pets";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
@@ -147,7 +149,7 @@ type Stats = {
   petName: string;
   level: number;
   xp: number; xpNext: number; xpPct: number;
-  streak: number; playedToday: boolean;
+  streak: number; playedToday: boolean; streakFreezes: number; streakFrozen: boolean;
   gamesPlayed: number; gamesThisWeek: number;
   bestScore: number; bestRhythm: number; bestSimon: number;
   bests: Record<string, number>; // best on the contract, per game key
@@ -316,7 +318,7 @@ export default function ProfilePage() {
   // (off-chain). The contract only counts cumulative gamesPlayed.
   const [backendMeta, setBackendMeta] = useState<{
     level: number; xpInLevel: number; xpToNext: number;
-    streak: number; playedToday: boolean; gamesThisWeek: number;
+    streak: number; playedToday: boolean; streakFreezes: number; streakFrozen: boolean; gamesThisWeek: number;
   } | null>(null);
 
   // Championship badges + milestone achievements come from games-backend.
@@ -377,6 +379,7 @@ export default function ProfilePage() {
           xpToNext: Number(d.xpToNext ?? 100),
           streak: Number(d.streak ?? 0),
           playedToday: !!d.playedToday,
+          streakFreezes: Number(d.streakFreezes ?? 0), streakFrozen: !!d.streakFrozen,
           gamesThisWeek: Number(d.weeklyGames ?? d.gamesThisWeek ?? 0),
         });
       })
@@ -417,6 +420,7 @@ export default function ProfilePage() {
       level: lv.level, xp: lv.xp, xpNext: lv.xpNext, xpPct: lv.xpPct,
       streak: backendMeta?.streak ?? 0,
       playedToday: backendMeta?.playedToday ?? false,
+      streakFreezes: backendMeta?.streakFreezes ?? 0, streakFrozen: backendMeta?.streakFrozen ?? false,
       gamesPlayed,
       gamesThisWeek: backendMeta?.gamesThisWeek ?? 0,
       bestScore: Math.max(0, ...Object.values(bests)),
@@ -511,7 +515,7 @@ export default function ProfilePage() {
               display: "flex", alignItems: "center", justifyContent: "center",
               padding: isDesktop ? "26px 0 26px 22px" : "20px 18px 8px",
             }}>
-              <img src={stage.src} alt={s.petName} width={150} height={150} style={{ width: 150, height: 150, objectFit: "contain", filter: `drop-shadow(0 0 24px ${equippedHabitat.bg.accent}66) drop-shadow(0 14px 26px rgba(0,0,0,0.55))`, animation: "profile-float-gentle 3s ease-in-out infinite" }} />
+              <Pet stage={petForLevel(s.level)} mood={restingMood(s)} size={150} interactive alt={s.petName} filter={`drop-shadow(0 0 24px ${equippedHabitat.bg.accent}66) drop-shadow(0 14px 26px rgba(0,0,0,0.55))`} />
             </div>
 
             {/* Name + tier + xp */}
@@ -532,6 +536,10 @@ export default function ProfilePage() {
                 {stage.nextAt < 999
                   ? <>Next evolution at <strong style={{ color: "#fff" }}>LV {stage.nextAt}</strong></>
                   : <>Max evolution unlocked 👑</>}
+              </div>
+              {/* why the pet looks the way it does, and what changes it */}
+              <div style={{ fontFamily: T.body, fontSize: 13, fontWeight: 600, color: restingMood(s) === "happy" ? "rgba(255,255,255,0.92)" : "#fde68a", marginTop: 6, textShadow: "0 1px 8px rgba(0,0,0,0.75)" }}>
+                {petForLevel(s.level).id === "egg" ? "Your egg hatches at LV 5. Play to warm it up." : moodLine("Your slime", s)}
               </div>
               <div style={{ marginTop: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.body, fontSize: 12, color: "rgba(255,255,255,0.92)", fontWeight: 700, textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>
@@ -626,7 +634,7 @@ export default function ProfilePage() {
             gap: 10,
           }}>
             {[
-              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : "Frozen", color: s.playedToday ? "#c2410c" : "#0369a1", icon: "🔥" },
+              { label: "Streak", value: `${s.streak}d`, sub: s.playedToday ? "Alive" : s.streakFrozen ? "Held by a freeze" : s.streak > 0 ? (s.streakFreezes > 0 ? "Play today · freeze ready" : "Play today to keep it") : "Start one today", color: s.playedToday ? "#c2410c" : "#0369a1", icon: "🔥" },
               { label: "Games played", value: s.gamesPlayed, sub: `+${s.gamesThisWeek} this week`, color: T.accent, icon: "🎮" },
               { label: "Badges", value: backendAchievements.length ? `${backendAchievements.filter((a) => a.unlocked).length}/${backendAchievements.length}` : "–", sub: "Achievements earned", color: "#b45309", icon: "🏅" },
               // All-time combined rank. Sub-label turns the raw number

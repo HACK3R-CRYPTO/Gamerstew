@@ -120,25 +120,23 @@ export default function ShopPage() {
   const fmtCost = (cost?: bigint) => cost ? `${(Number(cost) / 1e18).toLocaleString()}` : "—";
   const canAffordNext = nextPaid && nextPaid.costG$ != null && gBalance >= nextPaid.costG$;
 
-  // Guest / not-yet-connected — soft prompt, no fake catalog.
+  // A guest can look at everything on sale and what each thing does. Buying asks them to sign in.
+  // (They used to get one line about habitats and no way to see the shop at all.)
   if (!connected) {
     return (
       <div style={{ minHeight: "100vh", width: "100%", background: T.bg, color: T.ink, fontFamily: T.body }}>
         <AppHeader />
-        <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "60px 32px 130px" : "40px 16px 110px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 56 }}>🏛️</div>
-          <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, margin: 0, letterSpacing: "-0.005em" }}>Habitat shop</h1>
-          <p style={{ fontFamily: T.body, fontSize: 13, color: T.inkDim, margin: "0 auto", maxWidth: 320, lineHeight: 1.5 }}>
-            Sign in to browse the 10 habitats and unlock premium scenes with G$.
-          </p>
-          <button onClick={() => router.push("/home?signin=1")} style={{
-            fontFamily: T.display, fontSize: 16, color: "#fff",
-            padding: "13px 30px", borderRadius: 14,
-            background: `linear-gradient(180deg, ${T.accent}, ${T.accent}cc)`,
-            border: `1.5px solid ${T.accent}`,
-            boxShadow: `0 12px 26px -6px ${T.accent}aa, inset 0 1px 0 rgba(255,255,255,0.4)`,
-            cursor: "pointer", marginTop: 4,
-          }}>Sign in</button>
+        <div style={{ maxWidth: isDesktop ? 1180 : 480, margin: "0 auto", padding: isDesktop ? "16px 32px 130px" : "12px 16px 110px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>Arena Shop</div>
+            <h1 style={{ fontFamily: T.display, fontSize: isDesktop ? 32 : 26, color: T.ink, margin: "4px 0 0", lineHeight: 1.1 }}>Power up your run</h1>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderRadius: 18, background: "#fff", boxShadow: "0 0 0 1px rgba(76,29,149,0.14)" }}>
+            <span style={{ fontFamily: T.body, fontSize: 14.5, color: T.inkDim, lineHeight: 1.4 }}>You are looking around as a guest. <b style={{ color: T.ink }}>Sign in to buy</b>, and to see your pet&apos;s habitats.</span>
+            <button onClick={() => router.push("/home?signin=1")} style={{ minHeight: 44, padding: "0 20px", borderRadius: 14, border: "none", cursor: "pointer", fontFamily: T.display, fontSize: 16, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 3px 0 #4c1d95" }}>Sign in</button>
+          </div>
+          <PerkHeroBanner isDesktop={isDesktop} />
+          <PerkShelf isDesktop={isDesktop} />
         </div>
         <AppBottomNav wide={isDesktop} />
       </div>
@@ -177,7 +175,7 @@ export default function ShopPage() {
 
         {/* SEGMENTED CONTROL · Perks | Habitats */}
         <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, borderRadius: 999, background: "rgba(76,29,149,0.05)", border: `1px solid ${T.hairline}`, width: "100%", maxWidth: 380 }}>
-          {([["perks", "Perks"], ["habitats", "Habitats"]] as const).map(([key, label]) => {
+          {([["perks", "Power-ups"], ["habitats", "Pet habitats"]] as const).map(([key, label]) => {
             const active = tab === key;
             return (
               <button

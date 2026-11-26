@@ -46,6 +46,11 @@ export function createScoreService(deps: ScoreDeps) {
     if (typeof wallet !== 'string') return reply(400, { error: 'Missing wallet or game' });
     if (!knownGame(game)) return reply(400, { error: 'Unknown game' });
 
+    // Energy (only when it is switched on): a ranked run costs one. Out of energy is a
+    // clear answer the page can act on, not an error. A meter that cannot be read lets the player in.
+    const taken = deps.energy ? await deps.energy.take(wallet) : null;
+    if (taken && !taken.ok) return reply(402, { error: 'out_of_energy', energy: taken.state });
+
     const token = randomHex(32); // 64 hex chars, unguessable
     // NEPA is seed-driven: the seed fixes the light-cut schedule the player races
     // against, so it is made here and stored with the session. Other games keep
@@ -55,13 +60,17 @@ export function createScoreService(deps: ScoreDeps) {
     // run and only then find the score cannot be saved.
     const stored = await deps.sessions.create(seed ? { token, wallet: wallet.toLowerCase(), game, seed } : { token, wallet: wallet.toLowerCase(), game });
     if (!stored.ok) {
+      if (taken && deps.energy) await deps.energy.giveBack(wallet, taken); // the run was never opened: its energy goes back
       logger.error('start-game insert error:', stored.reason);
       return reply(500, { error: 'Failed to start session' });
     }
     // Word Ladder: the server deals the five ladders from the ticket itself, so
     // the player cannot pick easy ones and nothing extra has to be stored.
-    if (game === 'ladder') return reply(200, { success: true, sessionToken: token, ladders: ladder.deal(token) });
-    return reply(200, seed ? { success: true, sessionToken: token, seed } : { success: true, sessionToken: token });
+    // `climb` is the timed round with no ceiling: a longer deal from the same ticket. A page that
+    // does not ask for it (an older one still open on a phone) gets the five it expects.
+    const energy = taken?.state ? { energy: taken.state } : {};
+    if (game === 'ladder') return reply(200, { success: true, sessionToken: token, ladders: body.climb === true ? ladder.deal(token, ladder.CLIMB_DEALT) : ladder.deal(token), ...energy });
+    return reply(200, seed ? { success: true, sessionToken: token, seed, ...energy } : { success: true, sessionToken: token, ...energy });
   }
 
   async function signScore(body: Record<string, unknown>): Promise<Reply> {
@@ -107,7 +116,8 @@ export function createScoreService(deps: ScoreDeps) {
     } else if (game === 'ladder') {
       // Fully replayed: the score is worked out here from the player's words.
       // The number the client sent is ignored.
-      const run = ladder.verify(ladder.deal(sessionToken), body.ladderRuns, elapsedMs);
+      const climb = body.ladderClimb === true;
+      const run = climb ? ladder.verify(ladder.deal(sessionToken, ladder.CLIMB_DEALT), body.ladderRuns, elapsedMs, { climb: true }) : ladder.verify(ladder.deal(sessionToken), body.ladderRuns, elapsedMs);
       if (!run.ok) {
         logger.warn(`[ladder] rejected ${playerAddress}: ${run.error}`);
         return reply(403, { error: 'Ladder check failed', reason: run.error });
@@ -117,7 +127,7 @@ export function createScoreService(deps: ScoreDeps) {
     } else if (game === 'strike') {
       // Fully replayed: every throw goes through the same lane simulation the
       // phone ran, and the total comes from that. The client's number is ignored.
-      const run = strike.replay(await strike.engine(), body.strikeThrows, elapsedMs);
+      const run = strike.replay(await strike.engine(), body.strikeThrows, elapsedMs, body.endedEarly === true);
       if (!run.ok) {
         logger.warn(`[strike] rejected ${playerAddress}: ${run.error}`);
         return reply(403, { error: 'Game check failed', reason: run.error });

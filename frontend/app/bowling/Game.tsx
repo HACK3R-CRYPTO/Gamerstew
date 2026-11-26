@@ -1,5 +1,8 @@
 "use client";
 import { track } from "@/lib/track";
+import { HowToButton } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
+import GuestLine from "@/components/GuestLine";
 
 // ─── Street Strike — Lagos street bowling ────────────────────────────────────
 // Not a neon alley. You roll an old tyre (the childhood game) down a Lagos
@@ -1187,6 +1190,8 @@ export default function Game() {
   const throwLog = useRef<{ tyre: string; x: number; angle: number; speed: number; spin: number }[]>([]);
   const gameT0 = useRef(0);
   const [rankedGame, setRankedGame] = useState(false);
+  const [quitAsk, setQuitAsk] = useState(false); // "End this game?": leaving a ranked game ends it, it does not throw it away
+  const endedRef = useRef(false); // the game was ended early: a tyre still rolling must not add to the closed card
   const onThrow = useCallback((t: { tyre: string; x: number; angle: number; speed: number; spin: number }) => { throwLog.current.push(t); }, []);
   // Who is playing. One list of rolls per seat; `turn` is the seat on the line.
   const [mode, setMode] = useState<Mode>("solo");
@@ -1263,6 +1268,7 @@ export default function Game() {
   const say2 = (text: string, tone: "big" | "good" | "bad") => setBanner({ text, tone, key: Date.now() });
 
   const onResult = useCallback((down: boolean[], gutter: boolean) => {
+    if (endedRef.current) return;
     const before = standingRef.current;
     const count = down.filter(Boolean).length;
     const seat = turnRef.current;
@@ -1350,7 +1356,26 @@ export default function Game() {
     }, cleared ? 3000 : 1000); // a cleared rack holds longer: the strike camera is still circling
   }, []);
 
+  /** Leave a ranked game part-way: the throws not made count as misses, the card is
+   *  closed and handed in. The server replays the throws and works out the same total. */
+  const endNow = () => {
+    setQuitAsk(false);
+    endedRef.current = true;
+    const made = allRef.current[0] ?? [];
+    track("run_quit", { game: "Street Strike", saved: made.reduce((a, b) => a + b, 0) > 0, ranked: true });
+    const card = made.slice();
+    for (let k = 0; k < 16 && !score(card, FRAMES).done; k++) card.push(0);
+    allRef.current = [card];
+    setAllRolls(allRef.current);
+    setHint(null);
+    setPhase("over");
+    if (rankedRef.current.hasTicket() && made.reduce((a, b) => a + b, 0) > 0) {
+      void rankedRef.current.finish({ score: score(card, FRAMES).total, gameTime: Date.now() - gameT0.current, proof: { strikeThrows: throwLog.current.slice(), endedEarly: true } });
+    }
+  };
+
   const restart = (m: Mode = modeRef.current) => {
+    endedRef.current = false;
     throwLog.current = [];
     gameT0.current = Date.now();
     setRankedGame(false);
@@ -1699,8 +1724,8 @@ export default function Game() {
       <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={(e) => { if (e.pointerId === finger.current) { finger.current = null; trail.current = []; } }} style={{ position: "absolute", inset: 0, zIndex: 5, cursor: phase === "aim" ? "grab" : "default" }} />
 
       {/* top bar */}
-      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", pointerEvents: "none" }}>
-        <Link href="/games" style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
+      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "space-between", pointerEvents: "none" }}>
+        <Link href="/dashboard" onClick={(e) => { if (rankedGame && mode === "solo" && phase !== "over" && !setup && (allRef.current[0]?.length ?? 0) > 0) { e.preventDefault(); setQuitAsk(true); } }} style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
         <div style={{ fontFamily: DISPLAY, fontSize: 18, color: "#fff", textShadow: "0 2px 12px rgba(124,58,237,0.8)" }}>
           Street <span style={{ color: GA.goldLight }}>Strike</span>
         </div>
@@ -1785,12 +1810,14 @@ export default function Game() {
         <div style={{ position: "absolute", inset: 0, zIndex: 22, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.1) 30%, #ffffff 62%)" }}>
           <div style={{ width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 64px)", overflowY: "auto", borderRadius: 26, padding: "16px 14px 14px", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 -10px 40px rgba(76,29,149,0.22)" }}>
             <div style={{ textAlign: "center", fontFamily: DISPLAY, fontSize: 30, lineHeight: 1.05 }}>Street <span style={{ color: "#92400e" }}>Strike</span></div>
-            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 12 }}>Roll the tyre. Scatter the bottles.</div>
+            <div style={{ textAlign: "center", fontSize: 13.5, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 8 }}>Roll the tyre. Scatter the bottles.</div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><HowToButton game="strike" /></div>
             <div style={{ display: room ? "none" : "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {MODES.map((m) => {
                 const on = m.id === mode;
                 return (
                   <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: on ? "#fff" : "#22104f", background: on ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                    <div style={{ display: "inline-block", marginBottom: 4, padding: "2px 7px", borderRadius: 999, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.08em", lineHeight: 1.4, whiteSpace: "nowrap", background: m.ranked ? "#fde68a" : on ? "rgba(255,255,255,0.2)" : "rgba(76,29,149,0.08)", color: m.ranked ? "#3b0764" : on ? "#fff" : "rgba(34,16,79,0.62)" }}>{m.ranked ? "RANKED" : "FOR FUN"}</div>
                     <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
                     <div style={{ fontFamily: DISPLAY, fontSize: 13, marginTop: 3, whiteSpace: "nowrap" }}>{m.name}</div>
                     <div style={{ fontSize: 10.5, fontWeight: 500, color: on ? "rgba(255,255,255,0.88)" : "rgba(34,16,79,0.68)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
@@ -1849,7 +1876,9 @@ export default function Game() {
                 <button onClick={leaveRoom} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "#9b93b8", fontSize: 13 }}>Leave room</button>
               </div>
             )}
-            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : ranked.canRank ? "Ranked: 5 frames. Your score is checked and goes on the weekly board." : "5 frames. Just me is the ranked mode: sign in and your score goes on the board."}</div>
+            {mode === "solo" && !online && <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><EnergyLine /></div>}
+            {!online && <div style={{ marginTop: 6 }}><GuestLine left={gate.left} /></div>}
           </div>
         </div>
       )}
@@ -1892,6 +1921,21 @@ export default function Game() {
           </div>
         </div>
       )}
+      {quitAsk && (
+        <div role="dialog" aria-modal="true" aria-label="End this game?" style={{ position: "absolute", inset: 0, zIndex: 40, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "rgba(10,1,32,0.62)" }}>
+          <div style={{ width: "100%", maxWidth: 420, borderRadius: 24, padding: "20px 18px 16px", textAlign: "center", color: "#22104f", background: "#fff", border: "1px solid rgba(76,29,149,0.16)", boxShadow: "0 18px 50px rgba(10,1,32,0.45)" }}>
+            <div style={{ fontFamily: DISPLAY, fontSize: 24, lineHeight: 1.15 }}>End this game?</div>
+            <p style={{ margin: "8px 0 16px", fontSize: 14, lineHeight: 1.45, color: "rgba(34,16,79,0.78)" }}>
+              {(allRef.current[0] ?? []).reduce((a, b) => a + b, 0) > 0
+                ? "This is a ranked game. If you leave now it ends here: the throws you have not made count as misses, and your score is saved."
+                : "This is a ranked game. Nothing is down yet, so leaving now ends it with no score."}
+            </p>
+            <button onClick={() => setQuitAsk(false)} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", background: "#6d28d9", color: "#fff", fontFamily: BODY, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Keep playing</button>
+            <button onClick={endNow} style={{ width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 14, border: "1px solid rgba(76,29,149,0.22)", background: "transparent", color: "#4c1d95", fontFamily: BODY, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>End the game</button>
+          </div>
+        </div>
+      )}
+
       {phase === "over" && !watching && (
         <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, #ffffff 100%)" }}>
           <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
@@ -1945,11 +1989,12 @@ export default function Game() {
 
 type Mode = "solo" | "cpu" | "pass" | "online";
 interface Seat { name: string; cpu: boolean }
-const MODES: { id: Mode; icon: string; name: string; note: string }[] = [
-  { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best" },
-  { id: "cpu", icon: "🤖", name: "Vs CPU", note: "Take turns" },
-  { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone" },
-  { id: "online", icon: "🌍", name: "Online", note: "Play a friend" },
+// `ranked`: the one mode whose score goes on the board. Every card says which it is, so nobody has to guess.
+const MODES: { id: Mode; icon: string; name: string; note: string; ranked: boolean }[] = [
+  { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best", ranked: true },
+  { id: "cpu", icon: "🤖", name: "Vs CPU", note: "Take turns", ranked: false },
+  { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone", ranked: false },
+  { id: "online", icon: "🌍", name: "Online", note: "Play a friend", ranked: false },
 ];
 function seatsFor(m: Mode): Seat[] {
   if (m === "cpu") return [{ name: "You", cpu: false }, { name: "CPU", cpu: true }];

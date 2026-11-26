@@ -17,6 +17,7 @@
 // what the player did. Guests can still play: `canRank` is false and the game
 // keeps the score on the device.
 
+import { outOfEnergy, energyChanged } from "@/lib/energy";
 import { useCallback, useRef, useState } from "react";
 import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
@@ -63,13 +64,15 @@ export function useRankedRun(game: GameId) {
 
   const token = useCallback(async () => (isMiniPay ? null : await getAccessToken()), [isMiniPay, getAccessToken]);
 
-  const start = useCallback(async (): Promise<StartRunResult> => {
+  /** `extra` goes to the server with the request (Word Ladder asks for the timed round with it). */
+  const start = useCallback(async (extra?: Record<string, unknown>): Promise<StartRunResult> => {
     tokenRef.current = null; setStatus("idle"); setError(null); setResult(null);
     if (!canRank || !address) return { success: false, error: "Not signed in" };
     const auth = await token();
     if (!isMiniPay && !auth) return { success: false, error: "Not signed in" };
-    const opened = await startRun(auth, address, game);
-    if (opened.success) tokenRef.current = opened.sessionToken;
+    const opened = await startRun(auth, address, game, extra);
+    if (opened.success) { tokenRef.current = opened.sessionToken; energyChanged(); } // a ranked run was opened: one less left today
+    else if (opened.error === "out_of_energy") outOfEnergy(); // the sheet explains it and offers more; the game goes on unranked
     return opened;
   }, [canRank, address, token, isMiniPay, game]);
 

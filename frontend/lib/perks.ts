@@ -3,8 +3,8 @@
 // (0x0fc6C5593B205b1c617CF33A236362B2c5c67650). Prices are display values;
 // the contract holds the canonical on-chain price in 18-decimal G$.
 //
-// Every perk is CASUAL-MODE ONLY. Ranked play stays pure skill and never
-// touches this shop. 20% of every purchase streams to the GoodDollar
+// A continue (save or retry) can be bought in any solo run, and a run that was
+// continued is never ranked: it buys more play, never a place on a board. 20% of every purchase streams to the GoodDollar
 // UBI pool; the split is enforced on-chain.
 
 import { parseEther } from "viem";
@@ -13,7 +13,7 @@ export type PerkKind = "save" | "retry" | "cosmetic";
 
 export interface Perk {
   id: number;              // on-chain perkId (uint16)
-  game: "rhythm" | "stack" | "simon" | "challenge-ai";
+  game: "rhythm" | "stack" | "simon" | "challenge-ai" | "nepa3d" | "ladder" | "strike" | "all";
   gameLabel: string;       // human game name
   name: string;            // perk display name
   blurb: string;           // one-line "what it does"
@@ -54,6 +54,30 @@ export const PERKS: Perk[] = [
     id: 2, game: "rhythm", gameLabel: "Rhythm Rush",
     name: "Neon Trail", blurb: "A glowing neon trail on your notes. Yours forever.",
     priceG$: parseEther("750"), priceLabel: "750 G$", kind: "cosmetic", emoji: "✨",
+  },
+];
+
+// Built in the app, not yet priced on the contract. The shop owner switches one on with
+// setPerk(id, price, false); until then perkPrice(id) is 0 and the app never offers it
+// (hooks/useLivePerk.ts reads the price, and uses the contract's price, not this one).
+// Ids 7 and 8 are left free. A paid hint in Word Ladder and a paid re-bowl in Street Strike were
+// considered and dropped: neither game has a moment where the run is already over, so in a ranked
+// game either one would buy rank. Word Ladder already has free hints that cost points.
+export const UPCOMING_PERKS: Perk[] = [
+  {
+    id: 9, game: "nepa3d", gameLabel: "UP NEPA 3D",
+    name: "One more life", blurb: "Out of lives? Get back up and keep the lights on.",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "save", emoji: "💡",
+  },
+  {
+    id: 10, game: "all", gameLabel: "Every game",
+    name: "Energy pack", blurb: "5 more ranked runs, in any game. They do not expire.",
+    priceG$: parseEther("100"), priceLabel: "100 G$", kind: "retry", emoji: "⚡",
+  },
+  {
+    id: 11, game: "all", gameLabel: "Every game",
+    name: "Streak freeze", blurb: "Miss a day and your streak stays. One freeze covers one missed day, and it is used by itself.",
+    priceG$: parseEther("150"), priceLabel: "150 G$", kind: "retry", emoji: "🧊",
   },
 ];
 

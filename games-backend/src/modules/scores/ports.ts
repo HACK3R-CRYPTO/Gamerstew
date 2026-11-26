@@ -65,6 +65,8 @@ export interface Replay {
 export interface Logger { log(msg: string): void; warn(msg: string, ...extra: unknown[]): void; error(msg: string, ...extra: unknown[]): void }
 
 export interface ScoreDeps {
+  /** Energy, when it is switched on: opening a ranked run takes one. Absent: runs are not limited. */
+  energy?: import('../energy/service').Energy;
   sessions: SessionStore;
   season: SeasonLedger;
   chain: Chain;

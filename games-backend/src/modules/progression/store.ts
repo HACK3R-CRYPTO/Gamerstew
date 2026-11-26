@@ -1,4 +1,5 @@
-// ─── What progression needs stored, and the Supabase version of it ───────────
+
+import { FREEZE_ITEM } from './streak';// ─── What progression needs stored, and the Supabase version of it ───────────
 // The service asks for things by intent ("claim this mission"); only this file
 // knows tables and columns.
 
@@ -12,6 +13,8 @@ export interface FeedRow { id: unknown; wallet_address: string | null; category:
 export interface UserRow { xp?: number | null; play_streak?: number | null; last_play_date?: string | null; claim_streak?: number | null; last_claim_date?: string | null }
 
 export interface ProgressionStore {
+  /** streak freezes a player holds (a shop item kept in perk_inventory). Absent on an older store: none. */
+  freezes?(wallet: string): Promise<number>;
   // missions
   missionCount(wallet: string, date: string): Promise<number>;
   addMissions(rows: { wallet: string; date: string; mission_id: string; target: number; reward_xp: number }[]): Promise<void>;
@@ -86,6 +89,10 @@ export function supabaseProgression(db: SupabaseLike): ProgressionStore {
     async addUnlock(row) {
       const { error } = await db.from('achievements_unlocked').insert(row);
       return !error;
+    },
+    async freezes(wallet) {
+      const { data } = await db.from('perk_inventory').select('balance').eq('wallet', wallet).eq('perk_id', FREEZE_ITEM).limit(1);
+      return data && data.length > 0 ? Math.max(0, Number(data[0].balance) || 0) : 0;
     },
     async user(wallet) {
       const { data } = await db.from('users').select('xp, play_streak, last_play_date, claim_streak, last_claim_date').eq('wallet_address', wallet).limit(1);

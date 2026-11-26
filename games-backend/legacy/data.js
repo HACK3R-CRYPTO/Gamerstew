@@ -71,12 +71,31 @@ async function registerUser(addr) {
     return user.play_streak || 1; // already played today
   }
 
-  let newStreak;
-  if (user.last_play_date === yesterday) {
-    newStreak = (user.play_streak || 0) + 1;
-  } else {
-    newStreak = 1; // streak broken
+  // The rule lives in src/modules/progression/streak.ts. A missed day (or two) is
+  // covered by streak freezes the player holds: one is spent for each day missed.
+  void yesterday;
+  const P = core.platform;
+  let freezes = 0;
+  const missed = P.missedDays(user.last_play_date, today);
+  if (missed > 0 && (user.play_streak || 0) > 0) {
+    const { data: inv } = await core.supabase.from('perk_inventory').select('balance').eq('wallet', lower).eq('perk_id', P.FREEZE_ITEM).limit(1);
+    freezes = Math.max(0, Number(inv && inv[0] && inv[0].balance) || 0);
   }
+  let step = P.playToday({ streak: user.play_streak || 0, lastPlay: user.last_play_date, today, freezes });
+  if (step.use > 0) {
+    // spent in one statement, so two games finishing together cannot both spend the same freeze.
+    // If they cannot be spent, the streak is not saved: nothing is given that was not paid for.
+    const { data: spent, error } = await core.lockedDb.rpc('streak_freeze_use', { w: lower, item: P.FREEZE_ITEM, n: step.use });
+    if (error || spent !== true) {
+      if (error) console.warn('[streak] a freeze could not be spent:', error.message || error);
+      step = P.playToday({ streak: user.play_streak || 0, lastPlay: user.last_play_date, today, freezes: 0 });
+    } else {
+      console.log(`[streak] ${lower.slice(0, 8)}… ${step.use} freeze${step.use === 1 ? '' : 's'} saved a ${user.play_streak} day streak`);
+      // told in their inbox, so the freeze is seen to have worked
+      core.supabase.from('notifications_feed').insert({ wallet_address: lower, category: 'streak_freeze', title: 'Your streak is safe', body: `You missed ${step.use === 1 ? 'a day' : step.use + ' days'}. A streak freeze covered it, and your streak is now ${step.streak} days.`, url: '/profile', tag: `streak-freeze-${today}` }).then(() => {}, () => {});
+    }
+  }
+  const newStreak = step.streak;
 
   await core.supabase
     .from('users')

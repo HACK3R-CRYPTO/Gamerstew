@@ -34,7 +34,11 @@ const isThrow = (t: unknown): t is GameThrow => {
 };
 
 /** Play the throws in order. `elapsedMs` is how long the server saw the game take. */
-export function replay(R: any, throws: unknown, elapsedMs: number): GameVerdict {
+/** `endedEarly`: the player left before the last frame. The card is then scored on the
+ *  throws that were made, the way a real card with empty frames would be. Every throw is
+ *  still replayed, so the total is the server's own, and at least one throw must have
+ *  knocked something down: opening a game and leaving is not a game played. */
+export function replay(R: any, throws: unknown, elapsedMs: number, endedEarly = false): GameVerdict {
   if (!Array.isArray(throws) || throws.length === 0) return { ok: false, error: 'No throws' };
   if (throws.length > MAX_THROWS) return { ok: false, error: 'Too many throws' };
   const rolls: number[] = [];
@@ -50,8 +54,15 @@ export function replay(R: any, throws: unknown, elapsedMs: number): GameVerdict 
     const st = score(rolls, FRAMES);
     standing = st.freshRack ? Array<boolean>(PINS).fill(true) : standing.map((up, k) => up && !out.down[k]);
   }
-  const end = score(rolls, FRAMES);
-  if (!end.done) return { ok: false, error: 'Game not finished' };
+  let end = score(rolls, FRAMES);
+  if (!end.done) {
+    if (!endedEarly) return { ok: false, error: 'Game not finished' };
+    if (rolls.reduce((a, b) => a + b, 0) <= 0) return { ok: false, error: 'Nothing was knocked down' };
+    // the throws never made count as misses, which also settles a strike or spare left waiting on its bonus
+    const card = rolls.slice();
+    for (let k = 0; k < MAX_THROWS && !end.done; k++) { card.push(0); end = score(card, FRAMES); }
+    if (!end.done) return { ok: false, error: 'Game not finished' };
+  }
   // every roll plays out on screen in real time, so a game cannot take less
   // time than its rolls last (with slack for a fast phone and the network)
   const simMs = steps * STEP * 1000;

@@ -82,3 +82,23 @@ test('replay: a throw outside what a player can do is pulled back in, not truste
   const b = simulate(R, { tyre: 'danfo', throw: cleanThrow('danfo', max), standing: Array<boolean>(10).fill(true) });
   assert.deepEqual(a.down, b.down); assert.equal(a.steps, b.steps);
 });
+
+test('a card ended early is scored on the throws made; an unfinished card is still refused unless it was ended; nothing knocked down is not a game', async () => {
+  const R = await engine();
+  const good: GameThrow = { tyre: 'danfo', ...cleanThrow('danfo', { x: 0, angle: 0, speed: 10, spin: 0 }) };
+  const one = replay(R, [good], 60_000);
+  assert.equal(one.ok, false, 'one throw is not a finished game');
+  const early = replay(R, [good], 60_000, true);
+  assert.equal(early.ok, true);
+  if (early.ok) {
+    assert.equal(early.rolls.length, 1, 'only the throws that were made are reported');
+    const card = early.rolls.slice();
+    while (!score(card, FRAMES).done) card.push(0);
+    assert.equal(early.total, score(card, FRAMES).total, 'scored as a card whose other throws missed');
+    assert.ok(early.total >= (early.rolls[0] ?? 0) && early.total > 0);
+  }
+  const gutter: GameThrow = { tyre: 'keke', ...cleanThrow('keke', { x: 5, angle: 0.1, speed: 6, spin: 20 }) };
+  const missed = simulate(R, { tyre: 'keke', throw: gutter, standing: Array(10).fill(true) }).down.filter(Boolean).length;
+  if (missed === 0) assert.equal(replay(R, [gutter], 60_000, true).ok, false, 'leaving with nothing down does not count');
+  assert.equal(replay(R, [good], 10, true).ok, false, 'an early end still cannot be faster than its rolls');
+});

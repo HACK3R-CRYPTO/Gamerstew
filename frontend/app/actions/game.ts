@@ -465,10 +465,10 @@ export type StartRunResult =
   | { success: false; error: string };
 
 /** Open a run. The reply carries whatever the game needs dealt by the server. */
-export async function startRun(accessToken: string | null, playerAddress: string, game: GameId): Promise<StartRunResult> {
+export async function startRun(accessToken: string | null, playerAddress: string, game: GameId, extra?: Record<string, unknown>): Promise<StartRunResult> {
   if (!await allowed(accessToken, playerAddress)) return { success: false, error: 'Unauthorized' };
   try {
-    const { ok, data } = await internalFetch('/api/start-game', { wallet: playerAddress, game });
+    const { ok, data } = await internalFetch('/api/start-game', { ...(extra ?? {}), wallet: playerAddress, game });
     if (!ok) return { success: false, error: data?.error || 'Failed to start session' };
     return { success: true, sessionToken: data.sessionToken, seed: data.seed, ladders: data.ladders };
   } catch {

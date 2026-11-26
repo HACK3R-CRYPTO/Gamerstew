@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deal, verify, pointsFor, isWord, PARS, MIN_MS_PER_STEP, type Puzzle, type LadderRun } from './rules';
+import { deal, verify, pointsFor, isWord, PARS, MIN_MS_PER_STEP, CLIMB_MS, CLIMB_DEALT, parAt, type Puzzle, type LadderRun } from './rules';
 import { PUZZLES, VALID } from './data';
 
 const WORDS = new Set(VALID.split(' '));
@@ -93,4 +93,47 @@ test('points: a ladder is out of 20; par and speed add, extra steps and hints co
   assert.equal(pointsFor(3, 3, 100, 0), 15); // no speed bonus left
   assert.equal(pointsFor(3, 3, 0, 1), 17);   // one hint
   assert.equal(pointsFor(3, 12, 500, 9), 2);
+});
+
+test('the climb: a long deal starts with the same five, gets harder, and never fails to deal', () => {
+  const long = deal('seed-1', CLIMB_DEALT);
+  assert.equal(long.length, CLIMB_DEALT);
+  assert.deepEqual(long.slice(0, 5), deal('seed-1'), 'the first five are the ordinary round');
+  long.forEach((p, i) => assert.equal(p[2], parAt(i)));
+  assert.equal(parAt(4), 4); assert.equal(parAt(8), 5); assert.equal(parAt(30), 6);
+  assert.deepEqual(deal('seed-1', CLIMB_DEALT), long, 'the same seed deals the same climb');
+});
+
+test('the climb: the score has no ceiling, and is every ladder solved inside the clock', () => {
+  const ps = deal('climb', CLIMB_DEALT);
+  const nine = honest(ps.slice(0, 9), 1_500);
+  const v = verify(ps, nine, sum(nine) + 2_000, { climb: true });
+  assert.ok(v.ok); if (!v.ok) return;
+  assert.equal(v.ladders.length, 9);
+  assert.ok(v.total > 100, `nine ladders are worth more than the old ceiling of 100, got ${v.total}`);
+  const five = verify(ps, nine.slice(0, 5), sum(nine.slice(0, 5)) + 2_000, { climb: true });
+  assert.ok(five.ok && five.total < v.total, 'more ladders, more points');
+  // the last ladder may be left as it stood when the clock ran out; one in the middle may not
+  const cut = [...nine.slice(0, 5), { words: nine[5]!.words.slice(0, 1), ms: 4_000, hints: 0 }];
+  const c = verify(ps, cut, sum(cut) + 2_000, { climb: true });
+  assert.ok(c.ok && c.ladders[5]!.points === 0);
+  const hole = [...nine.slice(0, 2), { words: [], ms: 4_000, hints: 0 }, ...nine.slice(3, 6)];
+  assert.equal(verify(ps, hole, sum(hole) + 2_000, { climb: true }).ok, false);
+  assert.equal(verify(ps, [], 5_000, { climb: true }).ok, false, 'a round with no ladders is not a round');
+});
+
+test('the climb: more time than the clock is refused, a hinted ladder earns nothing, and the fixed round is unchanged', () => {
+  const ps = deal('clock', CLIMB_DEALT);
+  const slow = honest(ps.slice(0, 6), 14_000); // far longer than three minutes in all
+  assert.ok(sum(slow) > CLIMB_MS + 3_000);
+  assert.equal(verify(ps, slow, sum(slow) + 5_000, { climb: true }).ok, false);
+  const runs = honest(ps.slice(0, 4)); runs[1] = { ...runs[1]!, hints: 1 };
+  const v = verify(ps, runs, sum(runs) + 2_000, { climb: true });
+  assert.ok(v.ok && v.ladders[1]!.points === 0 && v.ladders[0]!.points > 0);
+  // the ordinary round still needs exactly five and still pays a hinted ladder
+  const fixed = deal('clock');
+  assert.equal(verify(fixed, honest(fixed).slice(0, 4), 60_000).ok, false);
+  const h = honest(fixed); h[0] = { ...h[0]!, hints: 1 };
+  const f = verify(fixed, h, sum(h) + 2_000);
+  assert.ok(f.ok && f.ladders[0]!.points > 0);
 });

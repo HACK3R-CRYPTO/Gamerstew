@@ -397,14 +397,16 @@ async function sendToWallet(supabase, walletAddress, category, payload) {
 // Broadcast to every subscribed wallet. Used by admin POST /api/push/broadcast.
 // Honors per-wallet category mute via notification_prefs.reengagement so
 // players who turned off all promo can't be force-fed announcements.
-async function sendBroadcast(supabase, payload) {
+// `opts.feed === false`: the message is already in the bell (it was posted as an
+// announcement), so do not write a second copy of it there.
+async function sendBroadcast(supabase, payload, opts = {}) {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return { sent: 0, skipped: 0 };
 
   // Log the broadcast ONCE (wallet_address NULL) before fanning out, so
   // even players who weren't subscribed at send-time (no push device,
   // tab not open) still see it in their bell when they next open the
   // app. One row per broadcast, every player reads it via OR filter.
-  supabase.from('notifications_feed').insert({
+  if (opts.feed !== false) supabase.from('notifications_feed').insert({
     wallet_address: null,
     category: 'broadcast',
     title: payload.title || 'Game Arena',

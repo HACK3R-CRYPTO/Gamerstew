@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/track";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePerks } from "@/hooks/usePerks";
 import { savePerkFor, type Perk } from "@/lib/perks";
@@ -11,8 +12,8 @@ import { savePerkFor, type Perk } from "@/lib/perks";
 //     and a plain seconds number, so the countdown is unmistakable
 //   · a clear "Confirming…" state so the wallet wait never looks frozen
 // With stock, a save is free and instant (spends from inventory). At zero
-// stock it's one gasless signature. A saved run continues and still submits —
-// using a save counts on the weekly leaderboard.
+// stock it's one gasless signature. A continued run is for fun: it is NOT ranked,
+// and the overlay says so before the player pays.
 
 const T = {
   ink: "#22104f",
@@ -49,11 +50,13 @@ type Props = {
   headline?: string;
   titleOverride?: string;
   ctaOverride?: string;
+  /** a ranked run: the score so far is kept on the board, and only what follows is for fun */
+  ranked?: boolean;
 };
 
 export default function SaveRunOverlay({
   open, score, game, onSaved, onDecline, perk: perkOverride, decideMs = 6000, headline = "RUN OVER",
-  titleOverride, ctaOverride,
+  titleOverride, ctaOverride, ranked = false,
 }: Props) {
   const perk = perkOverride ?? savePerkFor(game);
   const { gBalance, buyPerk, stock, stockReady, spendStock } = usePerks();
@@ -69,6 +72,9 @@ export default function SaveRunOverlay({
   const canAfford = !!perk && gBalance >= perk.priceG$;
   const busy = status === "buying";
 
+  // counted for the dashboard: how often a continue is offered, bought and turned down, by game
+  const seen = { game, item: perk?.id ?? 0, ranked, price: perk?.priceLabel ?? "" };
+  useEffect(() => { if (open && perk) track("continue_offer", seen); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
   useEffect(() => {
     if (!open) return;
     declinedRef.current = false;
@@ -77,7 +83,7 @@ export default function SaveRunOverlay({
       const p = Math.max(0, 1 - (now - startRef.current) / decideMs);
       setProgress(p);
       if (p <= 0) {
-        if (!declinedRef.current) { declinedRef.current = true; onDecline(); }
+        if (!declinedRef.current) { declinedRef.current = true; track("continue_declined", { ...seen, how: "timed_out" }); onDecline(); }
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -100,7 +106,7 @@ export default function SaveRunOverlay({
   const handleBuy = useCallback(async () => {
     if (!perk || busy) return;
     pauseCountdown(); setStatus("buying"); setErrMsg(null);
-    try { await buyPerk(perk); onSaved(); }
+    try { await buyPerk(perk); track("continue_bought", { ...seen, from: "wallet" }); onSaved(); }
     catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
   }, [perk, busy, buyPerk, onSaved, pauseCountdown]);
 
@@ -109,8 +115,8 @@ export default function SaveRunOverlay({
     pauseCountdown(); setStatus("buying"); setErrMsg(null);
     try {
       const ok = await spendStock(perk.id);
-      if (ok) { onSaved(); return; }
-      await buyPerk(perk); onSaved();
+      if (ok) { track("continue_bought", { ...seen, from: "stock" }); onSaved(); return; }
+      await buyPerk(perk); track("continue_bought", { ...seen, from: "wallet" }); onSaved();
     } catch (e) { finishError(e instanceof Error ? e.message : String(e)); }
   }, [perk, busy, spendStock, buyPerk, onSaved, pauseCountdown]);
 
@@ -118,6 +124,7 @@ export default function SaveRunOverlay({
     if (declinedRef.current) return;
     declinedRef.current = true;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    track("continue_declined", { ...seen, how: "said_no" });
     onDecline();
   }, [onDecline]);
 
@@ -152,6 +159,8 @@ export default function SaveRunOverlay({
         <div style={{ fontFamily: T.display, fontSize: 13, letterSpacing: "0.24em", color: T.danger }}>{headline}</div>
         <div style={{ fontFamily: T.display, fontSize: 44, color: T.ink, marginTop: 2, lineHeight: 1 }}>{score.toLocaleString()}</div>
         <div style={{ fontFamily: T.body, fontSize: 11, color: T.inkSoft, marginTop: 2, letterSpacing: "0.02em" }}>your score</div>
+        {/* said before the player pays, not after: a continue buys more play, never a place on a board */}
+        {perk?.kind !== "cosmetic" && <div style={{ fontFamily: T.body, fontSize: 12.5, fontWeight: 700, color: T.inkDim, marginTop: 8, padding: "6px 12px", borderRadius: 999, background: "rgba(109,40,217,0.08)", display: "inline-block" }}>{ranked ? `Your ranked score stays at ${Math.round(score).toLocaleString()}. What you add after is for fun.` : "Continue for fun · this run is not ranked"}</div>}
       </div>
 
       {/* Circular medallion + depleting timer ring + seconds badge */}

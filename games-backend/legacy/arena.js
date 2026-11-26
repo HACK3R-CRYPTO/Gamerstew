@@ -59,7 +59,7 @@ const PERK_TICKET_ID = 6;
 const PERK_TICKET_GRANT = 5;
 // Consumable save/retry perks that stock as an inventory (owned - used).
 // Cosmetics (2, 4) are on-chain ownership; the Match Pack (6) grants matches.
-const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5]);
+const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5, 9, 11]); // 9: one more life in UP NEPA 3D. 11: a streak freeze. Both are bought ahead in the shop
 const PERK_PURCHASED_IFACE = new core.ethers.Interface([
   'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
 ]);
@@ -410,6 +410,12 @@ core.app.post('/api/perks/grant', core.requireSecret, core.gameSubmitLimiter, as
     });
     const remaining = ARENA_FREE_MATCHES_PER_DAY + (row?.extra ?? 0) + PERK_TICKET_GRANT - (row?.used ?? 0);
     return res.json({ ok: true, kind: 'matches', remaining });
+  }
+  // Energy: one purchase adds a pack of ranked runs (src/modules/energy). Only when energy is switched on.
+  if (core.energy && pid === (parseInt(process.env.ENERGY_PERK_ID ?? '10', 10) || 10)) {
+    const bought = await core.energy.grant(w);
+    if (bought === null) return res.status(500).json({ error: 'grant_failed' });
+    return res.json({ ok: true, kind: 'energy', bought });
   }
   if (CONSUMABLE_STOCK_PERKS.has(pid)) {
     const { data: row } = await core.supabase

@@ -85,3 +85,20 @@ test('the bell\'s dot is one number: no page of notifications is read for it', a
   assert.deepEqual((await world({ unread: async () => ({ ok: false, count: 0 }) }).inbox.unread(W)).body, { unread: 0, unavailable: true });
   assert.equal((await w.inbox.unread('nope')).status, 400);
 });
+
+test('the newest message to everyone: served for the pop-up, read once a minute, and old news is not popped', async () => {
+  let reads = 0; let row: FeedRow | null = { id: 12, kind: null, category: 'whats_new', title: 'New: daily pot', body: 'A pot opens every day.', url: '/dashboard', sent_at: '2026-11-24T10:00:00Z', is_broadcast: true, read: false };
+  const clock = { t: Date.parse('2026-11-24T12:00:00Z') };
+  const store = world().inbox; void store;
+  const { createInbox } = await import('./service');
+  const base = { page: async () => ({ ok: true as const, rows: [] }), unread: async () => ({ ok: true as const, count: 0 }), markRead: async () => true, markAllRead: async () => true, remove: async () => true, clearAll: async () => true, announce: async () => ({ ok: true, created: true }) };
+  const inbox = createInbox({ now: () => clock.t, store: { ...base, latestBroadcast: async () => { reads++; return row; } } });
+  const a = await inbox.latest();
+  assert.deepEqual(a.body.item, { id: 12, kind: 'whats_new', title: 'New: daily pot', body: 'A pot opens every day.', url: '/dashboard', sentAt: Date.parse('2026-11-24T10:00:00Z') / 1000 });
+  await inbox.latest(); await inbox.latest(); assert.equal(reads, 1, 'three asks, one read');
+  clock.t += 61_000; row = { ...row!, url: 'javascript:alert(1)' };
+  assert.equal(((await inbox.latest()).body.item as { url: unknown }).url, null, 'an unsafe link is dropped');
+  clock.t += 15 * 24 * 3600 * 1000;
+  assert.equal((await inbox.latest()).body.item, null, 'news two weeks old is not popped at anyone');
+  assert.equal((await createInbox({ now: () => clock.t, store: base }).latest()).body.item, null, 'a store that cannot say has no news');
+});

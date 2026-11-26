@@ -121,7 +121,8 @@ core.app.post('/api/push/broadcast', core.requireSecret, async (req, res) => {
   const { title, body, url, tag } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'title and body required' });
   const payload = push.announcementNotification({ title, body, url, tag });
-  const result = await push.sendBroadcast(core.supabase, payload);
+  // ?bell=0: the same news was already posted to the bell as an announcement
+  const result = await push.sendBroadcast(core.supabase, payload, { feed: req.query.bell !== '0' });
   console.log(`📣 Broadcast: sent ${result.sent}, skipped (muted) ${result.skipped}, cleaned ${result.cleaned}`);
   res.json({ success: true, ...result });
 });
@@ -439,7 +440,16 @@ strikeHub = core.platform.createLiveHub({ service: strikeService });
 // src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
 // until that has run, its reads answer "migration_needed" and the two jobs
 // below do nothing.
-const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin });
+const adminService = core.platform.createAdmin({
+  store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin,
+  // Telling every player something, from the dashboard: one message in the bell (which is
+  // also the pop-up on the home screen) and, if asked for, one push. The push does not
+  // write its own bell entry, or the same news would be listed twice.
+  announce: {
+    bell: (row) => core.inbox.announce(row).then((r) => ({ ok: r.status === 200, created: r.body && r.body.created !== false, error: r.body && r.body.error })),
+    push: async (p) => { const out = await push.sendBroadcast(core.supabase, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0 }; },
+  },
+});
 core.admin = adminService;
 core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
 // yesterday's and today's numbers, every hour (and once, a minute after boot)
@@ -544,7 +554,8 @@ core.jobs.every('adminVerifySweep', 60 * 1000, async () => {
   });
 }
 
-core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
+core.inbox = core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) });
+core.platform.registerInboxRoutes(core.app, { inbox: core.inbox, requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.
 const roomKeeper = core.platform.supabaseRoomKeeper(core.lockedDb); // friend_rooms is a locked table too
@@ -576,6 +587,43 @@ roomKeeper.loadAll().then((saved) => { const n = roomService.restore(saved); if 
 const liveHub = core.platform.createLiveHub({ service: roomService });
 core.platform.registerRoomRoutes(core.app, { requireSecret: core.requireSecret, service: roomService, changed: liveHub.publish });
 { const t = setInterval(() => { try { liveHub.tick(); } catch (e) { console.warn('[live] tick failed:', e?.message || e); } }, 1000); if (t.unref) t.unref(); }
+
+// Unfinished runs get a transaction too. Not a score (a zero score would count as
+// a game played and could be farmed for the weekly challenge): a note the server
+// wallet sends to itself, which the dashboard links to. See scores/unfinished.ts.
+if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' && core.validator && core.serializeSignerWrite) {
+  const unfinished = core.platform.createUnfinishedRecorder({
+    store: core.platform.supabaseUnfinished(core.supabase),
+    send: async (note) => {
+      const tx = await core.serializeSignerWrite(() => core.validator.sendTransaction({ to: core.validator.address, value: 0n, data: core.ethers.hexlify(core.ethers.toUtf8Bytes(note)) }));
+      return tx.hash;
+    },
+  });
+  core.jobs.every('recordUnfinishedRuns', 2 * 60 * 1000, async () => {
+    const out = await unfinished.sweep();
+    if (out.sent || out.failed) console.log(`[unfinished] ${out.sent} recorded on-chain${out.failed ? ` · ${out.failed} could not be sent (gas or node), will retry` : ''}`);
+  });
+  core.app.get('/internal/unfinished', core.requireSecret, (_req, res) => res.json(unfinished.stats()));
+}
+
+// The daily pot. Off unless POT_ENABLED is "true". It never sends money: closing a
+// day writes each prize as a pending payout for the owner to pay. See modules/pot.
+{
+  const on = String(process.env.POT_ENABLED ?? 'false').toLowerCase() === 'true';
+  const int = (v, d) => { const n = parseInt(v ?? '', 10); return Number.isFinite(n) ? n : d; };
+  const NAMES = { rhythm: 'Rhythm Rush', simon: 'Simon Memory', ladder: 'Word Ladder', strike: 'Street Strike', stack: 'Stack Tower' };
+  const pot = on ? core.platform.createPot({
+    store: core.platform.supabasePot(core.lockedDb, int(process.env.ENERGY_PERK_ID, 10)),
+    games: String(process.env.POT_GAMES ?? 'rhythm,simon,ladder,strike').split(',').map((g) => g.trim()).filter((g) => NAMES[g]),
+    shareBps: int(process.env.POT_SHARE_BPS, 7000), seed: int(process.env.POT_SEED, 0), minPlayers: int(process.env.POT_MIN_PLAYERS, 5), holdBps: int(process.env.POT_HOLD_BPS, 1000),
+    nameOf: (w) => core.resolveUsername(w), gameName: (g) => NAMES[g] ?? g,
+  }) : null;
+  core.platform.registerPotRoutes(core.app, { pot, requireSecret: core.requireSecret });
+  if (pot) core.jobs.every('settlePot', 10 * 60 * 1000, async () => {
+    const out = await pot.settleDue();
+    for (const c of out.closed) console.log(`[pot] ${c.day} closed: ${c.status}, pot ${c.pot} G$, ${c.winners} prizes written as pending payouts`);
+  });
+}
 
 // Friends: ask, accept, remove, invite into a room. The table is locked to the
 // server, so it is read with the service-role client. A friend is told through

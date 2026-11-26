@@ -29,6 +29,8 @@ export interface InboxStore {
   clearAll(wallet: string, atIso: string): Promise<boolean>;
   /** One announcement for everyone. `dedupeKey` makes a repeat a no-op. */
   announce(row: { kind: Kind; category: string; title: string; body: string | null; url: string | null; dedupeKey: string | null }): Promise<{ ok: boolean; created: boolean; id?: number }>;
+  /** the newest message GameArena sent to everyone (an announcement or a "what's new"), or null. Absent on an older store. */
+  latestBroadcast?(): Promise<FeedRow | null>;
 }
 
 export const MAX_PAGE = 50;
@@ -130,6 +132,20 @@ export function createInbox(deps: { store: InboxStore; now?: () => number }) {
     return ok({ ok: true, created: res.created, id: res.id ?? null, kind });
   }
 
-  return { list, unread, read, remove, announce };
+  // The newest thing GameArena told everyone, for the pop-up a player gets when they open the
+  // app. Public: it is the same text for everybody. Read at most once a minute however many
+  // players open the app, and news older than two weeks is not popped at anyone.
+  const NEWS_MS = 14 * 24 * 60 * 60 * 1000;
+  let news: { at: number; item: Record<string, unknown> | null } | null = null;
+  async function latest(): Promise<Reply> {
+    if (!news || now() - news.at > 60_000) {
+      const r = deps.store.latestBroadcast ? await deps.store.latestBroadcast().catch(() => null) : null;
+      const fresh = r && now() - Date.parse(r.sent_at) < NEWS_MS;
+      news = { at: now(), item: fresh ? { id: Number(r.id), kind: kindOf(r.category, r.kind), title: r.title, body: r.body ?? '', url: safeUrl(r.url), sentAt: Math.floor(Date.parse(r.sent_at) / 1000) } : null };
+    }
+    return ok({ item: news.item });
+  }
+
+  return { list, unread, read, remove, announce, latest };
 }
 export type Inbox = ReturnType<typeof createInbox>;

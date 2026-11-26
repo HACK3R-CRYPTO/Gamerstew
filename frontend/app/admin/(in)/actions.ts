@@ -24,3 +24,10 @@ export async function disableAdmin(f: FormData) {
   const r = await adminPost("admin/admins/disable", { email: s(f, "email"), disabled: s(f, "disabled") !== "false" });
   back("/admin/admins", r, "updated");
 }
+
+/** Send a "what is new" message to every player: the bell, the pop-up, and a push if one was written. */
+export async function sendAnnouncement(f: FormData) {
+  const r = await adminPost("admin/announce", { title: s(f, "title"), body: s(f, "body"), pushTitle: s(f, "pushTitle"), pushBody: s(f, "pushBody"), url: s(f, "url") || "/dashboard", live: f.get("live") === "on" });
+  if (r.ok) redirect(`/admin/announce?ok=sent&pushed=${r.body.pushed == null ? "none" : Number(r.body.pushed)}`);
+  back("/admin/announce", r, "sent");
+}

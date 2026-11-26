@@ -54,6 +54,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:300
 
 // ─── Pet stages (same data as rhythm — pet evolves with your level) ──────────
 type PetStage = { id: string; name: string; src: string; minLevel: number; color: string };
+import { petFrame, preloadPetFaces } from "@/lib/pets";
 const PET_STAGES: PetStage[] = [
   { id: "egg",     name: "Mystery Egg",   src: "/pets/stage-1-egg.png",     minLevel: 1,  color: "#e2e8f0" },
   { id: "baby",    name: "Baby Slime",    src: "/pets/stage-2-baby.png",    minLevel: 5,  color: "#22c55e" },
@@ -83,7 +84,7 @@ const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
 // signed or sent to the chain, and the result goes to the room instead.
 type ModeId = "ranked" | "practice" | "lightning" | "reverse" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
-  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "ranked", name: "Ranked", tag: "RANKED", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
   { id: "lightning", name: "Lightning", tag: "FREE", blurb: "The sequence plays at top speed from round 1.", color: "#f43f5e" },
   { id: "reverse", name: "Reverse", tag: "FREE", blurb: "Watch it forwards. Tap it back BACKWARDS.", color: "#c084fc" },
@@ -441,6 +442,10 @@ export default function SimonGamePage() {
 
   // ═══ Score submission state (mirrors rhythm) ═══
   const submittedRef = useRef<boolean>(false);
+  const continuedRef = useRef(false); // true once a paid continue was used in this run
+  // what the run was worth at the moment of the first continue: this, not the final score, is what is ranked
+  const bankedRef = useRef<{ score: number; time: number; log: string[]; rounds: number } | null>(null);
+  const [bankedScore, setBankedScore] = useState<number | null>(null);
   // Retry perk (M1): a wrong tap opens the retry prompt (casual mode only).
   // Buying replays the round; the run then stays off the ranked ladder.
   const usedPerkRef = useRef(false);
@@ -610,7 +615,10 @@ export default function SimonGamePage() {
     setGameTimeMs(gameTime);
     clearTimeouts();
 
-    // A retried run submits normally — using a retry counts on the weekly board.
+    // A run that was continued hands in the score it had BEFORE the continue (bankedRef):
+    // paying to carry on never buys a place on the board, and never costs the place already earned.
+    const banked = bankedRef.current;
+    if (banked) { finalScore = banked.score; gameTime = banked.time; }
 
     if (runModeRef.current === "room") { void roomRef.current.finish({ simonTapLog: tapLogRef.current.slice(), score: Math.max(0, Math.round(finalScore)) }); return; }
     if (runModeRef.current !== "ranked") return; // free modes are never signed or sent
@@ -660,7 +668,7 @@ export default function SimonGamePage() {
           sessionTokenRef.current ?? "",
           undefined, undefined,
           // Simon shadow payload · additive, does not change the signed score.
-          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
+          { tapLog: banked ? banked.log : tapLogRef.current, rounds: banked ? banked.rounds : sequencesRef.current, elapsedMs: clampedGameTime },
         );
       } else {
         authToken = await getAccessToken();
@@ -674,7 +682,7 @@ export default function SimonGamePage() {
           sessionTokenRef.current ?? "",
           undefined, undefined,
           // Simon shadow payload · additive, does not change the signed score.
-          { tapLog: tapLogRef.current, rounds: sequencesRef.current, elapsedMs: clampedGameTime },
+          { tapLog: banked ? banked.log : tapLogRef.current, rounds: banked ? banked.rounds : sequencesRef.current, elapsedMs: clampedGameTime },
         );
       }
 
@@ -834,7 +842,7 @@ export default function SimonGamePage() {
       juice.lossPopup(50, 60, "WRONG");
       // Offer a retry (casual) before ending — signed-in, minted players only,
       // and only for a run that will actually be submitted.
-      if (runModeRef.current === "ranked" && address && !needsMint) {
+      if (runModeRef.current !== "room" && address && !needsMint) { // any solo run: a continue is for fun, and a continued run is never ranked
         pendingEndRef.current = { score: scoreRef.current, time: Date.now() - startTimeRef.current };
         setActiveBtn(null);
         setIsShowingSequence(false);
@@ -900,6 +908,12 @@ export default function SimonGamePage() {
 
   // ─── Retry perk: replay the current round (casual) or end the run ───────────
   const resumeAfterRetry = useCallback(() => {
+    continuedRef.current = true; // what is added from here on is for fun (see bankedRef)
+    if (!bankedRef.current) {
+      const at = pendingEndRef.current ?? { score: scoreRef.current, time: Date.now() - startTimeRef.current };
+      bankedRef.current = { score: at.score, time: at.time, log: tapLogRef.current.slice(), rounds: sequencesRef.current };
+      if (runModeRef.current === "ranked") setBankedScore(Math.round(at.score));
+    }
     usedPerkRef.current = true;
     pendingEndRef.current = null;
     userPatternRef.current = [];
@@ -945,6 +959,7 @@ export default function SimonGamePage() {
     // nothing on-chain), no session ticket (the backend would refuse it
     // anyway). Play is free — the finish screen sells the mint.
     runModeRef.current = inRoom ? "room" : modeRef.current; // pinned for the whole run
+    continuedRef.current = false; bankedRef.current = null; setBankedScore(null); // a fresh run
     const ranked = runModeRef.current === "ranked";
     if (ranked && !GASLESS_SKILL_GAMES && !needsMint && gasStatus === "block") {
       // Low on gas · try a one-tap faucet top-up before sending them to beg for
@@ -1205,6 +1220,7 @@ export default function SimonGamePage() {
           game="simon"
           perk={getPerk(5)}
           headline="WRONG!"
+          ranked={runModeRef.current === "ranked"}
           onSaved={resumeAfterRetry}
           onDecline={declineRetry}
         />
@@ -1248,6 +1264,7 @@ export default function SimonGamePage() {
       {/* in a friend room the room's standings are the result screen */}
       {phase === "finished" && runModeRef.current !== "room" && (
         <FinishedView
+          bankedScore={bankedScore}
           grade={grade}
           score={score}
           rounds={sequences}
@@ -1335,7 +1352,7 @@ function IdleView({ room, mode, onPickMode, challenge, onStart, onExit, onLeader
 }) {
   return (
     <GameLobby
-      title="Simon Memory"
+      title="Simon Memory" howTo="simon"
       headline={<>Watch. Remember.<br />Repeat.</>}
       rules={<>Watch the sequence, then tap it back in order. Each round adds one more. <b>One mistake ends the run.</b></>}
       cover="/games/covers/simon.jpg" focus="50% 45%"
@@ -1431,6 +1448,9 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
     : "pet-breathe";
 
   const wilt = reaction === "wrong";
+  useEffect(() => { preloadPetFaces(pet); }, [pet]);
+  // the face follows what just happened: joy for a right tap or a cleared round, sad for the wrong one
+  const face = petFrame(pet, reaction === "wrong" ? "sad" : reaction === "idle" ? "happy" : "joy");
   const popScale = reaction === "bonus" ? 1.35 : reaction === "clear" ? 1.2 : reaction === "correct" ? 1.1 : 1;
 
   return (
@@ -1456,11 +1476,11 @@ function PetCompanion({ pet, event }: { pet: PetStage; event: PetEvent | null })
         }}>
           <div className={animClass} style={{
             width: "88%", height: "88%",
-            filter: wilt ? "grayscale(0.9) brightness(0.6) saturate(0.5)" : "none",
+            filter: wilt ? "grayscale(0.35) brightness(0.86)" : "none", // the sad face says it now; the grey only underlines it
             transition: "filter 0.2s",
           }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pet.src} alt="" draggable={false}
+            <img src={face} alt="" draggable={false}
               style={{
                 width: "100%", height: "100%", objectFit: "contain",
                 filter: `drop-shadow(0 0 6px ${pet.color}cc)`,
@@ -2057,12 +2077,14 @@ type FinishedSubmit = {
 };
 
 function FinishedView({
+  bankedScore,
   bestResult, practice, challenge, onChallenge,
   grade, score, rounds, gameTimeMs,
   onPlayAgain, onExit,
   submitting, signingOnChain, submitResult, submitError, txError,
   guest, needsMint,
 }: {
+  bankedScore: number | null; // the ranked score of a continued run: what it was worth before the continue
   bestResult: { prev: number | null; isNew: boolean } | null; // deepest round before this run, and whether this run beat it
   practice: string | null; // name of the free mode just played, null for a ranked run
   challenge: Challenge | null; // a friend's round this run was chasing
@@ -2085,6 +2107,7 @@ function FinishedView({
     <GameResult
       eyebrow={grade.desc} tone={grade.color} badge={grade.letter} score={score}
       notes={<>
+        {bankedScore != null && <span className="warm">Ranked score: <b>{bankedScore.toLocaleString()}</b>, from before your continue. The rest was for fun.</span>}
         {challenge && rounds > 0 && (
           <span className={rounds > challenge.rounds ? "good" : "warm"}>
             {rounds > challenge.rounds ? `You beat ${challenge.by} by ${rounds - challenge.rounds} round${rounds - challenge.rounds === 1 ? "" : "s"}!` : rounds === challenge.rounds ? `Level with ${challenge.by}. One more round takes it` : `${challenge.rounds - rounds} round${challenge.rounds - rounds === 1 ? "" : "s"} short of ${challenge.by}. Go again`}
