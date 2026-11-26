@@ -86,3 +86,15 @@ A pop-up interrupts, so it keeps to rules:
 Counted for the admin (Visits, Events): `whatsnew_shown`, `whatsnew_open`, `whatsnew_closed`.
 
 The social posts that go with a release are written at the same time and kept, with their pictures, in `marketing/whats-new-<date>/` (not in git).
+
+## Push: what was wrong on 2026-11-26, and what changed
+
+The first announcement sent from the admin said the push "went to 0 devices". The news itself was delivered to every bell. The push was never attempted: the admin's sender reached the push code by a name that exists only in the first part of the server file, so it threw, and the throw was swallowed as a zero.
+
+- **Fixed**, and a sender that breaks is now reported as broken, on the page and in the log.
+- **The admin page says who a push can reach** before sending ("30 phones have notifications switched on") and afterwards what became of each: got it, had news switched off, had expired, or was refused and why.
+- **"Only the push"** sends a push for news that is already in the bell.
+- **A hole closed.** A push is a request from this server to the address in a subscription. Two entries in the table pointed at internal addresses (a cloud metadata address and a local database port), left from before the sign-up route was locked in July. Only the browsers' own push services are accepted now, when a subscription is saved and again before anything is sent; anything else is never contacted and is removed. `isPushEndpoint` in `games-backend/lib/push.js`.
+- **Turning notifications on.** The ask only appeared after a saved run in four games, once per device, and nobody had signed up since 5 October. The bell now has a "Turn on" row for anyone who has not decided yet.
+
+`GET /internal/push/devices` (internal secret) reports the phones signed up, how many are muted, which push services they use, and whether each sign-up is well formed, without sending anything.

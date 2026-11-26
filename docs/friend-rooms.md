@@ -63,7 +63,7 @@ Rules that follow from holding nothing:
 - A tie for first, or a round nobody scores in, moves no money.
 - A loser who empties their wallet before the end does not pay. It is recorded against their wallet so they can be kept out of staked rooms.
 - A permit is only good for the wallet that signed it and the amount it names. If the server key were stolen, the most a thief could take from a player is the one entry that player signed for, within the hour.
-- Only GoodDollar-verified players may stake.
+- Any signed-in player who holds the entry may stake. There is no verification check (owner's decision, 2026-11-26): an entry between friends is the players' own G$ going from the loser to the winner, so holding it is the only condition. The game must still be one the server scores.
 - A payment the chain did not answer for is tried again and can never be taken twice.
 
 ## 4. Architecture
@@ -115,3 +115,20 @@ Server-checked Street Strike rooms (send the throws, replay them), then Stack ma
 ## 8. What this replaces
 
 `DuelEscrow` at `0x5dd223edb320Bc7e5D1DbF0D68512D1917E0c557`. Confirmed problems: a tie pays the room's creator; the join code is visible in calldata; a single validator key resolves every room; no audit. It is not used by friend rooms. At the time of writing it holds 300 G$ in 5 unfilled rooms, which `refundUnfilled(id)` returns. See `docs/duel-rooms/spec.md`.
+
+## Invites that pop up (2026-11-26)
+
+An invite used to reach a friend only through the bell (and a push, if they had allowed one). A friend with the app open never saw it unless they opened the bell, while the host waited in an empty room.
+
+Now the invite drops in at the top of whatever screen the friend is on, within a fraction of a second: who invited them, which game, and one button, "Join". It does not cover the screen or stop a run. It stays for three minutes (the bar drains), then it is only in the bell.
+
+How it travels:
+
+- **A player's own line** (`games-backend/src/modules/friends/line.ts`, socket path `/live/me`). One socket per open app. The server only ever sends on it.
+- **The ticket** (`friends/ticket.ts`). The game server cannot check a sign-in itself, so the once-a-minute check-in (`POST /api/friends/ping`, reached only through the site's server after the sign-in is checked) hands back a ticket: this wallet, for ten minutes, signed with a key derived from the server's secret. The phone shows it to open its line. A stolen ticket shows an attacker ten minutes of invites and nothing else.
+- **The fallback.** The check-in's answer also carries invites that are still waiting, so a phone whose socket cannot open still gets the pop-up at its next check-in (at most a minute later).
+- **In the app:** `frontend/lib/ownLine.ts` (the socket), `components/Presence.tsx` (check-in, which invite to show, never the same one twice), `components/InvitePopup.tsx` (the card).
+
+Limits: 4 open tabs per player (a fifth replaces the oldest), 10,000 lines on the server, 8 messages per 10 seconds from a phone, a connection that does not say who it is within 6 seconds is closed. Invites are held in memory for three minutes; the bell holds the lasting copy. One server holds every line, like the room line: a second server would need a shared channel.
+
+Counted in `site_events`: `invite_shown`, `invite_join`, `invite_closed`, `invite_ran_out`. `GET /internal/live` reports open lines under `me`.

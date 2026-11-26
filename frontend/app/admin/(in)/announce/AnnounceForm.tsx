@@ -15,13 +15,13 @@ const D = '"Melon Pop", "Fredoka", system-ui, sans-serif';
 const count = (n: number, max: number) => <span style={{ fontSize: 12, fontWeight: 700, color: n > max ? C.bad : n > max * 0.9 ? C.warn : C.dim }}>{n} / {max}</span>;
 const label: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13, fontWeight: 700, color: C.ink, margin: "12px 0 5px" };
 
-export default function AnnounceForm({ canSend }: { canSend: boolean }) {
+export default function AnnounceForm({ canSend, devices }: { canSend: boolean; /** phones with notifications switched on right now; null when it could not be read */ devices: { devices: number; players: number } | null }) {
   const [title, setTitle] = useState(""); const [body, setBody] = useState("");
   const [pt, setPt] = useState(""); const [pb, setPb] = useState("");
-  const [url, setUrl] = useState("/dashboard"); const [live, setLive] = useState(false);
+  const [url, setUrl] = useState("/dashboard"); const [live, setLive] = useState(false); const [pushOnly, setPushOnly] = useState(false);
   const lines = points(body);
   const pushHalf = !!pt.trim() !== !!pb.trim();
-  const bad = !title.trim() || !body.trim() || title.length > 80 || body.length > 400 || pt.length > 60 || pb.length > 160 || pushHalf;
+  const bad = pushOnly ? !(pt.trim() && pb.trim()) || pt.length > 60 || pb.length > 160 : !title.trim() || !body.trim() || title.length > 80 || body.length > 400 || pt.length > 60 || pb.length > 160 || pushHalf;
   const today = new Date().toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 16, alignItems: "start" }}>
@@ -37,6 +37,11 @@ export default function AnnounceForm({ canSend }: { canSend: boolean }) {
 
         <div style={{ marginTop: 18, fontSize: 16, fontWeight: 800, color: C.ink }}>The push <span style={{ fontWeight: 600, fontSize: 13, color: C.dim }}>optional</span></div>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: C.dim, lineHeight: 1.45 }}>Sent to phones that allowed notifications. One hook, one line. Leave both empty to send no push.</p>
+        <div style={{ marginTop: 8, padding: "9px 12px", borderRadius: 12, background: C.soft, fontSize: 13.5, color: C.ink }}>{devices ? <><b>{devices.devices}</b> {devices.devices === 1 ? "phone has" : "phones have"} notifications switched on, from <b>{devices.players}</b> {devices.players === 1 ? "player" : "players"}. That is who a push can reach.</> : "Could not read how many phones have notifications on."}</div>
+        <label style={{ display: "flex", gap: 9, alignItems: "center", marginTop: 10, fontSize: 13.5, color: C.ink, cursor: "pointer" }}>
+          <input type="checkbox" name="pushOnly" checked={pushOnly} onChange={(e) => setPushOnly(e.target.checked)} style={{ width: 17, height: 17 }} />
+          <span><b>Only the push.</b> The news is already in the bell; send just the push for it.</span>
+        </label>
         <div style={label}><span>Push title</span>{count(pt.length, 60)}</div>
         <input name="pushTitle" value={pt} onChange={(e) => setPt(e.target.value)} placeholder="Your slime has feelings now" style={input} />
         <div style={label}><span>Push text</span>{count(pb.length, 160)}</div>
@@ -47,7 +52,7 @@ export default function AnnounceForm({ canSend }: { canSend: boolean }) {
           <input type="checkbox" name="live" checked={live} onChange={(e) => setLive(e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, flex: "none" }} />
           <span><b>Everything in this message is live on gamearenahq.xyz.</b> It goes to every player and cannot be taken back.</span>
         </label>
-        <button type="submit" disabled={!canSend || bad || !live} style={{ ...button, width: "100%", marginTop: 12, padding: "13px 16px", fontSize: 15, opacity: !canSend || bad || !live ? 0.45 : 1, cursor: !canSend || bad || !live ? "default" : "pointer" }}>Send to every player</button>
+        <button type="submit" disabled={!canSend || bad || !live} style={{ ...button, width: "100%", marginTop: 12, padding: "13px 16px", fontSize: 15, opacity: !canSend || bad || !live ? 0.45 : 1, cursor: !canSend || bad || !live ? "default" : "pointer" }}>{pushOnly ? "Send the push" : "Send to every player"}</button>
         {!canSend && <div style={{ marginTop: 8, fontSize: 12.5, color: C.dim }}>Only an Admin or a Super Admin can send. You can write and preview.</div>}
       </form>
 

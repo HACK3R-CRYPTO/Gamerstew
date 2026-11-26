@@ -26,6 +26,10 @@ export interface Note { title: string; body: string; url: string; tag: string }
 export const MAX_FRIENDS = 200;
 export const MAX_ASKING = 30;
 export const INVITE_GAP_MS = 30_000;
+/** how long an invite is worth showing: about as long as a host waits in an empty room */
+export const INVITE_TTL_MS = 3 * 60_000;
+/** A friend calling a player into a room. Shown as a pop-up while it is fresh; the bell keeps it after. */
+export interface Invite { id: string; from: string; name: string | null; game: string; gameName: string; code: string; url: string; at: number; until: number; /** milliseconds it is still worth showing, counted by the server: a phone's clock is not trusted */ left?: number }
 /** a player counts as online for this long after their app last checked in */
 export const ONLINE_MS = 150_000;
 const WALLET = /^0x[a-f0-9]{40}$/;
@@ -44,6 +48,10 @@ export function createFriends(deps: {
   nameOf: (wallet: string) => Promise<string | null>;
   /** tell one player something (their inbox, and a push if they allow it). Best effort. */
   notify?: (wallet: string, category: string, note: Note) => Promise<unknown>;
+  /** hand an invite to the player's open app right now, if they have one open (friends/line.ts) */
+  live?: (wallet: string, invite: Invite) => void;
+  /** a ticket for the player's own line (friends/ticket.ts) */
+  ticket?: (wallet: string) => string;
   now?: () => number;
 }) {
   const now = deps.now ?? Date.now;
@@ -55,6 +63,15 @@ export function createFriends(deps: {
   const name = async (w: string) => (await deps.nameOf(w).catch(() => null)) || null;
   const short = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`;
   const tell = (wallet: string, category: string, note: Note) => { if (deps.notify) void deps.notify(wallet, category, note).catch(() => {}); };
+  // Invites that are still fresh, by who they are for. In memory only: an invite is
+  // worth three minutes, and the bell holds the lasting copy.
+  const waiting = new Map<string, Invite[]>();
+  const pendingFor = (w: string): Invite[] => {
+    const list = waiting.get(w); if (!list) return [];
+    const fresh = list.filter((i) => i.until > now());
+    if (fresh.length) waiting.set(w, fresh); else waiting.delete(w);
+    return fresh.map((i) => ({ ...i, left: i.until - now() }));
+  };
 
   /** who the request is about: a wallet, or a username to look up */
   async function target(raw: unknown): Promise<string | null> {
@@ -116,7 +133,8 @@ export function createFriends(deps: {
       const me = low(walletRaw);
       if (!WALLET.test(me)) return bad('bad_wallet');
       mark(me);
-      return ok({ ok: true });
+      // the check-in also carries any invite still waiting, for a phone whose live line is down
+      return ok({ ok: true, invites: pendingFor(me), ...(deps.ticket ? { ticket: deps.ticket(me) } : {}) });
     },
 
     /** Ask someone to be a friend. If they had already asked, this accepts. */
@@ -183,9 +201,20 @@ export function createFriends(deps: {
       if (lastInvite.size > 20000) lastInvite.clear();
       if (t - (lastInvite.get(key) ?? 0) < INVITE_GAP_MS) return bad('slow_down', 429);
       lastInvite.set(key, t);
-      tell(them, `room_invite_${code}`, { title: `🎮 ${(await name(me)) ?? 'A friend'} invited you`, body: `Join their ${game.name} room. Code ${code}.`, url: `${game.path}?room=${code}`, tag: `room-${code}` });
+      const from = await name(me); const url = `${game.path}?room=${code}`;
+      const invite: Invite = { id: `${code}:${me}`, from: me, name: from, game: String(gameRaw), gameName: game.name, code, url, at: t, until: t + INVITE_TTL_MS };
+      if (waiting.size > 20000) waiting.clear();
+      waiting.set(them, [...(waiting.get(them) ?? []).filter((i) => i.id !== invite.id && i.until > t), invite].slice(-5));
+      // their open app shows it at once; the bell (and a push, if allowed) keeps it for later
+      try { deps.live?.(them, { ...invite, left: INVITE_TTL_MS }); } catch { /* the bell still has it */ }
+      tell(them, `room_invite_${code}`, { title: `🎮 ${from ?? 'A friend'} invited you`, body: `Join their ${game.name} room. Code ${code}.`, url, tag: `room-${code}` });
       return ok({ sent: true });
     },
+
+    /** invites still worth showing this player (for their line, the moment it opens) */
+    pendingFor: (walletRaw: unknown): Invite[] => pendingFor(low(walletRaw)),
+    /** the player's app is open (their line said so) */
+    touch(walletRaw: unknown): void { const w = low(walletRaw); if (WALLET.test(w)) mark(w); },
   };
 }
 export type Friends = ReturnType<typeof createFriends>;

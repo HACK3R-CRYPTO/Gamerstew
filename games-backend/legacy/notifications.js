@@ -42,6 +42,8 @@ core.app.post('/api/push/subscribe', core.requireSecret, async (req, res) => {
   if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
     return res.status(400).json({ error: 'Invalid address' });
   }
+  // only a browser's own push service: this server sends requests to that address (see lib/push.js)
+  if (!push.isPushEndpoint(subscription.endpoint)) return res.status(400).json({ error: 'Not a push service' });
 
   // Has this wallet ever subscribed before? Check before save so a fresh
   // wallet with zero rows is unambiguous.
@@ -447,7 +449,8 @@ const adminService = core.platform.createAdmin({
   // write its own bell entry, or the same news would be listed twice.
   announce: {
     bell: (row) => core.inbox.announce(row).then((r) => ({ ok: r.status === 200, created: r.body && r.body.created !== false, error: r.body && r.body.error })),
-    push: async (p) => { const out = await push.sendBroadcast(core.supabase, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0 }; },
+    push: async (p) => { const out = await core.push.sendBroadcast(core.lockedDb, core.push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0, devices: out.devices || 0, expired: out.cleaned || 0, failed: out.failed || 0, why: out.why || null }; },
+    devices: async () => { const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address'); if (error) return null; const rows = data || []; return { devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size }; },
   },
 });
 core.admin = adminService;
@@ -571,7 +574,9 @@ if (process.env.ROOM_STAKES === 'true' && core.validator && core.provider) {
     feeBps, entries, spender: spender.toLowerCase(),
     pay: core.platform.tokenStakePay({
       token: new core.ethers.Contract(gToken, core.platform.TOKEN_ABI, core.validator), tokenAddress: gToken, tokenName: 'GoodDollar', tokenVersion: '1', chainId: 42220,
-      spender, treasury: (process.env.ROOM_FEE_WALLET || '').trim() || spender, serialize: core.serializeSignerWrite, isVerified: core.isVerified,
+      spender, treasury: (process.env.ROOM_FEE_WALLET || '').trim() || spender, serialize: core.serializeSignerWrite,
+      // No verification check, on purpose (owner's decision, 2026-11-26): an entry between friends is the
+      // players' own G$ going from the loser to the winner. Holding the entry is the only condition.
     }),
   };
   console.log(`[rooms] playing for G$ is ON · entries ${entries.length} · fee ${feeBps / 100}%`);
@@ -628,9 +633,19 @@ if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' &
 // Friends: ask, accept, remove, invite into a room. The table is locked to the
 // server, so it is read with the service-role client. A friend is told through
 // their inbox, and by push when they have allowed it.
-core.platform.registerFriendRoutes(core.app, {
-  requireSecret: core.requireSecret,
-  friends: core.platform.createFriends({
+// A player's own line: an invite pops up in their open app the moment it is sent (src/modules/friends/line.ts).
+// The ticket for it is signed here and handed out by the check-in, which only a checked sign-in can reach.
+const ownTickets = core.platform.createTickets(core.INTERNAL_SECRET);
+let friendsService = null;
+const ownLine = core.platform.createPersonalLine({
+  verify: (ticket) => ownTickets.verify(ticket),
+  pending: (wallet) => (friendsService ? friendsService.pendingFor(wallet) : []),
+  seen: (wallet) => { if (friendsService) friendsService.touch(wallet); },
+});
+{ const t = setInterval(() => { try { ownLine.sweep(); } catch (e) { console.warn('[line] sweep failed:', e?.message || e); } }, 3000); if (t.unref) t.unref(); }
+friendsService = core.platform.createFriends({
+    live: (wallet, invite) => { ownLine.tell(wallet, { t: 'invite', invite }); },
+    ticket: (wallet) => ownTickets.sign(wallet),
     store: core.platform.supabaseFriends(core.lockedDb),
     nameOf: (w) => core.resolveUsername(w),
     // a push when the player allows it; either way the message must reach their inbox
@@ -638,11 +653,22 @@ core.platform.registerFriendRoutes(core.app, {
       const pushed = await core.push.sendToWallet(core.supabase, wallet, category, note).catch(() => false);
       if (!pushed) await core.supabase.from('notifications_feed').insert({ wallet_address: wallet.toLowerCase(), category, title: note.title, body: note.body, url: note.url, tag: note.tag }).then(() => {}, () => {});
     },
-  }),
 });
+core.platform.registerFriendRoutes(core.app, { requireSecret: core.requireSecret, friends: friendsService });
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
+// How many phones a push would reach right now. Read-only.
+core.app.get('/internal/push/devices', core.requireSecret, async (_req, res) => {
+  const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address, last_seen_at, endpoint, p256dh, auth');
+  if (error) return res.json({ readable: false, error: String(error.message || error).slice(0, 120) });
+  const rows = data || []; const { data: seenAnon } = await core.supabase.from('push_subscriptions').select('wallet_address');
+  const { data: prefs } = await core.lockedDb.from('notification_prefs').select('wallet_address, reengagement');
+  const muted = new Set((prefs || []).filter((p) => p.reengagement === false).map((p) => p.wallet_address));
+  const dry = core.push.dryRun(rows, { title: 'check', body: 'check', url: '/', tag: 'check' });
+  res.json({ readable: true, mutedDevices: rows.filter((r) => muted.has(r.wallet_address)).length, wouldBuild: dry.ok, cannotBuild: dry.bad, buildError: dry.why, services: dry.hosts, devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size, seenWithoutServiceKey: (seenAnon || []).length, newest: rows.map((r) => r.last_seen_at).filter(Boolean).sort().pop() || null, keysSet: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) });
+});
+
 core.app.get('/internal/config', core.requireSecret, (_req, res) => res.json({ ...core.platform.checkEnv(), settings: core.platform.describeEnv() }));
 core.app.get('/internal/metrics', core.requireSecret, async (_req, res) => res.json({ outbox: core.outboxOn() ? await core.outbox.status().catch(() => ({ unreadable: true })) : { on: false }, uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot(), jobs: core.jobs.status(), egress: core.egress ? core.egress.snapshot() : null }));
 
@@ -674,8 +700,8 @@ const server = core.app.listen(core.PORT, () => {
   const allowed = (origin) => !!origin && (core.config.allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(origin)));
   server.on('upgrade', (req, socket, head) => {
     let path = ''; try { path = new URL(req.url, 'http://x').pathname; } catch { /* not a path we serve */ }
-    // /live is the shared rooms; /live/strike is Street Strike's own rooms
-    const hub = path === '/live' ? liveHub : path === '/live/strike' ? strikeHub : null;
+    // /live is the shared rooms; /live/strike is Street Strike's own rooms; /live/me is a player's own line
+    const hub = path === '/live' ? liveHub : path === '/live/strike' ? strikeHub : path === '/live/me' ? ownLine : null;
     if (!hub || !allowed(req.headers.origin)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, (ws) => {
       const who = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
@@ -688,7 +714,7 @@ const server = core.app.listen(core.PORT, () => {
   // a phone that vanished without saying goodbye is noticed within a minute
   const beat = setInterval(() => { for (const ws of wss.clients) { if (ws.isAlive === false) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch { /* closing */ } } }, 30000);
   if (beat.unref) beat.unref();
-  core.app.get('/internal/live', core.requireSecret, (_req, res) => res.json({ ...liveHub.stats(), strike: strikeHub.stats() }));
+  core.app.get('/internal/live', core.requireSecret, (_req, res) => res.json({ ...liveHub.stats(), strike: strikeHub.stats(), me: ownLine.stats() }));
 }
 
 // A stray rejected promise is logged instead of killing the server, and a
