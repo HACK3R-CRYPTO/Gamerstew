@@ -1,5 +1,6 @@
 "use client";
 
+import EnergyLine from "@/components/EnergyLine";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
@@ -536,6 +537,8 @@ export default function DashboardPage() {
               <Pill color={PILL_MUTED}><StreakFlame streak={userMeta?.streak ?? 0} playedToday={userMeta?.playedToday ?? true} frozen={userMeta?.frozen ?? false} size={12} suffix="d" empty="New" /></Pill>
               <Pill color={PILL_MUTED}>LV {userMeta?.level ?? 1}</Pill>
               {me && me.peak > 0 && <Pill color={PILL_MUTED}>PEAK {me.peak}</Pill>}
+              {/* ranked runs left today (the bar at the top no longer carries it); nothing while energy is off */}
+              <EnergyLine as="chip" />
             </div>
           )}
         </div>

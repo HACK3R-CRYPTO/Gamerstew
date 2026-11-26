@@ -16,6 +16,7 @@ What each document is, and whether it describes the code as it is today.
 | [word-ladder.md](word-ladder.md) | Word Ladder: the timed round with no ceiling on the score, the daily, friend rooms, and how the server checks a round |
 | [how-to-play.md](how-to-play.md) | The "How to play" sheet on every game and the practice ladder in Word Ladder, with the research behind them |
 | [notifications.md](notifications.md) | The inbox, push, rank alerts, and what is not built |
+| [cash-out.md](cash-out.md) | G$ to naira in a bank account through GoodCash: the four screens, the fees, how to turn it on |
 | [../games-backend/ANTICHEAT.md](../games-backend/ANTICHEAT.md) | What is enforced per game, and what is not |
 | [admin-dashboard.md](admin-dashboard.md) | The admin dashboard at `/admin`: what it shows, where each number comes from, how to turn it on, and what is still missing |
 | [engagement-rewards.md](engagement-rewards.md) | What was committed to GoodDollar for engagement rewards. Not integrated |

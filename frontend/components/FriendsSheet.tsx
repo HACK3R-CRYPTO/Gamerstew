@@ -2,6 +2,16 @@
 
 // The lobby for a friend room: make one or join one, see who is in, start.
 // The same sheet for every game; the game supplies its name.
+//
+// How the room is laid out (2026-11-26), and why:
+//   - What the round is played FOR sits at the very top. A player must never
+//     find out there is a G$ entry by scrolling past the chat.
+//   - The one thing this player has to do next (agree, start, or wait) is a bar
+//     fixed to the bottom of the sheet, under the thumb, whatever is scrolled.
+//   - Everything else is made small: the code is a chip beside the title, the
+//     four seats are a two-by-two grid, and the chat is one folded line on a
+//     phone. On a wide screen the chat stands open beside the room instead.
+// Sources are in docs/friend-rooms.md.
 
 import { useEffect, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
@@ -38,12 +48,21 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
   const active = v ? v.players.filter((p) => !p.away).length : 0;
 
   const friends = useFriends(); const online = friends.friends.filter((p) => p.online);
+  const stake = useStake(room, v);
+  const st = v?.stake; const duo = !!v && v.players.length > 1;
+  const waitingOnStake = !!st && st.state !== "ready";
   return (
     <div className="fs-wrap" role="dialog" aria-modal="true" aria-label="Play with friends">
-      <div className="fs">
-        <button className="fs-x" onClick={() => { if (room.inRoom) room.leave(); onClose(); }} aria-label="Close">✕</button>
-        <div className="fs-kicker">{gameName.toUpperCase()}</div>
-        <h2 style={{ fontFamily: DISPLAY }}>{room.inRoom ? "Your room" : "Play with friends"}</h2>
+      <div className={`fs${room.inRoom ? " room" : ""}${duo ? " duo" : ""}`}>
+        <div className="fs-top">
+          <div>
+            <div className="fs-kicker">{gameName.toUpperCase()}</div>
+            <h2 style={{ fontFamily: DISPLAY }}>{room.inRoom ? "Your room" : "Play with friends"}</h2>
+          </div>
+          {room.inRoom && <button className="fs-codechip" onClick={copy} aria-label={`Room code ${room.session!.code}. Tap to copy the link.`}><small>{copied ? "LINK COPIED" : "CODE"}</small><b>{room.session!.code}</b></button>}
+          <button className="fs-x" onClick={() => { if (room.inRoom) room.leave(); onClose(); }} aria-label="Close">✕</button>
+        </div>
+        <div className="fs-body">
 
         {!room.inRoom ? (
           <>
@@ -72,7 +91,17 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
           </>
         ) : (
           <>
-            <div className="fs-code" aria-label={`Room code ${room.session!.code}`}>{room.session!.code.split("").map((c, i) => <b key={i}>{c}</b>)}</div>
+            {/* what this round is played for, before anything else */}
+            {st && v && (
+              <div className="fs-for" role="status">
+                <em>Playing for G$</em>
+                <b>{gd(st.entryWei)} G$ each · <u>winner gets {winnerGain(st.entryWei, st.feeBps, active)} G$</u></b>
+                <p>Nothing is taken now. The others pay the winner when the round ends, and a tie moves nothing. {st.feeBps / 100}% of each entry is the fee.</p>
+                {room.isHost && <button className="fs-link" disabled={stake.working || room.busy} onClick={() => void room.clearEntry()}>Play for free instead</button>}
+              </div>
+            )}
+            <div className="fs-cols">
+            <div className="fs-main">
             <div className="fs-share">
               <a href={`https://wa.me/?text=${encodeURIComponent(invite)}`} target="_blank" rel="noreferrer">WhatsApp</a>
               <button onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
@@ -80,36 +109,85 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
               <button onClick={() => { const w = `${window.location.origin}/watch/${v?.watchId || room.session?.code || ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
             </div>
             {v?.status === "waiting" && <InviteFriends game={room.session!.game} code={room.session!.code} />}
-            <ul className="fs-players">
-              {(v?.players ?? []).map((p, i) => (
-                <li key={i} className={p.away ? "away" : ""}><span>{p.name}{i === v!.you ? " (you)" : <AddSeat f={friends} wallet={p.wallet} />}</span><i className={v!.stake && !v!.stake.signed[i] ? "wait" : ""}>{p.away ? "away" : v!.stake ? (v!.stake.signed[i] ? "agreed" : "not yet") : p.host ? "host" : "ready"}</i></li>
-              ))}
-              {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty"><span>Waiting for a friend…</span></li>)}
+            <ul className="fs-players" aria-label="Players in this room">
+              {(v?.players ?? []).map((p, i) => {
+                const state = p.away ? "away" : st ? (st.signed[i] ? "agreed" : "not yet") : p.host ? "host" : "ready";
+                return (
+                  <li key={i} className={`${p.away ? "away" : ""}${i === v!.you ? " me" : ""}`}>
+                    <span className="fs-face" aria-hidden>{(p.name || "P").slice(0, 1).toUpperCase()}</span>
+                    <span className="fs-who"><b>{p.name}</b><i className={st && !st.signed[i] && !p.away ? "wait" : ""}>{state}{i === v!.you ? " · you" : ""}</i></span>
+                    {i !== v!.you && <AddSeat f={friends} wallet={p.wallet} />}
+                  </li>
+                );
+              })}
+              {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty"><span className="fs-face" aria-hidden>+</span><span className="fs-who"><b>Open seat</b></span></li>)}
             </ul>
-            {v && v.players.length > 1 && <RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} />}
-            {v?.stakes && v.stakeTerms && <StakeBox room={room} view={v} active={active} />}
-            {room.isHost
-              ? <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || active < 2 || (!!v?.stake && v.stake.state !== "ready")} onClick={() => room.start()}>{active < 2 ? "Waiting for a friend" : v?.stake && v.stake.state !== "ready" ? "Waiting for everyone to agree" : `Start for ${active}`}</button>
-              : <div className="fs-wait">{v?.stake && v.stake.state !== "ready" ? "Waiting for everyone to agree…" : "Waiting for the host to start…"}</div>}
+            {/* the host may put an entry on the round; shown where they are looking, not under the chat */}
+            {v?.stakes && v.stakeTerms && !st && room.isHost && (
+              <div className="fs-stake">
+                <em>Play for G$ · optional</em>
+                <div className="fs-chips">
+                  <button className="on" disabled>Free</button>
+                  {v.stakeTerms.entries.map((e) => <button key={e} disabled={!stake.canSign || stake.working || room.busy} onClick={() => void stake.agree(e, true)}>{gd(e)} G$</button>)}
+                </div>
+                <p>{stake.canSign ? "Pick an entry and everyone agrees to it. Nothing leaves a wallet unless its owner loses the round." : "Sign in to play for G$."}</p>
+              </div>
+            )}
+            </div>
+            {duo && v && <div className="fs-side"><RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} fold /></div>}
+            </div>
           </>
         )}
-        {room.error && <div className="fs-err" role="alert">{room.error}</div>}
+        </div>
+
+        {/* the one next step, always in view */}
+        {room.inRoom && (
+          <div className="fs-foot">
+            {room.error && <div className="fs-err" role="alert">{room.error}</div>}
+            {st && !stake.mine ? (
+              stake.canSign
+                ? <button className="fs-primary agree" style={{ fontFamily: DISPLAY }} disabled={stake.working || room.busy} onClick={() => void stake.agree(st.entryWei, false)}>{stake.working ? "Check your wallet…" : `Agree to ${gd(st.entryWei)} G$`}</button>
+                : <div className="fs-wait"><b>Sign in to agree</b>, or ask the host to play for free.</div>
+            ) : room.isHost ? (
+              <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || active < 2 || waitingOnStake} onClick={() => room.start()}>{active < 2 ? "Waiting for a friend" : waitingOnStake ? "Waiting for everyone to agree" : `Start for ${active}`}</button>
+            ) : (
+              <div className="fs-wait">{waitingOnStake ? "You agreed. Waiting for the others…" : "Waiting for the host to start…"}</div>
+            )}
+          </div>
+        )}
+        {!room.inRoom && room.error && <div className="fs-foot"><div className="fs-err" role="alert">{room.error}</div></div>}
       </div>
       <style>{`
         .fs-wrap { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; background: rgba(34,16,79,0.42); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: fsFade .2s ease both; }
-        .fs { position: relative; box-sizing: border-box; width: 100%; max-width: 440px; max-height: 94dvh; overflow-y: auto; overscroll-behavior: contain; padding: 20px 18px calc(env(safe-area-inset-bottom, 0px) + 20px); border-radius: 28px 28px 0 0; background: #fff; color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; box-shadow: 0 -20px 50px -20px rgba(34,16,79,0.6); display: flex; flex-direction: column; gap: 12px; animation: fsUp .28s cubic-bezier(.2,.9,.3,1.1) both; }
-        @media (min-width: 620px) { .fs-wrap { align-items: center; } .fs { border-radius: 28px; } }
+        .fs { position: relative; box-sizing: border-box; width: 100%; max-width: 440px; max-height: 94dvh; overflow: hidden; border-radius: 28px 28px 0 0; background: #fff; color: #22104f; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; box-shadow: 0 -20px 50px -20px rgba(34,16,79,0.6); display: flex; flex-direction: column; animation: fsUp .28s cubic-bezier(.2,.9,.3,1.1) both; }
+        .fs-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px 18px; }
+        .fs-top > div { flex: 1; min-width: 0; }
+        .fs-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 18px 16px; display: flex; flex-direction: column; gap: 12px; }
+        .fs:not(.room) .fs-body { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); }
+        .fs-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 18px calc(env(safe-area-inset-bottom, 0px) + 14px); background: #fff; border-top: 1px solid rgba(76,29,149,0.1); box-shadow: 0 -10px 24px -14px rgba(34,16,79,0.28); }
+        .fs-cols, .fs-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+        .fs-side { min-width: 0; }
+        @media (min-width: 620px) { .fs-wrap { align-items: center; padding: 20px; } .fs { border-radius: 28px; max-height: min(94dvh, 760px); } .fs-foot { padding-bottom: 16px; } }
+        /* a wide screen with someone to talk to: the chat stands beside the room */
+        @media (min-width: 860px) { .fs.room.duo { max-width: 840px; } .fs.room.duo .fs-cols { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 16px; align-items: start; } .fs.room.duo .fs-foot { align-items: center; } .fs.room.duo .fs-foot > * { width: 100%; max-width: 420px; } }
         @keyframes fsFade { from { opacity: 0; } } @keyframes fsUp { from { transform: translateY(30px); opacity: 0; } }
         .fs button, .fs input, .fs a { font: inherit; }
-        .fs-x { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(76,29,149,0.16); background: #fff; color: #22104f; cursor: pointer; }
+        .fs-x { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(76,29,149,0.16); background: #fff; color: #22104f; cursor: pointer; }
         .fs-kicker { font-size: 10.5px; font-weight: 900; letter-spacing: 0.2em; color: #6d28d9; }
-        .fs h2 { margin: -6px 0 0; font-size: 28px; font-weight: 400; }
+        .fs h2 { margin: 1px 0 0; font-size: 26px; line-height: 1.05; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fs-codechip { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 44px; padding: 4px 12px; border-radius: 14px; border: 1.5px dashed rgba(109,40,217,0.45); background: #f6f1ff; color: #4c1d95; cursor: pointer; }
+        .fs-codechip small { font-size: 9px; font-weight: 900; letter-spacing: 0.14em; color: #6d28d9; }
+        .fs-codechip b { font-size: 19px; font-weight: 900; letter-spacing: 0.16em; line-height: 1.1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .fs-for { display: flex; flex-direction: column; gap: 5px; padding: 13px 15px; border-radius: 18px; background: linear-gradient(180deg, #fff8dc, #ffefb0); box-shadow: 0 0 0 1.5px #f0c23b, 0 6px 16px -10px rgba(180,120,0,0.6); text-align: left; }
+        .fs-for em { font-style: normal; font-size: 10.5px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: #92590a; }
+        .fs-for b { font-size: 18px; font-weight: 800; line-height: 1.25; color: #22104f; } .fs-for b u { text-decoration: none; color: #166534; white-space: nowrap; }
+        .fs-for p { margin: 0; font-size: 13px; line-height: 1.4; color: rgba(34,16,79,0.78); }
         .fs-sub { margin: -4px 0 2px; font-size: 14px; line-height: 1.45; color: rgba(34,16,79,0.66); }
         .fs-as { padding: 12px 14px; border-radius: 14px; background: #f1e9ff; font-size: 14.5px; font-weight: 600; color: rgba(34,16,79,0.7); } .fs-as b { color: #4c1d95; }
         .fs-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 800; color: rgba(34,16,79,0.6); }
         .fs input { box-sizing: border-box; width: 100%; min-width: 0; padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(76,29,149,0.2); background: #faf7ff; color: #22104f; font-size: 16px; font-weight: 700; outline: none; }
         .fs input:focus { border-color: #6d28d9; }
-        .fs-primary { padding: 15px 0; border: none; border-radius: 18px; font-size: 19px; color: #fff !important; background: #6d28d9; box-shadow: 0 5px 0 #4c1d95; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .2s ease; }
+        .fs-primary { width: 100%; padding: 15px 0; border: none; border-radius: 18px; font-size: 19px; color: #fff !important; background: #6d28d9; box-shadow: 0 5px 0 #4c1d95; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .2s ease; }
         .fs-primary:active { transform: translateY(3px); box-shadow: 0 2px 0 #4c1d95; }
         .fs-primary:disabled { opacity: 0.55; cursor: default; }
         .fs-or { text-align: center; font-size: 12px; font-weight: 700; color: rgba(34,16,79,0.5); }
@@ -118,9 +196,6 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         @media (max-width: 380px) { .fs-join input { letter-spacing: 0.18em; font-size: 18px; } .fs-join button { padding: 0 16px; } }
         .fs-join button { padding: 0 22px; border-radius: 14px; border: 1.5px solid #6d28d9; background: #fff; color: #6d28d9 !important; font-weight: 900; cursor: pointer; }
         .fs-join button:disabled { opacity: 0.4; cursor: default; }
-        .fs-code { display: flex; justify-content: center; gap: 7px; }
-        .fs-code b { width: 46px; height: 54px; display: grid; place-items: center; border-radius: 13px; background: #f1e9ff; font-size: 26px; font-weight: 900; color: #4c1d95; animation: fsUp .3s ease both; }
-        .fs-code b:nth-child(2) { animation-delay: .04s; } .fs-code b:nth-child(3) { animation-delay: .08s; } .fs-code b:nth-child(4) { animation-delay: .12s; } .fs-code b:nth-child(5) { animation-delay: .16s; }
         .fs-on { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: #f0fdf4; box-shadow: 0 0 0 1px rgba(22,163,74,0.3); }
         .fs-on-h { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; color: #166534; } .fs-on-h i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.22); }
         .fs-on-row { display: grid; gap: 6px; } .fs-on-row button { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 8px 0 8px; border-radius: 13px; border: none; background: #fff; color: #22104f; font-weight: 800; font-size: 14.5px; cursor: pointer; text-align: left; box-shadow: 0 0 0 1px rgba(22,163,74,0.25); }
@@ -130,10 +205,15 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-share a, .fs-share button { padding: 11px 0; border-radius: 13px; text-align: center; text-decoration: none; font-size: 14px; font-weight: 800; cursor: pointer; }
         .fs-share a { background: #16a34a; color: #fff !important; border: none; }
         .fs-share button { background: #fff; color: #22104f; border: 1px solid rgba(76,29,149,0.2); }
-        .fs-players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-        .fs-players li { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; border-radius: 13px; background: #faf7ff; border: 1px solid rgba(76,29,149,0.12); font-size: 14.5px; font-weight: 800; }
-        .fs-players li i { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #15803d; }
+        .fs-players { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .fs-players li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; min-width: 0; min-height: 56px; padding: 8px 10px; border-radius: 15px; background: #faf7ff; border: 1px solid rgba(76,29,149,0.12); }
+        .fs-players li.me { background: #f1e9ff; border-color: rgba(109,40,217,0.35); }
+        .fs-face { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #6d28d9; color: #fff; font-size: 15px; font-weight: 800; }
+        .fs-who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+        .fs-who b { font-size: 14.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fs-players li i { font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #15803d; }
         .fs-players li i.wait { color: #b45309; }
+        .fs-players li .as-pill { margin-left: 0; }
         .fs-stake { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: #fff; border: 1px solid rgba(76,29,149,0.16); text-align: left; }
         .fs-stake > em { font-style: normal; font-size: 10.5px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: #6d28d9; }
         .fs-stake > b { font-size: 16px; font-weight: 800; } .fs-stake > b u { text-decoration: none; color: #166534; }
@@ -141,13 +221,13 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-chips { display: flex; gap: 6px; flex-wrap: wrap; }
         .fs-chips button { flex: 1; min-width: 62px; padding: 9px 0; border-radius: 12px; border: 1px solid rgba(76,29,149,0.18); background: #faf7ff; font: inherit; font-size: 13.5px; font-weight: 800; color: #22104f; cursor: pointer; }
         .fs-chips button.on { background: #22104f; border-color: #22104f; color: #fff; } .fs-chips button:disabled { opacity: 0.5; cursor: default; }
-        .fs-agree { padding: 12px 0; border: none; border-radius: 14px; background: #166534; color: #fff !important; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; } .fs-agree:disabled { opacity: 0.55; cursor: default; }
-        .fs-link { align-self: flex-start; padding: 0; border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 800; color: #6d28d9 !important; cursor: pointer; }
+        .fs-link { align-self: flex-start; min-height: 40px; padding: 0; border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 800; color: #6d28d9 !important; cursor: pointer; }
         .fs-players li.away { opacity: 0.5; } .fs-players li.away i { color: rgba(34,16,79,0.6); }
-        .fs-players li.empty { background: transparent; border-style: dashed; color: rgba(34,16,79,0.45); font-weight: 600; }
-        .fs-wait { text-align: center; padding: 14px 0; font-size: 14px; font-weight: 700; color: rgba(34,16,79,0.62); }
+        .fs-players li.empty { background: transparent; border-style: dashed; color: rgba(34,16,79,0.45); } .fs-players li.empty .fs-face { background: transparent; border: 1.5px dashed rgba(76,29,149,0.3); color: rgba(34,16,79,0.4); } .fs-players li.empty b { font-weight: 600; }
+        .fs-wait { text-align: center; padding: 13px 0; font-size: 14.5px; font-weight: 700; color: rgba(34,16,79,0.66); } .fs-wait b { color: #22104f; }
+        .fs-primary.agree { background: #15803d; box-shadow: 0 5px 0 #14532d; } .fs-primary.agree:active { box-shadow: 0 2px 0 #14532d; }
         .fs-err { text-align: center; font-size: 13px; font-weight: 700; color: #be123c; }
-        @media (prefers-reduced-motion: reduce) { .fs-wrap, .fs, .fs-code b { animation: none; } }
+        @media (prefers-reduced-motion: reduce) { .fs-wrap, .fs { animation: none; } }
       `}</style>
     </div>
   );
@@ -155,12 +235,14 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
 
 // Playing the round for G$. The host picks an entry; everyone agrees by signing.
 // A signature is not a payment: nothing leaves a wallet unless its owner loses.
-function StakeBox({ room, view, active }: { room: FriendRoom; view: RoomView; active: number }) {
+// One place for it, because three parts of the room need it: the banner at the
+// top, the host's picker, and the bar at the bottom.
+function useStake(room: FriendRoom, view: RoomView | null | undefined) {
   const { sign, canSign } = useRoomPermit();
   const [working, setWorking] = useState(false);
-  const terms = view.stakeTerms!; const st = view.stake; const mine = !!st?.signed[view.you];
+  const terms = view?.stakeTerms; const st = view?.stake; const mine = !!view && !!st?.signed[view.you];
   const agree = async (entryWei: string, asHost: boolean) => {
-    if (working) return;
+    if (working || !terms) return;
     setWorking(true); room.say(null);
     const permit = await sign(terms.spender, entryWei);
     if ("error" in permit) room.say(permit.error);
@@ -168,29 +250,5 @@ function StakeBox({ room, view, active }: { room: FriendRoom; view: RoomView; ac
     else await room.agreeEntry(permit);
     setWorking(false);
   };
-  if (!st) {
-    if (!room.isHost) return null;
-    return (
-      <div className="fs-stake">
-        <em>Play for G$ · optional</em>
-        <div className="fs-chips">
-          <button className="on" disabled>Free</button>
-          {terms.entries.map((e) => <button key={e} disabled={!canSign || working || room.busy} onClick={() => void agree(e, true)}>{gd(e)} G$</button>)}
-        </div>
-        <p>{canSign ? "Pick an entry and everyone agrees to it. Nothing leaves a wallet unless its owner loses the round." : "Sign in to play for G$."}</p>
-      </div>
-    );
-  }
-  const gain = winnerGain(st.entryWei, st.feeBps, active);
-  return (
-    <div className="fs-stake">
-      <em>Playing for G$</em>
-      <b>{gd(st.entryWei)} G$ each · <u>winner gets {gain} G$</u></b>
-      <p>The others pay the winner when the round ends. Nothing is taken now, and a tie moves nothing. {st.feeBps / 100}% of each entry is the fee.</p>
-      {!mine && (canSign
-        ? <button className="fs-agree" disabled={working || room.busy} onClick={() => void agree(st.entryWei, false)}>{working ? "Check your wallet…" : `Agree to ${gd(st.entryWei)} G$`}</button>
-        : <p><b>Sign in to agree, or ask the host to play for free.</b></p>)}
-      {room.isHost && <button className="fs-link" disabled={working || room.busy} onClick={() => void room.clearEntry()}>Play for free instead</button>}
-    </div>
-  );
+  return { agree, working, canSign, mine };
 }

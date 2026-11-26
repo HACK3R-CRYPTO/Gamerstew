@@ -220,6 +220,13 @@ core.app.use((req, res, next) => {
     return next();
   }
 
+  // GoodCash webhook · server-to-server, carrying NO browser Origin. The GoodCash-Signature
+  // HMAC on the exact bytes, checked inside the handler, is the real auth.
+  if (req.path === '/api/goodcash/webhook') {
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
   // Public read-only stats · the /impact page (and partners) read these. They're
   // cached, non-sensitive aggregates — the same numbers shown publicly on-site —
   // so they bypass the origin/secret gate with permissive CORS. Without this the

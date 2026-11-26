@@ -127,6 +127,7 @@ export const SETTINGS: Record<string, Setting> = {
   VATAR_CUSTODY_SEED: s('Partners', 'string', 'Master seed every Vatar player\'s custodial wallet is derived from. Set once, back up, never change: changing it orphans every provisioned player.', { secret: true }),
   VATAR_GAS_DRIP_CELO: s('Partners', 'string', 'CELO sent to a new Vatar custodial wallet so it can mint its GamePass.', { default: '0.1' }),
   VATAR_WEBHOOK_SECRET: s('Partners', 'string', 'Checks the signature on Vatar webhooks.', { secret: true }),
+  GOODCASH_WEBHOOK_SECRET: s('Partners', 'string', 'Checks the signature on GoodCash webhooks (cash outs to a bank). It is the whsec_ value GoodCash shows once when the webhook address is set; see docs/cash-out.md. Unset: the webhook answers 503 and no cash out is recorded.', { secret: true }),
 };
 
 /** Variables matched by pattern rather than by name. */

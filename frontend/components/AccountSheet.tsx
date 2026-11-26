@@ -17,6 +17,7 @@
 // for CELO, useReadContract for G$) so the sheet works on any page that
 // mounts <AppHeader />.
 
+import { useAudioSettings } from "@/hooks/useAudioSettings";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -63,6 +64,8 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
   // dev only: lets an automated check open the sheet for a test wallet without signing in
   const address = realAddress ?? (process.env.NODE_ENV !== "production" && typeof window !== "undefined" ? (window as unknown as { __inboxWallet?: `0x${string}` }).__inboxWallet : undefined);
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
+  // sound, for a signed-in phone: the bar at the top no longer has room for a mute button
+  const audio = useAudioSettings();
   const [gasHelpOpen, setGasHelpOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // useGasStatus reads CELO balance + MiniPay flag and buckets it.
@@ -386,6 +389,7 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
               {address && (
                 <NavRow icon="🪪" label="My passport" sub="Public page · share it, friends who join earn you points" onClick={() => goTo(`/pass/${address}`)} />
               )}
+              <NavRow icon={audio.appAudioOn ? "🔊" : "🔇"} label={audio.appAudioOn ? "Sound is on" : "Sound is off"} sub={audio.appAudioOn ? "Tap to mute music and clicks" : "Tap to turn sound back on"} onClick={() => audio.update({ appAudioOn: !audio.appAudioOn })} />
               <NavRow icon="⚙️" label="Settings" sub="Audio, notifications, verification, sign out" onClick={() => goTo("/settings")} />
               {/* Community row · the always-on door to the player chat.
                   Doubles as the help path · gas top-ups, prize claims, weekly
