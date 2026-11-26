@@ -305,8 +305,24 @@ function reengagementNotification(stage, daysLapsed, username) {
   return null;
 }
 
+// ─── Which addresses a push may be sent to ───────────────────────────────────
+// A push is an HTTPS request from THIS server to the address in a subscription.
+// If any address were accepted, a "subscription" pointing at an internal address
+// (a cloud metadata service, a local database) would make the server call it:
+// two such entries were found in the table on 2026-11-26. So only the browsers'
+// own push services are accepted, when a subscription is saved and again before
+// anything is sent.
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)notify\.windows\.com$/];
+function isPushEndpoint(endpoint) {
+  try {
+    const u = new URL(String(endpoint));
+    return u.protocol === 'https:' && !u.username && !u.password && (u.port === '' || u.port === '443') && PUSH_HOSTS.some((re) => re.test(u.hostname.toLowerCase()));
+  } catch { return false; }
+}
+
 // ─── Subscription management ─────────────────────────────────────────────────
 async function saveSubscription(supabase, walletAddress, sub, userAgent) {
+  if (!isPushEndpoint(sub && sub.endpoint)) return false;
   const lower = walletAddress.toLowerCase();
   const { error } = await supabase.from('push_subscriptions').upsert({
     wallet_address: lower,
@@ -351,7 +367,7 @@ async function sendToWallet(supabase, walletAddress, category, payload) {
     .limit(1);
   if (log && log.length > 0) return false;
 
-  const subs = await getSubscriptions(supabase, lower);
+  const subs = (await getSubscriptions(supabase, lower)).filter((s) => isPushEndpoint(s.endpoint));
   if (subs.length === 0) return false;
 
   const body = JSON.stringify(payload);
@@ -427,6 +443,7 @@ async function sendBroadcast(supabase, payload, opts = {}) {
   const body = JSON.stringify(payload);
 
   for (const s of (subs || [])) {
+    if (!isPushEndpoint(s.endpoint)) { dead.push(s.endpoint); continue; } // not a push service: never contacted, and removed below
     if (muted.has(s.wallet_address)) { skipped++; continue; }
     try {
       await webpush.sendNotification(
@@ -456,6 +473,7 @@ function dryRun(subs, payload) {
   for (const s of (subs || [])) {
     let host = 'unknown'; try { host = new URL(s.endpoint).host; } catch { /* a broken address */ }
     hosts[host] = (hosts[host] || 0) + 1;
+    if (!isPushEndpoint(s.endpoint)) { bad++; if (!why) why = `not a push service: ${host}`; continue; }
     try { webpush.generateRequestDetails({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload || { title: 't', body: 'b' })); ok++; }
     catch (e) { bad++; if (!why) why = String((e && e.message) || e).slice(0, 160); }
   }
@@ -463,6 +481,7 @@ function dryRun(subs, payload) {
 }
 
 module.exports = {
+  isPushEndpoint,
   dryRun,
   petStage,
   streakNotification,

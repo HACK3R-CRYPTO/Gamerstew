@@ -14,6 +14,8 @@
 // Changes show at once and are then sent to the server. If the server refuses,
 // the change is put back and the player is told.
 
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { track } from "@/lib/track";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -52,6 +54,7 @@ const CHANGED = "gamearena:inbox-changed";
 const announceChange = (unread: number) => { try { window.dispatchEvent(new CustomEvent(CHANGED, { detail: unread })); } catch { /* ignore */ } };
 
 export default function NotificationsSheet({ address: realAddress, open, onClose }: { address?: string; open: boolean; onClose: () => void }) {
+  const { state: pushState, subscribe: turnOnPush } = usePushNotifications(realAddress);
   // dev only: lets an automated test open the inbox for a test wallet without signing in
   const address = realAddress ?? (process.env.NODE_ENV !== "production" && typeof window !== "undefined" ? (window as unknown as { __inboxWallet?: string }).__inboxWallet : undefined);
   const router = useRouter();
@@ -151,6 +154,14 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
           <div className="nb-empty"><b>Sign in to see your notifications</b><span>Rewards, rank changes and news from GameArena land here.</span><button className="nb-cta" onClick={() => { onClose(); router.push("/home?signin=1"); }}>Sign in</button></div>
         ) : (
           <>
+            {/* The bell only helps a player who opens the app. This is the place they are already
+                looking at notifications, so it is where they are offered them on their phone. */}
+            {(pushState === "default" || pushState === "granted" || pushState === "subscribing") && (
+              <div className="nb-push">
+                <span><b>Get these on your phone</b>News, rewards and a nudge before your streak ends.</span>
+                <button onClick={() => { track("push_turn_on", { from: "bell" }); void turnOnPush(); }} disabled={pushState === "subscribing"}>{pushState === "subscribing" ? "Turning on…" : "Turn on"}</button>
+              </div>
+            )}
             <div className="nb-tabs" role="tablist">
               <button role="tab" aria-selected={tab === "all"} className={tab === "all" ? "on" : ""} onClick={() => setTab("all")}>All{unread > 0 && <i>{unread > 99 ? "99+" : unread}</i>}</button>
               <button role="tab" aria-selected={tab === "ours"} className={tab === "ours" ? "on" : ""} onClick={() => setTab("ours")}>From GameArena{oursUnread > 0 && <i>{oursUnread}</i>}</button>
@@ -204,6 +215,11 @@ export default function NotificationsSheet({ address: realAddress, open, onClose
         .nb header { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 8px; }
         .nb h2 { margin: 0; font-size: 26px; font-weight: 400; }
         .nb-x { width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(76,29,149,0.16); background: #fff; }
+        .nb-push { display: flex; align-items: center; gap: 12px; margin: 0 16px 10px; padding: 11px 12px; border-radius: 16px; background: #f3effc; }
+        .nb-push span { flex: 1; min-width: 0; font-size: 13px; line-height: 1.35; color: rgba(34,16,79,0.74); }
+        .nb-push span b { display: block; font-size: 14.5px; color: #22104f; }
+        .nb-push button { flex: none; min-height: 40px; padding: 0 16px; border: none; border-radius: 12px; background: linear-gradient(180deg, #7c3aed, #6d28d9); color: #fff; font: 700 14px "Fredoka", system-ui, sans-serif; cursor: pointer; }
+        .nb-push button:disabled { opacity: 0.6; }
         .nb-tabs { display: flex; gap: 6px; padding: 0 18px 10px; }
         .nb-tabs button { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(76,29,149,0.16); background: transparent; font-size: 13px; font-weight: 800; color: rgba(34,16,79,0.62); }
         .nb-tabs button.on { background: #22104f; border-color: #22104f; color: #fff; }

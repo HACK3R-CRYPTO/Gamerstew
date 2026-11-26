@@ -42,6 +42,8 @@ core.app.post('/api/push/subscribe', core.requireSecret, async (req, res) => {
   if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
     return res.status(400).json({ error: 'Invalid address' });
   }
+  // only a browser's own push service: this server sends requests to that address (see lib/push.js)
+  if (!push.isPushEndpoint(subscription.endpoint)) return res.status(400).json({ error: 'Not a push service' });
 
   // Has this wallet ever subscribed before? Check before save so a fresh
   // wallet with zero rows is unambiguous.
