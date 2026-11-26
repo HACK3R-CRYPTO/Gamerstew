@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cameraMode, setCameraMode, type CameraMode } from "./controls";
 import { HowToButton } from "@/components/HowToPlay";
 import EnergyLine from "@/components/EnergyLine";
+import GuestLine from "@/components/GuestLine";
 import { BLACKOUT, DUSK, GA } from "./theme";
 
 export type LobbyChoice = "restore" | "charge" | "roam";
@@ -132,7 +133,7 @@ const MODES: Mode[] = [
 // Modes that are planned but not built. Names only: no dates are promised.
 const SOON = ["Torch in the Dark", "Generator Hustle", "Power Thief"];
 
-export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode }) {
+export default function ModeSelect({ onPick, touch, friends, guestLeft = null }: { onPick: (m: LobbyChoice) => void; touch: boolean; /** the play-with-friends entry, shown under the cards */ friends?: React.ReactNode; /** free plays a guest has left; null for a signed-in player */ guestLeft?: number | null }) {
   const rail = useRef<HTMLDivElement>(null);
   const [cam, setCam] = useState<CameraMode>("follow");
   useEffect(() => { setCam(cameraMode()); }, []);
@@ -203,6 +204,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         </button>
       )}
       <div style={{ alignSelf: "center", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}><HowToButton game="nepa3d" dark /><EnergyLine dark /></div>
+      <GuestLine left={guestLeft} dark />
       <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`

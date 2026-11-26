@@ -2,6 +2,7 @@
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
 import EnergyLine from "@/components/EnergyLine";
+import GuestLine from "@/components/GuestLine";
 
 // ─── Street Strike — Lagos street bowling ────────────────────────────────────
 // Not a neon alley. You roll an old tyre (the childhood game) down a Lagos
@@ -1877,6 +1878,7 @@ export default function Game() {
             )}
             <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : ranked.canRank ? "Ranked: 5 frames. Your score is checked and goes on the weekly board." : "5 frames. Just me is the ranked mode: sign in and your score goes on the board."}</div>
             {mode === "solo" && !online && <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><EnergyLine /></div>}
+            {!online && <div style={{ marginTop: 6 }}><GuestLine left={gate.left} /></div>}
           </div>
         </div>
       )}

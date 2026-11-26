@@ -1228,7 +1228,7 @@ export default function World() {
 
       {/* ── Mode picker — an on-demand launcher, not a blocking screen ─────── */}
       {appMode === "menu" && !driving && modesOpen && (
-        <ModeSelect touch={isMobile} onPick={pickFromLobby} friends={<FriendsPlay room={room} gameName="UP NEPA 3D" sharePath="/world" atStart part="button" dark />} />
+        <ModeSelect touch={isMobile} onPick={pickFromLobby} guestLeft={gate.left} friends={<FriendsPlay room={room} gameName="UP NEPA 3D" sharePath="/world" atStart part="button" dark />} />
       )}
       {/* "Play a mode" launcher: roam freely, open the picker when you want it. */}
       {appMode === "menu" && !driving && !modesOpen && (

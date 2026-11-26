@@ -50,12 +50,12 @@ export default function PotCard() {
         <div className="pot-line">
           {pot.you
             ? pot.you.prize > 0 ? <>You are <b>{ord(pot.you.rank)}</b> of {pot.players}, in line for <b>{pot.you.prize.toLocaleString()} G$</b>.</> : <>You are <b>{ord(pot.you.rank)}</b> of {pot.players}. The top {pot.paidPlaces || Math.max(1, Math.ceil(pot.players / 3))} are paid.</>
-            : pot.pot > 0 ? <>Play one ranked run of <b>{g.name}</b> to enter. The top third split it.</> : <>Most of every energy pack goes into the pot. Play <b>{g.name}</b> today to be in it.</>}
+            : !address ? <><b>Sign in</b>, then play one ranked run of <b>{g.name}</b> to enter. The top third split it.</> : pot.pot > 0 ? <>Play one ranked run of <b>{g.name}</b> to enter. The top third split it.</> : <>Most of every energy pack goes into the pot. Play <b>{g.name}</b> today to be in it.</>}
         </div>
         {short2 && <div className="pot-note">{pot.players} of the {pot.minPlayers} verified players needed today. If it falls short, the pot rolls into tomorrow.</div>}
       </div>
       <div className="pot-side">
-        <button onClick={() => router.push(g.href)} style={{ fontFamily: DISPLAY }}>Play {g.name}</button>
+        <button onClick={() => router.push(address ? g.href : "/home?signin=1")} style={{ fontFamily: DISPLAY }}>{address ? `Play ${g.name}` : "Sign in to enter"}</button>
         {pot.top.length > 0 && (
           <ol>
             {pot.top.slice(0, 3).map((t) => <li key={t.wallet}><i>{t.rank}</i><span>{t.name || short(t.wallet)}</span><b>{t.score.toLocaleString()}</b></li>)}

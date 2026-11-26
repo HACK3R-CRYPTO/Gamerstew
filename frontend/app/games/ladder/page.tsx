@@ -2,6 +2,7 @@
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
 import EnergyLine from "@/components/EnergyLine";
+import GuestLine from "@/components/GuestLine";
 
 // ─── Word Ladder ─────────────────────────────────────────────────────────────
 // You are given a start word and a target word. Change ONE letter at a time,
@@ -432,7 +433,7 @@ export default function WordLadderPage() {
             <HowToButton game="ladder" full onPractice={startPractice} />
             <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
           </div>
-          <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
+          <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <GuestLine left={gate.left ?? 0} />}</div>
           <div style={{ display: "flex", justifyContent: "center" }}><EnergyLine /></div>
           {dailyDone === null ? (
             <button className="wl-daily" onClick={() => begin(true)}>
