@@ -447,7 +447,8 @@ const adminService = core.platform.createAdmin({
   // write its own bell entry, or the same news would be listed twice.
   announce: {
     bell: (row) => core.inbox.announce(row).then((r) => ({ ok: r.status === 200, created: r.body && r.body.created !== false, error: r.body && r.body.error })),
-    push: async (p) => { const out = await push.sendBroadcast(core.supabase, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0 }; },
+    push: async (p) => { const out = await push.sendBroadcast(core.lockedDb, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0, devices: out.devices || 0, expired: out.cleaned || 0, failed: out.failed || 0, why: out.why || null }; },
+    devices: async () => { const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address'); if (error) return null; const rows = data || []; return { devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size }; },
   },
 });
 core.admin = adminService;
@@ -643,6 +644,14 @@ core.platform.registerFriendRoutes(core.app, {
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
+// How many phones a push would reach right now. Read-only.
+core.app.get('/internal/push/devices', core.requireSecret, async (_req, res) => {
+  const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address, last_seen_at');
+  if (error) return res.json({ readable: false, error: String(error.message || error).slice(0, 120) });
+  const rows = data || []; const { data: seenAnon } = await core.supabase.from('push_subscriptions').select('wallet_address');
+  res.json({ readable: true, devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size, seenWithoutServiceKey: (seenAnon || []).length, newest: rows.map((r) => r.last_seen_at).filter(Boolean).sort().pop() || null, keysSet: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) });
+});
+
 core.app.get('/internal/config', core.requireSecret, (_req, res) => res.json({ ...core.platform.checkEnv(), settings: core.platform.describeEnv() }));
 core.app.get('/internal/metrics', core.requireSecret, async (_req, res) => res.json({ outbox: core.outboxOn() ? await core.outbox.status().catch(() => ({ unreadable: true })) : { on: false }, uptimeSec: Math.round(process.uptime()), memoryMb: Math.round(process.memoryUsage().rss / 1048576), routes: core.metrics.snapshot(), jobs: core.jobs.status(), egress: core.egress ? core.egress.snapshot() : null }));
 

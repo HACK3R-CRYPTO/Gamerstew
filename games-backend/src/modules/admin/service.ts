@@ -41,8 +41,12 @@ export interface AdminStore {
 /** How an announcement leaves the dashboard. Absent: this server cannot send one. */
 export interface Announcer {
   bell(row: { title: string; body: string; url: string; kind: 'whats_new' | 'announcement'; dedupeKey: string }): Promise<{ ok: boolean; created: boolean; error?: unknown }>;
-  push(p: { title: string; body: string; url: string; tag: string }): Promise<{ sent: number; skipped: number }>;
+  push(p: { title: string; body: string; url: string; tag: string }): Promise<PushResult>;
+  /** phones a push would reach right now; null when it cannot be read */
+  devices?(): Promise<{ devices: number; players: number } | null>;
 }
+/** What happened to a push: how many phones there were, and what became of each. */
+export interface PushResult { sent: number; skipped: number; devices?: number; expired?: number; failed?: number; why?: string | null }
 export interface AdminDeps { announce?: Announcer; store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void }; /** false when the server has no key for the locked admin tables: every read would come back empty */ canReadLocked?: () => boolean }
 
 const RANK: Record<Role, number> = { analyst: 1, admin: 2, super_admin: 3 };
@@ -143,6 +147,7 @@ export function createAdmin(deps: AdminDeps) {
         case 'runs': return call('admin_runs', { from_day: r.from, to_day: r.to });
         case 'pot': return call('admin_pot', { from_day: r.from, to_day: r.to });
         case 'freezes': return call('admin_freezes', { from_day: r.from, to_day: r.to });
+        case 'push_devices': return ok({ data: deps.announce?.devices ? await deps.announce.devices().catch(() => null) : null });
         case 'announcements': return ok({ data: store.announcements ? await store.announcements(Math.min(lim, 30)) : [] });
         case 'money': return call('admin_money', { from_day: r.from, to_day: r.to });
         case 'payouts': { const p = await store.payouts(lim, off, isWallet(str(q.wallet)) ? str(q.wallet).toLowerCase() : null); return ok({ data: p.rows, total: p.total }); }
@@ -173,10 +178,11 @@ export function createAdmin(deps: AdminDeps) {
       const posted = await deps.announce.bell({ title, body: text, url, kind: 'whats_new', dedupeKey: key });
       if (!posted.ok) return fail(503, 'could_not_post');
       if (!posted.created) return fail(409, 'already_sent');
-      let pushed: { sent: number; skipped: number } | null = null;
-      if (pushTitle) pushed = await deps.announce.push({ title: pushTitle, body: pushBody, url, tag: key }).catch(() => ({ sent: 0, skipped: 0 }));
-      await store.log(me.email, 'announcement_sent', { title, url, key, push: pushTitle || null, pushed: pushed?.sent ?? null });
-      return ok({ ok: true, pushed: pushed?.sent ?? null });
+      let pushed: PushResult | null = null;
+      if (pushTitle) pushed = await deps.announce.push({ title: pushTitle, body: pushBody, url, tag: key }).catch((e) => ({ sent: 0, skipped: 0, failed: 0, why: String((e as Error)?.message ?? e).slice(0, 140) }));
+      await store.log(me.email, 'announcement_sent', { title, url, key, push: pushTitle || null, pushed: pushed?.sent ?? null, devices: pushed?.devices ?? null, expired: pushed?.expired ?? null, failed: pushed?.failed ?? null, why: pushed?.why ?? null });
+      // the whole story of the push, so "0" is never a mystery: how many phones, and what became of each
+      return ok({ ok: true, pushed: pushed?.sent ?? null, push: pushed });
     },
     async recordPayout(email: unknown, body: Record<string, unknown>): Promise<Reply> {
       const me = await who(email, 'admin'); if (isReply(me)) return me;

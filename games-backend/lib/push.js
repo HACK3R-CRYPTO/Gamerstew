@@ -422,7 +422,7 @@ async function sendBroadcast(supabase, payload, opts = {}) {
   ]);
   const muted = new Set((prefs || []).filter(p => p.reengagement === false).map(p => p.wallet_address));
 
-  let sent = 0, skipped = 0;
+  let sent = 0, skipped = 0, failed = 0; let why = null;
   const dead = [];
   const body = JSON.stringify(payload);
 
@@ -436,14 +436,17 @@ async function sendBroadcast(supabase, payload, opts = {}) {
       sent++;
     } catch (e) {
       if (e && (e.statusCode === 410 || e.statusCode === 404)) dead.push(s.endpoint);
+      // anything else used to vanish: a wrong key or a refused request looked the same as "nobody to send to"
+      else { failed++; if (!why) why = `${e && e.statusCode ? e.statusCode + ' ' : ''}${String((e && (e.body || e.message)) || e).slice(0, 140)}`; }
     }
   }
+  if (failed) console.warn(`[push] broadcast: ${failed} of ${(subs || []).length} could not be sent · first reason: ${why}`);
 
   // Clean dead endpoints
   if (dead.length > 0) {
     await supabase.from('push_subscriptions').delete().in('endpoint', dead);
   }
-  return { sent, skipped, cleaned: dead.length };
+  return { sent, skipped, cleaned: dead.length, failed, devices: (subs || []).length, why };
 }
 
 module.exports = {
