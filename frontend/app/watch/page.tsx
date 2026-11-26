@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 
-interface Live { watch: string; game: string; round: number; elapsed: number; players: string[]; watching: number; stake: boolean }
+interface Live { /** an old-style Street Strike lane, watched in its own street */ lane?: boolean; watch: string; game: string; round: number; elapsed: number; players: string[]; watching: number; stake: boolean }
 const GAMES: Record<string, { name: string; art: string }> = {
   rhythm: { name: "Rhythm Rush", art: "/games/covers/rhythm.jpg" }, simon: { name: "Simon Memory", art: "/games/covers/simon.jpg" }, stack: { name: "Stack Tower", art: "/games/covers/stack.jpg" },
   ladder: { name: "Word Ladder", art: "/games/covers/ladder.svg" }, strike: { name: "Street Strike", art: "/games/covers/streetstrike.jpg" }, nepa3d: { name: "UP NEPA 3D", art: "/games/covers/upnepa3d.jpg" },
@@ -25,7 +25,7 @@ export default function WatchHome() {
     let live = true;
     // two kinds of room: the shared rooms, and Street Strike's own lanes
     const get = (u: string) => fetch(u, { cache: "no-store" }).then((r) => r.json()).then((d) => (Array.isArray(d.rooms) ? (d.rooms as Live[]) : [])).catch(() => [] as Live[]);
-    const look = () => Promise.all([get("/api/rooms/rooms/live"), get("/api/strike/rooms/live")]).then(([a, b]) => { if (live) setRooms([...a, ...b].sort((x, y) => y.watching - x.watching || x.elapsed - y.elapsed)); });
+    const look = () => Promise.all([get("/api/rooms/rooms/live"), get("/api/strike/rooms/live")]).then(([a, b]) => { if (live) setRooms([...a, ...b.map((x: Live) => ({ ...x, lane: true }))].sort((x, y) => y.watching - x.watching || x.elapsed - y.elapsed)); });
     void look(); const t = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 5000);
     return () => { live = false; clearInterval(t); };
   }, []);
@@ -58,7 +58,7 @@ export default function WatchHome() {
         {rooms && rooms.length === 0 && <div className="none"><b>Nobody is in a round right now</b><span>Rounds between friends show here the moment they start. Open a room in any game and yours will be the first.</span><button onClick={() => router.push("/dashboard")}>Pick a game</button></div>}
         {shown.length > 0 && (
           <ul>{shown.map((r) => { const g = GAMES[r.game] ?? { name: "GameArena", art: "" }; return (
-            <li key={r.watch}><button onClick={() => { if (r.game === "strike") window.location.href = `/bowling?watch=${r.watch}`; else router.push(`/watch/${r.watch}`); }}>
+            <li key={r.watch}><button onClick={() => { if (r.lane) window.location.href = `/bowling?watch=${r.watch}`; else router.push(`/watch/${r.watch}`); }}>
               <span className="art" style={g.art ? { backgroundImage: `url(${g.art})` } : undefined}><em><u /> LIVE · {clock(r.elapsed)}</em><b>👁 {r.watching}</b></span>
               <span className="info"><b>{g.name}</b><small>{r.players.join(" vs ")}</small><span className="meta">{r.round > 1 && <i>Round {r.round}</i>}<i>{r.players.length} players</i>{r.stake && <i className="gold">For G$</i>}</span></span>
               <span className="go">Watch ›</span>

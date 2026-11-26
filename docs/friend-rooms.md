@@ -160,17 +160,27 @@ Why: a top bar should carry the few actions that serve the main tasks, and push 
 
 Code: `frontend/components/AppHeader.tsx`, `AccountSheet.tsx` (the sound row), `app/dashboard/page.tsx` (the energy chip).
 
-## Street Strike joins the same friends screen (2026-11-26)
+## Street Strike plays in the same rooms as every other game (2026-11-26)
 
-Street Strike had its own "Online" form: a name, "Create a room", a code box. No friends who are online, no invite, no chat, none of the room screen the other games have. The owner noticed it was not like Word Ladder.
+Street Strike had its own "Online" form: a name, "Create a room", a code box. No friends who are online, no invite, no chat, no G$ entry. The owner noticed it was not like Word Ladder, then that it had no entry.
 
-Why it was different: Street Strike keeps its own lanes on the server (`games-backend/src/modules/strike`). Every roll is sent as it lands and a lane can be replayed throw by throw, which the shared rooms do not do. That part stays. What changed is everything a player sees around it:
+Why it was different: Street Strike had been given its own room system on the server (`games-backend/src/modules/strike/service.ts`), separate from the rooms every other game shares. So nothing built for those rooms ever reached it.
 
-- "Online" now has one button, "Play with friends", which opens the **same sheet** as every other game: who is online with one-tap invite, open a room, join by code, then the room with the share row, the seats, the chat and the fixed action bar.
-- A friend can be **invited into a Street Strike room**, and the invite pops up on their screen like any other (`strike` is now a game the friends service knows; the link is `/bowling?room=CODE`).
-- **Chat** was added to Street Strike's lanes, with the same limits as the shared rooms (140 characters, one line every 0.7 s, the last 40 kept).
-- "Watch link" points at the lane in its own street (`/bowling?watch=…`).
+It is now a game in the shared rooms like the rest (`ROOM_GAMES.strike` in `modules/rooms/games.ts`). One implementation, so a Street Strike room has everything:
 
-Not in a Street Strike room: **playing for G$**. A lane's score is worked out on the phones and only checked for being a legal card. Money rides only on scores the server works out itself, so there is no entry here until the server replays the throws (it already can for ranked runs; doing it for lanes is the work).
+- "Online" has one button, "Play with friends", which opens the same sheet: who is online with one-tap invite, open a room, join by code, the room with its share row, seats, chat and the fixed action bar.
+- **A G$ entry**, picked by the host and agreed by everyone, exactly as in the other games.
+- The round is recorded on the chain for signed-in players, and the standings show it.
+- A friend's invite pops up on their screen and opens the room.
 
-How: `frontend/app/bowling/Game.tsx` hands its lane to `FriendsSheet` in the shape that sheet expects (`friendRoom`). `FriendsSheet` gained `watchUrl`. Checked with two real browsers, a phone and a desktop: open a room, join by the shared link, a chat line arriving on the other screen, the watch link, and the host starting the round for both.
+**What makes the entry safe:** the server works out every score itself. A player's phone sends the throws it made (which tyre, where from, the angle, how hard, how much curve), and the server runs each one through the same lane simulation the phone ran, as it already did for ranked runs (`modules/strike/game.ts`, `replay`). The phone never reports pins or a total. A card that was not finished, was faster than its rolls can play, or was tampered with is refused.
+
+While a round is on, each roll is sent as it lands (`progress`, with the card so far), so friends see each other's cards fill in. The watch page draws a Street Strike room as its scorecard (`components/LiveBoard.tsx`).
+
+Street Strike's own end-of-game sheet now only covers the moment before the server has scored the card ("Checking your throws…", and "Send it again" if it did not arrive). After that the shared standings take over: scores, the chain link, who paid whom, chat, "Play again".
+
+The old lane system is still on the server for phones that have not reloaded, and for watching a lane that is in play. Nothing new uses it; it can be removed in a later clean-up.
+
+Checked: two real browsers, a phone and a desktop, against the real room code and a pretend chain. The host opened a room and set a 100 G$ entry, the friend joined by the shared link and agreed, both bowled a full card, the server scored them 49 and 0 from its own replay, the winner was paid 90 with a 10 fee, both screens said so, and "Play again" took both back to the lobby with the entry cleared. 400 backend tests, including a full two-player Street Strike round through the room service.
+
+Not checked: real wallets on real phones.

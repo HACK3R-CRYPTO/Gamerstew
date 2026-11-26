@@ -2,6 +2,7 @@
 import type { GameRules } from './service';
 import * as ladder from '../ladder/rules';
 import * as nepa3d from '../nepa3d/rules';
+import * as strike from '../strike/game';
 
 /** Word Ladder: everyone gets the same five ladders; the server replays the words. */
 const ladderRules: GameRules = {
@@ -95,4 +96,21 @@ const nepa3dRules: GameRules = {
   },
 };
 
-export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules, rhythm: rhythmRules, nepa3d: nepa3dRules };
+/** Street Strike: nothing to deal, every lane starts with the same ten bottles. The player
+ *  sends the throws they made (which tyre, where from, the angle, how hard, how much curve) and
+ *  the server runs every one through the same lane simulation the phone ran, exactly as it does
+ *  for a ranked run. The total is the server's own; the phone never reports pins or a score.
+ *  That is what lets a Street Strike room be played for G$. */
+const strikeRules: GameRules = {
+  verified: true,
+  deal: () => ({ frames: strike.FRAMES }),
+  maxProgress: strike.MAX_THROWS, // progress is the number of rolls made, so the others can see a card filling in
+  async score(_seed, proof, elapsedMs) {
+    const throws = (proof as { throws?: unknown } | null)?.throws;
+    if (!Array.isArray(throws)) return { ok: false, error: 'No throws sent' };
+    const v = strike.replay(await strike.engine(), throws, elapsedMs);
+    return v.ok ? { ok: true, score: v.total } : { ok: false, error: v.error };
+  },
+};
+
+export const ROOM_GAMES: Record<string, GameRules> = { ladder: ladderRules, simon: simonRules, stack: stackRules, rhythm: rhythmRules, nepa3d: nepa3dRules, strike: strikeRules };

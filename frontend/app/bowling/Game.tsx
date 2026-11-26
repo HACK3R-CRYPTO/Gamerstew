@@ -1,6 +1,7 @@
 "use client";
 import FriendsSheet from "@/components/FriendsSheet";
-import type { FriendRoom } from "@/hooks/useFriendRoom";
+import { useFriendRoom } from "@/hooks/useFriendRoom";
+import FriendsPlay from "@/components/FriendsPlay";
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
 import EnergyLine from "@/components/EnergyLine";
@@ -61,7 +62,7 @@ import WindowBlock from "../world/WindowBlock";
 import Batch from "../world/Batch";
 import { score, PINS, type ScoreState } from "./scoring";
 import { ADS, type Ad } from "./ads";
-import { net, explain, type Room, type Session } from "./online";
+import { net, type Room } from "./online";
 import { openRoomSocket } from "@/lib/roomSocket";
 import AutoSharpness from "../world/AutoSharpness";
 import { armSfx, closeSfx, setMuted, setRumble, bottleHit, bottleRoll, sfxCount, thud, buzz, crowdSound } from "./sfx";
@@ -1209,14 +1210,23 @@ export default function Game() {
   const [follow, setFollow] = useState(0);                // whose card is on screen
   const [lineUp, setLineUp] = useState(false);            // true while the server is pushing the lane to us
   const [kick, setKick] = useState(0);
-  // Online: a room on the server. Everyone in it bowls at once on their own phone.
-  const [room, setRoom] = useState<Room | null>(null);
-  const sess = useRef<Session | null>(null);
+  // Playing with friends: the SAME rooms as every other game (hooks/useFriendRoom), so a Street
+  // Strike room has what they have: invites, chat, an optional G$ entry, and the round on the chain.
+  // The server scores each lane itself by replaying the throws (modules/rooms/games.ts), which is
+  // what makes the entry safe. `room` keeps the shape the rest of this screen already reads.
+  const friend = useFriendRoom("strike");
+  const friendRef = useRef(friend); friendRef.current = friend;
+  const fv = friend.view; const inRoom = friend.inRoom;
+  const room: Room | null = useMemo(() => (fv && inRoom ? {
+    code: fv.code, status: fv.status, round: fv.round, frames: FRAMES, you: fv.you, watchId: fv.watchId, watching: fv.watching,
+    // a card as it fills in: each roll is sent as it lands. Nothing counts until a player has rolled
+    // this round, so the last round's card never shows on a new one.
+    players: fv.players.map((p) => ({ name: p.name, host: p.host, rolls: (p.progress > 0 || p.done) && Array.isArray(p.live?.rolls) ? (p.live!.rolls as number[]) : [], done: p.done, away: p.away })),
+  } : null), [fv, inRoom]);
   const roundRef = useRef(0);
-  const [nick, setNick] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [netErr, setNetErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const netErr = friend.error; const busy = friend.busy;
+  /** the server has scored this player's card for the round */
+  const meScored = !!room && room.you >= 0 && !!room.players[room.you]?.done;
   const online = mode === "online";
   const seats = useMemo(() => (mode === "online" && room ? room.players.map((p) => ({ name: p.name, cpu: false })) : seatsFor(mode)), [mode, room]);
   const [allRolls, setAllRolls] = useState<number[][]>([[]]);
@@ -1317,7 +1327,10 @@ export default function Game() {
 
     setAllRolls(allRef.current);
     setHint(null);
-    if (live && sess.current) net.roll(sess.current, nextRolls, throwLog.current.slice()).then(setRoom).catch(() => { /* the next poll sends it again */ });
+    if (live) {
+      friendRef.current.progress(nextRolls.length, { rolls: nextRolls });
+      if (st.done) void friendRef.current.finish({ throws: throwLog.current.slice() });
+    }
     if (allDone) {
       setPhase("over");
       if (process.env.NODE_ENV !== "production") (window as unknown as { __strikeProbe?: (x: unknown) => void }).__strikeProbe?.({ mode: modeRef.current, total: score(allRef.current[0], FRAMES).total, throws: throwLog.current.slice() });
@@ -1558,87 +1571,24 @@ export default function Game() {
     setPhase("aim");
     setSetup(false);
   }, []);
-  const takeRoom = useCallback((v: Room) => {
-    setRoom(v);
-    if (v.status === "playing" && v.round !== roundRef.current && v.you >= 0) beginRound(v);
-    // a roll the server never got (a dropped request) is sent again here
-    const mine = allRef.current[v.you] ?? [];
-    if (v.status === "playing" && v.round === roundRef.current && v.you >= 0 && sess.current && (v.players[v.you]?.rolls.length ?? 0) < mine.length) net.roll(sess.current, mine, throwLog.current.slice()).catch(() => {});
-  }, [beginRound]);
-  const leaveRoom = useCallback(() => {
-    if (sess.current) net.leave(sess.current);
-    sess.current = null;
-    roundRef.current = 0;
-    setRoom(null);
-    setNetErr(null);
-  }, []);
-  const hasRoom = !!room;
+  // the room's round starts (or the host calls another one): this phone's lane starts with it
   useEffect(() => {
-    if (!hasRoom) return;
-    let live = true;
-    const tick = () => {
-      const s0 = sess.current;
-      if (!s0) return;
-      net.get(s0).then((v) => { if (live && sess.current === s0) takeRoom(v); }).catch((e: Error) => {
-        if (live && e.message === "no_room") { leaveRoom(); setNetErr("The room closed."); setSetup(true); }
-      });
-    };
-    // the live line pushes the lane the moment a roll lands; asking is the fallback when it is down
-    let up = false; const s1 = sess.current;
-    const sock = s1 ? openRoomSocket<Room>({ code: s1.code, token: s1.token }, { view: (v) => { if (live && sess.current === s1) takeRoom(v); }, state: (x) => { up = x; } }, "strike") : null;
-    const id = window.setInterval(() => { if (!up) tick(); }, 1500);
-    const slow = window.setInterval(tick, 9000);
-    return () => { live = false; window.clearInterval(id); window.clearInterval(slow); sock?.close(); };
-  }, [hasRoom, takeRoom, leaveRoom]);
-  const enterRoom = async (how: "create" | "join", name?: string, code?: string) => {
-    const who = (name ?? nick).trim() || "Player";
-    try { localStorage.setItem("streetstrike.name", who); } catch { /* ignore */ }
-    setBusy(true);
-    setNetErr(null);
-    try {
-      const s1 = how === "create" ? await net.create(who) : await net.join((code ?? joinCode).trim().toUpperCase(), who);
-      sess.current = s1;
-      takeRoom(await net.get(s1));
-    } catch (e) {
-      sess.current = null;
-      setNetErr(explain((e as Error).message));
-    }
-    setBusy(false);
-  };
-  const hostDo = async (what: "start" | "rematch") => {
-    if (!sess.current) return;
-    setBusy(true);
-    setNetErr(null);
-    try { takeRoom(await net[what](sess.current)); } catch (e) { setNetErr(explain((e as Error).message)); }
-    setBusy(false);
-  };
-  // Street Strike keeps its own lanes on the server (every roll is sent as it lands, and a lane can be
-  // replayed throw by throw), but playing with friends must be ONE experience across the games. So
-  // the lane is handed to the same sheet the other games use, in the shape that sheet expects: the
-  // friends who are online, one-tap invites, the share row, the seats, the chat, the fixed action bar.
-  // No G$ entry here: a lane's score comes from the phones, and money only rides on scores the server works out itself.
-  const [friendsOpen, setFriendsOpen] = useState(false);
-  const friendRoom = {
-    session: room ? { code: room.code, token: "", game: "strike" } : null,
-    view: room ? { code: room.code, game: "strike", status: room.status, round: room.round, verified: false, you: room.you, elapsed: 0, watchId: room.watchId, watching: room.watching, chat: room.chat ?? [], players: room.players.map((p) => ({ name: p.name, host: p.host, score: null, done: p.done, progress: 0, away: p.away })) } : null,
-    error: netErr, busy, inRoom: !!room, isHost: !!room && !!room.players[room.you]?.host,
-    create: (name: string) => { armSfx(); return enterRoom("create", name); },
-    join: (code: string, name: string) => { armSfx(); return enterRoom("join", name, code); },
-    start: () => { armSfx(); return hostDo(room?.status === "over" ? "rematch" : "start"); },
-    leave: leaveRoom,
-    chat: async (text: string) => { const s1 = sess.current; if (!s1) return false; try { takeRoom(await net.say(s1, text)); return true; } catch (e) { setNetErr(explain((e as Error).message)); return false; } },
-    say: (m: string | null) => setNetErr(m), setEntry: async () => {}, agreeEntry: async () => {}, clearEntry: async () => {},
-  } as unknown as FriendRoom;
-  // a shared link opens straight on the join form with the code filled in
+    if (!room || room.you < 0) return;
+    if (room.status === "playing" && room.round !== roundRef.current && !room.players[room.you]?.done) beginRound(room);
+  }, [room, beginRound]);
+  const leaveRoom = useCallback(() => { friendRef.current.leave(); }, []);
+  // out of the room (left it, or it closed): back to the start screen
+  const wasIn = useRef(false);
   useEffect(() => {
-    try {
-      const n = localStorage.getItem("streetstrike.name");
-      if (n) setNick(n);
-      const c = new URLSearchParams(window.location.search).get("room");
-      if (c && /^[A-Za-z0-9]{5}$/.test(c)) { setMode("online"); setJoinCode(c.toUpperCase()); setFriendsOpen(true); }
-    } catch { /* ignore */ }
-    return () => { if (sess.current) net.leave(sess.current); };
-  }, []);
+    if (inRoom) { wasIn.current = true; return; }
+    if (!wasIn.current) return;
+    wasIn.current = false; roundRef.current = 0;
+    restart("solo"); setMode("online"); setSetup(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inRoom]);
+  // a friend's link or invite (?room=CODE) lands on "Online" with the sheet open and the code filled in
+  const invited = friend.inviteCode;
+  useEffect(() => { if (invited) setMode("online"); }, [invited]);
 
   // If a player is on the line and nothing happens for a few seconds, play the
   // "how to roll" demo again. Most people who stall simply do not know the move.
@@ -1833,7 +1783,7 @@ export default function Game() {
               {MODES.map((m) => {
                 const on = m.id === mode;
                 return (
-                  <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: on ? "#fff" : "#22104f", background: on ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                  <button key={m.id} onClick={() => { setMode(m.id); friend.say(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: on ? "#fff" : "#22104f", background: on ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
                     <div style={{ display: "inline-block", marginBottom: 4, padding: "2px 7px", borderRadius: 999, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.08em", lineHeight: 1.4, whiteSpace: "nowrap", background: m.ranked ? "#fde68a" : on ? "rgba(255,255,255,0.2)" : "rgba(76,29,149,0.08)", color: m.ranked ? "#3b0764" : on ? "#fff" : "rgba(34,16,79,0.62)" }}>{m.ranked ? "RANKED" : "FOR FUN"}</div>
                     <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
                     <div style={{ fontFamily: DISPLAY, fontSize: 13, marginTop: 3, whiteSpace: "nowrap" }}>{m.name}</div>
@@ -1857,7 +1807,7 @@ export default function Game() {
             )}
             {/* playing a friend: the same sheet as every other game (who is online, invites, the room, the chat) */}
             {online && (
-              <button onClick={() => { armSfx(); setFriendsOpen(true); track("friends_open", { game: "Street Strike" }); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#fff", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>
+              <button onClick={() => { armSfx(); friend.openSheet(); track("friends_open", { game: "Street Strike" }); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#fff", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>
                 {room ? `Back to your room · ${room.code}` : "Play with friends"}
               </button>
             )}
@@ -1868,9 +1818,14 @@ export default function Game() {
         </div>
       )}
 
-      {online && setup && friendsOpen && (
-        <FriendsSheet room={friendRoom} gameName="Street Strike" sharePath="/bowling" initialCode={joinCode} watchUrl={(id) => `/bowling?watch=${id}`} onClose={() => setFriendsOpen(false)} />
-      )}
+      {/* The friends sheet, the room, and the standings when a card is in: the same pieces every game uses.
+          A tap anywhere in them also wakes the sound, as the old buttons here did. */}
+      <div onPointerDownCapture={() => armSfx()}>
+        {online && setup && friend.sheetOpen && !friend.inRoom && (
+          <FriendsSheet room={friend} gameName="Street Strike" sharePath="/bowling" initialCode={friend.inviteCode} onClose={friend.closeSheet} />
+        )}
+        <FriendsPlay room={friend} gameName="Street Strike" sharePath="/bowling" atStart={false} part="overlays" strip={false} progressWord="roll" />
+      </div>
 
       {/* The play screen stays clear: the tyre must be visible and under the thumb.
           One small button swaps tyres between rolls. */}
@@ -1925,7 +1880,7 @@ export default function Game() {
         </div>
       )}
 
-      {phase === "over" && !watching && (
+      {phase === "over" && !watching && !(online && meScored) && (
         <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px calc(env(safe-area-inset-bottom, 0px) + 14px)", background: "linear-gradient(180deg, rgba(10,1,32,0) 0%, rgba(10,1,32,0.2) 40%, #ffffff 100%)" }}>
           <div style={{ width: "100%", maxWidth: 460, borderRadius: 26, padding: "18px 16px 14px", textAlign: "center", color: "#22104f", background: "linear-gradient(180deg, #ffffff, #ffffff)", border: "1px solid rgba(76,29,149,0.16)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)" }}>
             <div style={{ fontSize: 10.5, letterSpacing: "0.22em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>STREET STRIKE · FINAL</div>
@@ -1940,14 +1895,13 @@ export default function Game() {
               </>
             ) : <div style={{ fontFamily: DISPLAY, fontSize: "clamp(44px,13vw,68px)", lineHeight: 1.05, color: "#92400e" }}>{cards[0].total}</div>}
             <div style={{ fontSize: 14, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 12 }}>
-              {online ? (allOver ? "Good game!" : `${seats.filter((_, k) => !cards[k].done && !room?.players[k]?.away).map((p) => p.name).join(", ")} still bowling`) : mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
+              {online ? (netErr ? "Your card did not reach the room." : "Checking your throws…") : mode === "pass" ? "Run it back?" : beat ? "New best! Street champion 🏆" : best != null && best > cards[0].total ? `Your best ${best}. ${best - cards[0].total} more to beat it` : best != null ? `Your best ${best}` : "out of 150"}
             </div>
             {online ? (
               <>
-                {allOver && room?.players[turn]?.host && <button disabled={busy} onClick={() => hostDo("rematch")} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#06230f", background: "linear-gradient(180deg, #4ade80, #22c55e)", boxShadow: "0 4px 0 #15803d" }}>Rematch</button>}
-                {allOver && !room?.players[turn]?.host && <div style={{ padding: "12px 0", fontSize: 14, fontWeight: 500, color: "rgba(34,16,79,0.68)" }}>Waiting for the host to start a rematch…</div>}
-                {netErr && <div style={{ fontSize: 13, color: "#ff8a8a", marginTop: 6 }}>{netErr}</div>}
-                <button onClick={() => { leaveRoom(); restart("solo"); setSetup(true); }} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>Leave room</button>
+                {netErr && <div role="alert" style={{ fontSize: 13, color: "#be123c", marginBottom: 8 }}>{netErr}</div>}
+                {netErr && <button disabled={busy} onClick={() => void friend.finish({ throws: throwLog.current.slice() })} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#fff", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Send it again</button>}
+                <button onClick={leaveRoom} style={{ width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>Leave room</button>
               </>
             ) : (
               <>
@@ -1997,7 +1951,6 @@ function verdict(seats: Seat[], cards: ScoreState[], meIx: number) {
   return who[0] === meIx ? "You win! 🏆" : `${seats[who[0]].name} wins!`;
 }
 
-const field: CSSProperties = { width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 14, border: "1px solid rgba(76,29,149,0.2)", background: "#fff", color: "#22104f", fontFamily: BODY, fontSize: 16, fontWeight: 500, outline: "none" };
 
 const chip: CSSProperties = {
   color: "#fff",

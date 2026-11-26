@@ -10,6 +10,7 @@
 // Word Ladder shows which letters are in place and never the letters: everyone
 // in the room has the same words, so the letters would be the answer.
 
+import { score as strikeScore } from "@/app/bowling/scoring";
 import type { LiveState } from "@/hooks/useFriendRoom";
 import StackReplay from "@/components/StackReplay";
 import RhythmReplay from "@/components/RhythmReplay";
@@ -17,6 +18,7 @@ import SimonReplay from "@/components/SimonReplay";
 
 const n = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
 
+const STRIKE_FRAMES = 5; // a Street Strike card (app/bowling)
 export default function LiveBoard({ game, live, done, progress, goal }: { game: string; live?: LiveState; done: boolean; progress: number; goal: number }) {
   if (game === "ladder") {
     const rows = (Array.isArray(live?.rows) ? (live!.rows as number[][]) : []).filter((r) => Array.isArray(r)); const ix = Math.min(5, n(live?.ix, progress));
@@ -58,6 +60,24 @@ export default function LiveBoard({ game, live, done, progress, goal }: { game: 
       <div className="lb rhythm">
         <div className="lb-lanes">{["#e879f9", "#38bdf8", "#facc15", "#4ade80"].map((c, k) => <i key={k} style={{ background: c, height: `${28 + ((combo * (k + 3) * 7) % 62)}%` }} />)}</div>
         <div className="lb-cap">{combo > 1 ? <b>{combo}× combo</b> : "Finding the beat"}{streak >= 4 ? " · on fire" : ""}</div>
+      </div>
+    );
+  }
+  // Street Strike: the card, frame by frame, as it fills in
+  if (game === "strike") {
+    const rolls = Array.isArray(live?.rolls) ? (live!.rolls as number[]).filter((n) => typeof n === "number") : [];
+    const card = strikeScore(rolls, STRIKE_FRAMES);
+    return (
+      <div className="lb">
+        <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+          {card.frames.map((f, i) => (
+            <div key={i} style={{ flex: 1, maxWidth: 58, borderRadius: 9, padding: "5px 2px", textAlign: "center", background: f.marks.length ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.05)" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", minHeight: 16 }}>{f.marks.join(" ") || "·"}</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{f.total ?? ""}</div>
+            </div>
+          ))}
+        </div>
+        <div className="lb-cap">{done ? `Final: ${card.total}` : rolls.length ? `${card.total} so far` : "At the line"}</div>
       </div>
     );
   }

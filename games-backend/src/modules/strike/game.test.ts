@@ -102,3 +102,36 @@ test('a card ended early is scored on the throws made; an unfinished card is sti
   if (missed === 0) assert.equal(replay(R, [gutter], 60_000, true).ok, false, 'leaving with nothing down does not count');
   assert.equal(replay(R, [good], 10, true).ok, false, 'an early end still cannot be faster than its rolls');
 });
+
+// ── Street Strike in a friend room: the same replay decides the round ────────
+import { ROOM_GAMES } from '../rooms/games';
+import { createRoomService } from '../rooms/service';
+
+test('a friend room scores a lane by replaying the throws; what the phone says it scored is never used', async () => {
+  const rules = ROOM_GAMES.strike!;
+  assert.equal(rules.verified, true, 'server-scored, so a room may be played for G$');
+  const g = await playOut(7);
+  assert.deepEqual(await rules.score('seed', { throws: g.throws, score: 9999, rolls: [10, 10, 10] }, g.ms + 20_000), { ok: true, score: g.total });
+  assert.equal((await rules.score('seed', { throws: g.throws.slice(0, 2) }, 600_000)).ok, false, 'an unfinished card');
+  assert.equal((await rules.score('seed', { throws: g.throws }, 500)).ok, false, 'faster than the rolls can play');
+  assert.equal((await rules.score('seed', { score: 50 }, 600_000)).ok, false, 'no throws: nothing to score');
+  assert.equal((await rules.score('seed', null, 600_000)).ok, false);
+});
+
+test('two friends bowl a room: each lane is replayed, the standings are the server totals, and the higher one wins', async () => {
+  const clock = { t: 1_800_000_000_000 };
+  const svc = createRoomService(ROOM_GAMES, { now: () => clock.t });
+  const made = svc.create('strike', 'Ada') as { code: string; token: string };
+  const joined = svc.join(made.code, 'Bola') as { code: string; token: string };
+  const started = svc.start(made.code, made.token) as { status: string; verified: boolean; stakes: boolean };
+  assert.equal(started.status, 'playing'); assert.equal(started.verified, true);
+  const a = await playOut(3), b = await playOut(21);
+  // each roll as it lands: the frame they are on, and the card so far for the others to see
+  const seen = svc.progress(made.code, made.token, 2, { rolls: [10, 7, 3] }) as { players: { progress: number; live?: { rolls?: number[] } }[] };
+  assert.equal(seen.players[0]!.progress, 2); assert.deepEqual(seen.players[0]!.live?.rolls, [10, 7, 3]);
+  clock.t += Math.max(a.ms, b.ms) + 30_000;
+  await svc.finish(made.code, made.token, { throws: a.throws });
+  const end = await svc.finish(joined.code, joined.token, { throws: b.throws }) as { status: string; players: { name: string; score: number | null; done: boolean }[] };
+  assert.equal(end.status, 'over');
+  assert.deepEqual(end.players.map((p) => [p.name, p.score, p.done]), [['Ada', a.total, true], ['Bola', b.total, true]]);
+});

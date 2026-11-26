@@ -16,7 +16,7 @@ import { useFriends } from "@/hooks/useFriends";
 
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 
-export default function FriendsPlay({ room, gameName, sharePath, atStart, progressMax, progressWord = "round", dark = false, part = "all" }: {
+export default function FriendsPlay({ room, gameName, sharePath, atStart, progressMax, progressWord = "round", dark = false, part = "all", strip = true }: {
   room: FriendRoom; gameName: string; sharePath: string;
   /** true while the game is on its start screen */
   atStart: boolean;
@@ -29,6 +29,8 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
   /** Big game pages draw their start screen in one place and the rest in another.
    *  They mount this twice: "button" on the start screen, "overlays" at the page root. */
   part?: "all" | "button" | "overlays";
+  /** false for a game that already draws every player on its own screen (Street Strike shows each card) */
+  strip?: boolean;
 }) {
   const v = room.view;
   const open = room.sheetOpen, code = room.inviteCode;
@@ -47,7 +49,7 @@ export default function FriendsPlay({ room, gameName, sharePath, atStart, progre
       )}
       {((part !== "overlays" && open && atStart && !room.inRoom) || (part !== "button" && lobby)) && <FriendsSheet room={room} gameName={gameName} sharePath={sharePath} initialCode={code} onClose={room.closeSheet} />}
 
-      {part !== "button" && playing && v && (
+      {part !== "button" && strip && playing && v && (
         <div className="fp-strip" aria-label="Players in this room">
           {v.players.map((p, i) => (
             <span key={i} className={`${i === v.you ? "me" : ""}${p.away ? " away" : ""}${p.done ? " done" : ""}`}>
