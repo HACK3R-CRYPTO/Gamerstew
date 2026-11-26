@@ -17,6 +17,8 @@ SECRET="${INTERNAL_SECRET:-$(grep "^INTERNAL_SECRET=" "$ROOT/frontend/.env.local
 if [ $# -lt 4 ]; then echo 'Use it like this:  scripts/whats-new.sh "<bell title>" "<bell text>" "<push title>" "<push text>" [page] [short name]'; exit 1; fi
 BELL_TITLE="$1"; BELL_BODY="$2"; PUSH_TITLE="$3"; PUSH_BODY="$4"; PAGE="${5:-/dashboard}"; KEY="${6:-whats-new-$(date -u +%Y-%m-%d)}"
 
+[ ${#BELL_TITLE} -le 80 ] || { echo "The bell title is ${#BELL_TITLE} characters. The limit is 80."; exit 1; }
+[ ${#BELL_BODY} -le 400 ] || { echo "The bell text is ${#BELL_BODY} characters. The limit is 400: it would be cut off. Shorten it."; exit 1; }
 echo
 echo "  IN THE BELL (every player, under From GameArena)"
 echo "    $BELL_TITLE"
