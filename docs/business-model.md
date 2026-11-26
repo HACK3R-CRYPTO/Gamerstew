@@ -166,6 +166,8 @@ Both are in the code and switched off. Nothing changes for players until the ste
 | Home screen | The pot, the time left, the game of the day, where the player stands and what that place pays | `frontend/components/home/PotCard.tsx` |
 | Admin | Each closed day, what was spent, what was paid, what is still owed | Admin, "Runs and shop" |
 
+**The shop.** `/shop` now sells everything that exists, on three shelves: Energy (the pack, with the player's runs left and when the free ones return), Keep playing (the saves, the retry, one more life, the match pack) and Collectibles. Every card says what the item does, which game it is for, how many the player holds and the price. An item with no price on the contract is not shown. A guest can browse it all; Buy asks them to sign in. One more life can be bought ahead in the shop and is used from stock in the game. Code: `frontend/components/PerkShelf.tsx`. Art for items 9 and 10: `frontend/tools/blender/build_perk_art.py`.
+
 **Which mode is ranked.** Energy only makes sense if a player can tell a ranked run from a free one. Every mode card now says RANKED or FOR FUN: Street Strike (Just me is ranked), UP NEPA 3D (Restore the Light is ranked), Word Ladder (Play is ranked, the daily is for fun), and the Ranked mode in Stack Tower, Rhythm Rush and Simon Memory. Friend rooms and free modes never use energy.
 
 **The server never pays a prize.** Closing a day writes each prize into the payout ledger as *pending*. The owner pays them and marks them paid on the Payouts page, exactly as with the weekly prizes today. This is on purpose: the code that decides who won is new, and money should not move on new code without a person looking first.
