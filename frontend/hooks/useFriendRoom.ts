@@ -64,7 +64,7 @@ const WORDS: Record<string, string> = {
   not_verified: "This game cannot be played for G$.",
   bad_entry: "That entry is not on offer.",
   wallet_taken: "That wallet is already in this room.",
-  not_allowed: "Only verified players can play for G$. Verify your account first.",
+  not_allowed: "This wallet cannot play for G$ right now.",
   bad_permit: "That signature could not be accepted. Try again.",
   locked: "The room changed. Try again.",
 };

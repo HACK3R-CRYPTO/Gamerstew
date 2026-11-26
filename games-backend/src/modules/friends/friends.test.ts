@@ -92,3 +92,86 @@ test('people: everyone with the app open, friend or not, never yourself, with wh
   w.clock.t += ONLINE_MS + 1;
   assert.equal(((await w.f.people(A)).body.people as unknown[]).length, 0);
 });
+
+// ── an invite reaches a player who has the app open ──────────────────────────
+import { createTickets } from './ticket';
+import { createPersonalLine, PER_WALLET, HELLO_MS, BURST } from './line';
+import { INVITE_TTL_MS, type Invite } from './service';
+
+test('a ticket names one wallet for ten minutes and cannot be forged or changed', () => {
+  const clock = { t: 1_800_000_000_000 };
+  const tk = createTickets('server-secret', { now: () => clock.t });
+  const good = tk.sign(A.toUpperCase().replace('0X', '0x'));
+  assert.equal(tk.verify(good), A);
+  assert.equal(tk.verify(good.replace(A, B)), null, 'another wallet with the same signature');
+  assert.equal(tk.verify(good.slice(0, -2) + 'xx'), null);
+  assert.equal(createTickets('other-secret', { now: () => clock.t }).verify(good), null, 'signed by a different server');
+  for (const junk of [null, 42, '', 'a.b.c', `${A}.${clock.t + 1000}.`, 'x'.repeat(500)]) assert.equal(tk.verify(junk), null);
+  clock.t += 10 * 60_000 + 1;
+  assert.equal(tk.verify(good), null, 'out of date');
+});
+
+function lineWorld() {
+  const clock = { t: 1_800_000_000_000 }; const seen: string[] = []; const waiting: Record<string, unknown[]> = {};
+  const tk = createTickets('server-secret', { now: () => clock.t });
+  const line = createPersonalLine({ verify: tk.verify, pending: (w) => waiting[w] ?? [], seen: (w) => { seen.push(w); }, now: () => clock.t });
+  const phone = () => { const got: Record<string, unknown>[] = []; const p = { got, closed: false, conn: line.connect({ send: (d) => { got.push(JSON.parse(d)); }, close: () => { p.closed = true; } }) }; return p; };
+  return { clock, seen, waiting, tk, line, phone };
+}
+
+test('the line: hello with a ticket opens it, an invite arrives at once, and what was waiting comes first', () => {
+  const w = lineWorld();
+  w.waiting[B] = [{ id: 'old' }];
+  const p = w.phone();
+  p.conn.message(JSON.stringify({ t: 'ping' })); assert.equal(p.got.length, 0, 'nothing before hello');
+  p.conn.message(JSON.stringify({ t: 'hello', ticket: w.tk.sign(B) }));
+  assert.deepEqual(p.got, [{ t: 'ok' }, { t: 'invite', invite: { id: 'old' } }]);
+  assert.deepEqual(w.seen, [B]);
+  assert.equal(w.line.tell(B, { t: 'invite', invite: { id: 'new' } }), 1);
+  assert.deepEqual(p.got.at(-1), { t: 'invite', invite: { id: 'new' } });
+  assert.equal(w.line.tell(A, { t: 'invite' }), 0, 'nobody else is told');
+  p.conn.message(JSON.stringify({ t: 'ping' })); assert.equal(w.seen.length, 2, 'a ping keeps the green dot lit');
+  p.conn.closed(); assert.deepEqual(w.line.stats(), { players: 0, sockets: 0 });
+  assert.equal(w.line.tell(B, {}), 0);
+});
+
+test('the line refuses a bad ticket, a silent connection, a flood, and keeps a player to a few tabs', () => {
+  const w = lineWorld();
+  const bad = w.phone(); bad.conn.message(JSON.stringify({ t: 'hello', ticket: 'nope' }));
+  assert.deepEqual(bad.got, [{ t: 'no', why: 'bad_ticket' }]); assert.equal(bad.closed, true);
+  const quiet = w.phone(); w.clock.t += HELLO_MS + 1; w.line.sweep(); assert.equal(quiet.closed, true, 'never said who it was');
+  const loud = w.phone(); loud.conn.message(JSON.stringify({ t: 'hello', ticket: w.tk.sign(A) }));
+  for (let i = 0; i < BURST; i++) loud.conn.message(JSON.stringify({ t: 'ping' }));
+  assert.equal(loud.closed, true); assert.deepEqual(loud.got.at(-1), { t: 'no', why: 'slow_down' });
+  w.clock.t += 20_000;
+  const tabs = Array.from({ length: PER_WALLET + 1 }, () => { const p = w.phone(); p.conn.message(JSON.stringify({ t: 'hello', ticket: w.tk.sign(B) })); return p; });
+  assert.equal(tabs[0]!.closed, true, 'the oldest tab makes room'); assert.equal(tabs.at(-1)!.closed, false);
+  assert.equal(w.line.tell(B, { t: 'x' }), PER_WALLET);
+  assert.deepEqual(w.line.stats(), { players: 1, sockets: PER_WALLET });
+});
+
+test('an invite is handed to the open app, waits three minutes for a check-in, and still goes to the bell', async () => {
+  const rows = new Map<string, Pair>(); const live: { to: string; invite: Invite }[] = []; const bell: string[] = []; const clock = { t: 1_800_000_000_000 };
+  const store: FriendStore = { list: async () => ({ ok: true, rows: [] }), get: async (a, b) => ({ ok: true, row: rows.get(a + b) ?? null }), put: async (r) => { rows.set(r.a + r.b, r); return true; }, remove: async () => true, findByName: async () => null, searchNames: async () => [] };
+  const f = createFriends({ store, nameOf: async (w) => (w === A ? 'ada' : null), notify: async (to) => { bell.push(to); }, live: (to, invite) => { live.push({ to, invite }); }, ticket: (w) => `ticket-for-${w}`, now: () => clock.t });
+  await f.request(A, B); await f.accept(B, A);
+  assert.equal((await f.invite(A, B, 'simon', '9utvp')).body.sent, true);
+  await flush();
+  assert.equal(live.length, 1); assert.equal(live[0]!.to, B);
+  assert.deepEqual({ ...live[0]!.invite }, { id: `9UTVP:${A}`, from: A, name: 'ada', game: 'simon', gameName: 'Simon Memory', code: '9UTVP', url: '/games/simon?room=9UTVP', at: clock.t, until: clock.t + INVITE_TTL_MS, left: INVITE_TTL_MS });
+  assert.ok(bell.includes(B), 'the bell keeps it');
+  clock.t += 60_000;
+  const ping = f.ping(B).body as { invites: Invite[]; ticket: string };
+  assert.equal(ping.invites.length, 1); assert.equal(ping.ticket, `ticket-for-${B}`);
+  assert.equal(ping.invites[0]!.left, INVITE_TTL_MS - 60_000, 'time left is counted by the server');
+  assert.equal((f.ping(A).body.invites as unknown[]).length, 0, 'the host is not shown their own invite');
+  // asking again after the gap replaces the invite, it does not stack
+  clock.t += INVITE_GAP_MS + 1; await f.invite(A, B, 'simon', '9UTVP');
+  assert.equal(f.pendingFor(B).length, 1);
+  clock.t += INVITE_TTL_MS + 1;
+  assert.equal(f.pendingFor(B).length, 0, 'an old invite is not shown');
+  // a failing live line never costs the invite
+  const g = createFriends({ store, nameOf: async () => null, live: () => { throw new Error('line down'); }, now: () => clock.t });
+  clock.t += INVITE_GAP_MS + 1;
+  assert.equal((await g.invite(A, B, 'ladder', 'ABCDE')).body.sent, true);
+});
