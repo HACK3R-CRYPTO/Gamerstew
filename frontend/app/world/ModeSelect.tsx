@@ -198,18 +198,25 @@ export default function ModeSelect({ onPick, touch, friends, guestLeft = null }:
       </div>
       {friends && <div className="nl-friends">{friends}</div>}
       {/* who turns the camera: the game, or the player's right thumb. Chosen here, where they are about to play. */}
-      {touch && (
-        <button className="nl-cam" onClick={() => { const next = cam === "follow" ? "manual" : "follow"; setCameraMode(next); setCam(next); }} aria-label={`Camera: ${cam === "follow" ? "follows you" : "you turn it"}. Tap to change.`}>
-          <span>🎥 Camera</span><b>{cam === "follow" ? "Follows you" : "You turn it"}</b><i>Change</i>
-        </button>
-      )}
-      <div style={{ alignSelf: "center", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}><HowToButton game="nepa3d" dark /><EnergyLine dark /></div>
+      <div className="nl-tools">
+        {touch && (
+          <button className="nl-cam" onClick={() => { const next = cam === "follow" ? "manual" : "follow"; setCameraMode(next); setCam(next); }} aria-label={`Camera: ${cam === "follow" ? "follows you" : "you turn it"}. Tap to change.`}>
+            <span>🎥</span><b>{cam === "follow" ? "Follows you" : "You turn it"}</b><i>Change</i>
+          </button>
+        )}
+        <HowToButton game="nepa3d" dark /><EnergyLine dark />
+      </div>
       <GuestLine left={guestLeft} dark />
       <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
-        .nl { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 14px); color: #f4f1ea; font-family: "Fredoka", system-ui, sans-serif; background: linear-gradient(180deg, rgba(10,1,32,0.5) 0%, rgba(10,1,32,0.3) 26%, rgba(10,1,32,0.86) 100%); touch-action: pan-x; }
-        .nl-head { text-align: center; padding: 0 16px; margin-bottom: auto; padding-top: 58px; }
+        /* The lobby scrolls as a last resort: the head's auto margin soaks up spare
+           height when there is some, and collapses to 0 when there is not, so the
+           cards are never squeezed and the Start button is always reachable. */
+        .nl { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-start; gap: 10px; padding: 14px 0 calc(env(safe-area-inset-bottom, 0px) + 14px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; color: #f4f1ea; font-family: "Fredoka", system-ui, sans-serif; background: linear-gradient(180deg, rgba(10,1,32,0.5) 0%, rgba(10,1,32,0.3) 26%, rgba(10,1,32,0.86) 100%); touch-action: pan-x pan-y; }
+        .nl::-webkit-scrollbar { display: none; }
+        .nl > * { flex-shrink: 0; }
+        .nl-head { text-align: center; padding: 0 16px; margin-bottom: auto; padding-top: calc(env(safe-area-inset-top, 0px) + 50px); }
         .nl-eyebrow { font-size: 10.5px; letter-spacing: 0.24em; font-weight: 600; opacity: 0.7; }
         .nl-head h1 { margin: 4px 0 0; font-size: clamp(38px, 11vw, 60px); line-height: 0.95; color: #fff; text-shadow: 0 4px 0 rgba(10,1,32,0.55); }
         .nl-head h1 span { color: ${GA.goldLight}; }
@@ -221,7 +228,7 @@ export default function ModeSelect({ onPick, touch, friends, guestLeft = null }:
         .nl-card.gold { border-color: ${GA.goldLight}; }
         .nl-card.green { border-color: #4ade80; }
         @keyframes nlIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-        .nl-art { height: clamp(104px, 20vh, 150px); }
+        .nl-art { height: clamp(88px, 15vh, 140px); flex: none; }
         .nl-art svg { display: block; width: 100%; height: 100%; }
         .nl-body { display: flex; flex-direction: column; flex: 1; padding: 12px 14px 14px; }
         .nl-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(244,241,234,0.62); }
@@ -246,12 +253,13 @@ export default function ModeSelect({ onPick, touch, friends, guestLeft = null }:
         .nl-card.soon li b { display: block; font-size: 14.5px; font-weight: 600; color: rgba(244,241,234,0.9); }
         [data-ride-prompt] { display: none !important; } /* nothing in the world can be pressed behind the lobby */
         .nl-friends { display: flex; justify-content: center; padding: 0 16px; }
+        .nl-tools { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
         .nl-dots { display: flex; justify-content: center; gap: 6px; }
         .nl-dots button { width: 7px; height: 7px; padding: 0; border: none; border-radius: 99px; background: rgba(255,255,255,0.3); transition: width .25s ease, background .25s ease; }
         .nl-dots button.on { width: 22px; background: #fff; }
         .nl-rank { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; vertical-align: 1px; white-space: nowrap; }
         .nl-rank.fun { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.8); }
-        .nl-cam { align-self: center; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #f4f1ea; font: 600 13px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
+        .nl-cam { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 5px 0 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #f4f1ea; font: 600 13px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
         .nl-cam b { font-weight: 800; color: #ffd56b; } .nl-cam i { font-style: normal; font-weight: 800; font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.16); }
         .nl-foot { margin: 0; text-align: center; font-size: 12px; font-weight: 500; color: rgba(244,241,234,0.62); padding: 0 16px; }
 
@@ -273,7 +281,7 @@ export default function ModeSelect({ onPick, touch, friends, guestLeft = null }:
 
         /* wide screens: all three side by side, centred */
         @media (min-width: 1040px) {
-          .nl { justify-content: center; gap: 18px; }
+          .nl { justify-content: safe center; gap: 18px; }
           .nl-head { margin-bottom: 0; padding-top: 0; }
           .nl-rail { justify-content: center; overflow: visible; padding: 0 24px; gap: 18px; }
           .nl-card { flex: 0 1 300px; }
