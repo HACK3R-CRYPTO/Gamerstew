@@ -27,6 +27,7 @@ const GAMES: Record<string, { name: string; path: string; art: string; what: str
   stack: { name: "Stack Tower", path: "/games/stack", art: "/games/covers/stack.jpg", what: "Drop the block. Stack it clean." },
   ladder: { name: "Word Ladder", path: "/games/ladder", art: "/games/covers/ladder.svg", what: "Change one letter. Reach the word." },
   nepa3d: { name: "UP NEPA 3D", path: "/world", art: "/games/covers/upnepa3d.jpg", what: "Bring the light back to the street." },
+  strike: { name: "Street Strike", path: "/bowling", art: "/games/covers/streetstrike.jpg", what: "Roll the tyre. Scatter the bottles." },
 };
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const tint = (name: string) => `hsl(${[...name].reduce((a, c) => a + c.charCodeAt(0) * 7, 0) % 360} 62% 46%)`;
