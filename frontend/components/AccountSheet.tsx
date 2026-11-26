@@ -30,6 +30,7 @@ import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { WalletSheet } from "@/components/WalletSheet";
 import { GasHelpSheet } from "@/components/GasHelpSheet";
 import { useGasStatus } from "@/hooks/useGasStatus";
+import { OPEN_CASHOUT } from "@/lib/cashout";
 
 const T = {
   ink: "#22104f",
@@ -127,6 +128,15 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  // Cash out has its own sheet, drawn below this one (z 1300 vs 9999). When it
+  // opens from the wallet drill-down, step fully aside so it is not hidden.
+  useEffect(() => {
+    if (!open) return;
+    const onCashOut = () => { setWalletSheetOpen(false); onClose(); };
+    window.addEventListener(OPEN_CASHOUT, onCashOut);
+    return () => window.removeEventListener(OPEN_CASHOUT, onCashOut);
   }, [open, onClose]);
 
   // Lock the body while open so the page behind can't drag-scroll under
