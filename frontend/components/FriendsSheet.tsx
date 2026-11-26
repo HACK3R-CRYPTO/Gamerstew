@@ -27,7 +27,7 @@ import { friendLabel, useFriends } from "@/hooks/useFriends";
 const NAME_KEY = "gamearena:roomName";
 const DISPLAY = '"Melon Pop", "Fredoka", ui-sans-serif, system-ui, sans-serif';
 
-export default function FriendsSheet({ room, gameName, sharePath, initialCode, onClose }: { room: FriendRoom; gameName: string; sharePath: string; initialCode?: string; onClose: () => void }) {
+export default function FriendsSheet({ room, gameName, sharePath, initialCode, watchUrl, onClose }: { room: FriendRoom; gameName: string; sharePath: string; initialCode?: string; /** where a room is watched from, when it is not the usual /watch page (Street Strike shows its lanes in its own street) */ watchUrl?: (id: string) => string; onClose: () => void }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState(initialCode ?? "");
   const [copied, setCopied] = useState(false);
@@ -106,7 +106,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
               <a href={`https://wa.me/?text=${encodeURIComponent(invite)}`} target="_blank" rel="noreferrer">WhatsApp</a>
               <button onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
               {/* a link for people who only want to look on */}
-              <button onClick={() => { const w = `${window.location.origin}/watch/${v?.watchId || room.session?.code || ""}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
+              <button onClick={() => { const id = v?.watchId || room.session?.code || ""; const w = `${window.location.origin}${watchUrl ? watchUrl(id) : `/watch/${id}`}`; if (navigator.share) void navigator.share({ title: `Watch our ${gameName} room`, text: `Watch our ${gameName} round live on GameArena`, url: w }).catch(() => {}); else void navigator.clipboard?.writeText(w); }}>Watch link</button>
             </div>
             {v?.status === "waiting" && <InviteFriends game={room.session!.game} code={room.session!.code} />}
             <ul className="fs-players" aria-label="Players in this room">

@@ -11,7 +11,7 @@
 
 import { randomBytes } from 'crypto';
 import { cleanName, FRAMES, readCard } from './card';
-import type { Room, RoomStore, Throw } from './store';
+import type { ChatLine, Room, RoomStore, Throw } from './store';
 import { cleanThrow, SIM_TYRES } from './sim';
 
 export const MAX_PLAYERS = 4;
@@ -20,7 +20,11 @@ export const ROOM_TTL_MS = 20 * 60 * 1000; // nobody has polled it for 20 minute
 export const AWAY_MS = 30 * 1000; // no word from a phone for this long: stop waiting for it
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L
 
-export type FailCode = 'slow_down' | 'busy' | 'no_room' | 'started' | 'full' | 'not_host' | 'need_two' | 'not_in_room' | 'not_playing' | 'bad_card' | 'rewrite' | 'not_over';
+export type FailCode = 'slow_down' | 'busy' | 'no_room' | 'started' | 'full' | 'not_host' | 'need_two' | 'not_in_room' | 'not_playing' | 'bad_card' | 'rewrite' | 'not_over' | 'say_something';
+/** The same limits as the other games' rooms (rooms/service.ts): the two lobbies are one experience. */
+export const CHAT_KEEP = 40;
+export const CHAT_MAX = 140;
+export const CHAT_GAP_MS = 700;
 export interface Fail { error: FailCode; status: number }
 export interface Seat { code: string; token: string; seat: number }
 export interface RoomView {
@@ -35,6 +39,8 @@ export interface RoomView {
   watchId: string;
   /** people looking on, seen in the last few seconds */
   watching: number;
+  /** the last lines of talk between the players */
+  chat: ChatLine[];
 }
 /** A room as the "live" list shows it. No code: a stranger can watch, not join. */
 export interface LiveLane { watch: string; game: 'strike'; status: Room['status']; round: number; elapsed: number; players: string[]; watching: number; stake: boolean }
@@ -57,6 +63,7 @@ export const isFail = (v: unknown): v is Fail => typeof v === 'object' && v !== 
 
 export function createStrikeService(store: RoomStore, now: () => number = Date.now) {
   const find = (code: unknown) => store.get(String(code ?? '').toUpperCase());
+  const lastSaid = new Map<string, number>();
   const seatOf = (room: Room, token: unknown) => (typeof token === 'string' && token.length === 32 ? room.players.findIndex((p) => p.token === token) : -1);
   const gone = (room: Room, i: number, t: number) => { const p = room.players[i]; return !p || p.left || t - p.seen >= AWAY_MS; };
 
@@ -93,6 +100,7 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       players: room.players.map((p, i) => ({ name: p.name, host: i === host, rolls: p.rolls, done: p.done, away: gone(room, i, t), throws: p.throws ?? [] })),
       watchId: watchName(room),
       watching: watchingNow(room.code, t),
+      chat: (room.chat ?? []).slice(-30),
     };
   }
   async function newCode(): Promise<string | null> {
@@ -209,6 +217,25 @@ export function createStrikeService(store: RoomStore, now: () => number = Date.n
       const v = view(room, seat);
       await store.put(room);
       return v;
+    },
+
+    /** Say something in the lane. Players only; people watching read. */
+    async say(code: unknown, token: unknown, textRaw: unknown): Promise<RoomView | Fail> {
+      const room = await find(code);
+      if (!room) return fail('no_room', 404);
+      const seat = seatOf(room, token);
+      if (seat < 0) return fail('not_in_room', 403);
+      const text = Array.from(String(textRaw ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, CHAT_MAX).join('');
+      if (!text) return fail('say_something', 400);
+      const t = now(); const key = room.players[seat]!.token;
+      if (lastSaid.size > 20000) lastSaid.clear();
+      if (t - (lastSaid.get(key) ?? 0) < CHAT_GAP_MS) return fail('slow_down', 429);
+      lastSaid.set(key, t); room.players[seat]!.seen = t; room.touched = t;
+      const chat = (room.chat ??= []);
+      chat.push({ id: (chat[chat.length - 1]?.id ?? 0) + 1, seat, name: room.players[seat]!.name, text, at: t });
+      if (chat.length > CHAT_KEEP) chat.splice(0, chat.length - CHAT_KEEP);
+      await store.put(room);
+      return view(room, seat);
     },
 
     async rematch(code: unknown, token: unknown): Promise<RoomView | Fail> {

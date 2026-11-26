@@ -1,4 +1,6 @@
 "use client";
+import FriendsSheet from "@/components/FriendsSheet";
+import type { FriendRoom } from "@/hooks/useFriendRoom";
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
 import EnergyLine from "@/components/EnergyLine";
@@ -1215,7 +1217,6 @@ export default function Game() {
   const [joinCode, setJoinCode] = useState("");
   const [netErr, setNetErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
   const online = mode === "online";
   const seats = useMemo(() => (mode === "online" && room ? room.players.map((p) => ({ name: p.name, cpu: false })) : seatsFor(mode)), [mode, room]);
   const [allRolls, setAllRolls] = useState<number[][]>([[]]);
@@ -1589,13 +1590,13 @@ export default function Game() {
     const slow = window.setInterval(tick, 9000);
     return () => { live = false; window.clearInterval(id); window.clearInterval(slow); sock?.close(); };
   }, [hasRoom, takeRoom, leaveRoom]);
-  const enterRoom = async (how: "create" | "join") => {
-    const who = nick.trim() || "Player";
+  const enterRoom = async (how: "create" | "join", name?: string, code?: string) => {
+    const who = (name ?? nick).trim() || "Player";
     try { localStorage.setItem("streetstrike.name", who); } catch { /* ignore */ }
     setBusy(true);
     setNetErr(null);
     try {
-      const s1 = how === "create" ? await net.create(who) : await net.join(joinCode.trim().toUpperCase(), who);
+      const s1 = how === "create" ? await net.create(who) : await net.join((code ?? joinCode).trim().toUpperCase(), who);
       sess.current = s1;
       takeRoom(await net.get(s1));
     } catch (e) {
@@ -1611,14 +1612,30 @@ export default function Game() {
     try { takeRoom(await net[what](sess.current)); } catch (e) { setNetErr(explain((e as Error).message)); }
     setBusy(false);
   };
-  const shareUrl = room && typeof window !== "undefined" ? `${window.location.origin}/bowling?room=${room.code}` : "";
+  // Street Strike keeps its own lanes on the server (every roll is sent as it lands, and a lane can be
+  // replayed throw by throw), but playing with friends must be ONE experience across the games. So
+  // the lane is handed to the same sheet the other games use, in the shape that sheet expects: the
+  // friends who are online, one-tap invites, the share row, the seats, the chat, the fixed action bar.
+  // No G$ entry here: a lane's score comes from the phones, and money only rides on scores the server works out itself.
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const friendRoom = {
+    session: room ? { code: room.code, token: "", game: "strike" } : null,
+    view: room ? { code: room.code, game: "strike", status: room.status, round: room.round, verified: false, you: room.you, elapsed: 0, watchId: room.watchId, watching: room.watching, chat: room.chat ?? [], players: room.players.map((p) => ({ name: p.name, host: p.host, score: null, done: p.done, progress: 0, away: p.away })) } : null,
+    error: netErr, busy, inRoom: !!room, isHost: !!room && !!room.players[room.you]?.host,
+    create: (name: string) => { armSfx(); return enterRoom("create", name); },
+    join: (code: string, name: string) => { armSfx(); return enterRoom("join", name, code); },
+    start: () => { armSfx(); return hostDo(room?.status === "over" ? "rematch" : "start"); },
+    leave: leaveRoom,
+    chat: async (text: string) => { const s1 = sess.current; if (!s1) return false; try { takeRoom(await net.say(s1, text)); return true; } catch (e) { setNetErr(explain((e as Error).message)); return false; } },
+    say: (m: string | null) => setNetErr(m), setEntry: async () => {}, agreeEntry: async () => {}, clearEntry: async () => {},
+  } as unknown as FriendRoom;
   // a shared link opens straight on the join form with the code filled in
   useEffect(() => {
     try {
       const n = localStorage.getItem("streetstrike.name");
       if (n) setNick(n);
       const c = new URLSearchParams(window.location.search).get("room");
-      if (c && /^[A-Za-z0-9]{5}$/.test(c)) { setMode("online"); setJoinCode(c.toUpperCase()); }
+      if (c && /^[A-Za-z0-9]{5}$/.test(c)) { setMode("online"); setJoinCode(c.toUpperCase()); setFriendsOpen(true); }
     } catch { /* ignore */ }
     return () => { if (sess.current) net.leave(sess.current); };
   }, []);
@@ -1838,49 +1855,21 @@ export default function Game() {
             {!online && (
               <button onClick={() => { if (!gate.allow()) return; armSfx(); track("game_start", { game: "Street Strike", mode }); restart(mode); setSetup(false); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>Start</button>
             )}
-            {online && !room && (
-              <div style={{ marginTop: 10 }}>
-                <input value={nick} onChange={(e) => setNick(e.target.value.slice(0, 14))} placeholder="Your name" maxLength={14} aria-label="Your name" style={field} />
-                <button disabled={busy} onClick={() => { armSfx(); enterRoom("create"); }} style={{ width: "100%", marginTop: 8, padding: "13px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 18, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95", opacity: busy ? 0.6 : 1 }}>Create a room</button>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 8px", fontSize: 11, letterSpacing: "0.16em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}><i style={{ flex: 1, height: 1, background: "rgba(76,29,149,0.05)" }} />OR JOIN A FRIEND<i style={{ flex: 1, height: 1, background: "rgba(76,29,149,0.05)" }} /></div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input value={joinCode} onChange={(e) => setJoinCode(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5))} placeholder="CODE" aria-label="Room code" autoCapitalize="characters" style={{ ...field, flex: 1, textAlign: "center", letterSpacing: "0.3em", fontFamily: DISPLAY, fontSize: 20 }} />
-                  <button disabled={busy || joinCode.length !== 5} onClick={() => { armSfx(); enterRoom("join"); }} style={{ padding: "0 22px", borderRadius: 14, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 17, color: "#fff", background: "#22104f", opacity: busy || joinCode.length !== 5 ? 0.45 : 1 }}>Join</button>
-                </div>
-                {netErr && <div style={{ fontSize: 13, color: "#be123c", marginTop: 8, textAlign: "center" }}>{netErr}</div>}
-              </div>
+            {/* playing a friend: the same sheet as every other game (who is online, invites, the room, the chat) */}
+            {online && (
+              <button onClick={() => { armSfx(); setFriendsOpen(true); track("friends_open", { game: "Street Strike" }); }} style={{ width: "100%", marginTop: 10, padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 19, color: "#fff", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", boxShadow: "0 5px 0 #4c1d95" }}>
+                {room ? `Back to your room · ${room.code}` : "Play with friends"}
+              </button>
             )}
-            {online && room && (
-              <div style={{ marginTop: 4, textAlign: "center" }}>
-                <div style={{ fontSize: 10.5, letterSpacing: "0.2em", fontWeight: 600, color: "rgba(34,16,79,0.68)" }}>ROOM CODE</div>
-                <div style={{ fontFamily: DISPLAY, fontSize: 46, lineHeight: 1.1, letterSpacing: "0.18em", color: "#92400e" }}>{room.code}</div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(34,16,79,0.68)", marginBottom: 10 }}>Send this to your friend. They tap Online, type the code and join.</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <a href={`https://wa.me/?text=${encodeURIComponent(`Come bowl me on Street Strike 🛞 Room ${room.code}: ${shareUrl}`)}`} target="_blank" rel="noreferrer" style={{ flex: 1, padding: "11px 0", borderRadius: 14, textDecoration: "none", fontFamily: DISPLAY, fontSize: 15, color: "#06230f", background: "#25d366" }}>WhatsApp</a>
-                  <button onClick={() => { navigator.clipboard?.writeText(shareUrl).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1600); }).catch(() => {}); }} style={{ flex: 1, padding: "11px 0", borderRadius: 14, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: "#22104f", background: "rgba(76,29,149,0.05)", border: "1px solid rgba(76,29,149,0.16)" }}>{copied ? "Copied ✓" : "Copy link"}</button>
-                </div>
-                <div style={{ margin: "12px 0 10px", padding: "8px 10px", borderRadius: 14, background: "rgba(76,29,149,0.05)", textAlign: "left" }}>
-                  {room.players.map((pl, k) => (
-                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px", fontSize: 15, fontWeight: 500 }}>
-                      <i style={{ width: 9, height: 9, borderRadius: 9, background: pl.away ? "#6b6480" : "#4ade80", boxShadow: pl.away ? "none" : "0 0 8px #4ade80" }} />
-                      <span style={{ flex: 1 }}>{pl.name}{k === room.you ? " (you)" : ""}</span>
-                      {pl.host && <span style={{ fontSize: 10.5, letterSpacing: "0.12em", fontWeight: 600, color: "#92400e" }}>HOST</span>}
-                    </div>
-                  ))}
-                  {room.players.length < 2 && <div style={{ padding: "5px 2px", fontSize: 13.5, color: "rgba(34,16,79,0.68)", animation: "ssPulse2 1.4s ease-in-out infinite" }}>Waiting for a friend to join…</div>}
-                </div>
-                {room.players[room.you]?.host
-                  ? <button disabled={busy || room.players.length < 2} onClick={() => { armSfx(); hostDo("start"); }} style={{ width: "100%", padding: "14px 0", borderRadius: 16, border: "none", cursor: "pointer", fontFamily: DISPLAY, fontSize: 20, color: "#fff", background: "linear-gradient(180deg, #7c3aed, #6d28d9)", boxShadow: "0 5px 0 #4c1d95", opacity: busy || room.players.length < 2 ? 0.45 : 1 }}>{room.players.length < 2 ? "Need 2 players" : "Start the game"}</button>
-                  : <div style={{ padding: "13px 0", borderRadius: 16, fontFamily: DISPLAY, fontSize: 16, color: "#22104f", background: "rgba(76,29,149,0.05)" }}>You are in. Waiting for the host to start…</div>}
-                {netErr && <div style={{ fontSize: 13, color: "#be123c", marginTop: 8 }}>{netErr}</div>}
-                <button onClick={leaveRoom} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "#9b93b8", fontSize: 13 }}>Leave room</button>
-              </div>
-            )}
-            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : ranked.canRank ? "Ranked: 5 frames. Your score is checked and goes on the weekly board." : "5 frames. Just me is the ranked mode: sign in and your score goes on the board."}</div>
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Up to 4 friends bowl at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : ranked.canRank ? "Ranked: 5 frames. Your score is checked and goes on the weekly board." : "5 frames. Just me is the ranked mode: sign in and your score goes on the board."}</div>
             {mode === "solo" && !online && <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><EnergyLine /></div>}
             {!online && <div style={{ marginTop: 6 }}><GuestLine left={gate.left} /></div>}
           </div>
         </div>
+      )}
+
+      {online && setup && friendsOpen && (
+        <FriendsSheet room={friendRoom} gameName="Street Strike" sharePath="/bowling" initialCode={joinCode} watchUrl={(id) => `/bowling?watch=${id}`} onClose={() => setFriendsOpen(false)} />
       )}
 
       {/* The play screen stays clear: the tyre must be visible and under the thumb.

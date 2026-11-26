@@ -41,6 +41,8 @@ const order = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, 
 const GAME_PATHS: Record<string, { name: string; path: string }> = {
   rhythm: { name: 'Rhythm Rush', path: '/games/rhythm' }, simon: { name: 'Simon Memory', path: '/games/simon' }, stack: { name: 'Stack Tower', path: '/games/stack' },
   ladder: { name: 'Word Ladder', path: '/games/ladder' }, nepa3d: { name: 'UP NEPA 3D', path: '/world' },
+  // Street Strike keeps its own lanes (modules/strike), but a friend is called into one the same way
+  strike: { name: 'Street Strike', path: '/bowling' },
 };
 
 export function createFriends(deps: {
