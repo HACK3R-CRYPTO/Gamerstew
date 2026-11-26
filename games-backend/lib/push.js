@@ -449,7 +449,21 @@ async function sendBroadcast(supabase, payload, opts = {}) {
   return { sent, skipped, cleaned: dead.length, failed, devices: (subs || []).length, why };
 }
 
+// Build (but never send) the request a push to each subscription would make. It
+// checks the keys and the shape of every sign-up without contacting anyone's phone.
+function dryRun(subs, payload) {
+  let ok = 0, bad = 0; let why = null; const hosts = {};
+  for (const s of (subs || [])) {
+    let host = 'unknown'; try { host = new URL(s.endpoint).host; } catch { /* a broken address */ }
+    hosts[host] = (hosts[host] || 0) + 1;
+    try { webpush.generateRequestDetails({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload || { title: 't', body: 'b' })); ok++; }
+    catch (e) { bad++; if (!why) why = String((e && e.message) || e).slice(0, 160); }
+  }
+  return { ok, bad, why, hosts };
+}
+
 module.exports = {
+  dryRun,
   petStage,
   streakNotification,
   cupDeadlineNotification,

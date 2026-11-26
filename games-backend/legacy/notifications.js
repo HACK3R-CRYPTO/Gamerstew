@@ -646,10 +646,13 @@ core.platform.registerFriendRoutes(core.app, {
 // What is configured, by group. Secrets show only as set or unset.
 // How many phones a push would reach right now. Read-only.
 core.app.get('/internal/push/devices', core.requireSecret, async (_req, res) => {
-  const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address, last_seen_at');
+  const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address, last_seen_at, endpoint, p256dh, auth');
   if (error) return res.json({ readable: false, error: String(error.message || error).slice(0, 120) });
   const rows = data || []; const { data: seenAnon } = await core.supabase.from('push_subscriptions').select('wallet_address');
-  res.json({ readable: true, devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size, seenWithoutServiceKey: (seenAnon || []).length, newest: rows.map((r) => r.last_seen_at).filter(Boolean).sort().pop() || null, keysSet: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) });
+  const { data: prefs } = await core.lockedDb.from('notification_prefs').select('wallet_address, reengagement');
+  const muted = new Set((prefs || []).filter((p) => p.reengagement === false).map((p) => p.wallet_address));
+  const dry = push.dryRun(rows, { title: 'check', body: 'check', url: '/', tag: 'check' });
+  res.json({ readable: true, mutedDevices: rows.filter((r) => muted.has(r.wallet_address)).length, wouldBuild: dry.ok, cannotBuild: dry.bad, buildError: dry.why, services: dry.hosts, devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size, seenWithoutServiceKey: (seenAnon || []).length, newest: rows.map((r) => r.last_seen_at).filter(Boolean).sort().pop() || null, keysSet: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) });
 });
 
 core.app.get('/internal/config', core.requireSecret, (_req, res) => res.json({ ...core.platform.checkEnv(), settings: core.platform.describeEnv() }));
