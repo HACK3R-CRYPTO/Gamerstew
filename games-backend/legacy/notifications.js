@@ -447,7 +447,7 @@ const adminService = core.platform.createAdmin({
   // write its own bell entry, or the same news would be listed twice.
   announce: {
     bell: (row) => core.inbox.announce(row).then((r) => ({ ok: r.status === 200, created: r.body && r.body.created !== false, error: r.body && r.body.error })),
-    push: async (p) => { const out = await push.sendBroadcast(core.lockedDb, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0, devices: out.devices || 0, expired: out.cleaned || 0, failed: out.failed || 0, why: out.why || null }; },
+    push: async (p) => { const out = await core.push.sendBroadcast(core.lockedDb, core.push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0, devices: out.devices || 0, expired: out.cleaned || 0, failed: out.failed || 0, why: out.why || null }; },
     devices: async () => { const { data, error } = await core.lockedDb.from('push_subscriptions').select('wallet_address'); if (error) return null; const rows = data || []; return { devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size }; },
   },
 });
@@ -651,7 +651,7 @@ core.app.get('/internal/push/devices', core.requireSecret, async (_req, res) => 
   const rows = data || []; const { data: seenAnon } = await core.supabase.from('push_subscriptions').select('wallet_address');
   const { data: prefs } = await core.lockedDb.from('notification_prefs').select('wallet_address, reengagement');
   const muted = new Set((prefs || []).filter((p) => p.reengagement === false).map((p) => p.wallet_address));
-  const dry = push.dryRun(rows, { title: 'check', body: 'check', url: '/', tag: 'check' });
+  const dry = core.push.dryRun(rows, { title: 'check', body: 'check', url: '/', tag: 'check' });
   res.json({ readable: true, mutedDevices: rows.filter((r) => muted.has(r.wallet_address)).length, wouldBuild: dry.ok, cannotBuild: dry.bad, buildError: dry.why, services: dry.hosts, devices: rows.length, players: new Set(rows.map((r) => r.wallet_address)).size, seenWithoutServiceKey: (seenAnon || []).length, newest: rows.map((r) => r.last_seen_at).filter(Boolean).sort().pop() || null, keysSet: !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) });
 });
 

@@ -151,4 +151,13 @@ test('announce: an admin sends one message to the bell and one push; an analyst 
   assert.deepEqual((await svc.announce('boss@x.io', { live: true, title: 'Quiet one', body: 'Just the bell.' })).body, { ok: true, pushed: null, push: null });
   assert.equal(pushes.length, 1); assert.equal(bell[1]!.url, '/dashboard');
   assert.equal((await w.svc.announce('boss@x.io', good)).status, 503, 'a server that cannot send says so');
+  // only the push: nothing more is added to the bell, and it needs both push fields
+  const before = bell.length;
+  assert.equal((await svc.announce('boss@x.io', { live: true, pushOnly: true, pushTitle: 'Only a push' })).body.error, 'push_needs_both');
+  assert.equal((await svc.announce('boss@x.io', { live: true, pushOnly: true, pushTitle: 'Only a push', pushBody: 'Come and see.' })).body.pushed, 7);
+  assert.equal(bell.length, before); assert.equal(pushes.at(-1)!.title, 'Only a push');
+  // a sender that breaks is reported as broken, never as a quiet zero
+  const broken = createAdmin({ store: { rpc: async () => ({ data: null, error: null }), admin: async (e: string) => w.admins.get(e) ?? null, log: async () => {} } as unknown as AdminStore, now: () => w.clock.t, announce: { bell: async () => ({ ok: true, created: true }), push: async () => { throw new Error('push is not defined'); } } });
+  const out = (await broken.announce('boss@x.io', good)).body.push as { crashed?: boolean; why?: string };
+  assert.equal(out.crashed, true); assert.match(String(out.why), /not defined/);
 });
