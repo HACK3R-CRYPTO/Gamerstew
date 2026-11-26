@@ -12,6 +12,8 @@
     "@celo/attribution-tags": "^0.3.0",
     "@dimforge/rapier3d-compat": "0.19.2",
     "@goodagent/widget": "0.3.5",
+    "@goodcash/react": "0.2.0",
+    "@goodcash/sdk": "0.2.1",
     "@goodsdks/citizen-sdk": "^1.2.3",
     "@goodsdks/identity-sdk": "^1.0.5",
     "@privy-io/react-auth": "^3.21.2",

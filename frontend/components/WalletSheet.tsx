@@ -18,6 +18,7 @@ import { useReadContract, useWriteContract } from "wagmi";
 import { formatUnits, isAddress, parseUnits } from "viem";
 import QRCode from "qrcode";
 import { CONTRACT_ADDRESSES, ERC20_ABI } from "@/lib/contracts";
+import { cashOutOn, openCashOut } from "@/lib/cashout";
 
 type View = "overview" | "send" | "receive";
 
@@ -210,6 +211,19 @@ export function WalletSheet({
                     onClick={() => setView("receive")}
                   />
                 </div>
+
+                {/* G$ to naira in their own bank. Its own sheet (components/CashOutSheet.tsx), so this one steps aside. */}
+                {cashOutOn() && (
+                  <div style={{ position: "relative", zIndex: 1 }}>
+                    <SheetAction
+                      label="🏦 CASH OUT TO BANK"
+                      wallColor="#3b1391"
+                      faceGrad="linear-gradient(160deg, #c4b5fd 0%, #7c3aed 50%, #5b21b6 100%)"
+                      glowColor="rgba(124,58,237,0.55)"
+                      onClick={() => { onClose(); openCashOut("wallet"); }}
+                    />
+                  </div>
+                )}
 
                 <div style={{
                   position: "relative", zIndex: 1,

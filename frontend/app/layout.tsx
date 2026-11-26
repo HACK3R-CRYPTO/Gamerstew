@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Track from "@/components/Track";
 import EnergySheet from "@/components/EnergySheet";
+import CashOutSheet from "@/components/CashOutSheet";
 import Presence from "@/components/Presence";
 import Providers from "@/components/providers";
 import AppAudio from "@/components/AppAudio";
@@ -184,6 +185,8 @@ export default function RootLayout({
           <Presence />
           {/* out of energy: the one sheet any game can open (lib/energy.ts) */}
           <EnergySheet />
+          {/* G$ to naira in the player's bank (lib/cashout.ts). Nothing until a GoodCash key is set. */}
+          <CashOutSheet />
           {children}
         </Providers>
       </body>

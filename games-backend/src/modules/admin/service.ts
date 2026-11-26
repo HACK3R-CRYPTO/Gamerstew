@@ -150,6 +150,7 @@ export function createAdmin(deps: AdminDeps) {
         case 'push_devices': return ok({ data: deps.announce?.devices ? await deps.announce.devices().catch(() => null) : null });
         case 'announcements': return ok({ data: store.announcements ? await store.announcements(Math.min(lim, 30)) : [] });
         case 'money': return call('admin_money', { from_day: r.from, to_day: r.to });
+        case 'cashouts': return call('admin_cashouts', { from_day: r.from, to_day: r.to });
         case 'payouts': { const p = await store.payouts(lim, off, isWallet(str(q.wallet)) ? str(q.wallet).toLowerCase() : null); return ok({ data: p.rows, total: p.total }); }
         case 'admins': return ok({ data: (await store.admins()).map(({ pass_hash: _p, ...a }) => a) });
         case 'actions': return ok({ data: await store.actions(lim) });

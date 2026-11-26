@@ -633,6 +633,11 @@ if (String(process.env.UNFINISHED_ONCHAIN ?? 'true').toLowerCase() !== 'false' &
 // Friends: ask, accept, remove, invite into a room. The table is locked to the
 // server, so it is read with the service-role client. A friend is told through
 // their inbox, and by push when they have allowed it.
+// Tell one player something: a push when they allow it; either way the message must reach their bell.
+const tellPlayer = async (wallet, category, note) => {
+  const pushed = await core.push.sendToWallet(core.supabase, wallet, category, note).catch(() => false);
+  if (!pushed) await core.supabase.from('notifications_feed').insert({ wallet_address: wallet.toLowerCase(), category, title: note.title, body: note.body, url: note.url, tag: note.tag }).then(() => {}, () => {});
+};
 // A player's own line: an invite pops up in their open app the moment it is sent (src/modules/friends/line.ts).
 // The ticket for it is signed here and handed out by the check-in, which only a checked sign-in can reach.
 const ownTickets = core.platform.createTickets(core.INTERNAL_SECRET);
@@ -648,13 +653,21 @@ friendsService = core.platform.createFriends({
     ticket: (wallet) => ownTickets.sign(wallet),
     store: core.platform.supabaseFriends(core.lockedDb),
     nameOf: (w) => core.resolveUsername(w),
-    // a push when the player allows it; either way the message must reach their inbox
-    notify: async (wallet, category, note) => {
-      const pushed = await core.push.sendToWallet(core.supabase, wallet, category, note).catch(() => false);
-      if (!pushed) await core.supabase.from('notifications_feed').insert({ wallet_address: wallet.toLowerCase(), category, title: note.title, body: note.body, url: note.url, tag: note.tag }).then(() => {}, () => {});
-    },
+    notify: tellPlayer,
 });
 core.platform.registerFriendRoutes(core.app, { requireSecret: core.requireSecret, friends: friendsService });
+
+// Cash outs to a bank, paid by GoodCash (src/modules/cashout). This server moves no money: it
+// only hears the news, signed by GoodCash, keeps one row per cash out and tells the player.
+// Without GOODCASH_WEBHOOK_SECRET the webhook answers 503 and nothing is recorded.
+core.platform.registerCashoutRoutes(core.app, {
+  cashouts: core.platform.createCashouts({
+    store: core.platform.supabaseCashouts(core.lockedDb), // locked tables: the service-role client
+    secret: (process.env.GOODCASH_WEBHOOK_SECRET || '').trim(),
+    notify: tellPlayer,
+    logger: console,
+  }),
+});
 
 // Which routes are slow, and how slow (median, tail, failures). Internal only.
 // What is configured, by group. Secrets show only as set or unset.
