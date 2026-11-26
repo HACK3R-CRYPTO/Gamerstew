@@ -3,17 +3,36 @@
 // Development only: a place to LOOK at pop-ups that normally need a level-up or
 // a pet evolution to appear. In a production build this page is not found.
 import { notFound } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import LevelUpToast from "@/components/LevelUpToast";
 import PetEvolveToast from "@/components/PetEvolveToast";
 import SaveRunOverlay from "@/components/SaveRunOverlay";
 import GameResult from "@/components/GameResult";
 import RunSaveStatus from "@/components/RunSaveStatus";
 import MintScorePrompt from "@/components/MintScorePrompt";
+import FriendsSheet from "@/components/FriendsSheet";
+import type { FriendRoom, RoomView } from "@/hooks/useFriendRoom";
+
+// A room that is not real, to LOOK at the lobby in each state: /dev-preview?room=guest|agreed|host|hoststake|solo
+function fakeRoom(kind: string): FriendRoom {
+  const E50 = "50000000000000000000"; const staked = kind === "guest" || kind === "agreed" || kind === "hoststake";
+  const you = kind === "host" || kind === "hoststake" || kind === "solo" ? 0 : 1;
+  const players = [{ name: "ogazboiz", host: true, score: null, done: false, progress: 0, away: false }, { name: "lumos", host: false, score: null, done: false, progress: 0, away: false }].slice(0, kind === "solo" ? 1 : 2);
+  const view = {
+    code: "9UTVP", game: "simon", status: "waiting", round: 1, verified: true, you, elapsed: 0, players,
+    chat: kind === "agreed" || kind === "hoststake" ? [{ id: 1, seat: 0, name: "ogazboiz", text: "Ready? 👀", at: 1 }, { id: 2, seat: 1, name: "lumos", text: "Good luck 🤝", at: 2 }] : [],
+    stakes: true, stakeTerms: { spender: "0x" + "c".repeat(40), entries: [E50, "100000000000000000000", "250000000000000000000"], feeBps: 1000 },
+    ...(staked ? { stake: { entryWei: E50, feeBps: 1000, state: "collecting", signed: kind === "guest" ? [true, false] : kind === "agreed" ? [true, true] : [true, false], winnerSeat: -1, pays: [], txs: [] } } : {}),
+  } as unknown as RoomView;
+  const nothing = async () => true;
+  return { session: { code: "9UTVP", token: "t".repeat(32), game: "simon" }, view, error: null, busy: false, inRoom: true, isHost: you === 0, leave: () => {}, start: nothing, chat: nothing, say: () => {}, setEntry: nothing, agreeEntry: nothing, clearEntry: nothing, create: nothing, join: nothing } as unknown as FriendRoom;
+}
 
 export default function DevPreview() {
   if (process.env.NODE_ENV === "production") notFound();
   const [show, setShow] = useState<"level" | "pet" | "save" | "saved" | "signing" | "topup" | "failed" | "mint" | null>(null);
+  const roomKind = useSyncExternalStore(() => () => {}, () => new URLSearchParams(window.location.search).get("room"), () => null);
+  if (roomKind) return <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#f3eeff,#e6dcff)" }}><FriendsSheet room={fakeRoom(roomKind)} gameName="Simon Memory" sharePath="/games/simon" onClose={() => {}} /></div>;
   return (
     <div style={{ minHeight: "100vh", padding: 24, background: "linear-gradient(180deg,#f3eeff,#e6dcff)", color: "#22104f", fontFamily: "system-ui, sans-serif" }}>
       <h1>Pop-up preview</h1>

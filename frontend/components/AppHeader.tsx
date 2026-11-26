@@ -5,7 +5,7 @@ import EnergyLine from "@/components/EnergyLine";
 import StreakFlame from "@/components/StreakFlame";
 import { petForLevel, restingMood } from "@/lib/pets";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useBalance, useReadContract } from "wagmi";
 import { celo } from "viem/chains";
@@ -74,6 +74,10 @@ function fmtG(rawWei?: bigint) {
   return String(whole);
 }
 
+type HeaderAs = { name: string; level: number; streak: number; g: number; celo: number; low?: boolean };
+const noSubscribe = () => () => {};
+const readHeaderAs = (): HeaderAs | null => (process.env.NODE_ENV !== "production" ? (window as unknown as { __headerAs?: HeaderAs }).__headerAs ?? null : null);
+
 export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" } = {}) {
   const T = tone === "light" ? LIGHT : DARK;
   const router = useRouter();
@@ -98,7 +102,9 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // open the sheet first. Tap behavior is unchanged (still opens
   // AccountSheet) so the rich top-up flow stays in one place.
   const { status: gasStatus } = useGasStatus();
-  const showGasDot = gasStatus === "warn" || gasStatus === "block";
+  // a stand-in player for LOOKING at the signed-in header while developing (window.__headerAs); never in the real build
+  const as0 = useSyncExternalStore(noSubscribe, readHeaderAs, () => null);
+  const showGasDot = gasStatus === "warn" || gasStatus === "block" || !!as0?.low;
   const gasDotColor = gasStatus === "block" ? "#fb7185" : "#fbbf24";
   // Mute icon only kills the ambient pad (the constant loop on menu
   // surfaces). UI feedback, SFX, and in-game music are untouched —
@@ -156,7 +162,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // as authenticated once they've minted GamePass · same gate as Privy
   // users from there.
   const isMiniPay = useIsMiniPay();
-  const connected = (authenticated || isMiniPay) && !!address && hasMinted === true;
+  const connected = !!as0 || ((authenticated || isMiniPay) && !!address && hasMinted === true);
   // Signed in but never minted a GamePass — the "wrong Gmail / bailed on
   // onboarding" state. Gets its own header treatment (finish setup +
   // switch account) instead of masquerading as Guest.
@@ -196,13 +202,14 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // Display name = on-chain GamePass username (the slime name they picked).
   // We deliberately NEVER fall back to the wallet address — the design
   // treats anyone without a username as a guest.
-  const name = (chainUsername as string | undefined) || "";
+  const name = as0?.name || (chainUsername as string | undefined) || "";
 
   // Real level + streak come from games-backend (`/api/user/{address}`),
   // same source profile uses. A previous version hardcoded `LV 1` and
   // streak `0` so the header didn't reflect any actual play.
   const [meta, setMeta] = useState<{ level: number; streak: number; playedToday: boolean; freezes: number; frozen: boolean } | null>(null);
   useEffect(() => {
+    if (as0) { setMeta({ level: as0.level, streak: as0.streak, playedToday: true, freezes: 0, frozen: false }); return; }
     if (!connected || !address) { setMeta(null); return; }
     let cancelled = false;
     const backend = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
@@ -214,7 +221,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
       })
       .catch(() => { });
     return () => { cancelled = true; };
-  }, [connected, address]);
+  }, [connected, address, as0]);
 
   const toggleMute = () => {
     // Flip the ambient pad only. SFX + in-game music untouched.
@@ -295,18 +302,21 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
         )}
         </div>
 
+        {/* Who is playing: the name, and under it the level and the streak. It used to share a
+            phone's width with mute, the bell and two balances, so this column was squeezed until
+            "LV 17" broke onto two lines. Mute and the CELO balance moved out (the account sheet has
+            both) and energy is shown beside Play and on the home screen, so these two have room. */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.body, fontSize: 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {connected ? name : showVatar ? (vatarPlayer?.name || "Player") : authedUnminted ? "Almost there" : identityResolving ? "Connecting…" : "Guest"}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <span style={{ minWidth: 0, fontFamily: T.body, fontSize: connected ? 15.5 : 14, color: T.ink, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {connected ? name : showVatar ? (vatarPlayer?.name || "Player") : authedUnminted ? "Almost there" : identityResolving ? "Connecting…" : "Guest"}
+            </span>
           </div>
           {connected ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
-              <span style={{ fontFamily: T.body, fontSize: 10, color: T.inkSoft, letterSpacing: "0.06em", fontWeight: 700 }}>LV {meta?.level ?? 1}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, whiteSpace: "nowrap" }}>
+              <span style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 999, background: T.chip, border: `1px solid ${T.hairline}`, fontFamily: T.body, fontSize: 11, lineHeight: 1.3, color: T.inkDim, letterSpacing: "0.05em", fontWeight: 800 }}>LV {meta?.level ?? 1}</span>
               {/* the streak as a flame: lit, dying, held in ice, or out */}
-              <StreakFlame streak={meta?.streak ?? 0} playedToday={meta?.playedToday ?? true} frozen={meta?.frozen ?? false} size={12} />
-              {(meta?.freezes ?? 0) > 0 && <span title="Streak freezes you hold" aria-label={`${meta!.freezes} streak ${meta!.freezes === 1 ? "freeze" : "freezes"} held`} style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: T.body, fontSize: 10, fontWeight: 800, color: "#0369a1", lineHeight: 1 }}><span aria-hidden style={{ fontSize: 10 }}>🧊</span>{meta!.freezes}</span>}
-              {/* ranked runs left today; nothing while energy is off */}
-              <EnergyLine as="chip" />
+              <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, background: T.chip, border: `1px solid ${T.hairline}`, lineHeight: 1.3 }}><StreakFlame streak={meta?.streak ?? 0} playedToday={meta?.playedToday ?? true} frozen={meta?.frozen ?? false} size={12} /></span>
             </div>
           ) : identityResolving ? (
           <span style={{ width: 38, height: 38 }} />
@@ -333,8 +343,9 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
           )}
         </div>
 
-        {/* Mute · always visible */}
-        <button onClick={toggleMute} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
+        {/* Mute · in the bar where there is room (a wide screen, or a guest's shorter bar).
+            A signed-in phone finds it in the account sheet, one tap on the balance away. */}
+        {(isDesktop || !connected) && <button onClick={toggleMute} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"} style={{
           position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
           background: muted ? "rgba(244,63,94,0.12)" : T.chip,
           border: `1px solid ${muted ? "rgba(244,63,94,0.4)" : T.hairline}`,
@@ -349,14 +360,14 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
               <path d="M16.5 8.5a5 5 0 0 1 0 7M18.8 6.2a8.5 8.5 0 0 1 0 11.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
             )}
           </svg>
-        </button>
+        </button>}
 
         {/* Bell · opens the notifications sheet (slide-up from the bottom).
             Unread count drives the small accent dot in the top-right
             corner — capped at 9+ so the badge never gets wide enough to
             push the button. */}
         <button onClick={() => { playClick(); setNotifOpen(true); }} aria-label="Notifications" title="Notifications" style={{
-          position: "relative", width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+          position: "relative", width: isDesktop ? 38 : 44, height: isDesktop ? 38 : 44, borderRadius: isDesktop ? 12 : 14, flexShrink: 0,
           background: T.chip, border: `1px solid ${T.hairline}`,
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", color: T.inkDim,
@@ -388,11 +399,12 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
         {connected ? (
           <button onClick={() => { playClick(); setAccountSheetOpen(true); }} aria-label="Open account" title="Account · wallet, profile, settings" style={{
             display: "flex", alignItems: "stretch",
-            padding: 0, borderRadius: 12, cursor: "pointer", flexShrink: 0,
+            padding: 0, borderRadius: isDesktop ? 12 : 14, cursor: "pointer", flexShrink: 0,
             background: T.chip,
             border: `1px solid ${T.hairline}`,
-            height: 38,
+            height: isDesktop ? 38 : 44,
           }}>
+            {isDesktop && <>
             <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 9px" }} title={showGasDot ? (gasStatus === "block" ? "CELO · out of gas, scores can't save" : "CELO · running low, top up soon") : "CELO · network gas"}>
               <span style={{ position: "relative", display: "inline-flex" }}>
                 <img src="/tokens/celo.png" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
@@ -420,9 +432,12 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
               `}</style>
             </span>
             <span style={{ width: 1, background: T.hairline }} />
-            <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 11px 0 9px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))" }} title="G$ · game token">
-              <img src="/tokens/g-dollar.svg" alt="" width={14} height={14} style={{ width: 14, height: 14, objectFit: "contain" }} />
-              <span style={{ fontFamily: T.display, fontSize: 12.5, color: T.gold, lineHeight: 1 }}>{fmtG(gBal as bigint | undefined)}</span>
+            </>}
+            <span style={{ position: "relative", display: "flex", alignItems: "center", gap: isDesktop ? 5 : 6, padding: isDesktop ? "0 11px 0 9px" : "0 13px 0 11px", background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.08))", borderRadius: isDesktop ? undefined : 11 }} title="G$ · game token">
+              <img src="/tokens/g-dollar.svg" alt="" width={isDesktop ? 14 : 16} height={isDesktop ? 14 : 16} style={{ width: isDesktop ? 14 : 16, height: isDesktop ? 14 : 16, objectFit: "contain" }} />
+              <span style={{ fontFamily: T.display, fontSize: isDesktop ? 12.5 : 14.5, color: T.gold, lineHeight: 1 }}>{fmtG(as0 ? BigInt(as0.g) * 10n ** 18n : (gBal as bigint | undefined))}</span>
+              {/* on a phone the CELO balance is in the account sheet; a low one still shows here, as a dot */}
+              {!isDesktop && showGasDot && <span role="img" aria-label={gasStatus === "block" ? "Out of gas" : "Gas is running low"} style={{ position: "absolute", top: -4, right: -4, width: 11, height: 11, borderRadius: 999, background: gasDotColor, border: "2px solid #fff", boxShadow: `0 0 6px ${gasDotColor}` }} />}
             </span>
           </button>
         ) : identityResolving ? (

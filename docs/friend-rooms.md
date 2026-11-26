@@ -132,3 +132,30 @@ How it travels:
 Limits: 4 open tabs per player (a fifth replaces the oldest), 10,000 lines on the server, 8 messages per 10 seconds from a phone, a connection that does not say who it is within 6 seconds is closed. Invites are held in memory for three minutes; the bell holds the lasting copy. One server holds every line, like the room line: a second server would need a shared channel.
 
 Counted in `site_events`: `invite_shown`, `invite_join`, `invite_closed`, `invite_ran_out`. `GET /internal/live` reports open lines under `me`.
+
+## The room screen, laid out again (2026-11-26)
+
+The owner's phone showed the problem: in a room played for G$, the entry and the "Agree" button sat under the invite list, four seat rows and the chat. A player could sit in a room without ever learning money was involved.
+
+What changed:
+
+- **What the round is played for is the first thing in the room.** A gold band under the title: "50 G$ each · winner gets 45 G$", and how it works in two lines.
+- **The one next step is fixed to the bottom of the sheet**, whatever is scrolled: "Agree to 50 G$", "Start for 2", or what is being waited for. Errors appear right above it.
+- **Everything else is smaller.** The code is a chip beside the title (tap copies the link). The four seats are a two-by-two grid with a face, a name and a state. The host's "Play for G$" picker sits under the seats, not under the chat.
+- **The chat is one line on a phone** (the newest message, and a count of new ones); a tap opens it. On a wide screen it stands open beside the room, and the sheet is twice as wide.
+
+On a 390 px phone the whole room now fits without scrolling in every state, and on a 360 x 640 phone the entry and the action are both in view.
+
+Why: the primary action belongs where a thumb reaches and stays visible while content scrolls ([Toyota design system, sticky bottom bar](https://dx-playbook.toyota-europe.com/cds/modules/sticky-bottom-bar/)); only one thing should stick, never a stack of them ([Smashing Magazine, which elements should stick](https://smashingmagazine.com/2020/01/mobile-pwa-sticky-bars-elements)); on a small screen content takes priority over everything around it ([Smashing Magazine, enhancing mobile UX](https://smashingmagazine.com/2017/05/enhancing-mobile-design-ux)).
+
+Code: `frontend/components/FriendsSheet.tsx` (the sheet is now top, scrolling body, fixed foot; `useStake` is shared by the band, the picker and the bar) and `frontend/components/RoomChat.tsx` (`fold`). To look at each state without a real room: `/dev-preview?room=guest`, `agreed`, `host`, `hoststake`, `solo` (development only).
+
+## The bar at the top of the app (2026-11-26)
+
+On a phone the bar held an avatar, the name, level, streak, freezes, energy, mute, the bell and two balances. The name column was squeezed until "LV 17" broke onto two lines.
+
+Now, on a phone: avatar, the name with **level and streak** under it, the bell, and the G$ balance. Mute moved to the account sheet (tap the balance), where the CELO balance already was; a low CELO balance still shows as a dot on the G$ chip. Energy is shown beside Play and in the chips on the home screen. The bell and the balance are 44 px tall. A wide screen keeps mute and both balances, because it has the room.
+
+Why: a top bar should carry the few actions that serve the main tasks, and push the rest into a menu ([Apple, toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)); one or two trailing actions is the usual limit ([Visa design system, top app bar](https://design.visa.com/components/top-app-bar/usage/)).
+
+Code: `frontend/components/AppHeader.tsx`, `AccountSheet.tsx` (the sound row), `app/dashboard/page.tsx` (the energy chip).
