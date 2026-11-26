@@ -371,8 +371,14 @@ export default function WordLadderPage() {
 
   // `from` is the word above this one: the letter that differs from it is the
   // move the player made, and gets a ring so the route reads at a glance.
-  const Tiles = ({ word, kind, from, onTap }: { word: string; kind: "start" | "target" | "rung" | "live" | "ghost"; from?: string; onTap?: (i: number) => void }) => (
-    <div className={`wl-row ${kind}`}>
+  //
+  // This is a plain function that RETURNS a row, called as tiles({...}). It must not be used as a
+  // component (<Tiles />): a component made inside this one is a new component on every redraw, so
+  // React threw the row away and built it again each time, and the tiles' flip-in animation ran
+  // again. The clock redraws this screen every second and a friend room redraws it on every move,
+  // which made the top word flicker without stopping.
+  const tiles = ({ word, kind, from, onTap }: { word: string; kind: "start" | "target" | "rung" | "live" | "ghost"; from?: string; onTap?: (i: number) => void }, key?: string) => (
+    <div className={`wl-row ${kind}`} key={key}>
       {word.split("").map((ch, i) => (
         <button key={i} disabled={!onTap} onClick={() => { playLadderKey(); onTap?.(i); }} style={{ animationDelay: `${i * 70}ms` }}
           className={`wl-tile${kind !== "target" && kind !== "ghost" && ch === target[i] ? " hit" : ""}${from && from[i] !== ch ? " moved" : ""}${kind === "live" && i === sel && !solved ? " sel" : ""}${guide && kind === "live" && guide[i] !== ch ? " nudge" : ""}`}
@@ -479,17 +485,17 @@ export default function WordLadderPage() {
               words filling the gap. Empty rungs show roughly how far is left. */}
           <div className="wl-ladder">
             <div className={`wl-rails${flash ? ` wl-flash-${flash % 2}` : ""}${practice ? " coach" : ""}`} key={ix}>
-              <Tiles word={start} kind={rungs.length ? "start" : "live"} onTap={rungs.length || solved ? undefined : setSel} />
+              {tiles({ word: start, kind: rungs.length ? "start" : "live", onTap: rungs.length || solved ? undefined : setSel })}
               {rungs.map((w, i) => {
                 const live = i === rungs.length - 1;
                 if (live && w === target) return null; // the target row below shows it
-                return <div key={`${w}${i}`} className={live && !solved ? `wl-shake-${shake % 2}` : ""}><Tiles word={w} from={i ? rungs[i - 1] : start} kind={live ? "live" : "rung"} onTap={live && !solved ? setSel : undefined} /></div>;
+                return <div key={`${w}${i}`} className={live && !solved ? `wl-shake-${shake % 2}` : ""}>{tiles({ word: w, from: i ? rungs[i - 1] : start, kind: live ? "live" : "rung", onTap: live && !solved ? setSel : undefined })}</div>;
               })}
               {rungs.length === 0 && shake > 0 ? <span className={`wl-shake-${shake % 2}`} /> : null}
-              {Array.from({ length: ghosts }, (_, g) => <Tiles key={`g${g}`} word="    " kind="ghost" />)}
+              {Array.from({ length: ghosts }, (_, g) => tiles({ word: "    ", kind: "ghost" }, `g${g}`))}
               <div className={`wl-target${solved && !results[results.length - 1]?.skipped ? " won" : ""}`}>
                 <span>{solved ? (results[results.length - 1]?.skipped ? "SKIPPED" : rungs.length <= par ? "PERFECT ROUTE" : "SOLVED") : `TARGET · ${matched} of 4 letters in place`}</span>
-                <Tiles word={target} kind={solved && !results[results.length - 1]?.skipped ? "rung" : "target"} from={solved && rungs.length > 1 ? rungs[rungs.length - 2] : solved ? start : undefined} />
+                {tiles({ word: target, kind: solved && !results[results.length - 1]?.skipped ? "rung" : "target", from: solved && rungs.length > 1 ? rungs[rungs.length - 2] : solved ? start : undefined })}
                 {solved && !results[results.length - 1]?.skipped && <em style={{ fontFamily: DISPLAY }}>+{results[results.length - 1]?.points}</em>}
                 {solved && !results[results.length - 1]?.skipped && <div className="wl-conf" aria-hidden>{Array.from({ length: 16 }, (_, k) => <i key={k} style={{ ["--a" as string]: `${(k * 360) / 16}deg`, ["--d" as string]: `${46 + (k % 4) * 14}px`, background: ["#22c55e", "#6d28d9", "#f59e0b", "#ec4899"][k % 4], animationDelay: `${(k % 3) * 40}ms` }} />)}</div>}
               </div>
