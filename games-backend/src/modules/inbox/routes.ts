@@ -14,4 +14,6 @@ export function registerInboxRoutes(app: Application, deps: { inbox: Inbox; requ
   app.post('/api/inbox/:address/read', deps.requireSecret, send((req) => deps.inbox.read(req.params.address, body(req))));
   app.post('/api/inbox/:address/delete', deps.requireSecret, send((req) => deps.inbox.remove(req.params.address, body(req))));
   app.post('/internal/announce', deps.requireSecret, send((req) => deps.inbox.announce(body(req))));
+  // the newest message to everyone, for the pop-up on opening the app. Public: it is the same for everybody.
+  app.get('/api/whats-new', (_req: Request, res: Response) => { deps.inbox.latest().then((r) => res.set('cache-control', 'public, max-age=60').status(r.status).json(r.body)).catch(() => res.json({ item: null })); });
 }

@@ -54,3 +54,31 @@ Migration: `games-backend/supabase-migrations/2026-11-24_inbox.sql` (run).
 ## 7. Rules for copy
 
 Player-facing text never mentions internal goals or programmes. Bad news is not broadcast. No product feature is named that does not exist.
+
+## Telling players what is new (added 2026-11-26)
+
+A release used to merge and nobody was told. Now one command does it, and the message reaches players in three places.
+
+**1. Send it.** After a release is live on gamearenahq.xyz:
+
+```bash
+./scripts/whats-new.sh "<bell title>" "<bell text>" "<push title>" "<push text>" /dashboard short-name
+```
+
+It prints exactly what will go out, waits for `yes`, then posts the in-app message (`/internal/announce`, kind `whats_new`) and the push (`/api/push/broadcast`). The short name stops the in-app message being posted twice. Write the bell text as short sentences: each becomes one line in the pop-up.
+
+**2. The pop-up.** The next time a player opens the home screen, the message arrives as a letter: their slime pops out of an envelope with the title, the points one to a line, "Show me" (goes to the page the message names) and "Later". `frontend/components/WhatsNewModal.tsx`, reading the public `GET /api/whats-new`.
+
+A pop-up interrupts, so it keeps to rules:
+
+- only on the home screen, never inside a game
+- once per message per device, and only for news under two weeks old
+- a first-time visitor gets none: everything is new to them
+- it waits for the page to settle and never opens over another sheet
+- Later, the X, a tap outside and Escape all close it
+
+**3. The bell.** The same message stays under "From GameArena" until the player deletes it. The pop-up says so.
+
+Counted for the admin (Visits, Events): `whatsnew_shown`, `whatsnew_open`, `whatsnew_closed`.
+
+The social posts that go with a release are written at the same time and kept, with their pictures, in `marketing/whats-new-<date>/` (not in git).

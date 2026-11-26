@@ -14,6 +14,7 @@ import { GameLoadingScreen } from "@/components/GameLoadingScreen";
 import { useSelfVerification } from "@/contexts/SelfVerificationContext";
 import { useIsMiniPay } from "@/hooks/useMiniPay";
 import InstallPrompt from "@/components/InstallPrompt";
+import WhatsNewModal from "@/components/WhatsNewModal";
 import PotCard from "@/components/home/PotCard";
 import FriendsStrip from "@/components/home/FriendsStrip";
 import LiveNow from "@/components/home/LiveNow";
@@ -591,6 +592,8 @@ export default function DashboardPage() {
       <AppBottomNav wide={isDesktop} tone="light" />
       {/* offers to put GameArena on the home screen as an app */}
       <InstallPrompt />
+      {/* news from GameArena, once per message: see components/WhatsNewModal.tsx */}
+      <WhatsNewModal level={userMeta?.level ?? 0} />
 
       {/* Per-game loading overlay · branded transition while the lobby's
           top-3 leaderboard cache warms up. Each game shows its own
