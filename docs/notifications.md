@@ -59,13 +59,17 @@ Player-facing text never mentions internal goals or programmes. Bad news is not 
 
 A release used to merge and nobody was told. Now one command does it, and the message reaches players in three places.
 
-**1. Send it.** After a release is live on gamearenahq.xyz:
+**1. Send it, from the admin.** Admin, Announce (`/admin/announce`). Write the title and the text, pick the page its button opens, add a push if you want one, and the page shows the pop-up and the push exactly as players will get them. The Send button stays off until the lengths fit and the box "Everything in this message is live" is ticked. An Admin or a Super Admin can send; an Analyst can write and preview. The same message cannot go out twice, every send is written to the admin log, and the page lists what was sent before. Code: `frontend/app/admin/(in)/announce/`, `announce()` in `games-backend/src/modules/admin/service.ts`.
+
+Nothing about the admin reaches players: the message is what was typed, and its button can only open a page of the app, never the dashboard and never another site.
+
+**Or from a terminal.** After a release is live on gamearenahq.xyz:
 
 ```bash
 ./scripts/whats-new.sh "<bell title>" "<bell text>" "<push title>" "<push text>" /dashboard short-name
 ```
 
-It prints exactly what will go out, waits for `yes`, then posts the in-app message (`/internal/announce`, kind `whats_new`) and the push (`/api/push/broadcast`). The short name stops the in-app message being posted twice. Write the bell text as short sentences: each becomes one line in the pop-up.
+It prints exactly what will go out, waits for `yes`, then posts the in-app message (`/internal/announce`, kind `whats_new`) and the push (`/api/push/broadcast?bell=0`). The push used to write its own line into the bell as well, so news sent both ways was listed twice; `bell=0` (and the admin page) send the push without it. The short name stops the in-app message being posted twice. Write the bell text as short sentences: each becomes one line in the pop-up.
 
 **2. The pop-up.** The next time a player opens the home screen, the message arrives as a letter: their slime pops out of an envelope with the title, the points one to a line, "Show me" (goes to the page the message names) and "Later". `frontend/components/WhatsNewModal.tsx`, reading the public `GET /api/whats-new`.
 

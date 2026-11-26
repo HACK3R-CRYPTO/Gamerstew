@@ -121,7 +121,8 @@ core.app.post('/api/push/broadcast', core.requireSecret, async (req, res) => {
   const { title, body, url, tag } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'title and body required' });
   const payload = push.announcementNotification({ title, body, url, tag });
-  const result = await push.sendBroadcast(core.supabase, payload);
+  // ?bell=0: the same news was already posted to the bell as an announcement
+  const result = await push.sendBroadcast(core.supabase, payload, { feed: req.query.bell !== '0' });
   console.log(`📣 Broadcast: sent ${result.sent}, skipped (muted) ${result.skipped}, cleaned ${result.cleaned}`);
   res.json({ success: true, ...result });
 });
@@ -439,7 +440,16 @@ strikeHub = core.platform.createLiveHub({ service: strikeService });
 // src/modules/admin. Needs supabase-migrations/2026-11-25_admin_dashboard.sql;
 // until that has run, its reads answer "migration_needed" and the two jobs
 // below do nothing.
-const adminService = core.platform.createAdmin({ store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin });
+const adminService = core.platform.createAdmin({
+  store: core.platform.supabaseAdminStore(core.lockedDb), logger: console, canReadLocked: () => !!core.supabaseAdmin,
+  // Telling every player something, from the dashboard: one message in the bell (which is
+  // also the pop-up on the home screen) and, if asked for, one push. The push does not
+  // write its own bell entry, or the same news would be listed twice.
+  announce: {
+    bell: (row) => core.inbox.announce(row).then((r) => ({ ok: r.status === 200, created: r.body && r.body.created !== false, error: r.body && r.body.error })),
+    push: async (p) => { const out = await push.sendBroadcast(core.supabase, push.announcementNotification(p), { feed: false }); return { sent: out.sent || 0, skipped: out.skipped || 0 }; },
+  },
+});
 core.admin = adminService;
 core.platform.registerAdminRoutes(core.app, { admin: adminService, requireSecret: core.requireSecret });
 // yesterday's and today's numbers, every hour (and once, a minute after boot)
@@ -544,7 +554,8 @@ core.jobs.every('adminVerifySweep', 60 * 1000, async () => {
   });
 }
 
-core.platform.registerInboxRoutes(core.app, { inbox: core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) }), requireSecret: core.requireSecret });
+core.inbox = core.platform.createInbox({ store: core.platform.supabaseInbox(core.supabase) });
+core.platform.registerInboxRoutes(core.app, { inbox: core.inbox, requireSecret: core.requireSecret });
 // Friend rooms for any game (src/modules/rooms).
 // Rooms are also written to the database, and read back here, so a deploy does not end them.
 const roomKeeper = core.platform.supabaseRoomKeeper(core.lockedDb); // friend_rooms is a locked table too

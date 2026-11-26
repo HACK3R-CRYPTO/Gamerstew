@@ -13,6 +13,7 @@ export function registerAdminRoutes(app: Application, deps: { admin: AdminServic
   const s = deps.requireSecret; const a = deps.admin;
   app.post('/internal/admin/login', s, send((req) => a.login(body(req))));
   app.get('/internal/admin/q/:what', s, send((req) => a.read(me(req), String(req.params.what ?? ''), req.query as Record<string, unknown>)));
+  app.post('/internal/admin/announce', s, send((req) => a.announce(me(req), body(req))));
   app.post('/internal/admin/payouts', s, send((req) => a.recordPayout(me(req), body(req))));
   app.post('/internal/admin/payouts/status', s, send((req) => a.setPayoutStatus(me(req), body(req))));
   app.post('/internal/admin/admins', s, send((req) => a.saveAdmin(me(req), body(req))));

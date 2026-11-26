@@ -22,6 +22,8 @@ export interface Reply { status: number; body: Record<string, unknown> }
 export interface Identity { verified: boolean; state?: 'verified' | 'lapsed' | 'none' | 'blacklisted'; /** this wallet itself is whitelisted, not only linked to one that is */ self?: boolean; root?: string | null; at?: number | null; authAt?: number | null; expiresAt?: number | null; probation?: boolean | null }
 
 export interface AdminStore {
+  /** the last messages sent to everyone, newest first */
+  announcements?(limit: number): Promise<{ id: number; title: string; body: string | null; url: string | null; category: string; sent_at: string }[]>;
   /** one database function, by name: the result, or null with a reason */
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: string | null }>;
   admin(email: string): Promise<Admin | null>;
@@ -36,7 +38,12 @@ export interface AdminStore {
   setPayoutStatus(id: number, status: string): Promise<string | null>;
   event(row: { kind: string; wallet?: string | null; game?: string | null; ref?: string | null; tx_hash?: string | null; data?: unknown }): Promise<void>;
 }
-export interface AdminDeps { store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void }; /** false when the server has no key for the locked admin tables: every read would come back empty */ canReadLocked?: () => boolean }
+/** How an announcement leaves the dashboard. Absent: this server cannot send one. */
+export interface Announcer {
+  bell(row: { title: string; body: string; url: string; kind: 'whats_new' | 'announcement'; dedupeKey: string }): Promise<{ ok: boolean; created: boolean; error?: unknown }>;
+  push(p: { title: string; body: string; url: string; tag: string }): Promise<{ sent: number; skipped: number }>;
+}
+export interface AdminDeps { announce?: Announcer; store: AdminStore; now?: () => number; logger?: { warn(m: string, ...x: unknown[]): void }; /** false when the server has no key for the locked admin tables: every read would come back empty */ canReadLocked?: () => boolean }
 
 const RANK: Record<Role, number> = { analyst: 1, admin: 2, super_admin: 3 };
 const ok = (body: Record<string, unknown>): Reply => ({ status: 200, body });
@@ -136,6 +143,7 @@ export function createAdmin(deps: AdminDeps) {
         case 'runs': return call('admin_runs', { from_day: r.from, to_day: r.to });
         case 'pot': return call('admin_pot', { from_day: r.from, to_day: r.to });
         case 'freezes': return call('admin_freezes', { from_day: r.from, to_day: r.to });
+        case 'announcements': return ok({ data: store.announcements ? await store.announcements(Math.min(lim, 30)) : [] });
         case 'money': return call('admin_money', { from_day: r.from, to_day: r.to });
         case 'payouts': { const p = await store.payouts(lim, off, isWallet(str(q.wallet)) ? str(q.wallet).toLowerCase() : null); return ok({ data: p.rows, total: p.total }); }
         case 'admins': return ok({ data: (await store.admins()).map(({ pass_hash: _p, ...a }) => a) });
@@ -145,6 +153,31 @@ export function createAdmin(deps: AdminDeps) {
     },
 
     /** Record a prize that was paid (or is owed). Paid by hand today, so this is the ledger. */
+    /** Tell every player what is new: a message in the bell (and the pop-up on the home screen),
+     *  and a push if one was written. Admins and above. Nothing goes out unless the admin has
+     *  ticked that the release is live, the lengths fit, and the link stays on the site. */
+    async announce(email: unknown, body: Record<string, unknown>): Promise<Reply> {
+      const me = await who(email, 'admin'); if (isReply(me)) return me;
+      if (!deps.announce) return fail(503, 'unavailable');
+      const raw = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
+      const title = raw(body.title), text = raw(body.body), pushTitle = raw(body.pushTitle), pushBody = raw(body.pushBody);
+      const url = raw(body.url) || '/dashboard';
+      if (body.live !== true) return fail(400, 'confirm_live');
+      if (!title || !text) return fail(400, 'title_and_text_needed');
+      if (title.length > 80) return fail(400, 'title_too_long');
+      if (text.length > 400) return fail(400, 'text_too_long');
+      if (!!pushTitle !== !!pushBody) return fail(400, 'push_needs_both');
+      if (pushTitle.length > 60 || pushBody.length > 160) return fail(400, 'push_too_long');
+      if (!/^\/[a-z0-9/_?=&#.-]*$/i.test(url) || url.startsWith('//') || url.startsWith('/admin')) return fail(400, 'bad_link'); // a page of the app, never the dashboard, never another site
+      const key = (raw(body.key) || `news-${new Date(now()).toISOString().slice(0, 10)}-${title}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 100);
+      const posted = await deps.announce.bell({ title, body: text, url, kind: 'whats_new', dedupeKey: key });
+      if (!posted.ok) return fail(503, 'could_not_post');
+      if (!posted.created) return fail(409, 'already_sent');
+      let pushed: { sent: number; skipped: number } | null = null;
+      if (pushTitle) pushed = await deps.announce.push({ title: pushTitle, body: pushBody, url, tag: key }).catch(() => ({ sent: 0, skipped: 0 }));
+      await store.log(me.email, 'announcement_sent', { title, url, key, push: pushTitle || null, pushed: pushed?.sent ?? null });
+      return ok({ ok: true, pushed: pushed?.sent ?? null });
+    },
     async recordPayout(email: unknown, body: Record<string, unknown>): Promise<Reply> {
       const me = await who(email, 'admin'); if (isReply(me)) return me;
       const wallet = str(body.wallet); const amount = Number(body.amount);

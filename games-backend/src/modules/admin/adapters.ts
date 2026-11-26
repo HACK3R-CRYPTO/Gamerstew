@@ -13,6 +13,7 @@ export function supabaseAdminStore(db: SupabaseLike): AdminStore {
     async setDisabled(email, disabled) { const { error } = await db.from('admin_users').update({ disabled }).eq('email', email); return msg(error); },
     async touchLogin(email) { await db.from('admin_users').update({ last_login_at: new Date().toISOString() }).eq('email', email); },
     async log(admin_email, action, detail) { await db.from('admin_actions').insert({ admin_email, action, detail }); },
+    async announcements(limit) { const { data } = await db.from('notifications_feed').select('id, title, body, url, category, sent_at').is('wallet_address', null).order('sent_at', { ascending: false }).limit(limit); return data ?? []; },
     async actions(limit) { const { data } = await db.from('admin_actions').select('at, admin_email, action, detail').order('at', { ascending: false }).limit(limit); return data ?? []; },
     async payouts(limit, offset, wallet) {
       let q = db.from('payouts').select('id, created_at, wallet, amount, token, reason, status, tx_hash, paid_at, note, recorded_by', { count: 'exact' });

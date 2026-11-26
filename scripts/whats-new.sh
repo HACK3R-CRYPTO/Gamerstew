@@ -7,7 +7,9 @@
 #   scripts/whats-new.sh "New: daily pot and living pets" "A pot opens every day..." \
 #       "The daily pot is open" "One game a day. The top third split it." /dashboard pot-launch
 #
+# The same thing can be done with no terminal from the admin: Admin, Announce.
 # It shows exactly what will go out and to where, and waits for you to type yes.
+# (The push is sent with bell=0: the news is already in the bell, so the push must not add it again.)
 # The short name stops the same in-app message being posted twice.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,4 +35,4 @@ read -r -p "  Is this release live on gamearenahq.xyz? Type yes to send both: " 
 
 json() { python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::2], sys.argv[2::2]))))' "$@"; }
 echo "  Bell: $(curl -s -m 30 -X POST "$BACKEND/internal/announce" -H "content-type: application/json" -H "x-internal-secret: $SECRET" -H "Origin: https://gamearenahq.xyz" -d "$(json title "$BELL_TITLE" body "$BELL_BODY" url "$PAGE" kind whats_new dedupeKey "$KEY")")"
-echo "  Push: $(curl -s -m 30 -X POST "$BACKEND/api/push/broadcast" -H "content-type: application/json" -H "x-internal-secret: $SECRET" -H "Origin: https://gamearenahq.xyz" -d "$(json title "$PUSH_TITLE" body "$PUSH_BODY" url "$PAGE" tag "$KEY")")"
+echo "  Push: $(curl -s -m 30 -X POST "$BACKEND/api/push/broadcast?bell=0" -H "content-type: application/json" -H "x-internal-secret: $SECRET" -H "Origin: https://gamearenahq.xyz" -d "$(json title "$PUSH_TITLE" body "$PUSH_BODY" url "$PAGE" tag "$KEY")")"

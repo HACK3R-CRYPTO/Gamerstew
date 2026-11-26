@@ -119,3 +119,36 @@ test('with no key for the locked tables, sign-in says so instead of "wrong passw
   assert.deepEqual(await svc.login({ email: 'boss@x.io', password: 'correct horse battery' }), { status: 503, body: { error: 'server_key_missing' } });
   assert.equal((await svc.read('boss@x.io', 'overview', {})).body.error, 'server_key_missing');
 });
+
+test('announce: an admin sends one message to the bell and one push; an analyst cannot; nothing goes out unconfirmed, too long, or to a link off the app', async () => {
+  const w = world(); w.add('boss@x.io', 'admin'); w.add('reader@x.io', 'analyst');
+  const bell: Record<string, unknown>[] = []; const pushes: Record<string, unknown>[] = []; const keys = new Set<string>();
+  const svc = createAdmin({
+    store: { rpc: async () => ({ data: null, error: null }), admin: async (e: string) => w.admins.get(e) ?? null, log: async (e: string, a: string) => { w.log.push([e, a]); } } as unknown as AdminStore,
+    now: () => w.clock.t,
+    announce: {
+      bell: async (row) => { if (keys.has(row.dedupeKey)) return { ok: true, created: false }; keys.add(row.dedupeKey); bell.push(row); return { ok: true, created: true }; },
+      push: async (p) => { pushes.push(p); return { sent: 7, skipped: 1 }; },
+    },
+  });
+  const good = { live: true, title: 'New: living pets', body: 'Your slime has moods now.  It is happy when you play.', pushTitle: 'Your slime has feelings now', pushBody: 'Come and see it.', url: '/profile', key: 'Release 26 Nov' };
+  assert.equal((await svc.announce('reader@x.io', good)).status, 403);
+  assert.equal((await svc.announce('nobody@x.io', good)).status, 401);
+  assert.equal((await svc.announce('boss@x.io', { ...good, live: false })).body.error, 'confirm_live');
+  assert.equal((await svc.announce('boss@x.io', { ...good, title: 'x'.repeat(81) })).body.error, 'title_too_long');
+  assert.equal((await svc.announce('boss@x.io', { ...good, body: 'x'.repeat(401) })).body.error, 'text_too_long');
+  assert.equal((await svc.announce('boss@x.io', { ...good, pushBody: '' })).body.error, 'push_needs_both');
+  for (const url of ['https://evil.example', '//evil.example', '/admin/users', 'javascript:alert(1)']) assert.equal((await svc.announce('boss@x.io', { ...good, url })).body.error, 'bad_link', url);
+  assert.equal(bell.length, 0, 'none of those reached a player');
+  const sent = await svc.announce('boss@x.io', good);
+  assert.deepEqual(sent.body, { ok: true, pushed: 7 });
+  assert.deepEqual(bell[0], { title: 'New: living pets', body: 'Your slime has moods now. It is happy when you play.', url: '/profile', kind: 'whats_new', dedupeKey: 'release-26-nov' });
+  assert.deepEqual(pushes[0], { title: 'Your slime has feelings now', body: 'Come and see it.', url: '/profile', tag: 'release-26-nov' });
+  assert.deepEqual(w.log.at(-1), ['boss@x.io', 'announcement_sent']);
+  assert.equal((await svc.announce('boss@x.io', good)).body.error, 'already_sent', 'the same announcement cannot go out twice');
+  assert.equal(pushes.length, 1, 'and no second push with it');
+  // a message with no push is a bell message only
+  assert.deepEqual((await svc.announce('boss@x.io', { live: true, title: 'Quiet one', body: 'Just the bell.' })).body, { ok: true, pushed: null });
+  assert.equal(pushes.length, 1); assert.equal(bell[1]!.url, '/dashboard');
+  assert.equal((await w.svc.announce('boss@x.io', good)).status, 503, 'a server that cannot send says so');
+});
