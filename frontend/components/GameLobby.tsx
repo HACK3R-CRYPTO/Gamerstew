@@ -1,5 +1,6 @@
 "use client";
 import { HowToButton, type HowToGame } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
 import { track } from "@/lib/track";
 
 // ─── The lobby every skill game opens on ─────────────────────────────────────
@@ -88,6 +89,7 @@ export default function GameLobby<M extends string>({
           {extra}
 
           <button className="gl-play" style={{ fontFamily: DISPLAY }} onClick={() => { track("game_start", { game: title }); onStart(); }}>{startLabel}</button>
+          {mode === "ranked" && <div className="gl-energy"><EnergyLine /></div>}
           {friends}
 
           {guest && (
@@ -119,6 +121,7 @@ export default function GameLobby<M extends string>({
         .gl-rules { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--dim); }
         .gl-rules b { color: #22104f; }
         .gl-how { display: flex; justify-content: center; }
+        .gl-energy { display: flex; justify-content: center; margin-top: 2px; }
         @media (min-width: 900px) { .gl-how { justify-content: flex-start; } }
         .gl-panel { display: flex; flex-direction: column; gap: 10px; }
         .gl-modes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: 0 -2px; }

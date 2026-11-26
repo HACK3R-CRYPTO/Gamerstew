@@ -149,7 +149,7 @@ const warmStartFor = (avgTopHeat: number | null) => (avgTopHeat == null ? 0 : Ma
 // sent to the chain, and the taps go to the room, which replays them.
 type ModeId = "ranked" | "practice" | "speed" | "mirror" | "sudden" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
-  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "ranked", name: "Ranked", tag: "RANKED", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same song, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
   { id: "speed", name: "Max Speed", tag: "FREE", blurb: "Top speed from the first note. No warm-up, no mercy.", color: "#f43f5e" },
   { id: "mirror", name: "Mirror", tag: "FREE", blurb: "Every lane is flipped. Your hands will argue with you.", color: "#c084fc" },

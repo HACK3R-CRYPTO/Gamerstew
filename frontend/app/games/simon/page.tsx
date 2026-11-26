@@ -84,7 +84,7 @@ const BONUS_UNLOCK_ROUND = 5; // round at which the 5th (purple) button appears
 // signed or sent to the chain, and the result goes to the room instead.
 type ModeId = "ranked" | "practice" | "lightning" | "reverse" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
-  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "ranked", name: "Ranked", tag: "RANKED", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
   { id: "lightning", name: "Lightning", tag: "FREE", blurb: "The sequence plays at top speed from round 1.", color: "#f43f5e" },
   { id: "reverse", name: "Reverse", tag: "FREE", blurb: "Watch it forwards. Tap it back BACKWARDS.", color: "#c084fc" },

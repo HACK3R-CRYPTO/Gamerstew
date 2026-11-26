@@ -1,6 +1,7 @@
 "use client";
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
 
 // ─── Street Strike — Lagos street bowling ────────────────────────────────────
 // Not a neon alley. You roll an old tyre (the childhood game) down a Lagos
@@ -1722,8 +1723,8 @@ export default function Game() {
       <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={(e) => { if (e.pointerId === finger.current) { finger.current = null; trail.current = []; } }} style={{ position: "absolute", inset: 0, zIndex: 5, cursor: phase === "aim" ? "grab" : "default" }} />
 
       {/* top bar */}
-      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", pointerEvents: "none" }}>
-        <Link href="/games" onClick={(e) => { if (rankedGame && mode === "solo" && phase !== "over" && !setup && (allRef.current[0]?.length ?? 0) > 0) { e.preventDefault(); setQuitAsk(true); } }} style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
+      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, zIndex: 30, display: "flex", alignItems: "center", justifyContent: "space-between", pointerEvents: "none" }}>
+        <Link href="/dashboard" onClick={(e) => { if (rankedGame && mode === "solo" && phase !== "over" && !setup && (allRef.current[0]?.length ?? 0) > 0) { e.preventDefault(); setQuitAsk(true); } }} style={{ ...chip, pointerEvents: "auto", textDecoration: "none" }}>← Arena</Link>
         <div style={{ fontFamily: DISPLAY, fontSize: 18, color: "#fff", textShadow: "0 2px 12px rgba(124,58,237,0.8)" }}>
           Street <span style={{ color: GA.goldLight }}>Strike</span>
         </div>
@@ -1815,6 +1816,7 @@ export default function Game() {
                 const on = m.id === mode;
                 return (
                   <button key={m.id} onClick={() => { setMode(m.id); setNetErr(null); }} aria-pressed={on} style={{ minWidth: 0, cursor: "pointer", padding: "9px 3px 8px", borderRadius: 16, textAlign: "center", color: on ? "#fff" : "#22104f", background: on ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(255,255,255,0.06)", border: `1.5px solid ${on ? GA.goldLight : "rgba(255,255,255,0.14)"}`, boxShadow: on ? "0 0 18px rgba(251,191,36,0.3)" : "none" }}>
+                    <div style={{ display: "inline-block", marginBottom: 4, padding: "2px 7px", borderRadius: 999, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.08em", lineHeight: 1.4, whiteSpace: "nowrap", background: m.ranked ? "#fde68a" : on ? "rgba(255,255,255,0.2)" : "rgba(76,29,149,0.08)", color: m.ranked ? "#3b0764" : on ? "#fff" : "rgba(34,16,79,0.62)" }}>{m.ranked ? "RANKED" : "FOR FUN"}</div>
                     <div style={{ fontSize: 24, lineHeight: 1.1 }}>{m.icon}</div>
                     <div style={{ fontFamily: DISPLAY, fontSize: 13, marginTop: 3, whiteSpace: "nowrap" }}>{m.name}</div>
                     <div style={{ fontSize: 10.5, fontWeight: 500, color: on ? "rgba(255,255,255,0.88)" : "rgba(34,16,79,0.68)", lineHeight: 1.25, marginTop: 2 }}>{m.note}</div>
@@ -1873,7 +1875,8 @@ export default function Game() {
                 <button onClick={leaveRoom} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "#9b93b8", fontSize: 13 }}>Leave room</button>
               </div>
             )}
-            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : "5 frames. Beat your own best."}</div>
+            <div style={{ textAlign: "center", fontSize: 12, color: "rgba(34,16,79,0.68)", marginTop: 8 }}>{online ? "Everyone bowls at the same time, each on their own phone. 5 frames." : mode === "pass" ? "Two players, one phone. You swap after every frame." : mode === "cpu" ? "You and the computer swap after every frame. 5 frames each." : ranked.canRank ? "Ranked: 5 frames. Your score is checked and goes on the weekly board." : "5 frames. Just me is the ranked mode: sign in and your score goes on the board."}</div>
+            {mode === "solo" && !online && <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><EnergyLine /></div>}
           </div>
         </div>
       )}
@@ -1984,11 +1987,12 @@ export default function Game() {
 
 type Mode = "solo" | "cpu" | "pass" | "online";
 interface Seat { name: string; cpu: boolean }
-const MODES: { id: Mode; icon: string; name: string; note: string }[] = [
-  { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best" },
-  { id: "cpu", icon: "🤖", name: "Vs CPU", note: "Take turns" },
-  { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone" },
-  { id: "online", icon: "🌍", name: "Online", note: "Play a friend" },
+// `ranked`: the one mode whose score goes on the board. Every card says which it is, so nobody has to guess.
+const MODES: { id: Mode; icon: string; name: string; note: string; ranked: boolean }[] = [
+  { id: "solo", icon: "🎯", name: "Just me", note: "Beat your best", ranked: true },
+  { id: "cpu", icon: "🤖", name: "Vs CPU", note: "Take turns", ranked: false },
+  { id: "pass", icon: "👥", name: "2 players", note: "Pass the phone", ranked: false },
+  { id: "online", icon: "🌍", name: "Online", note: "Play a friend", ranked: false },
 ];
 function seatsFor(m: Mode): Seat[] {
   if (m === "cpu") return [{ name: "You", cpu: false }, { name: "CPU", cpu: true }];

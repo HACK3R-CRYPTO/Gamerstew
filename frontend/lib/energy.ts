@@ -4,6 +4,16 @@
 
 export interface EnergyState { on: true; free: number; freeLeft: number; bought: number; left: number; resetsAt: number; packPlays: number }
 export const OUT_OF_ENERGY = "ga:out-of-energy";
+/** Fired when a run was opened or a pack bought: anything showing the count reads it again. */
+export const ENERGY_CHANGED = "ga:energy-changed";
+/** Open the energy sheet as information: how many runs are left, when the free ones come back, and a pack to buy. */
+export const OPEN_ENERGY = "ga:energy-open";
+export function openEnergy(state?: EnergyState | null): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(OPEN_ENERGY, { detail: state ?? null }));
+}
+export function energyChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(ENERGY_CHANGED));
+}
 export function outOfEnergy(state?: EnergyState | null): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(OUT_OF_ENERGY, { detail: state ?? null }));
 }

@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cameraMode, setCameraMode, type CameraMode } from "./controls";
 import { HowToButton } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
 import { BLACKOUT, DUSK, GA } from "./theme";
 
 export type LobbyChoice = "restore" | "charge" | "roam";
@@ -162,7 +163,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
           <article key={m.id} className={`nl-card ${m.tone}`} style={{ animationDelay: `${i * 70}ms` }}>
             <div className="nl-art">{m.art}</div>
             <div className="nl-body">
-              <div className="nl-kicker">{m.kicker}</div>
+              <div className="nl-kicker">{m.kicker}<b className={m.id === "restore" ? "nl-rank" : "nl-rank fun"}>{m.id === "restore" ? "RANKED" : "FOR FUN"}</b></div>
               <h2 style={{ fontFamily: DISPLAY }}>{m.title}</h2>
               <p className="nl-goal">{m.goal}</p>
               <ol>
@@ -201,7 +202,7 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
           <span>🎥 Camera</span><b>{cam === "follow" ? "Follows you" : "You turn it"}</b><i>Change</i>
         </button>
       )}
-      <div style={{ alignSelf: "center" }}><HowToButton game="nepa3d" dark /></div>
+      <div style={{ alignSelf: "center", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}><HowToButton game="nepa3d" dark /><EnergyLine dark /></div>
       <p className="nl-foot">{touch ? "Left thumb moves, right thumb looks around. Turn your phone sideways for a wider view." : "In a round: W A S D to move, drag to look, Space to act"}</p>
 
       <style>{`
@@ -246,6 +247,8 @@ export default function ModeSelect({ onPick, touch, friends }: { onPick: (m: Lob
         .nl-dots { display: flex; justify-content: center; gap: 6px; }
         .nl-dots button { width: 7px; height: 7px; padding: 0; border: none; border-radius: 99px; background: rgba(255,255,255,0.3); transition: width .25s ease, background .25s ease; }
         .nl-dots button.on { width: 22px; background: #fff; }
+        .nl-rank { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; vertical-align: 1px; white-space: nowrap; }
+        .nl-rank.fun { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.8); }
         .nl-cam { align-self: center; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #f4f1ea; font: 600 13px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
         .nl-cam b { font-weight: 800; color: #ffd56b; } .nl-cam i { font-style: normal; font-weight: 800; font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.16); }
         .nl-foot { margin: 0; text-align: center; font-size: 12px; font-weight: 500; color: rgba(244,241,234,0.62); padding: 0 16px; }

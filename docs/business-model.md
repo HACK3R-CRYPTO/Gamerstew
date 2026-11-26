@@ -159,11 +159,14 @@ Both are in the code and switched off. Nothing changes for players until the ste
 | Part | What it does | Where |
 |---|---|---|
 | Energy | 5 free ranked runs a day, then runs bought as shop item 10 (5 runs a pack, kept until used). Counted in the database, exactly | `games-backend/src/modules/energy`, `2026-11-27c_energy.sql` |
+| Seeing your energy | A count of ranked runs left today in the header and on every game's start screen. Tapping it opens the sheet below as information, with the pack to buy | `frontend/components/EnergyLine.tsx` |
 | Out of energy | One sheet, from any game: when the free runs come back, a pack if the shop sells one, and "Play for fun instead". It never blocks play | `frontend/components/EnergySheet.tsx` |
 | The pot | One game a day in turn (Rhythm Rush, Simon Memory, Word Ladder, Street Strike). Pot = 70% of that day's energy spend + what rolled over (a tenth of each paid pot, and all of an unpaid one) + a seed if one is set | `games-backend/src/modules/pot`, `2026-11-27b_pot.sql` |
 | Who wins | The top third of **verified** players, by their best **confirmed** score that day. First place gets the most, the last paid place the least, in whole G$ that add up to the pot exactly. Fewer than 5 players and the pot rolls into tomorrow | `pot/rules.ts` |
 | Home screen | The pot, the time left, the game of the day, where the player stands and what that place pays | `frontend/components/home/PotCard.tsx` |
 | Admin | Each closed day, what was spent, what was paid, what is still owed | Admin, "Runs and shop" |
+
+**Which mode is ranked.** Energy only makes sense if a player can tell a ranked run from a free one. Every mode card now says RANKED or FOR FUN: Street Strike (Just me is ranked), UP NEPA 3D (Restore the Light is ranked), Word Ladder (Play is ranked, the daily is for fun), and the Ranked mode in Stack Tower, Rhythm Rush and Simon Memory. Friend rooms and free modes never use energy.
 
 **The server never pays a prize.** Closing a day writes each prize into the payout ledger as *pending*. The owner pays them and marks them paid on the Payouts page, exactly as with the weekly prizes today. This is on purpose: the code that decides who won is new, and money should not move on new code without a person looking first.
 

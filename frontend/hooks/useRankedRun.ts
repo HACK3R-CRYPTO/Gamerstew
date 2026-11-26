@@ -17,7 +17,7 @@
 // what the player did. Guests can still play: `canRank` is false and the game
 // keeps the score on the device.
 
-import { outOfEnergy } from "@/lib/energy";
+import { outOfEnergy, energyChanged } from "@/lib/energy";
 import { useCallback, useRef, useState } from "react";
 import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { usePrivy } from "@privy-io/react-auth";
@@ -71,7 +71,7 @@ export function useRankedRun(game: GameId) {
     const auth = await token();
     if (!isMiniPay && !auth) return { success: false, error: "Not signed in" };
     const opened = await startRun(auth, address, game, extra);
-    if (opened.success) tokenRef.current = opened.sessionToken;
+    if (opened.success) { tokenRef.current = opened.sessionToken; energyChanged(); } // a ranked run was opened: one less left today
     else if (opened.error === "out_of_energy") outOfEnergy(); // the sheet explains it and offers more; the game goes on unranked
     return opened;
   }, [canRank, address, token, isMiniPay, game]);

@@ -14,7 +14,7 @@ import { useAccount } from "wagmi";
 import { getEnergy } from "@/app/actions/perks";
 import { usePerks } from "@/hooks/usePerks";
 import { useLivePerk } from "@/hooks/useLivePerk";
-import { OUT_OF_ENERGY, timeUntil, type EnergyState } from "@/lib/energy";
+import { OUT_OF_ENERGY, OPEN_ENERGY, energyChanged, timeUntil, type EnergyState } from "@/lib/energy";
 import { track } from "@/lib/track";
 
 const DISPLAY = '"Melon Pop", "Fredoka", system-ui, sans-serif';
@@ -41,8 +41,10 @@ export default function EnergySheet() {
       setStatus("idle"); setErr(null); setOpen(true); void read();
       track("energy_out", { has_pack: !!pack });
     };
-    window.addEventListener(OUT_OF_ENERGY, on);
-    return () => window.removeEventListener(OUT_OF_ENERGY, on);
+    // opened from the energy count on a screen: the same sheet, as information
+    const info = (e: Event) => { const d = (e as CustomEvent<EnergyState | null>).detail; if (d) setState(d); setStatus("idle"); setErr(null); setOpen(true); void read(); };
+    window.addEventListener(OUT_OF_ENERGY, on); window.addEventListener(OPEN_ENERGY, info);
+    return () => { window.removeEventListener(OUT_OF_ENERGY, on); window.removeEventListener(OPEN_ENERGY, info); };
   }, [read, pack]);
 
   if (!open) return null;
@@ -54,7 +56,7 @@ export default function EnergySheet() {
     try {
       await buyAndStock(pack);
       track("energy_bought", { price: pack.priceLabel });
-      await read(); setStatus("bought");
+      await read(); energyChanged(); setStatus("bought");
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       setErr(/insufficient|balance/i.test(m) ? "Not enough G$ for a pack." : /cancel|reject|denied/i.test(m) ? "Cancelled. Nothing was spent." : "That did not go through. Nothing was spent. Try again.");
@@ -75,11 +77,17 @@ export default function EnergySheet() {
           </>
         ) : (
           <>
-            <h2 style={{ fontFamily: DISPLAY }}>Out of energy</h2>
-            <p>
-              You have played today&apos;s {state?.free ?? 5} free ranked runs.
-              {state ? <> They come back in <b>{timeUntil(state.resetsAt)}</b>.</> : " They come back tomorrow."}
-            </p>
+            <h2 style={{ fontFamily: DISPLAY }}>{state && state.left > 0 ? `${state.left} ranked ${state.left === 1 ? "run" : "runs"} left` : "Out of energy"}</h2>
+            {state && state.left > 0 ? (
+              <p>
+                A ranked run uses one energy. You get <b>{state.free} free</b> every day{state.bought > 0 ? <>, and you have <b>{state.bought} bought</b> that never expire</> : null}. The free ones come back in <b>{timeUntil(state.resetsAt)}</b>.
+              </p>
+            ) : (
+              <p>
+                You have played today&apos;s {state?.free ?? 5} free ranked runs.
+                {state ? <> They come back in <b>{timeUntil(state.resetsAt)}</b>.</> : " They come back tomorrow."}
+              </p>
+            )}
             {pack && address && (
               <button className="ens-main" onClick={buy} disabled={status === "buying" || !canAfford}>
                 {status === "buying" ? "Confirming…" : <>Get {plays} more runs <span>{pack.priceLabel}</span></>}
@@ -87,8 +95,8 @@ export default function EnergySheet() {
             )}
             {pack && address && !canAfford && status !== "buying" && <div className="ens-note">You need {pack.priceLabel} for a pack.</div>}
             {err && <div className="ens-err" role="alert">{err}</div>}
-            <button className="ens-ghost" onClick={close} disabled={status === "buying"}>Play for fun instead</button>
-            <div className="ens-note">A run played for fun is not ranked and does not use energy.</div>
+            <button className="ens-ghost" onClick={close} disabled={status === "buying"}>{state && state.left > 0 ? "Close" : "Play for fun instead"}</button>
+            <div className="ens-note">Playing for fun and playing with friends never use energy.</div>
           </>
         )}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 import { track } from "@/lib/track";
 import { HowToButton } from "@/components/HowToPlay";
+import EnergyLine from "@/components/EnergyLine";
 
 // ─── Word Ladder ─────────────────────────────────────────────────────────────
 // You are given a start word and a target word. Change ONE letter at a time,
@@ -432,9 +433,10 @@ export default function WordLadderPage() {
             <button className="wl-ghost wl-friends" onClick={() => setFriendsOpen(true)}>Play with friends</button>
           </div>
           <div className="wl-rankline">{ranked.canRank ? "Ranked: your score is checked and saved on-chain. No gas needed." : ranked.needsPass ? <>Finish setup to rank your scores. <Link href="/home?ob=1">Finish setup</Link></> : <>Playing as a guest. <Link href="/home?signin=1">Sign in</Link> to rank your scores.</>}</div>
+          <div style={{ display: "flex", justifyContent: "center" }}><EnergyLine /></div>
           {dailyDone === null ? (
             <button className="wl-daily" onClick={() => begin(true)}>
-              <b>Daily ladder</b><span>Same five for everyone today. One try.</span>
+              <b>Daily ladder <i className="wl-fun">FOR FUN</i></b><span>Same five for everyone today. One try.</span>
             </button>
           ) : (
             <div className="wl-daily done"><b>Daily ladder: {dailyDone} points</b><span>A new one comes tomorrow.</span></div>
@@ -604,6 +606,7 @@ export default function WordLadderPage() {
         .wl-msg.coach { justify-self: center; align-self: center; min-height: 0; margin: 2px auto; padding: 9px 16px; border-radius: 999px; background: #fde68a; color: #3b0764; font-size: 15.5px; box-shadow: 0 3px 0 rgba(180,83,9,0.35); }
         .wl-rails.coach .wl-row.live .wl-tile.nudge { background: #fef3c7; box-shadow: 0 0 0 3px #f59e0b, 0 4px 0 #b45309; }
         .wl-keys.coach button.glow { background: #fde68a; color: #3b0764; box-shadow: 0 0 0 3px #f59e0b, 0 3px 0 #b45309; animation: wlNudge .7s ease-in-out infinite; }
+        .wl-fun { margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: rgba(76,29,149,0.08); color: rgba(34,16,79,0.62); font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; vertical-align: 2px; }
         .wl-ready { padding: 10px 14px; border-radius: 14px; background: #dcfce7; color: #166534; font-size: 14.5px; font-weight: 700; }
         .wl-first { font-size: 13px; font-weight: 600; color: var(--dim); }
         .wl-pair .wl-friends { width: 100%; }

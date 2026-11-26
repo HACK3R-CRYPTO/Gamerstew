@@ -96,7 +96,7 @@ type Phase = "idle" | "countdown" | "playing" | "saving" | "finished";
 // result goes to the room instead.
 type ModeId = "ranked" | "practice" | "turbo" | "thin" | "room";
 const MODES: { id: ModeId; name: string; tag: string; blurb: string; color: string }[] = [
-  { id: "ranked", name: "Ranked", tag: "COUNTS", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
+  { id: "ranked", name: "Ranked", tag: "RANKED", blurb: "The real thing. Your score goes on the weekly board.", color: "#fbbf24" },
   { id: "practice", name: "Practice", tag: "FREE", blurb: "Same game, no pressure. Nothing is saved or signed.", color: "#67e8f9" },
   { id: "turbo", name: "Turbo", tag: "FREE", blurb: "Every block moves 60% faster. Blink and it is gone.", color: "#f43f5e" },
   { id: "thin", name: "Thin Ice", tag: "FREE", blurb: "You start with a block half the width. No room for error.", color: "#c084fc" },

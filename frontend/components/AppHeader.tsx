@@ -1,6 +1,7 @@
 "use client";
 
 import Pet from "@/components/Pet";
+import EnergyLine from "@/components/EnergyLine";
 import { petForLevel, restingMood } from "@/lib/pets";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -304,6 +305,8 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
                 <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
                 <span style={{ fontFamily: T.body, fontSize: 10, color: T.streak, fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
+              {/* ranked runs left today; nothing while energy is off */}
+              <EnergyLine as="chip" />
             </div>
           ) : identityResolving ? (
           <span style={{ width: 38, height: 38 }} />
