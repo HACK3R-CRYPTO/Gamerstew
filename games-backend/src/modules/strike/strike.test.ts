@@ -245,3 +245,24 @@ test('throws are kept with the rolls so a round can be replayed; a watcher sees 
   assert.equal(await svc.codeFor(live!.watch), host.code);
   void guest;
 });
+
+test('players in a lane can talk; strangers cannot, and the talk is kept short and clean', async () => {
+  let t = 1_000_000;
+  const svc = createStrikeService(new MemoryRoomStore(), () => t);
+  const a = ok(await svc.create('Ada')) as Seat; const b = ok(await svc.join(a.code, 'Bola')) as Seat;
+  assert.deepStrictEqual((ok(await svc.get(a.code, a.token)) as RoomView).chat, []);
+  const said = ok(await svc.say(a.code, a.token, '  Ready? <b>👀</b>\n ')) as RoomView;
+  assert.deepStrictEqual(said.chat.map((l) => [l.seat, l.name, l.text]), [[0, 'Ada', 'Ready? b 👀 /b']]);
+  assert.strictEqual(err(await svc.say(a.code, a.token, 'again')), 'slow_down', 'not twice in the same breath');
+  t += 800;
+  ok(await svc.say(b.code, b.token, 'x'.repeat(400)));
+  const seen = ok(await svc.get(a.code, a.token)) as RoomView;
+  assert.strictEqual(seen.chat.length, 2); assert.strictEqual(seen.chat[1]!.text.length, 140); assert.strictEqual(seen.chat[1]!.id, 2);
+  assert.strictEqual(err(await svc.say(a.code, 'f'.repeat(32), 'hi')), 'not_in_room');
+  assert.strictEqual(err(await svc.say('ZZZZZ', a.token, 'hi')), 'no_room');
+  t += 800; assert.strictEqual(err(await svc.say(a.code, a.token, '   ')), 'say_something');
+  // only the newest lines are kept, and a watcher reads them
+  for (let i = 0; i < 50; i++) { t += 800; ok(await svc.say(a.code, a.token, `line ${i}`)); }
+  const watched = ok(await svc.get(a.code, undefined, 'someone')) as RoomView;
+  assert.strictEqual(watched.you, -1); assert.strictEqual(watched.chat.length, 30); assert.strictEqual(watched.chat.at(-1)!.text, 'line 49');
+});

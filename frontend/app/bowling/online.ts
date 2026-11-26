@@ -6,7 +6,7 @@
 /** One throw as it was released. With the tyre and the bottles still standing, it replays exactly. */
 export interface Shot { tyre: string; x: number; angle: number; speed: number; spin: number }
 export interface RoomPlayer { name: string; host: boolean; rolls: number[]; done: boolean; away: boolean; /** every throw of this round, in order */ throws?: Shot[] }
-export interface Room { code: string; status: "waiting" | "playing" | "over"; round: number; frames: number; you: number; players: RoomPlayer[]; /** the lane's public watch name */ watchId?: string; watching?: number }
+export interface Room { code: string; status: "waiting" | "playing" | "over"; round: number; frames: number; you: number; players: RoomPlayer[]; /** the lane's public watch name */ watchId?: string; watching?: number; /** the last lines of talk between the players */ chat?: { id: number; seat: number; name: string; text: string; at: number }[] }
 export interface Session { code: string; token: string; seat: number }
 
 const WORDS: Record<string, string> = {
@@ -16,7 +16,9 @@ const WORDS: Record<string, string> = {
   need_two: "You need at least 2 players to start.",
   unreachable: "Cannot reach the game server. Check your connection.",
   busy: "The server is busy. Try again in a moment.",
-  slow_down: "You have made a lot of rooms. Wait a few minutes and try again.",
+  slow_down: "That was too fast. Wait a moment and try again.",
+  not_in_room: "You are not in that room any more.",
+  say_something: "Type something first.",
 };
 export const explain = (code: string) => WORDS[code] ?? "Something went wrong. Try again.";
 
@@ -42,5 +44,6 @@ export const net = {
   /** a lane as a spectator sees it, by its watch name or its code */
   watch: (by: string) => call<Room>(`rooms/${by}?watch=1`),
   rematch: (s: Session) => call<Room>(`rooms/${s.code}/rematch`, { token: s.token }),
+  say: (s: Session, text: string) => call<Room>(`rooms/${s.code}/say`, { token: s.token, text }),
   leave: (s: Session) => call<{ ok: true }>(`rooms/${s.code}/leave`, { token: s.token }).catch(() => ({ ok: true as const })),
 };

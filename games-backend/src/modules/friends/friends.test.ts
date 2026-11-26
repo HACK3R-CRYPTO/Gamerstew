@@ -174,4 +174,9 @@ test('an invite is handed to the open app, waits three minutes for a check-in, a
   const g = createFriends({ store, nameOf: async () => null, live: () => { throw new Error('line down'); }, now: () => clock.t });
   clock.t += INVITE_GAP_MS + 1;
   assert.equal((await g.invite(A, B, 'ladder', 'ABCDE')).body.sent, true);
+  // Street Strike keeps its own lanes, and a friend is called into one the same way
+  clock.t += INVITE_GAP_MS + 1; live.length = 0;
+  assert.equal((await f.invite(A, B, 'strike', 'KM2P9')).body.sent, true);
+  assert.equal(live[0]!.invite.url, '/bowling?room=KM2P9'); assert.equal(live[0]!.invite.gameName, 'Street Strike');
+  clock.t += INVITE_GAP_MS + 1; assert.equal((await f.invite(A, B, 'chess', 'KM2P9')).body.error, 'bad_room');
 });

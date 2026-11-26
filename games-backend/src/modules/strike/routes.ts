@@ -62,6 +62,7 @@ export function registerStrikeRoutes(app: Application, deps: StrikeDeps = {}): S
   app.get('/api/strike/rooms/:code', gate, route((req) => service.get(req.params.code, req.query.token, req.query.watch ? who(req) : undefined)));
   app.post('/api/strike/rooms/:code/start', gate, route((req) => service.start(req.params.code, body(req).token)));
   app.post('/api/strike/rooms/:code/roll', gate, route((req) => service.roll(req.params.code, body(req).token, body(req).rolls, body(req).throws)));
+  app.post('/api/strike/rooms/:code/say', gate, route((req) => service.say(req.params.code, body(req).token, body(req).text)));
   app.post('/api/strike/rooms/:code/rematch', gate, route((req) => service.rematch(req.params.code, body(req).token)));
   app.post('/api/strike/rooms/:code/leave', gate, route((req) => service.leave(req.params.code, body(req).token)));
   return service;

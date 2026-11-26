@@ -159,3 +159,18 @@ Now, on a phone: avatar, the name with **level and streak** under it, the bell, 
 Why: a top bar should carry the few actions that serve the main tasks, and push the rest into a menu ([Apple, toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)); one or two trailing actions is the usual limit ([Visa design system, top app bar](https://design.visa.com/components/top-app-bar/usage/)).
 
 Code: `frontend/components/AppHeader.tsx`, `AccountSheet.tsx` (the sound row), `app/dashboard/page.tsx` (the energy chip).
+
+## Street Strike joins the same friends screen (2026-11-26)
+
+Street Strike had its own "Online" form: a name, "Create a room", a code box. No friends who are online, no invite, no chat, none of the room screen the other games have. The owner noticed it was not like Word Ladder.
+
+Why it was different: Street Strike keeps its own lanes on the server (`games-backend/src/modules/strike`). Every roll is sent as it lands and a lane can be replayed throw by throw, which the shared rooms do not do. That part stays. What changed is everything a player sees around it:
+
+- "Online" now has one button, "Play with friends", which opens the **same sheet** as every other game: who is online with one-tap invite, open a room, join by code, then the room with the share row, the seats, the chat and the fixed action bar.
+- A friend can be **invited into a Street Strike room**, and the invite pops up on their screen like any other (`strike` is now a game the friends service knows; the link is `/bowling?room=CODE`).
+- **Chat** was added to Street Strike's lanes, with the same limits as the shared rooms (140 characters, one line every 0.7 s, the last 40 kept).
+- "Watch link" points at the lane in its own street (`/bowling?watch=…`).
+
+Not in a Street Strike room: **playing for G$**. A lane's score is worked out on the phones and only checked for being a legal card. Money rides only on scores the server works out itself, so there is no entry here until the server replays the throws (it already can for ranked runs; doing it for lanes is the work).
+
+How: `frontend/app/bowling/Game.tsx` hands its lane to `FriendsSheet` in the shape that sheet expects (`friendRoom`). `FriendsSheet` gained `watchUrl`. Checked with two real browsers, a phone and a desktop: open a room, join by the shared link, a chat line arriving on the other screen, the watch link, and the host starting the round for both.

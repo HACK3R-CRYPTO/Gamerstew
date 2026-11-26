@@ -13,7 +13,9 @@
 /** One throw as the player released it: which tyre, where from, the angle, how hard, how much curve. */
 export interface Throw { tyre: string; x: number; angle: number; speed: number; spin: number }
 export interface Player { name: string; token: string; rolls: number[]; done: boolean; seen: number; left: boolean; /** every throw of this round, in order: enough to replay the whole card on another screen */ throws?: Throw[] }
-export interface Room { code: string; status: 'waiting' | 'playing' | 'over'; round: number; touched: number; players: Player[]; /** a second, public name for the room: it lets anyone watch and can never be used to join */ watch?: string }
+/** One line of room chat. `seat` is who said it. */
+export interface ChatLine { id: number; seat: number; name: string; text: string; at: number }
+export interface Room { code: string; status: 'waiting' | 'playing' | 'over'; round: number; touched: number; players: Player[]; /** a second, public name for the room: it lets anyone watch and can never be used to join */ watch?: string; /** the last lines of talk between the players in this lane */ chat?: ChatLine[] }
 
 export interface RoomStore {
   get(code: string): Promise<Room | undefined>;
