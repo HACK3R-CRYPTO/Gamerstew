@@ -19,6 +19,7 @@
 // added to and written back, so two awards landing in the same instant can lose
 // one. Mission claims no longer race, which was the practical way to hit it.
 
+import { standing } from './streak';
 import { ACHIEVEMENT_CATALOG, advanceMission, DAY_MS, goldStreak, levelFromXp, MISSION_TEMPLATES, pickDailyMissions, utcDay, VALID_GAMES, xpProgress, type RunContext, missionGame } from './catalog';
 import type { ProgressionStore, ScoreEntry } from './store';
 
@@ -178,7 +179,10 @@ export function createProgression(deps: ProgressionDeps) {
     if (!u) { const p = xpProgress(0); return ok({ address: addr, xp: 0, level: p.level, xpInLevel: p.xpInLevel, xpToNext: p.xpToNext, streak: 0, playedToday: false, lastPlayDate: null }); }
     const xp = u.xp || 0;
     const p = xpProgress(xp);
-    return ok({ address: addr, xp, level: p.level, xpInLevel: p.xpInLevel, xpToNext: p.xpToNext, streak: u.play_streak || 0, playedToday: u.last_play_date === today(), lastPlayDate: u.last_play_date || null, claimStreak: u.claim_streak || 0, lastClaimDate: u.last_claim_date || null });
+    // freezes are only looked up for a player who has a streak to protect
+    const freezes = (u.play_streak || 0) > 0 && store.freezes ? await store.freezes(addr).catch(() => 0) : 0;
+    const st = standing({ streak: u.play_streak || 0, lastPlay: u.last_play_date, today: today(), freezes });
+    return ok({ address: addr, xp, level: p.level, xpInLevel: p.xpInLevel, xpToNext: p.xpToNext, streak: st.streak, streakFreezes: freezes, streakFrozen: st.frozen, playedToday: u.last_play_date === today(), lastPlayDate: u.last_play_date || null, claimStreak: u.claim_streak || 0, lastClaimDate: u.last_claim_date || null });
   }
 
   async function recordClaim(body: Record<string, unknown>): Promise<Reply> {
@@ -202,10 +206,10 @@ export function createProgression(deps: ProgressionDeps) {
   async function streak(address: string): Promise<Reply> {
     const u = await store.user(address.toLowerCase());
     if (!u) return ok({ streak: 0, playedToday: false });
-    const playedToday = u.last_play_date === today();
-    // a streak is only alive if they played today or yesterday
-    const alive = playedToday || u.last_play_date === utcDay(now() - DAY_MS);
-    return ok({ streak: alive ? u.play_streak || 0 : 0, playedToday });
+    // alive if they played today or yesterday, or if freezes they hold cover the days missed
+    const freezes = (u.play_streak || 0) > 0 && store.freezes ? await store.freezes(address.toLowerCase()).catch(() => 0) : 0;
+    const st = standing({ streak: u.play_streak || 0, lastPlay: u.last_play_date, today: today(), freezes });
+    return ok({ streak: st.streak, playedToday: st.playedToday, freezes, frozen: st.frozen });
   }
 
   return { ensureTodayMissions, updateMissionProgress, checkAndUnlockAchievements, awardXp, saveScore, routes: { badges, notifications, achievements, missionsToday, claimMission, user, recordClaim, streak } };

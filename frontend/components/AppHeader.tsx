@@ -200,7 +200,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
   // Real level + streak come from games-backend (`/api/user/{address}`),
   // same source profile uses. A previous version hardcoded `LV 1` and
   // streak `0` so the header didn't reflect any actual play.
-  const [meta, setMeta] = useState<{ level: number; streak: number; playedToday: boolean } | null>(null);
+  const [meta, setMeta] = useState<{ level: number; streak: number; playedToday: boolean; freezes: number } | null>(null);
   useEffect(() => {
     if (!connected || !address) { setMeta(null); return; }
     let cancelled = false;
@@ -209,7 +209,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (cancelled || !d) return;
-        setMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0), playedToday: d.playedToday === undefined ? true : !!d.playedToday });
+        setMeta({ level: Number(d.level ?? 1), streak: Number(d.streak ?? 0), playedToday: d.playedToday === undefined ? true : !!d.playedToday, freezes: Number(d.streakFreezes ?? 0) });
       })
       .catch(() => { });
     return () => { cancelled = true; };
@@ -305,6 +305,7 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
                 <span style={{ fontSize: 10, filter: "hue-rotate(180deg) saturate(1.2)" }}>🔥</span>
                 <span style={{ fontFamily: T.body, fontSize: 10, color: T.streak, fontWeight: 800, lineHeight: 1 }}>{meta?.streak ?? 0}</span>
               </span>
+              {(meta?.freezes ?? 0) > 0 && <span title="Streak freezes you hold" aria-label={`${meta!.freezes} streak ${meta!.freezes === 1 ? "freeze" : "freezes"} held`} style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: T.body, fontSize: 10, fontWeight: 800, color: "#0369a1", lineHeight: 1 }}><span aria-hidden style={{ fontSize: 10 }}>🧊</span>{meta!.freezes}</span>}
               {/* ranked runs left today; nothing while energy is off */}
               <EnergyLine as="chip" />
             </div>

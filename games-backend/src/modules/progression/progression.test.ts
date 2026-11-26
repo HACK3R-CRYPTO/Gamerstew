@@ -10,7 +10,7 @@ const tpl = (id: string) => MISSION_TEMPLATES.find((t) => t.id === id)!;
 
 // An in-memory store that behaves like the database, including the one rule
 // that matters for claims: a conditional update changes a row at most once.
-function world(seed: { user?: UserRow | null; missions?: MissionRow[]; best?: { id: number; score: number } | null; unlocked?: string[]; played?: string[]; gamesPlayed?: number | null; enrolled?: boolean; failReplace?: boolean } = {}) {
+function world(seed: { freezes?: number; user?: UserRow | null; missions?: MissionRow[]; best?: { id: number; score: number } | null; unlocked?: string[]; played?: string[]; gamesPlayed?: number | null; enrolled?: boolean; failReplace?: boolean } = {}) {
   const log: string[] = [];
   const state = { user: seed.user === undefined ? ({ xp: 0, play_streak: 0 } as UserRow) : seed.user, missions: (seed.missions ?? []).map((m) => ({ ...m })), best: seed.best ?? null, scores: [] as unknown[], activity: [] as unknown[], unlocked: [...(seed.unlocked ?? [])], points: [] as unknown[], added: [] as unknown[] };
   const store: ProgressionStore = {
@@ -26,6 +26,7 @@ function world(seed: { user?: UserRow | null; missions?: MissionRow[]; best?: { 
     addUnlock: async (row) => { state.unlocked.push(row.achievement_id); // no uniqueness here on purpose: the SERVICE must not ask twice
       log.push(`unlock ${row.achievement_id} ${row.trigger_game} ${row.trigger_score}`); return true; },
     user: async () => state.user,
+    freezes: async () => seed.freezes ?? 0,
     setXp: async (_w, xp) => { await Promise.resolve(); state.user = { ...(state.user ?? {}), xp }; },
     setClaimStreak: async (_w, streak, date) => { state.user = { ...(state.user ?? {}), claim_streak: streak, last_claim_date: date }; },
     bestScore: async () => state.best,
@@ -156,15 +157,22 @@ test('XP: nothing for nothing, and a level-up is reported', async () => {
 test('profile: a new player, and a returning one with a real claim streak', async () => {
   assert.deepStrictEqual((await world({ user: null }).p.routes.user(W)).body, { address: W, xp: 0, level: 1, xpInLevel: 0, xpToNext: 100, streak: 0, playedToday: false, lastPlayDate: null });
   const r = await world({ user: { xp: 150, play_streak: 4, last_play_date: '2026-11-23', claim_streak: 6, last_claim_date: '2026-11-22' } }).p.routes.user(W.toUpperCase().replace('0X', '0x'));
-  assert.deepStrictEqual(r.body, { address: W, xp: 150, level: 2, xpInLevel: 50, xpToNext: 200, streak: 4, playedToday: true, lastPlayDate: '2026-11-23', claimStreak: 6, lastClaimDate: '2026-11-22' }); // claimStreak was always 0 before
+  assert.deepStrictEqual(r.body, { address: W, xp: 150, level: 2, xpInLevel: 50, xpToNext: 200, streak: 4, streakFreezes: 0, streakFrozen: false, playedToday: true, lastPlayDate: '2026-11-23', claimStreak: 6, lastClaimDate: '2026-11-22' }); // claimStreak was always 0 before
+  // a streak that broke days ago reads 0, not the number it once reached; a freeze held makes it stand
+  const dead = { xp: 150, play_streak: 9, last_play_date: '2026-11-21' };
+  assert.equal((await world({ user: dead }).p.routes.user(W)).body.streak, 0);
+  const held = (await world({ user: dead, freezes: 1 }).p.routes.user(W)).body;
+  assert.deepEqual([held.streak, held.streakFreezes, held.streakFrozen], [9, 1, true]);
 });
 
 test('streak: alive only if they played today or yesterday', async () => {
   const s = async (last: string | null, n = 5) => (await world({ user: { play_streak: n, last_play_date: last } }).p.routes.streak(W)).body;
-  assert.deepStrictEqual(await s('2026-11-23'), { streak: 5, playedToday: true });
-  assert.deepStrictEqual(await s('2026-11-22'), { streak: 5, playedToday: false });
-  assert.deepStrictEqual(await s('2026-11-21'), { streak: 0, playedToday: false }); // broken
+  assert.deepStrictEqual(await s('2026-11-23'), { streak: 5, playedToday: true, freezes: 0, frozen: false });
+  assert.deepStrictEqual(await s('2026-11-22'), { streak: 5, playedToday: false, freezes: 0, frozen: false });
+  assert.deepStrictEqual(await s('2026-11-21'), { streak: 0, playedToday: false, freezes: 0, frozen: false }); // broken
   assert.deepStrictEqual((await world({ user: null }).p.routes.streak(W)).body, { streak: 0, playedToday: false });
+  // with a freeze held, a missed day does not end it: it stands, frozen, until they play
+  assert.deepStrictEqual((await world({ freezes: 1, user: { play_streak: 5, last_play_date: '2026-11-21' } }).p.routes.streak(W)).body, { streak: 5, playedToday: false, freezes: 1, frozen: true });
   assert.strictEqual(utcDay(Date.parse('2026-11-23T23:59:59Z')), '2026-11-23');
   assert.strictEqual(utcDay(Date.parse('2026-11-24T00:00:00Z')), '2026-11-24');
 });

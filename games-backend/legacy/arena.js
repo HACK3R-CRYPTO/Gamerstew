@@ -59,7 +59,7 @@ const PERK_TICKET_ID = 6;
 const PERK_TICKET_GRANT = 5;
 // Consumable save/retry perks that stock as an inventory (owned - used).
 // Cosmetics (2, 4) are on-chain ownership; the Match Pack (6) grants matches.
-const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5, 9]); // 9: one more life in UP NEPA 3D, bought ahead in the shop
+const CONSUMABLE_STOCK_PERKS = new Set([1, 3, 5, 9, 11]); // 9: one more life in UP NEPA 3D. 11: a streak freeze. Both are bought ahead in the shop
 const PERK_PURCHASED_IFACE = new core.ethers.Interface([
   'event PerkPurchased(address indexed player, uint16 indexed perkId, bool cosmetic, uint256 totalPaid, uint256 ubiAmount, uint256 treasuryAmount)',
 ]);

@@ -87,12 +87,14 @@ type PerkCardProps = {
   errMsg: string | null;   // non-null only for the card that errored
   stockCount: number;
   signedIn: boolean;
+  /** the player already holds as many as are any use: stop selling */
+  full?: boolean;
   onBuy: (perk: Perk) => void;
 };
 
-const PerkCard = memo(function PerkCard({ perk, owned, canAfford, isBusy, bought, errMsg, stockCount, signedIn, onBuy }: PerkCardProps) {
+const PerkCard = memo(function PerkCard({ perk, owned, canAfford, isBusy, bought, errMsg, stockCount, signedIn, full = false, onBuy }: PerkCardProps) {
   const accent = GAME_ACCENT[perk.game];
-  const label = isBusy ? "Buying…" : bought ? "Bought ✓" : !signedIn ? "Sign in" : canAfford ? "Buy" : "Need G$";
+  const label = isBusy ? "Buying…" : bought ? "Bought ✓" : !signedIn ? "Sign in" : full ? "You have enough" : canAfford ? "Buy" : "Need G$";
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", height: "100%", borderRadius: 20, background: T.surface, boxShadow: `0 0 0 1px ${owned ? T.good + "66" : T.hairline}, 0 8px 20px rgba(76,29,149,0.08)` }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", overflow: "hidden", background: "#26105a" }}>
@@ -109,8 +111,8 @@ const PerkCard = memo(function PerkCard({ perk, owned, canAfford, isBusy, bought
         <div style={{ marginTop: "auto", paddingTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <span style={{ fontFamily: T.display, fontSize: 18, color: T.ink, lineHeight: 1, whiteSpace: "nowrap" }}>{fmtG(perk.priceG$)} <small style={{ fontFamily: T.body, fontSize: 11, fontWeight: 700, color: T.inkSoft }}>G$</small></span>
           {owned ? <EquipToggle perkId={perk.id} /> : (
-            <button onClick={() => onBuy(perk)} disabled={isBusy || (signedIn && !canAfford)}
-              style={{ cursor: isBusy || (signedIn && !canAfford) ? "default" : "pointer", minHeight: 40, padding: "0 16px", borderRadius: 12, border: "none", fontFamily: T.body, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", color: bought ? "#fff" : !signedIn || canAfford ? "#fff" : T.inkSoft, background: bought ? T.good : !signedIn || canAfford ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(76,29,149,0.08)", boxShadow: (!signedIn || canAfford) && !bought ? "0 3px 0 #4c1d95" : "none" }}>
+            <button onClick={() => onBuy(perk)} disabled={isBusy || full || (signedIn && !canAfford)}
+              style={{ cursor: isBusy || full || (signedIn && !canAfford) ? "default" : "pointer", minHeight: 40, padding: "0 16px", borderRadius: 12, border: "none", fontFamily: T.body, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", color: bought ? "#fff" : (!signedIn || canAfford) && !full ? "#fff" : T.inkSoft, background: bought ? T.good : (!signedIn || canAfford) && !full ? "linear-gradient(180deg, #7c3aed, #6d28d9)" : "rgba(76,29,149,0.08)", boxShadow: (!signedIn || canAfford) && !bought && !full ? "0 3px 0 #4c1d95" : "none" }}>
               {label}
             </button>
           )}
@@ -144,6 +146,13 @@ export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
   const { perks, gBalance, ubiContributed, ownsCosmetic, stock, buyAndStock } = usePerks();
   const life = useLivePerk(9);       // one more life, UP NEPA 3D: on the shelf once the shop has priced it
   const pack = useLivePerk(10);      // the energy pack
+  const freeze = useLivePerk(11);    // a streak freeze
+  const [me, setMe] = useState<{ streak: number; freezes: number } | null>(null);
+  useEffect(() => {
+    if (!address) { setMe(null); return; }
+    const base = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005";
+    fetch(`${base}/api/user/${address}`).then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) setMe({ streak: Number(d.streak ?? 0), freezes: Number(d.streakFreezes ?? 0) }); }).catch(() => {});
+  }, [address]);
   const energy = useEnergy();
   const [pot, setPot] = useState<PotNow | null>(null);
   useEffect(() => {
@@ -237,6 +246,12 @@ export default function PerkShelf({ isDesktop }: { isDesktop: boolean }) {
             </div>
           </div>
         </section>
+      )}
+
+      {freeze && (
+        <Group title="Protect your streak" hint={`One freeze covers one missed day. It is used by itself when you come back. You can hold 2.${me && me.streak > 0 ? ` Your streak is ${me.streak} ${me.streak === 1 ? "day" : "days"}.` : ""}`} isDesktop={isDesktop}>
+          <PerkCard perk={freeze} owned={false} canAfford={gBalance >= freeze.priceG$} isBusy={busyId === 11} bought={justBought === 11} errMsg={errId === 11 ? errMsg : null} stockCount={Math.max(stock[11] ?? 0, me?.freezes ?? 0)} signedIn={signedIn} full={Math.max(stock[11] ?? 0, me?.freezes ?? 0) >= 2} onBuy={handleBuy} />
+        </Group>
       )}
 
       <Group title="Keep playing" hint="A second chance in the middle of a run. A ranked run keeps the score it had before; what you add after is for fun." isDesktop={isDesktop}>{keep.map(cardFor)}</Group>

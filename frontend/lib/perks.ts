@@ -74,6 +74,11 @@ export const UPCOMING_PERKS: Perk[] = [
     name: "Energy pack", blurb: "5 more ranked runs, in any game. They do not expire.",
     priceG$: parseEther("100"), priceLabel: "100 G$", kind: "retry", emoji: "⚡",
   },
+  {
+    id: 11, game: "all", gameLabel: "Every game",
+    name: "Streak freeze", blurb: "Miss a day and your streak stays. One freeze covers one missed day, and it is used by itself.",
+    priceG$: parseEther("150"), priceLabel: "150 G$", kind: "retry", emoji: "🧊",
+  },
 ];
 
 export function getPerk(id: number): Perk | undefined {

@@ -33,7 +33,7 @@ async function shopPrices(ids: number[]): Promise<Map<number, bigint> | null> {
 export default async function RunsPage({ searchParams }: { searchParams: SP }) {
   const r = rangeOf(await searchParams);
   const items = [...PERKS, ...UPCOMING_PERKS].sort((a, b) => a.id - b.id);
-  const [res, prices, potRes] = await Promise.all([adminRead<Runs>("runs", { from: r.from, to: r.to }), shopPrices(items.map((p) => p.id)), adminRead<PotReport>("pot", { from: r.from, to: r.to })]);
+  const [res, prices, potRes, frz] = await Promise.all([adminRead<Runs>("runs", { from: r.from, to: r.to }), shopPrices(items.map((p) => p.id)), adminRead<PotReport>("pot", { from: r.from, to: r.to }), adminRead<{ saved: number; players_saved: number; held: number; holders: number }>("freezes", { from: r.from, to: r.to })]);
   const pot = potRes.ok ? potRes.data : null;
   if (!res.ok || !res.data) {
     return (
@@ -92,6 +92,14 @@ export default async function RunsPage({ searchParams }: { searchParams: SP }) {
         <Card title="How the pets feel today" note={`A pet is happy when its player has played today, sad when a streak would break, asleep when there is no streak and no play. ${num(moods.breaks_today)} players have a streak that ends tonight unless they play: the people a reminder is for.`}>
           {withPets === 0 ? <NotYet what="Nothing yet" why="no players yet." /> : <Bars rows={[{ label: "Happy", value: Number(moods.happy) }, { label: "Sad", value: Number(moods.sad) }, { label: "Asleep", value: Number(moods.sleepy) }]} />}
           <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "rgba(27,13,66,0.62)" }}>Pets poked in these days: {num(d.pokes.times)} times by {num(d.pokes.players)} players.</p>
+        </Card>
+        <Card title="Streak freezes" note="A freeze is a shop item held in advance. When a player comes back after a missed day, one is spent for each day missed and the streak carries on. 'Saved' is how many times that happened.">
+          {!frz.ok || !frz.data ? <NotYet what="Not set up yet" why="run games-backend/supabase-migrations/2026-11-27d_streak_freeze.sql in Supabase." /> : (
+            <Grid min={120}>
+              <Stat label="Streaks saved" value={num(frz.data.saved)} sub={`${num(frz.data.players_saved)} players`} />
+              <Stat label="Held now" value={num(frz.data.held)} sub={`by ${num(frz.data.holders)} players`} />
+            </Grid>
+          )}
         </Card>
         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
           <Card title="Daily pot" note="One game a day carries a pot: 70% of that day's energy spend, plus whatever rolled over. A tenth of each paid pot is held to open the next day's, so the pot needs no money from the treasury. The top third of verified players split it. The server never pays: each prize is written as a pending payout, and shows as owed here until it is paid on the Payouts page.">

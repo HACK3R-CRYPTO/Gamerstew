@@ -47,8 +47,10 @@ export function restingMood(p: { playedToday: boolean; streak: number } | null |
 }
 
 /** One line that says why the pet looks the way it does, and what fixes it. */
-export function moodLine(name: string, p: { playedToday: boolean; streak: number } | null | undefined): string {
+export function moodLine(name: string, p: { playedToday: boolean; streak: number; streakFreezes?: number; streakFrozen?: boolean } | null | undefined): string {
   const mood = restingMood(p);
+  if (mood === "sad" && p!.streakFrozen) return `${name} misses you. A streak freeze is holding your ${p!.streak} day streak. Play today to keep it.`;
+  if (mood === "sad" && (p!.streakFreezes ?? 0) > 0) return `${name} misses you. Play today to keep your ${p!.streak} day streak. If you cannot, a freeze will cover it.`;
   if (mood === "sad") return `${name} misses you. Play one game today to keep your ${p!.streak} day streak.`;
   if (mood === "sleepy") return `${name} is asleep. Play a game to wake it up.`;
   return p && p.streak > 1 ? `${name} is happy. ${p.streak} days in a row.` : `${name} is happy. You played today.`;

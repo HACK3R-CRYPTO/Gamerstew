@@ -21,6 +21,7 @@ export { supabaseUnfinished } from './modules/scores/adapters';
 export { createFriends } from './modules/friends/service';
 export { supabaseFriends } from './modules/friends/adapters';
 export { registerFriendRoutes } from './modules/friends/routes';
+export { playToday, missedDays, standing, FREEZE_ITEM, MAX_HELD } from './modules/progression/streak';
 export { createPot } from './modules/pot/service';
 export { createEnergy } from './modules/energy/service';
 export { supabaseEnergy } from './modules/energy/adapters';

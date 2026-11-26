@@ -4,6 +4,7 @@
 # then finished (background, glow, sparkles) by finish_perk_art.py.
 #   9   One more life (UP NEPA 3D): a light bulb, lit
 #   10  Energy pack: a lightning bolt
+#   11  Streak freeze: a flame kept inside a block of ice
 import bpy, bmesh, math, sys
 from mathutils import Vector
 
@@ -96,4 +97,26 @@ def bulb():
     ring(1.62, (math.radians(22), math.radians(24), 0), halo, 0.035); ring(1.8, (math.radians(-16), math.radians(-30), 0), halo, 0.025)
     render("9")
 
-bolt(); bulb()
+def freeze():
+    reset()
+    ice = bpy.data.materials.new("ice"); ice.use_nodes = True
+    put(bsdf(ice), Base_Color=(0.36, 0.68, 1.0, 1), Roughness=0.09, IOR=1.31, Transmission_Weight=0.9, Coat_Weight=1.0, Coat_Roughness=0.05)
+    bpy.ops.mesh.primitive_cube_add(size=1.95, location=(0, 0, 0))
+    c = bpy.context.object; c.rotation_euler = (math.radians(16), math.radians(-12), math.radians(32))
+    bv = c.modifiers.new("round", "BEVEL"); bv.width = 0.24; bv.segments = 8
+    c.data.materials.append(ice)
+    for p in c.data.polygons: p.use_smooth = True
+    # the flame it is keeping: a teardrop, hot at the heart
+    for r, z, col, strength in [(0.42, -0.22, (1.0, 0.32, 0.02), 1.6), (0.23, -0.28, (1.0, 0.72, 0.12), 3.2)]:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(0, 0, z), segments=48, ring_count=24)
+        f = bpy.context.object
+        for v in f.data.vertices:
+            if v.co.z > 0: k = max(0.0, 1 - (v.co.z / r) ** 1.4); v.co.x *= k; v.co.y *= k; v.co.z *= 2.0   # pulled up to a point
+        bpy.ops.object.shade_smooth(); f.data.materials.append(solid("flame", col, rough=0.4, emit=col, strength=strength))
+    halo = glass("halo", (0.55, 0.8, 1.0), (0.35, 0.65, 1.0), 0.9, rough=0.1)
+    ring(1.68, (math.radians(22), math.radians(24), 0), halo, 0.035); ring(1.86, (math.radians(-16), math.radians(-30), 0), halo, 0.025)
+    render("11")
+
+only = [a for a in sys.argv[sys.argv.index("--") + 2:]] if "--" in sys.argv else []
+for name, fn in [("10", bolt), ("9", bulb), ("11", freeze)]:
+    if not only or name in only: fn()

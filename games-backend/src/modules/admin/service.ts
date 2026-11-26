@@ -135,6 +135,7 @@ export function createAdmin(deps: AdminDeps) {
         case 'devices': return call('admin_devices', { from_day: r.from, to_day: r.to });
         case 'runs': return call('admin_runs', { from_day: r.from, to_day: r.to });
         case 'pot': return call('admin_pot', { from_day: r.from, to_day: r.to });
+        case 'freezes': return call('admin_freezes', { from_day: r.from, to_day: r.to });
         case 'money': return call('admin_money', { from_day: r.from, to_day: r.to });
         case 'payouts': { const p = await store.payouts(lim, off, isWallet(str(q.wallet)) ? str(q.wallet).toLowerCase() : null); return ok({ data: p.rows, total: p.total }); }
         case 'admins': return ok({ data: (await store.admins()).map(({ pass_hash: _p, ...a }) => a) });

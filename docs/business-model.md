@@ -136,8 +136,8 @@ The app reads the price from the contract (`hooks/useLivePerk.ts`). An item with
 | Id | Item | State | Proposed price |
 |---|---|---|---|
 | 9 | UP NEPA 3D: one more life | **Built, waiting to be switched on** | 100 G$ |
-| 10 | Energy: 5 more ranked plays | Not built | 100 G$ |
-| 11 | Streak freeze | Not built | 150 G$ |
+| 10 | Energy: 5 more ranked plays | **Built and on sale** (the owner priced it at 100 G$) | 100 G$ |
+| 11 | Streak freeze | **Built, waiting to be switched on** | 150 G$ |
 | 12 | Pet food | Not built | 30 G$ |
 
 To switch on item 9 at 100 G$, the owner wallet sends, on Celo:
@@ -147,6 +147,12 @@ cast send 0xe451Ab21587e6Fd540522495CbaE62dD0f207Ef5 "setPerk(uint16,uint256,boo
 ```
 
 **One more life.** When the last life goes in a Restore round, the round is held: the clock, the breakers and the traffic all stop while the player decides (8 seconds). Taking the life gives one life back and three seconds of safety. One offer a round. In a ranked round the breakers lit before the extra life are what is handed in, the same rule as every other continue. Not offered to guests or in friend rooms. Code: `hold` in `app/world/restore.ts`, `takeLife` in `app/world/World.tsx`.
+
+**Streak freeze (item 11).** A player buys a freeze in advance and can hold two. When they come back after a missed day, the server spends one for each day missed and the streak carries on; the player gets a message saying so. It covers at most two days in a row, and nothing is spent when it would not be enough: a freeze protects a slip, not a holiday. Until they play, the profile shows the streak as "Held by a freeze" and the pet's line says so. It needs `2026-11-27d_streak_freeze.sql`, then `./scripts/set-perk.sh 11 150`. Rules: `games-backend/src/modules/progression/streak.ts`.
+
+The same migration locks the functions that give out or spend paid things (energy, the pot's close, the freeze) so only the server can call them.
+
+**Pet care (item 12) is not built, on purpose.** The pet is sad so that the player plays. Food that makes it happy without playing would sell the fix for the very thing that brings players back, and food that grows it would sell levels. The streak freeze does the honest version of this job: it protects what the player built. If the pet is to sell something, it should be things to wear, which change nothing but how it looks.
 
 **Ids 7 and 8 are left free.** A paid hint in Word Ladder and a paid re-bowl in Street Strike were considered and dropped. A continue is fair when the run is already over: the score before it can be ranked and the rest is for fun. Neither game has that moment. A re-bowl in the middle of a ranked card, or a hint with no cost in points, would buy rank. Word Ladder already has free hints that cost points. What those two games can sell fairly is access, not help: energy and cup tickets.
 

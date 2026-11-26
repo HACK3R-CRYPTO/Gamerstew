@@ -6,7 +6,9 @@ from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 src, out = sys.argv[1], sys.argv[2]
 S = 1024
-for name, tint in [("9", (255, 190, 90)), ("10", (255, 200, 70))]:
+import os
+for name, tint in [("9", (255, 190, 90)), ("10", (255, 200, 70)), ("11", (120, 200, 255))]:
+    if not os.path.exists(f"{src}/{name}.png"): continue
     random.seed(int(name))
     obj = Image.open(f"{src}/{name}.png").convert("RGBA")
     bg = Image.new("RGB", (S, S), (38, 16, 86)); d = ImageDraw.Draw(bg)
