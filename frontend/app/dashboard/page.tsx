@@ -26,6 +26,8 @@ import AppHeader from "@/components/AppHeader";
 import AppBottomNav from "@/components/AppBottomNav";
 import CupCountdown from "@/components/CupCountdown";
 import { cupIsStaleNow } from "@/lib/cup";
+import DailyRewardsModal, { type DailyModalTab } from "@/components/DailyRewardsModal";
+import { playClick } from "@/hooks/useAppAudio";
 
 // ─── tokens (kept in sync with /home + Onboarding) ───────────────────────
 const T = {
@@ -467,6 +469,54 @@ export default function DashboardPage() {
   // Opens on the daily claim: it is the one thing here worth doing every day, so
   // it should be seen without a tap. A second tap on a tab still closes it.
   const [today, setToday] = useState<null | "claim" | "missions" | "vote" | "cup">("claim");
+  const { isVerified, isVerificationResolved, entitlement } = useSelfVerification();
+  const [rewardsModalOpen, setRewardsModalOpen] = useState(false);
+  const [rewardsModalTab, setRewardsModalTab] = useState<DailyModalTab>("claim");
+
+  // Auto-prompt modal when entering game if player has G$ or missions to claim
+  useEffect(() => {
+    if (!walletReady || !isVerificationResolved) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const key = `ga_rewards_prompted_${address?.toLowerCase()}_${todayStr}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+    } catch {
+      return;
+    }
+
+    const hasGToClaim = isVerified && entitlement !== null && entitlement !== undefined && entitlement > 0n;
+
+    const checkAndPrompt = async () => {
+      let hasMissionToClaim = false;
+      if (address) {
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3005"}/api/missions/today/${address}`);
+          if (res.ok) {
+            const data = await res.json();
+            const list = data?.missions as { completed: boolean; claimed: boolean }[] | undefined;
+            if (list?.some((m) => m.completed && !m.claimed)) {
+              hasMissionToClaim = true;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (hasGToClaim || hasMissionToClaim) {
+        const timer = setTimeout(() => {
+          if (document.querySelector('[role="dialog"]')) return;
+          setRewardsModalTab(hasGToClaim ? "claim" : "missions");
+          setRewardsModalOpen(true);
+          try {
+            sessionStorage.setItem(key, "1");
+          } catch { /* ignore */ }
+        }, 1400);
+        return () => clearTimeout(timer);
+      }
+    };
+
+    checkAndPrompt();
+  }, [walletReady, isVerificationResolved, isVerified, entitlement, address]);
+
   const { address: heroAddress } = useAccount();
   useEffect(() => {
     let live = true;
@@ -598,6 +648,15 @@ export default function DashboardPage() {
       <InstallPrompt />
       {/* news from GameArena, once per message: see components/WhatsNewModal.tsx */}
       <WhatsNewModal level={userMeta?.level ?? 0} />
+
+      {/* Daily Rewards & Missions modal (claim G$ and daily missions) */}
+      <DailyRewardsModal
+        open={rewardsModalOpen}
+        onClose={() => setRewardsModalOpen(false)}
+        initialTab={rewardsModalTab}
+        connected={walletReady}
+        onConnect={onConnect}
+      />
 
       {/* Per-game loading overlay · branded transition while the lobby's
           top-3 leaderboard cache warms up. Each game shows its own
