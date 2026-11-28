@@ -81,6 +81,7 @@ async function call<T>(path: string, body?: unknown, extra?: Record<string, stri
 }
 
 export function useFriendRoom(game: string) {
+  const SESS_KEY = `ga_room_sess_${game}`;
   const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<RoomView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,31 @@ export function useFriendRoom(game: string) {
   // would otherwise shut the sheet in the player's face.
   const [sheetOpen, setSheetOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
+
+  const updateSession = useCallback((s: Session | null) => {
+    setSession(s);
+    try {
+      if (s) sessionStorage.setItem(SESS_KEY, JSON.stringify(s));
+      else sessionStorage.removeItem(SESS_KEY);
+    } catch { /* ignore */ }
+  }, [SESS_KEY]);
+
+  // Restore existing session on mount if user was already in a room and didn't open a different room code
+  useEffect(() => {
+    try {
+      const q = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+      const raw = sessionStorage.getItem(SESS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Session;
+        if (saved && saved.code && saved.token) {
+          if (!q || q === saved.code) {
+            setSession(saved);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }, [game, SESS_KEY]);
+
   // a friend's link (?room=CODE) opens the sheet with the code filled in
   useEffect(() => {
     const c = (new URLSearchParams(window.location.search).get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
@@ -124,26 +150,26 @@ export function useFriendRoom(game: string) {
   useEffect(() => {
     if (!session) return;
     const s = openRoomSocket({ code: session.code, token: session.token }, {
-      view: (v) => { if (v.you < 0) { setSession(null); setView(null); } else setView(v); },
-      gone: () => { setSession(null); setView(null); setError("That room has closed."); },
+      view: (v) => { if (v.you < 0) { updateSession(null); setView(null); } else setView(v); },
+      gone: () => { updateSession(null); setView(null); setError("That room has closed."); },
       state: setLineUp,
     });
     line.current = s;
     return () => { s.close(); if (line.current === s) line.current = null; setLineUp(false); };
-  }, [session]);
+  }, [session, updateSession]);
 
   // ask for the room: about once a second without the live line, now and then with it
   useEffect(() => {
     if (!session) return;
     let live = true;
     const tick = async () => {
-      try { const v = await call<RoomView>(`${session.code}?token=${session.token}`); if (live) { setView(v); if (v.you < 0) { setSession(null); setView(null); } } }
-      catch (e) { if (live && (e as Error).message === "no_room") { setSession(null); setView(null); setError("That room has closed."); } }
+      try { const v = await call<RoomView>(`${session.code}?token=${session.token}`); if (live) { setView(v); if (v.you < 0) { updateSession(null); setView(null); } } }
+      catch (e) { if (live && (e as Error).message === "no_room") { updateSession(null); setView(null); setError("That room has closed."); } }
     };
     void tick();
     const id = window.setInterval(tick, lineUp ? 8000 : 1200);
     return () => { live = false; window.clearInterval(id); };
-  }, [session, lineUp]);
+  }, [session, lineUp, updateSession]);
 
   // leaving the page leaves the room, so friends are not left waiting on a ghost
   // Not at once, though: React also runs this when it only HIDES the screen for a
@@ -169,8 +195,8 @@ export function useFriendRoom(game: string) {
     sheetOpen, inviteCode, openSheet: () => setSheetOpen(true), closeSheet: () => setSheetOpen(false),
     inRoom: !!session,
     isHost: !!view && view.you >= 0 && !!view.players[view.you]?.host,
-    create: (name: string) => guard(async () => { const s = await call<Session>("rooms", { game, name }, await who()); setSession(s); return s; }),
-    join: (code: string, name: string) => guard(async () => { const s = await call<Session>(`${code.trim().toUpperCase()}/join`, { name }, await who()); setSession(s); return s; }),
+    create: (name: string) => guard(async () => { const s = await call<Session>("rooms", { game, name }, await who()); updateSession(s); return s; }),
+    join: (code: string, name: string) => guard(async () => { const s = await call<Session>(`${code.trim().toUpperCase()}/join`, { name }, await who()); updateSession(s); return s; }),
     start: () => act("start"),
     rematch: () => act("rematch"),
     // progress is a courtesy to the others: never let it surface an error
@@ -184,7 +210,8 @@ export function useFriendRoom(game: string) {
     say: (message: string | null) => setError(message),
     /** a line of room chat. Quiet on failure: chat must never get in the way of a round. */
     chat: async (text: string): Promise<boolean> => { const s = sess.current; if (!s) return false; if (line.current?.say(text)) return true; try { setView(await call<RoomView>(`${s.code}/say`, { token: s.token, text })); return true; } catch { return false; } },
-    leave: () => { const s = sess.current; setSession(null); setView(null); setError(null); if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); },
+    leave: () => { const s = sess.current; updateSession(null); setView(null); setError(null); if (s) void call(`${s.code}/leave`, { token: s.token }).catch(() => {}); },
+    kick: (seat: number) => act("kick", { seat }),
   };
 }
 export type FriendRoom = ReturnType<typeof useFriendRoom>;

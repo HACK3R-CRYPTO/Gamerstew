@@ -341,3 +341,17 @@ test('live state: a spectator is shown each player\'s screen as numbers; words a
   ok<RoomView>(w.svc.progress(r.code, r.host.token, 3)); // a plain progress call keeps the last picture
   assert.deepEqual(ok<RoomView>(w.svc.get(r.code, undefined, 'tv')).players[0]!.live!.pts, 40.13);
 });
+
+test('host can kick a player from the waiting room', () => {
+  const w = world();
+  const r = open(w, ['Ada', 'Bo', 'Cy']);
+  assert.equal(isFail(w.svc.kick(r.code, r.others[0]!.token, 2)), true, 'non-host cannot kick');
+  assert.equal(isFail(w.svc.kick(r.code, r.host.token, 0)), true, 'host cannot kick themselves');
+  const v = ok<RoomView>(w.svc.kick(r.code, r.host.token, 1)); // host kicks Bo
+  assert.equal(v.players.length, 2);
+  assert.deepEqual(v.players.map((p) => p.name), ['Ada', 'Cy']);
+  // Kicked player's seat is gone: their view returns you = -1
+  const kickedView = ok<RoomView>(w.svc.get(r.code, r.others[0]!.token));
+  assert.equal(kickedView.you, -1);
+});
+
