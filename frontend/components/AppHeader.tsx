@@ -157,6 +157,12 @@ export default function AppHeader({ tone = "light" }: { tone?: "light" | "dark" 
     query: { enabled: !!address && hasMinted === true },
   });
 
+  useEffect(() => {
+    if (typeof chainUsername === "string" && chainUsername.trim() && address) {
+      try { localStorage.setItem(`ga_name:${address.toLowerCase()}`, chainUsername.trim()); } catch { /* ignore */ }
+    }
+  }, [chainUsername, address]);
+
   // MiniPay users never sign in to Privy (the canonical MiniPay flow
   // skips Privy entirely · injected wallet is the identity). Treat them
   // as authenticated once they've minted GamePass · same gate as Privy

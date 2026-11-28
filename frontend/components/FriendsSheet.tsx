@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useRoomPermit } from "@/hooks/useRoomPermit";
-import { gd, winnerGain, type RoomView } from "@/hooks/useFriendRoom";
+import { gd, winnerGain, type RoomView, type RoomPlayer } from "@/hooks/useFriendRoom";
 import { CONTRACT_ADDRESSES, GAME_PASS_ABI } from "@/lib/contracts";
 import type { FriendRoom } from "@/hooks/useFriendRoom";
 import InviteFriends from "@/components/InviteFriends";
@@ -31,15 +31,38 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
   const [name, setName] = useState("");
   const [code, setCode] = useState(initialCode ?? "");
   const [copied, setCopied] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<{ player: RoomPlayer; seat: number } | null>(null);
   useEffect(() => { try { setName(localStorage.getItem(NAME_KEY) || ""); } catch { /* private window */ } }, []);
   const keep = (v: string) => { setName(v); try { localStorage.setItem(NAME_KEY, v); } catch { /* ignore */ } };
   // A signed-in player already has a GameArena username: use it, and do not ask.
   const { address } = useAccount();
-  const { data: chainName } = useReadContract({
+  const [cachedName, setCachedName] = useState(() => {
+    if (typeof window === "undefined" || !address) return "";
+    try { return localStorage.getItem(`ga_name:${address.toLowerCase()}`) || ""; } catch { return ""; }
+  });
+  useEffect(() => {
+    if (!address) return;
+    try {
+      const stored = localStorage.getItem(`ga_name:${address.toLowerCase()}`);
+      if (stored) setCachedName(stored);
+    } catch { /* ignore */ }
+  }, [address]);
+
+  const { data: chainName, isLoading: isChainLoading } = useReadContract({
     address: CONTRACT_ADDRESSES.GAME_PASS as `0x${string}`, abi: GAME_PASS_ABI, functionName: "getUsername",
     args: address ? [address] : undefined, query: { enabled: !!address },
   });
-  const username = typeof chainName === "string" && chainName.trim() ? chainName.trim() : "";
+
+  useEffect(() => {
+    if (typeof chainName === "string" && chainName.trim() && address) {
+      const u = chainName.trim();
+      setCachedName(u);
+      try { localStorage.setItem(`ga_name:${address.toLowerCase()}`, u); } catch { /* ignore */ }
+    }
+  }, [chainName, address]);
+
+  const username = (typeof chainName === "string" && chainName.trim()) || cachedName;
+  const nameResolving = !!address && !username && isChainLoading;
   const who = username || name.trim() || "Player";
   const v = room.view;
   const link = typeof window !== "undefined" && room.session ? `${window.location.origin}${sharePath}?room=${room.session.code}` : "";
@@ -69,6 +92,8 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             <p className="fs-sub">Everyone plays the same round at the same time. Highest score wins.</p>
             {username ? (
               <div className="fs-as">Playing as <b>@{username}</b></div>
+            ) : nameResolving ? (
+              <div className="fs-as">Loading profile…</div>
             ) : (
               <label className="fs-label">Your name
                 <input value={name} onChange={(e) => keep(e.target.value.slice(0, 16))} placeholder="Player" maxLength={16} autoComplete="nickname" />
@@ -78,15 +103,15 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             {online.length > 0 && (
               <div className="fs-on">
                 <div className="fs-on-h"><i /> {online.length} {online.length === 1 ? "friend is" : "friends are"} online</div>
-                <div className="fs-on-row">{online.slice(0, 6).map((p) => <button key={p.wallet} disabled={room.busy} onClick={() => { try { window.sessionStorage.setItem("ga_invite_next", p.wallet); } catch { /* they can still be invited from the room */ } void room.create(who); }}><b>{(p.name ?? p.wallet.slice(2)).slice(0, 1).toUpperCase()}</b>{friendLabel(p)}<em>Invite</em></button>)}</div>
+                <div className="fs-on-row">{online.slice(0, 6).map((p) => <button key={p.wallet} disabled={room.busy || nameResolving} onClick={() => { try { window.sessionStorage.setItem("ga_invite_next", p.wallet); } catch { /* they can still be invited from the room */ } void room.create(who); }}><b>{(p.name ?? p.wallet.slice(2)).slice(0, 1).toUpperCase()}</b>{friendLabel(p)}<em>Invite</em></button>)}</div>
               </div>
             )}
             {friends.state === "ready" && friends.friends.length > 0 && online.length === 0 && <div className="fs-off">None of your {friends.friends.length} friends are online right now. Open a room and send the link.</div>}
-            <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy} onClick={() => room.create(who)}>Open a room</button>
+            <button className="fs-primary" style={{ fontFamily: DISPLAY }} disabled={room.busy || nameResolving} onClick={() => room.create(who)}>{nameResolving ? "Loading profile…" : "Open a room"}</button>
             <div className="fs-or">or join one</div>
             <div className="fs-join">
               <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} placeholder="CODE" maxLength={5} inputMode="text" autoCapitalize="characters" aria-label="Room code" />
-              <button disabled={room.busy || code.length !== 5} onClick={() => room.join(code, who)}>Join</button>
+              <button disabled={room.busy || code.length !== 5 || nameResolving} onClick={() => room.join(code, who)}>{nameResolving ? "Loading profile…" : "Join"}</button>
             </div>
           </>
         ) : (
@@ -112,15 +137,38 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             <ul className="fs-players" aria-label="Players in this room">
               {(v?.players ?? []).map((p, i) => {
                 const state = p.away ? "away" : st ? (st.signed[i] ? "agreed" : "not yet") : p.host ? "host" : "ready";
+                const isMe = i === v!.you;
                 return (
-                  <li key={i} className={`${p.away ? "away" : ""}${i === v!.you ? " me" : ""}`}>
+                  <li
+                    key={i}
+                    className={`${p.away ? "away" : ""}${isMe ? " me" : ""}${!isMe ? " clickable" : ""}`}
+                    onClick={() => { if (!isMe) setSelectedPlayer({ player: p, seat: i }); }}
+                    title={!isMe ? `Click to view ${p.name}` : undefined}
+                  >
                     <span className="fs-face" aria-hidden>{(p.name || "P").slice(0, 1).toUpperCase()}</span>
-                    <span className="fs-who"><b>{p.name}</b><i className={st && !st.signed[i] && !p.away ? "wait" : ""}>{state}{i === v!.you ? " · you" : ""}</i></span>
-                    {i !== v!.you && <AddSeat f={friends} wallet={p.wallet} />}
+                    <span className="fs-who">
+                      <b>{p.name}</b>
+                      <i className={st && !st.signed[i] && !p.away ? "wait" : ""}>{state}{isMe ? " · you" : ""}</i>
+                    </span>
+                    {room.isHost && v?.status === "waiting" && !isMe ? (
+                      <button
+                        className="fs-kick-btn"
+                        title={`Remove ${p.name}`}
+                        aria-label={`Remove ${p.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void room.kick(i);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      !isMe && <AddSeat f={friends} wallet={p.wallet} />
+                    )}
                   </li>
                 );
               })}
-              {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty"><span className="fs-face" aria-hidden>+</span><span className="fs-who"><b>Open seat</b></span></li>)}
+              {Array.from({ length: Math.max(0, 4 - (v?.players.length ?? 1)) }, (_, i) => <li key={`e${i}`} className="empty" onClick={copy} style={{ cursor: "pointer" }} title="Tap to copy invite link"><span className="fs-face" aria-hidden>+</span><span className="fs-who"><b>{copied ? "Link copied!" : "Open seat"}</b><i>Tap to invite</i></span></li>)}
             </ul>
             {/* the host may put an entry on the round; shown where they are looking, not under the chat */}
             {v?.stakes && v.stakeTerms && !st && room.isHost && (
@@ -136,6 +184,54 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
             </div>
             {duo && v && <div className="fs-side"><RoomChat lines={v.chat ?? []} you={v.you} send={room.chat} fold /></div>}
             </div>
+
+            {selectedPlayer && (
+              <div className="fs-p-modal-wrap" onClick={() => setSelectedPlayer(null)}>
+                <div className="fs-p-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="fs-p-modal-top">
+                    <span className="fs-p-modal-face">{(selectedPlayer.player.name || "P").slice(0, 1).toUpperCase()}</span>
+                    <div className="fs-p-modal-info">
+                      <h3>{selectedPlayer.player.name}</h3>
+                      <div className="fs-p-modal-meta">
+                        <span className={`fs-p-pill ${selectedPlayer.player.away ? "away" : "online"}`}>
+                          {selectedPlayer.player.away ? "Away" : "In room"}
+                        </span>
+                        {selectedPlayer.player.host && <span className="fs-p-pill host">Host</span>}
+                        {st && (
+                          <span className={`fs-p-pill ${st.signed[selectedPlayer.seat] ? "agreed" : "waiting"}`}>
+                            {st.signed[selectedPlayer.seat] ? `Agreed to ${gd(st.entryWei)} G$` : "Waiting to agree"}
+                          </span>
+                        )}
+                      </div>
+                      {selectedPlayer.player.wallet && (
+                        <small className="fs-p-addr">
+                          {selectedPlayer.player.wallet.slice(0, 6)}...{selectedPlayer.player.wallet.slice(-4)}
+                        </small>
+                      )}
+                    </div>
+                    <button className="fs-p-modal-x" onClick={() => setSelectedPlayer(null)}>✕</button>
+                  </div>
+
+                  <div className="fs-p-modal-actions">
+                    {selectedPlayer.player.wallet && (
+                      <AddSeat f={friends} wallet={selectedPlayer.player.wallet} />
+                    )}
+                    {room.isHost && v?.status === "waiting" && selectedPlayer.seat !== v.you && (
+                      <button
+                        className="fs-kick-action"
+                        onClick={async () => {
+                          const s = selectedPlayer.seat;
+                          setSelectedPlayer(null);
+                          await room.kick(s);
+                        }}
+                      >
+                        Remove from room
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
         </div>
@@ -194,7 +290,7 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
         .fs-join input { text-align: center; letter-spacing: 0.3em; font-size: 20px; text-transform: uppercase; }
         @media (max-width: 380px) { .fs-join input { letter-spacing: 0.18em; font-size: 18px; } .fs-join button { padding: 0 16px; } }
-        .fs-join button { padding: 0 22px; border-radius: 14px; border: 1.5px solid #6d28d9; background: #fff; color: #6d28d9 !important; font-weight: 900; cursor: pointer; }
+        .fs-join button { padding: 0 22px; border-radius: 14px; border: 1.5px solid #6d28d9; background: #fff; color: #6d28d9 !important; font-weight: 900; white-space: nowrap; cursor: pointer; }
         .fs-join button:disabled { opacity: 0.4; cursor: default; }
         .fs-on { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: #f0fdf4; box-shadow: 0 0 0 1px rgba(22,163,74,0.3); }
         .fs-on-h { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; color: #166534; } .fs-on-h i { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.22); }
@@ -206,8 +302,32 @@ export default function FriendsSheet({ room, gameName, sharePath, initialCode, o
         .fs-share a { background: #16a34a; color: #fff !important; border: none; }
         .fs-share button { background: #fff; color: #22104f; border: 1px solid rgba(76,29,149,0.2); }
         .fs-players { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .fs-players li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; min-width: 0; min-height: 56px; padding: 8px 10px; border-radius: 15px; background: #faf7ff; border: 1px solid rgba(76,29,149,0.12); }
+        .fs-players li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; min-width: 0; min-height: 56px; padding: 8px 10px; border-radius: 15px; background: #faf7ff; border: 1px solid rgba(76,29,149,0.12); position: relative; }
         .fs-players li.me { background: #f1e9ff; border-color: rgba(109,40,217,0.35); }
+        .fs-players li.clickable { cursor: pointer; transition: transform .12s ease, border-color .15s ease, background .15s ease; }
+        .fs-players li.clickable:hover { border-color: rgba(109,40,217,0.4); background: #fbf9ff; }
+        .fs-players li.clickable:active { transform: scale(0.98); }
+        .fs-kick-btn { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(225,29,72,0.22); background: #fff; color: #e11d48; font-size: 12px; font-weight: 900; display: grid; place-items: center; cursor: pointer; margin-left: auto; transition: background .15s ease, transform .1s ease; }
+        .fs-kick-btn:hover { background: #fee2e2; border-color: #ef4444; color: #b91c1c; transform: scale(1.1); }
+        .fs-p-modal-wrap { position: absolute; inset: 0; z-index: 90; background: rgba(34,16,79,0.45); backdrop-filter: blur(3px); display: flex; align-items: flex-end; justify-content: center; animation: fsFade .15s ease; border-radius: 28px 28px 0 0; }
+        .fs-p-modal { width: 100%; box-sizing: border-box; background: #fff; border-radius: 24px 24px 0 0; padding: 20px; box-shadow: 0 -12px 30px rgba(0,0,0,0.18); display: flex; flex-direction: column; gap: 16px; animation: fsUp .2s ease; }
+        .fs-p-modal-top { display: flex; align-items: center; gap: 14px; position: relative; }
+        .fs-p-modal-face { width: 48px; height: 48px; border-radius: 50%; background: #6d28d9; color: #fff; font-size: 20px; font-weight: 800; display: grid; place-items: center; flex: none; }
+        .fs-p-modal-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .fs-p-modal-info h3 { margin: 0; font-size: 18px; font-weight: 800; color: #22104f; }
+        .fs-p-modal-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+        .fs-p-pill { font-size: 10.5px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+        .fs-p-pill.online { background: #dcfce7; color: #166534; }
+        .fs-p-pill.away { background: #fef3c7; color: #92400e; }
+        .fs-p-pill.host { background: #ede9fe; color: #5b21b6; }
+        .fs-p-pill.agreed { background: #dcfce7; color: #166534; }
+        .fs-p-pill.waiting { background: #fef3c7; color: #92400e; }
+        .fs-p-addr { font-family: monospace; font-size: 11px; color: rgba(34,16,79,0.55); }
+        .fs-p-modal-x { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(76,29,149,0.14); background: #faf7ff; color: #22104f; cursor: pointer; display: grid; place-items: center; }
+        .fs-p-modal-actions { display: flex; flex-direction: column; gap: 10px; }
+        .fs-kick-action { width: 100%; padding: 13px 0; border: none; border-radius: 14px; background: #fee2e2; color: #b91c1c; font-size: 15px; font-weight: 800; cursor: pointer; transition: background .15s ease, transform .1s ease; }
+        .fs-kick-action:hover { background: #fecaca; }
+        .fs-kick-action:active { transform: scale(0.98); }
         .fs-face { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #6d28d9; color: #fff; font-size: 15px; font-weight: 800; }
         .fs-who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
         .fs-who b { font-size: 14.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -204,3 +204,22 @@ test('a round with payments still to make is never forgotten; an abandoned lobby
   await L.svc.settleDue();
   assert.ok(L.moves.slice(before).includes('b→a 90+10'));
 });
+
+test('a rejoining player reclaims their away seat and can agree to stake without wallet_taken error', async () => {
+  const L = lobby();
+  ok<RoomView>(await L.svc.stake(L.code, L.host.token, E100, L.sign(A)));
+  // Bo joins as guest "Player" with wallet B and agrees to 100 G$
+  const boSeat = ok<Seat>(L.svc.join(L.code, 'Player', B));
+  ok<RoomView>(await L.svc.commit(L.code, boSeat.token, L.sign(B)));
+  // Bo's connection drops / refreshes and Bo goes away
+  L.clock.t += 35_000;
+  // Bo rejoins with real username "Delifeline" and wallet B
+  const rejoined = ok<Seat>(L.svc.join(L.code, 'Delifeline', B));
+  assert.equal(rejoined.seat, boSeat.seat, 'reclaims existing away seat instead of filling room with ghosts');
+  const v = ok<RoomView>(L.svc.get(L.code, rejoined.token));
+  assert.equal(v.players[rejoined.seat]!.name, 'Delifeline', 'updates name from Player to Delifeline');
+  // Bo signs new permit and commits
+  const commitRes = await L.svc.commit(L.code, rejoined.token, L.sign(B));
+  assert.ok(!isFail(commitRes), `commit should succeed, not fail with wallet_taken: ${JSON.stringify(commitRes)}`);
+});
+

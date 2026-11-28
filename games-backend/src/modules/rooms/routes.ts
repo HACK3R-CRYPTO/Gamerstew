@@ -46,5 +46,6 @@ export function registerRoomRoutes(app: Application, deps: { requireSecret?: Req
   app.post('/api/rooms/:code/unstake', gate, route((req) => service.unstake(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/rematch', gate, route((req) => service.rematch(req.params.code, body(req).token)));
   app.post('/api/rooms/:code/leave', gate, route((req) => service.leave(req.params.code, body(req).token)));
+  app.post('/api/rooms/:code/kick', gate, route((req) => service.kick(req.params.code, body(req).token, body(req).seat)));
   return service;
 }

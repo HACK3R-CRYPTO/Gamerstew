@@ -6,7 +6,7 @@ import { checkedWallet } from "@/lib/server/roomWallet";
 // internal secret. Only the room shapes the game uses are let through.
 export const dynamic = "force-dynamic";
 
-const ACTIONS = new Set(["join", "start", "progress", "finish", "rematch", "leave", "stake", "commit", "unstake", "say"]);
+const ACTIONS = new Set(["join", "start", "progress", "finish", "rematch", "leave", "stake", "commit", "unstake", "say", "kick"]);
 
 function target(path: string[], search: string): string | null {
   if (path[0] !== "rooms" || path.length > 3) return null;

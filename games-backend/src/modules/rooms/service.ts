@@ -267,15 +267,35 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       if (!room) return fail('no_room', 404);
       if (room.status !== 'waiting') return fail('started', 409);
       if (room.stake && room.stake.state === 'ready') room.stake.state = 'collecting'; // a newcomer has not signed yet
-      if (room.players.filter((p) => !p.left).length >= MAX_PLAYERS) return fail('full', 409);
       const t = now(); const base = cleanName(name);
+      const acct = cleanAccount(account);
+      // Reconnect/reclaim: if this non-host account went away (disconnected/refreshed), reclaim that seat
+      if (acct) {
+        const awayIdx = room.players.findIndex((p, i) => i > 0 && !p.left && (p.account === acct || p.wallet === acct) && gone(room, i, t));
+        if (awayIdx > 0) {
+          const p = room.players[awayIdx]!;
+          p.name = base; // update name (e.g. from "Player" to real username)
+          p.seen = t;
+          p.left = false;
+          p.account = acct;
+          p.token = hex(16);
+          room.touched = t;
+          return { code: room.code, token: p.token, seat: awayIdx, game: room.game };
+        }
+      }
+      // If room is full, prune any non-host seats that have gone away (seen > 30s ago)
+      if (room.players.filter((p) => !p.left).length >= MAX_PLAYERS) {
+        const ghostIdx = room.players.findIndex((p, i) => i > 0 && !p.left && gone(room, i, t));
+        if (ghostIdx > 0) room.players.splice(ghostIdx, 1);
+        else return fail('full', 409);
+      }
       // two players with one name would be impossible to tell apart
       const taken = (x: string) => room.players.some((p) => !p.left && p.name.toLowerCase() === x.toLowerCase());
       let n = base;
       for (let k = 2; taken(n); k++) n = `${Array.from(base).slice(0, 13).join('').trim()} ${k}`;
       const me = blank(n, t);
       // one wallet, one seat: a second phone on the same account plays, but is not recorded twice
-      const acct = cleanAccount(account); if (acct && !room.players.some((p) => !p.left && p.account === acct)) me.account = acct;
+      if (acct && !room.players.some((p) => !p.left && p.account === acct)) me.account = acct;
       room.players.push(me); room.touched = t;
       return { code: room.code, token: me.token, seat: room.players.length - 1, game: room.game };
     },
@@ -426,12 +446,33 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       if (room.status === 'waiting') {
         room.players.splice(seat, 1);
         const st = room.stake;
-        if (st && !settled(st)) { const here = room.players.filter((p) => !p.left); st.state = here.length >= 2 && here.every((p) => p.permit) ? 'ready' : 'collecting'; }
+        if (st && !settled(st)) { const here = room.players.filter((p, i) => !p.left && !gone(room, i, now())); st.state = here.length >= 2 && here.every((p) => p.permit) ? 'ready' : 'collecting'; }
       }
       else room.players[seat]!.left = true;
       room.touched = now();
       if ((room.players.every((p) => p.left) || room.players.length === 0) && !owing(room.stake)) rooms.delete(room.code);
       return { ok: true };
+    },
+
+    /** Host kicks a player from the waiting room */
+    kick(code: unknown, token: unknown, targetSeat: unknown): RoomView | Fail {
+      const room = find(code);
+      if (!room) return fail('no_room', 404);
+      const host = hostSeat(room);
+      const seat = seatOf(room, token);
+      if (seat < 0 || seat !== host) return fail('not_host', 403);
+      if (room.status !== 'waiting') return fail('started', 409);
+      const target = Number(targetSeat);
+      if (!Number.isInteger(target) || target <= 0 || target >= room.players.length) return fail('not_in_room', 400);
+      room.players.splice(target, 1);
+      const st = room.stake;
+      if (st && !settled(st)) {
+        const here = room.players.filter((p, i) => !p.left && !gone(room, i, now()));
+        st.state = here.length >= 2 && here.every((p) => p.permit) ? 'ready' : 'collecting';
+      }
+      room.touched = now();
+      touch(room, seat);
+      return view(room, seat);
     },
 
     /** The host sets the entry for the next round, and signs for their own. */
@@ -483,9 +524,20 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
       if (isFail(checked)) return checked;
       const seat = seatOf(room, token);
       if (find(code) !== room || room.stake !== st || room.status !== 'waiting' || seat < 0) return fail('stake_pending', 409);
-      if (room.players.some((p, i) => i !== seat && p.wallet === checked.owner)) return fail('wallet_taken', 409); // one wallet, one seat
+      const t = now();
+      // If another seat in this room holds this wallet:
+      // If it is left or away (abandoned from an earlier join/reconnect), clear it so the active player can agree
+      for (let i = 0; i < room.players.length; i++) {
+        if (i !== seat && room.players[i]!.wallet === checked.owner) {
+          if (room.players[i]!.left || gone(room, i, t)) {
+            delete room.players[i]!.wallet;
+            delete room.players[i]!.permit;
+          }
+        }
+      }
+      if (room.players.some((p, i) => i !== seat && !p.left && !gone(room, i, t) && p.wallet === checked.owner)) return fail('wallet_taken', 409); // one wallet, one seat among active players
       const me = room.players[seat]!; me.wallet = checked.owner; me.permit = checked;
-      const here = room.players.filter((p) => !p.left);
+      const here = room.players.filter((p, i) => !p.left && !gone(room, i, t));
       st.state = here.length >= 2 && here.every((p) => p.permit) ? 'ready' : 'collecting';
       touch(room, seat);
       return view(room, seat);
@@ -566,6 +618,7 @@ export function createRoomService(games: Record<string, GameRules>, opts: { now?
     finish(code: unknown, token: unknown, proof: unknown) { const out = api.finish(code, token, proof); then(out, () => code); return out; },
     rematch(code: unknown, token: unknown) { const out = api.rematch(code, token); then(out, () => code); return out; },
     leave(code: unknown, token: unknown) { const out = api.leave(code, token); then(out, () => code); return out; },
+    kick(code: unknown, token: unknown, targetSeat: unknown) { const out = api.kick(code, token, targetSeat); then(out, () => code); return out; },
     stake(code: unknown, token: unknown, entryWei: unknown, permit: unknown) { const out = api.stake(code, token, entryWei, permit); then(out, () => code); return out; },
     unstake(code: unknown, token: unknown) { const out = api.unstake(code, token); then(out, () => code); return out; },
     commit(code: unknown, token: unknown, permit: unknown) { const out = api.commit(code, token, permit); then(out, () => code); return out; },
